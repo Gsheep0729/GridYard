@@ -1,12 +1,20 @@
-# src/ —— 全部源代码所在目录
-# 按职责分子目录：shared（共用静态库）+ client（QML 桌面客户端）
-#                  server（V2.0 守护进程，占位）+ tests（单测，Stage 1+ 启用）
+cmake_minimum_required(VERSION 4.2.3)
+set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
+set(CMAKE_CXX_MODULE_STD ON)
 
+project(GridYard VERSION 0.1 LANGUAGES CXX)
+
+find_package(Qt6 REQUIRED COMPONENTS Quick Network)
+qt_standard_project_setup(REQUIRES 6.10)
+
+# ---- 子模块引入 --------------------------------------------------------
 add_subdirectory(shared)
 add_subdirectory(client)
 
 # V2.0 阶段启用：
 # add_subdirectory(server)
 
-# Stage 1+ 启用：
+# Stage 1+ 启用测试：
+# enable_testing()
 # add_subdirectory(tests)
+
