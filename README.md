@@ -34,16 +34,14 @@ GridYard/                                  ← Git 仓库根
 │
 ├── README.md                              # 本项目说明文件
 ├── .gitignore                             # Git 忽略配置（排除构建产物、IDE 配置等）
-├── CMakeLists.txt                         # 根目录 CMake 构建脚本（定义全局项目版本、C++23 选项及 Qt 包引入）
-│
 ├── doc/                                   # 项目文档目录（核心设计文档）
 │   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md # 业务需求、目标与系统规格
 │   ├── 鸽邮(GridYard)——软件开发阶段计划.md             # 各开发阶段（Stage）任务详细拆解
 │   ├── 鸽邮(GridYard)——团队开发者手册.md               # 团队协作规约、环境搭建与代码规范
 │   └── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md # 系统架构、网络协议设计与后续演进路线
 │
-└── src/                                   # 项目源代码与核心目录
-    ├── CMakeLists.txt                     # 源码级总控 CMake（负责注册 client、shared 等子模块）
+└── src/                                   # 项目核心目录（源码与构建总控）
+    ├── CMakeLists.txt                     # 唯一构建入口（负责项目全局配置与子模块注册）
     ├── scripts/                           # 辅助脚本目录
     │   └── for_md.py                      # 代码归档工具
     ├── shared/                            # 客户端与服务端共用底层核心库 gy_shared

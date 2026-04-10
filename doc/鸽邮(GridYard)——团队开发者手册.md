@@ -142,13 +142,12 @@ git --version           # >= 2.40
 
 ```
 GridYard/
-├── CMakeLists.txt              # 顶层构建入口（仅 add_subdirectory(src)）
 ├── README.md                   # 项目入口（含构建命令与快速导航）
 ├── .gitignore
 ├── doc/                        # 文档（设计书 + 本手册 + 阶段计划 + 代码规范）
 ├── scripts/                    # 辅助脚本（for_md.py）
-└── src/                        # 全部源代码
-    ├── CMakeLists.txt          # add_subdirectory(shared) + (client) + ...
+└── src/                        # 全部源代码（及唯一构建入口）
+    ├── CMakeLists.txt          # 负责项目全局配置与子模块注册 (shared/client/...)
     ├── shared/                 # 客户端/服务端共用代码
     │   ├── CMakeLists.txt
     │   ├── protocol.h          # TLV 帧 + Type 码 + Payload 字段常量
@@ -212,14 +211,15 @@ add_subdirectory(client)
 ### 3.3 构建与运行
 
 ```bash
-# 首次配置（项目根目录执行）
+# 首次配置（进入 src 目录执行）
+cd src
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
 # 增量构建
 cmake --build build -j
 
-# 运行客户端（注意路径含 src/）
-./build/src/client/appGridYard
+# 运行客户端（可执行文件在 build/client/ 下）
+./build/client/appGridYard
 
 # 跑全部单测
 ctest --test-dir build --output-on-failure
@@ -228,7 +228,7 @@ ctest --test-dir build --output-on-failure
 > **常用别名**（写进各自的 `~/.bashrc` 或 `~/.zshrc`）：
 > ```bash
 > alias gyb='cmake --build build -j'
-> alias gyr='./build/src/client/appGridYard'
+> alias gyr='./build/client/appGridYard'
 > alias gyt='ctest --test-dir build --output-on-failure'
 > ```
 
