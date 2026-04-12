@@ -17,10 +17,10 @@
 
 | 想找                       | 在哪                                                         |
 | :------------------------- | :----------------------------------------------------------- |
-| **现在该做什么？**         | [`doc/鸽邮(GridYard)——软件开发阶段计划.md`](doc/)             |
-| 业务需求                   | [`doc/鸽邮(GridYard)——技术需求与系统设计规格说明书.md`](doc/) |
-| 架构决策（V1.0 + V2.0 演进） | [`doc/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md`](doc/) |
-| 工程实践（CMake/Git/调试） | [`doc/鸽邮(GridYard)——团队开发者手册.md`](doc/)               |
+| **现在该做什么？**         | [`doc/plans/鸽邮(GridYard)——软件开发阶段计划.md`](doc/plans/)             |
+| 业务需求                   | [`doc/spec/鸽邮(GridYard)——技术需求与系统设计规格说明书.md`](doc/spec/) |
+| 架构决策（V1.0 + V2.0 演进） | [`doc/spec/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md`](doc/spec/) |
+| 工程实践（CMake/Git/调试） | [`doc/manuals/鸽邮(GridYard)——团队开发者手册.md`](doc/manuals/)               |
 | CMake / qmldir / 集成示例  | [`doc/templates/`](doc/templates/)                            |
 
 ---
@@ -32,35 +32,48 @@
 ```text
 GridYard/                                  ← Git 仓库根
 │
-├── README.md                              # 本项目说明文件
-├── .gitignore                             # Git 忽略配置（排除构建产物、IDE 配置等）
-├── doc/                                   # 项目文档目录（核心设计文档）
-│   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md # 业务需求、目标与系统规格
-│   ├── 鸽邮(GridYard)——软件开发阶段计划.md             # 各开发阶段（Stage）任务详细拆解
-│   ├── 鸽邮(GridYard)——团队开发者手册.md               # 团队协作规约、环境搭建与代码规范
-│   └── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md # 系统架构、网络协议设计与后续演进路线
+├── README.md                              # [✅] 本项目说明文件
+├── .gitignore                             # [✅] Git 忽略配置（排除构建产物、IDE 配置等）
+├── doc/                                   # [✅] 项目文档目录（分层规范收纳）
+│   ├── spec/                              # [✅] 核心规格与设计文档
+│   │   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md
+│   │   └── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md
+│   ├── manuals/                           # [✅] 指导手册与踩坑心得
+│   │   ├── 鸽邮(GridYard)——团队开发者手册.md
+│   │   └── 开发心得_从架构设计到踩坑记录.md
+│   ├── plans/                             # [✅] 迭代开发计划与重构草稿
+│   │   ├── 鸽邮(GridYard)——软件开发阶段计划.md
+│   │   └── history_stage0/                # [✅] 已脱敏的 Stage 0 历史归档 (已屏蔽跟踪)
+│   │       ├── 从0重构GridYard实施计划.md
+│   │       └── AI重构实施计划_草稿.md
+│   └── templates/                         # [✅] 统一规范的开发模板与集成演示项目
+│       ├── integration_demo/              # [✅] C++ ↔ QML 交互集成最小可运行示例 (教学/回归)
+│       ├── CMakeLists.qml.template        # [✅] Qt Quick 项目 CMake 模板
+│       ├── CMakeLists.widgets.template    # [✅] Widgets 项目 CMake 模板
+│       ├── qmldir.template                # [✅] qmldir 声明文件模板
+│       └── README.md                      # [✅] 模板使用指南
 │
-└── src/                                   # 项目核心目录（源码与构建总控）
-    ├── CMakeLists.txt                     # 唯一构建入口（负责项目全局配置与子模块注册）
-    ├── scripts/                           # 辅助脚本目录
-    │   └── for_md.py                      # 代码归档工具
-    ├── shared/                            # 客户端与服务端共用底层核心库 gy_shared
-    │   ├── CMakeLists.txt                 # shared 模块构建配置
-    │   ├── protocol.h                     # 通信协议类型、报文等定义
-    │   ├── data_types.h                   # 跨模块通用数据类型（如 PeerInfo）
-    │   ├── frame_codec.h                  # 帧编解码器核心声明
-    │   └── frame_codec.cpp                # 帧编解码器具体实现
-    ├── client/                            # 桌面客户端模块（QML + C++）
-    │   ├── CMakeLists.txt                 # client 模块构建配置（含 qml module 注册）
-    │   ├── main.cpp                       # C++ 主程序入口（负责注册类型与加载 QML）
-    │   ├── Main.qml                       # 桌面端 QML 根窗口/主界面
-    │   ├── core/                          # 业务逻辑控制器核心目录
-    │   │   ├── app_controller.h           # 应用全局控制器声明
-    │   │   └── app_controller.cpp         # 应用全局控制器实现
-    │   ├── network/                       # 预留：网络通信与发现层目录
-    │   └── ui/                            # 预留：自定义 QML 组件存放目录
-    ├── server/                            # 预留：服务端核心逻辑目录
-    └── tests/                             # 预留：单元测试目录
+└── src/                                   # [✅] 项目核心目录（源码与构建总控）
+    ├── CMakeLists.txt                     # [✅] 唯一构建入口（负责项目全局配置与子模块注册）
+    ├── scripts/                           # [✅] 辅助脚本目录
+    │   └── for_md.py                      # [✅] 代码归档工具
+    ├── shared/                            # [✅] 客户端与服务端共用底层核心库 gy_shared
+    │   ├── CMakeLists.txt                 # [✅] shared 模块构建配置
+    │   ├── protocol.h                     # [🟡] 通信协议类型定义（Stage 1 填充）
+    │   ├── data_types.h                   # [✅] 跨模块通用数据类型（如 PeerInfo）
+    │   ├── frame_codec.h                  # [🟡] 帧编解码器核心声明（Stage 1 实现）
+    │   └── frame_codec.cpp                # [🟡] 帧编解码器具体实现（Stage 1 实现）
+    ├── client/                            # [✅] 桌面客户端模块（QML + C++）
+    │   ├── CMakeLists.txt                 # [✅] client 模块构建配置（含 qml module 注册）
+    │   ├── main.cpp                       # [✅] C++ 主程序入口（负责注册类型与加载 QML）
+    │   ├── Main.qml                       # [✅] 桌面端 QML 根窗口/主界面
+    │   ├── core/                          # [✅] 业务逻辑控制器核心目录
+    │   │   ├── app_controller.h           # [✅] 应用全局控制器声明
+    │   │   └── app_controller.cpp         # [✅] 应用全局控制器实现
+    │   ├── network/                       # [🟡] 预留：网络通信与发现层目录（Stage 2 填充）
+    │   └── ui/                            # [🟡] 预留：自定义 QML 组件存放目录（Stage 3 填充）
+    ├── server/                            # [🟡] 预留：服务端核心逻辑目录（V2.0 阶段）
+    └── tests/                             # [🟡] 预留：单元测试目录（Stage 1+ 启用）
 ```
 
 ---
@@ -92,8 +105,8 @@ ctest --test-dir build --output-on-failure
 
 入坑顺序：
 
-1. **先读 [`doc/鸽邮(GridYard)——团队开发者手册.md`](doc/)**——工程实践（CMake / Git / 调试 / 测试）一站式
-2. **再读 [`doc/鸽邮(GridYard)——软件开发阶段计划.md`](doc/)** 了解现在做什么、下一步做什么、哪些必要、哪些加分
+1. **先读 [`doc/manuals/鸽邮(GridYard)——团队开发者手册.md`](doc/manuals/)**——工程实践（CMake / Git / 调试 / 测试）一站式
+2. **再读 [`doc/plans/鸽邮(GridYard)——软件开发阶段计划.md`](doc/plans/)** 了解现在做什么、下一步做什么、哪些必要、哪些加分
 3. **写代码前对照老师下发的《代码规范要求文档.md》**——红线很多
 4. **任务认领制**：当阶段必要任务在群公告，谁感兴趣谁认领；没人认领 24h 由 Tech Lead 兜底派活
 
