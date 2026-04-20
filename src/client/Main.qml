@@ -12,6 +12,8 @@
 * Change Log:
 * [v0.1] GY   2026-05-24
 * * Stage 0：空白窗口框架
+* [v0.2] GY   2026-06-02
+* * Stage 1：添加 test 按钮验证 C++↔QML 通信
 */
 
 import QtQuick
@@ -30,10 +32,20 @@ ApplicationWindow {
 
     onClosing: AppController.quit()
 
-    Label {
+    Column {
         anchors.centerIn: parent
-        text: qsTr("GridYard 骨架就绪 — 等待 Stage 1 填充协议层")
-        font.pixelSize: 16
-        color: "#888"
+        spacing: 20
+
+        Label {
+            text: qsTr("GridYard 骨架就绪 — Stage 1 通信层已就位")
+            font.pixelSize: 16
+            color: "#888"
+        }
+
+        Button {
+            text: qsTr("测试 C++↔QML 通信")
+            anchors.horizontalCenter: parent.horizontalCenter
+            onClicked: AppController.test()
+        }
     }
 }
