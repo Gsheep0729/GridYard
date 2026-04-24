@@ -23,6 +23,9 @@ classDiagram
         +deviceName : QString
         +ipAddress : QString
         +tcpPort : quint16
+        +isOnline : bool
+        +lastSeen : QDateTime
+        +lastSeenStr() : QString
     }
 
     class FileEntry {

@@ -13,26 +13,35 @@
 * * Stage 0 占位：仅 PeerInfo 骨架；FileEntry / TransferSession 待 Stage 1
 * [v0.2] GY   2026-06-02
 * * Stage 1：补充 FileEntry / TransferSession 数据结构
+* [v0.3] GY   2026-06-02
+* * Stage 2 准备：PeerInfo 补充 isOnline / lastSeen 字段
 */
 
 #pragma once
 
+#include <QDateTime>
 #include <QMetaType>
 #include <QString>
 
 // 局域网在线节点描述
 class PeerInfo {
     Q_GADGET
-    Q_PROPERTY(QString deviceId   MEMBER deviceId)
-    Q_PROPERTY(QString deviceName MEMBER deviceName)
-    Q_PROPERTY(QString ipAddress  MEMBER ipAddress)
-    Q_PROPERTY(quint16 tcpPort    MEMBER tcpPort)
+    Q_PROPERTY(QString  deviceId   MEMBER deviceId)
+    Q_PROPERTY(QString  deviceName MEMBER deviceName)
+    Q_PROPERTY(QString  ipAddress  MEMBER ipAddress)
+    Q_PROPERTY(quint16  tcpPort    MEMBER tcpPort)
+    Q_PROPERTY(bool     isOnline   MEMBER isOnline)
+    Q_PROPERTY(QString  lastSeen   READ lastSeenStr)
 
 public:
-    QString deviceId;       // UUID，首次启动生成
-    QString deviceName;     // 用户自定义名或 hostname
-    QString ipAddress;
-    quint16 tcpPort = 0;
+    QString  deviceId;      // UUID，首次启动生成
+    QString  deviceName;    // 用户自定义名或 hostname
+    QString  ipAddress;
+    quint16  tcpPort = 0;
+    bool     isOnline = false;
+    QDateTime lastSeen;     // 最后心跳时间
+
+    QString lastSeenStr() const { return lastSeen.toString("HH:mm:ss"); }
 };
 
 Q_DECLARE_METATYPE(PeerInfo)
