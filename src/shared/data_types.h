@@ -11,6 +11,8 @@
 * Change Log:
 * [v0.1] GY   2026-05-24
 * * Stage 0 占位：仅 PeerInfo 骨架；FileEntry / TransferSession 待 Stage 1
+* [v0.2] GY   2026-06-02
+* * Stage 1：补充 FileEntry / TransferSession 数据结构
 */
 
 #pragma once
@@ -18,6 +20,7 @@
 #include <QMetaType>
 #include <QString>
 
+// 局域网在线节点描述
 class PeerInfo {
     Q_GADGET
     Q_PROPERTY(QString deviceId   MEMBER deviceId)
@@ -33,3 +36,39 @@ public:
 };
 
 Q_DECLARE_METATYPE(PeerInfo)
+
+// 文件元数据（传输请求用）
+class FileEntry {
+    Q_GADGET
+    Q_PROPERTY(QString relativePath MEMBER relativePath)
+    Q_PROPERTY(qint64  fileSize     MEMBER fileSize)
+    Q_PROPERTY(QString sha256       MEMBER sha256)
+
+public:
+    QString relativePath;   // 相对路径（含目录结构）
+    qint64  fileSize = 0;
+    QString sha256;         // 文件哈希（传输完成后校验用）
+};
+
+Q_DECLARE_METATYPE(FileEntry)
+
+// 传输会话状态
+class TransferSession {
+    Q_GADGET
+    Q_PROPERTY(QString sessionId    MEMBER sessionId)
+    Q_PROPERTY(QString peerDeviceId MEMBER peerDeviceId)
+    Q_PROPERTY(int     fileCount    MEMBER fileCount)
+    Q_PROPERTY(qint64  totalBytes   MEMBER totalBytes)
+    Q_PROPERTY(qint64  sentBytes    MEMBER sentBytes)
+    Q_PROPERTY(bool    isActive     MEMBER isActive)
+
+public:
+    QString sessionId;      // 会话唯一 ID
+    QString peerDeviceId;   // 对端设备 ID
+    int     fileCount = 0;
+    qint64  totalBytes = 0;
+    qint64  sentBytes = 0;
+    bool    isActive = false;
+};
+
+Q_DECLARE_METATYPE(TransferSession)
