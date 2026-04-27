@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <QtGlobal>
 
 namespace gy::protocol {
 
@@ -27,10 +27,13 @@ inline constexpr quint32 kHeaderBytes = 8;
 inline constexpr quint16 kDefaultDiscoveryPort = 45678;   // UDP 设备发现
 inline constexpr quint16 kDefaultP2pPort       = 35100;   // TCP P2P 文件传输
 
-// ---- V1.0 Type 码（Stage 1 任务 1.1 填充）-----------------------------
-// 预留示意，真正的值在 Stage 1 按设计书 §7.2 落地：
-// inline constexpr quint32 kTypeHello       = 0x0001;
-// inline constexpr quint32 kTypeTransferReq = 0x0101;
-// ...
+// ---- V1.0 Type 码 --------------------------------------------------------
+inline constexpr quint32 kTypeHello        = 0x0001;   // UDP 广播：设备上线 / 心跳
+inline constexpr quint32 kTypeTransferReq  = 0x0101;   // TCP：文件元数据握手请求
+inline constexpr quint32 kTypeTransferRsp  = 0x0102;   // TCP：握手响应（接受/拒绝）
+inline constexpr quint32 kTypeDataChunk    = 0x0201;   // TCP：文件数据分块
+inline constexpr quint32 kTypeChunkAck     = 0x0301;   // TCP：单文件完成确认与校验
+inline constexpr quint32 kTypeTransferDone = 0x0302;   // TCP：全部文件发送完毕
+inline constexpr quint32 kTypeCancel       = 0x0401;   // TCP：取消本次传输
 
 }  // namespace gy::protocol

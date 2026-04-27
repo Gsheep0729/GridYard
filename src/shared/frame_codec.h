@@ -12,6 +12,8 @@
 * Change Log:
 * [v0.1] GY   2026-05-24
 * * Stage 0 占位：仅类声明与空实现；状态机逻辑 Stage 1 任务 1.3 填充
+* [v0.2] GY   2026-06-02
+* * Stage 1：实现 encode() + 粘包状态机 feed()
 */
 
 #pragma once
@@ -40,6 +42,14 @@ signals:
     void frameReady(quint32 type, const QByteArray &payload);
 
 private:
-    // Stage 1 任务 1.3 填充：状态机状态、接收缓冲区、待处理帧头字段
+    // 状态机状态
+    enum class State {
+        WaitingHeader,   // 等待帧头（8 字节）
+        WaitingPayload   // 等待载荷（length 字节）
+    };
+
+    State _state = State::WaitingHeader;
     QByteArray _buffer;
+    quint32 _pendingType = 0;
+    quint32 _pendingLength = 0;
 };

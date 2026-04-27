@@ -13,6 +13,8 @@
 * Change Log:
 * [v0.1] GY   2026-05-24
 * * Stage 0：仅暴露 applicationName / applicationVersion / quit
+* [v0.2] GY   2026-06-02
+* * Stage 1：添加 test() 验证 C++↔QML 通信路径
 */
 
 #pragma once
@@ -39,6 +41,7 @@ public:
     QString applicationVersion() const;
 
     Q_INVOKABLE void quit();
+    Q_INVOKABLE void test();  // Stage 1：验证 C++↔QML 通信
 
 signals:
     void appReady();
