@@ -30,6 +30,7 @@ class QQmlEngine;
 class QJSEngine;
 
 class ConfigManager;
+class P2pServer;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -62,4 +63,5 @@ private:
 
     ConfigManager    *_config    = nullptr;
     DiscoveryService *_discovery = nullptr;
+    P2pServer        *_p2pServer = nullptr;
 };
