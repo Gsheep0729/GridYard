@@ -1,4 +1,4 @@
-# GridYard 类图（Stage 1 当前状态）
+# GridYard 类图（Stage 2 进行中）
 
 ```mermaid
 classDiagram
@@ -57,6 +57,21 @@ classDiagram
     }
 
     %% 客户端层（client/）
+    class ConfigManager {
+        <<QObject, QML_SINGLETON>>
+        +deviceId : QString
+        +deviceName : QString
+        +receivePath : QString
+        +tcpPort : quint16
+        +create(engine: QQmlEngine, scriptEngine: QJSEngine)$ ConfigManager*
+        +setDeviceName(name: QString) : void
+        +setReceivePath(path: QString) : void
+        +setTcpPort(port: quint16) : void
+        +deviceNameChanged() signal
+        +receivePathChanged() signal
+        +tcpPortChanged() signal
+    }
+
     class AppController {
         <<QObject, QML_SINGLETON>>
         +applicationName : QString
@@ -74,6 +89,7 @@ classDiagram
 
     %% 关系
     FrameCodec ..> ProtocolConstants : 使用常量
+    ConfigManager ..> ProtocolConstants : 使用默认端口
     Main --> AppController : 访问属性/调用方法
 ```
 
@@ -84,5 +100,6 @@ classDiagram
 - **FileEntry**：Q_GADGET 值类型，文件元数据（Stage 1 新增）
 - **TransferSession**：Q_GADGET 值类型，传输会话状态（Stage 1 新增）
 - **FrameCodec**：TLV 帧编解码器，含粘包/半包状态机（Stage 1 实现）
+- **ConfigManager**：QML_SINGLETON 单例，应用配置管理器（Stage 2 新增）
 - **AppController**：QML_SINGLETON 单例，QML 与 C++ 通信的桥梁
 - **Main.qml**：根窗口，通过 AppController 访问 C++ 功能

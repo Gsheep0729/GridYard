@@ -13,6 +13,8 @@ qt_add_qml_module(appGridYard
         main.cpp
         core/app_controller.h
         core/app_controller.cpp
+        core/config_manager.h
+        core/config_manager.cpp
 
     QML_FILES
         Main.qml
