@@ -1,0 +1,75 @@
+/**
+* @file    discovery_service.h
+* @date    2026-06-02
+* @author  GY
+* @brief   局域网设备发现服务
+*
+* 通过 UDP 广播实现局域网内设备自动发现。
+* 每 5 秒发送 Hello 包，维护在线节点表，15 秒无心跳自动剔除。
+*
+* Change Log:
+* [v0.1] GY   2026-06-02
+* * Stage 2：初始版本
+*/
+
+#pragma once
+
+#include <QDateTime>
+#include <QHash>
+#include <QObject>
+#include <QTimer>
+#include <QUdpSocket>
+#include <QVariantList>
+
+#include "data_types.h"
+
+class ConfigManager;
+
+class DiscoveryService : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantList peers READ peers NOTIFY peersChanged)
+
+public:
+    explicit DiscoveryService(ConfigManager *config, QObject *parent = nullptr);
+    virtual ~DiscoveryService() override = default;
+
+    DiscoveryService(const DiscoveryService &)            = delete;
+    DiscoveryService &operator=(const DiscoveryService &) = delete;
+
+    // 获取当前在线节点列表（供 QML 绑定）
+    QVariantList peers() const;
+
+signals:
+    // 节点列表变化通知
+    void peersChanged();
+    // 新节点发现
+    void nodeDiscovered(const QString &deviceId);
+    // 节点离线
+    void nodeExpired(const QString &deviceId);
+
+private slots:
+    // 发送 Hello 广播包
+    void sendHelloPacket();
+    // 接收 UDP 数据报
+    void onDatagramReceived();
+    // 清理离线节点
+    void pruneOfflineNodes();
+
+private:
+    // 构建 Hello 包 JSON 内容
+    QByteArray buildHelloPayload() const;
+    // 处理收到的 Hello 包
+    void handleHelloPacket(const QJsonObject &json, const QHostAddress &sender);
+    // 更新节点信息
+    void updatePeer(const QString &deviceId, const PeerInfo &info);
+    // 通知 QML 列表变化
+    void notifyPeersChanged();
+
+    ConfigManager *_config = nullptr;
+    QUdpSocket    *_socket = nullptr;
+    QTimer        *_broadcastTimer = nullptr;
+    QTimer        *_pruneTimer = nullptr;
+
+    // 节点表：deviceId -> PeerInfo
+    QHash<QString, PeerInfo> _peers;
+};

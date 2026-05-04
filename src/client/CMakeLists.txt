@@ -15,6 +15,7 @@ qt_add_qml_module(appGridYard
         core/app_controller.cpp
         core/config_manager.h
         core/config_manager.cpp
+        network/discovery_service.cpp
 
     QML_FILES
         Main.qml
@@ -29,7 +30,7 @@ target_link_libraries(appGridYard PRIVATE
     gy_shared
 )
 
-target_include_directories(appGridYard PRIVATE core)
+target_include_directories(appGridYard PRIVATE core network)
 
 # ---- 安装规则 ---------------------------------------------------------
 set(CMAKE_INSTALL_PREFIX "/opt/${PROJECT_NAME}" CACHE PATH "Install path prefix" FORCE)
