@@ -9,15 +9,21 @@
 * * Stage 0：实现 applicationName / applicationVersion / quit
 * [v0.2] GY   2026-06-02
 * * Stage 1：添加 test() 验证 C++↔QML 通信路径
+* [v0.3] GY   2026-06-02
+* * Stage 2：持有 ConfigManager 和 DiscoveryService
 */
 
 #include "app_controller.h"
+#include "config_manager.h"
+#include "discovery_service.h"
 
 #include <QCoreApplication>
 #include <QDebug>
 
 AppController::AppController(QObject *parent)
     : QObject{parent}
+    , _config{ConfigManager::create(nullptr, nullptr)}
+    , _discovery{new DiscoveryService{_config, this}}
 {
 }
 
@@ -35,6 +41,11 @@ QString AppController::applicationName() const
 QString AppController::applicationVersion() const
 {
     return QCoreApplication::applicationVersion();
+}
+
+DiscoveryService *AppController::discovery() const
+{
+    return _discovery;
 }
 
 void AppController::quit()
