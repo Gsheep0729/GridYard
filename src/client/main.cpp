@@ -10,11 +10,19 @@
 * setContextProperty。自定义值类型（PeerInfo 等）在此统一
 * qRegisterMetaType 注册，供 Stage 2+ 跨线程 QueuedConnection 使用。
 *
+* 支持命令行参数（本机回环测试用）：
+*   --port <port>       指定 TCP 端口（默认 35100）
+*   --config <path>     指定配置文件路径
+*   --name <name>       指定设备名称
+*
 * Change Log:
 * [v0.1] GY   2026-05-24
 * * Stage 0：空白窗口能起来；注册 PeerInfo 元类型
+* [v0.2] GY   2026-06-02
+* * Stage 3：添加命令行参数支持（本机回环测试）
 */
 
+#include <QCommandLineParser>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
@@ -27,6 +35,37 @@ int main(int argc, char *argv[]) {
     QGuiApplication::setApplicationName("GridYard");
     QGuiApplication::setApplicationVersion("0.1.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
+
+    // 命令行参数解析
+    QCommandLineParser parser;
+    parser.setApplicationDescription("GridYard - 局域网文件传输工具");
+    parser.addHelpOption();
+    parser.addVersionOption();
+
+    // --port 参数
+    QCommandLineOption portOption("port", "TCP 端口", "port", "35100");
+    parser.addOption(portOption);
+
+    // --config 参数
+    QCommandLineOption configOption("config", "配置文件路径", "path");
+    parser.addOption(configOption);
+
+    // --name 参数
+    QCommandLineOption nameOption("name", "设备名称", "name");
+    parser.addOption(nameOption);
+
+    parser.process(app);
+
+    // 设置环境变量，供 ConfigManager 读取
+    if (parser.isSet(portOption)) {
+        qputenv("GRIDYARD_PORT", parser.value(portOption).toUtf8());
+    }
+    if (parser.isSet(configOption)) {
+        qputenv("GRIDYARD_CONFIG", parser.value(configOption).toUtf8());
+    }
+    if (parser.isSet(nameOption)) {
+        qputenv("GRIDYARD_NAME", parser.value(nameOption).toUtf8());
+    }
 
     QQuickStyle::setStyle("Material");
 
