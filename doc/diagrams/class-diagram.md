@@ -72,10 +72,22 @@ classDiagram
         +tcpPortChanged() signal
     }
 
+    class DiscoveryService {
+        <<QObject>>
+        +peers : QVariantList
+        +sendHelloPacket() : void
+        +onDatagramReceived() : void
+        +pruneOfflineNodes() : void
+        +peersChanged() signal
+        +nodeDiscovered(deviceId: QString) signal
+        +nodeExpired(deviceId: QString) signal
+    }
+
     class AppController {
         <<QObject, QML_SINGLETON>>
         +applicationName : QString
         +applicationVersion : QString
+        +discovery : DiscoveryService*
         +create(engine: QQmlEngine, scriptEngine: QJSEngine)$ AppController*
         +quit() : void
         +test() : void

@@ -4,21 +4,22 @@
 * @author  GY
 * @brief   GridYard 客户端根窗口
 *
-* Stage 0 仅空白 ApplicationWindow，验证 C++↔QML 路径与 AppController
-* 单例可用。标题通过 AppController.applicationName/Version 绑定，
-* 关窗触发 AppController.quit()——后续阶段在此处添加设备列表、
-* 传输面板、聊天界面等业务组件。
+* 标题通过 AppController.applicationName/Version 绑定，
+* 关窗触发 AppController.quit()。
+* 左侧显示在线设备列表，右侧预留传输面板区域。
 *
 * Change Log:
 * [v0.1] GY   2026-05-24
 * * Stage 0：空白窗口框架
 * [v0.2] GY   2026-06-02
 * * Stage 1：添加 test 按钮验证 C++↔QML 通信
+* [v0.3] GY   2026-06-02
+* * Stage 2：嵌入设备列表，实现左右分栏布局
 */
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Window
+import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 
 ApplicationWindow {
@@ -32,20 +33,33 @@ ApplicationWindow {
 
     onClosing: AppController.quit()
 
-    Column {
-        anchors.centerIn: parent
-        spacing: 20
+    // 左右分栏布局
+    RowLayout {
+        anchors.fill: parent
+        anchors.margins: 8
+        spacing: 8
 
-        Label {
-            text: qsTr("GridYard 骨架就绪 — Stage 1 通信层已就位")
-            font.pixelSize: 16
-            color: "#888"
+        // 左侧：设备列表
+        PeerListView {
+            Layout.preferredWidth: 280
+            Layout.fillHeight: true
+
+            onDeviceSelected: function(deviceId) {
+                console.log("选中设备:", deviceId)
+            }
         }
 
-        Button {
-            text: qsTr("测试 C++↔QML 通信")
-            anchors.horizontalCenter: parent.horizontalCenter
-            onClicked: AppController.test()
+        // 右侧：传输面板（Stage 3 填充）
+        Frame {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            Label {
+                anchors.centerIn: parent
+                text: qsTr("传输面板 — Stage 3 填充")
+                font.pixelSize: 16
+                color: "#888"
+            }
         }
     }
 }
