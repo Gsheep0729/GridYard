@@ -11,7 +11,7 @@
 
 #include "p2p_server.h"
 #include "config_manager.h"
-#include "frame_codec.h"
+#include "file_receiver_worker.h"
 
 #include <QDebug>
 
@@ -62,23 +62,24 @@ void P2pServer::onNewConnection()
                  << socket->peerAddress().toString()
                  << ":" << socket->peerPort();
 
-        // 创建 FrameCodec 处理这个连接
-        auto *codec = new FrameCodec{this};
+        // 创建 FileReceiverWorker 处理这个连接
+        auto *worker = new FileReceiverWorker{socket, this};
 
-        // 连接 socket 数据到达信号到 codec
-        connect(socket, &QTcpSocket::readyRead, this, [socket, codec]() {
-            codec->feed(socket->readAll());
+        // 转发传输请求信号
+        connect(worker, &FileReceiverWorker::transferRequestReceived,
+                this, [this, worker](const QString &senderName,
+                                     const QString &fileName,
+                                     qint64 fileSize) {
+            emit transferRequestReceived(worker, senderName, fileName, fileSize);
         });
 
-        // 连接 socket 断开信号
-        connect(socket, &QTcpSocket::disconnected, this, [socket, codec]() {
-            qDebug() << "P2pServer: 连接断开"
-                     << socket->peerAddress().toString();
-            socket->deleteLater();
-            codec->deleteLater();
+        // 传输完成时清理
+        connect(worker, &FileReceiverWorker::transferFinished,
+                this, [worker](bool success, const QString &errorMsg) {
+            qDebug() << "P2pServer: 传输完成"
+                     << "成功:" << success
+                     << "错误:" << errorMsg;
+            worker->deleteLater();
         });
-
-        // TODO Stage 3 任务 3.4：创建 FileReceiverWorker
-        // 连接 codec 的 frameReady 信号到 FileReceiverWorker
     }
 }

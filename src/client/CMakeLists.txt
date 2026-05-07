@@ -17,6 +17,8 @@ qt_add_qml_module(appGridYard
         core/config_manager.cpp
         network/discovery_service.cpp
         network/p2p_server.cpp
+        network/file_sender_worker.cpp
+        network/file_receiver_worker.cpp
 
     QML_FILES
         Main.qml
