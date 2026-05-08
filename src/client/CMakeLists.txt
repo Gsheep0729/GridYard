@@ -15,6 +15,8 @@ qt_add_qml_module(appGridYard
         core/app_controller.cpp
         core/config_manager.h
         core/config_manager.cpp
+        core/transfer_session_manager.h
+        core/transfer_session_manager.cpp
         network/discovery_service.cpp
         network/p2p_server.cpp
         network/file_sender_worker.cpp
