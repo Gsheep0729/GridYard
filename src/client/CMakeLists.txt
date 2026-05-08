@@ -21,6 +21,7 @@ qt_add_qml_module(appGridYard
         Main.qml
         ui/DeviceCard.qml
         ui/PeerListView.qml
+        ui/SettingsDialog.qml
 )
 
 target_compile_features(appGridYard PRIVATE cxx_std_23)
