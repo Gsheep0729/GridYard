@@ -33,6 +33,32 @@ ApplicationWindow {
 
     onClosing: AppController.quit()
 
+    // 工具栏
+    header: ToolBar {
+        RowLayout {
+            anchors.fill: parent
+
+            Label {
+                text: tw_mainWindow.title
+                font.pixelSize: 14
+                font.bold: true
+                Layout.leftMargin: 12
+            }
+
+            Item { Layout.fillWidth: true }
+
+            ToolButton {
+                text: qsTr("设置")
+                onClicked: settingsDialog.open()
+            }
+        }
+    }
+
+    // 设置对话框
+    SettingsDialog {
+        id: settingsDialog
+    }
+
     // 左右分栏布局
     RowLayout {
         anchors.fill: parent
