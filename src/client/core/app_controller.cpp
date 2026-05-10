@@ -16,6 +16,7 @@
 #include "app_controller.h"
 #include "config_manager.h"
 #include "discovery_service.h"
+#include "p2p_server.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -24,7 +25,10 @@ AppController::AppController(QObject *parent)
     : QObject{parent}
     , _config{ConfigManager::create(nullptr, nullptr)}
     , _discovery{new DiscoveryService{_config, this}}
+    , _p2pServer{new P2pServer{_config, this}}
 {
+    // 启动 P2P 服务器
+    _p2pServer->start();
 }
 
 AppController *AppController::create(QQmlEngine *engine, QJSEngine *)
