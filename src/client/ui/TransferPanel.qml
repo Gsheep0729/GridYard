@@ -1,0 +1,69 @@
+/**
+ * @file    TransferPanel.qml
+ * @date    2026-06-02
+ * @author  GY
+ * @brief   传输面板
+ *
+ * 显示所有进行中的传输任务，每个任务显示进度条、速度、取消按钮。
+ * 绑定 TransferSessionManager.sessions。
+ *
+ * Change Log:
+ * [v0.1] GY   2026-06-02
+* * Stage 3：初始版本
+ */
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import cqnu.gridyard.client 1.0
+
+Frame {
+    id: tw_transferPanel
+
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        // 标题栏
+        Label {
+            text: qsTr("传输任务")
+            font.pixelSize: 16
+            font.bold: true
+            Layout.fillWidth: true
+            Layout.margins: 12
+        }
+
+        // 任务列表
+        ListView {
+            id: listView
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 8
+
+            model: TransferSessionManager.sessions
+
+            delegate: TransferTaskCard {
+                width: listView.width
+                sessionId: modelData.sessionId || ""
+                taskType: modelData.type || ""
+                taskName: modelData.type === "send"
+                    ? (modelData.filePath || "").split("/").pop()
+                    : (modelData.fileName || "")
+                status: modelData.status || ""
+                progress: modelData.progress || 0
+                bytesTransferred: modelData.bytesTransferred || 0
+                totalBytes: modelData.totalBytes || 0
+            }
+
+            // 空列表提示
+            Label {
+                anchors.centerIn: parent
+                text: qsTr("暂无传输任务")
+                color: "#999999"
+                font.pixelSize: 14
+                visible: listView.count === 0
+            }
+        }
+    }
+}
