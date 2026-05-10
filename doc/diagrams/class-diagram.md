@@ -94,6 +94,14 @@ classDiagram
         +appReady() signal
     }
 
+    class P2pServer {
+        <<QObject>>
+        +start() : bool
+        +stop() : void
+        +isListening() : bool
+        +transferRequestReceived(worker, senderName, fileName, fileSize) signal
+    }
+
     class Main {
         <<QML>>
         +tw_mainWindow : ApplicationWindow
