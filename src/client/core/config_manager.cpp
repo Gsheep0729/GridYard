@@ -21,15 +21,26 @@
 ConfigManager::ConfigManager(QObject *parent)
     : QObject{parent}
 {
-    // 从持久化存储读取配置，首次运行时使用默认值
-    QSettings settings;
+    // 检查是否有自定义配置文件路径
+    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    QSettings settings(configPath.isEmpty() ? QSettings::IniFormat : QSettings::IniFormat,
+                       configPath.isEmpty() ? QSettings::UserScope : QSettings::SystemScope,
+                       configPath.isEmpty() ? QString() : configPath);
 
-    // 设备名默认使用系统主机名
-    _deviceName  = settings.value("device/name", QHostInfo::localHostName()).toString();
+    // 设备名：优先使用命令行参数，否则读配置，否则用主机名
+    QString envName = qEnvironmentVariable("GRIDYARD_NAME");
+    _deviceName = envName.isEmpty()
+        ? settings.value("device/name", QHostInfo::localHostName()).toString()
+        : envName;
+
     // 接收路径默认在用户主目录下创建 GridYard 文件夹
     _receivePath = settings.value("device/receivePath", QDir::homePath() + "/GridYard").toString();
-    // TCP 端口默认使用协议定义的端口
-    _tcpPort     = settings.value("network/tcpPort", gy::protocol::kDefaultP2pPort).toUInt();
+
+    // TCP 端口：优先使用命令行参数，否则读配置
+    QString envPort = qEnvironmentVariable("GRIDYARD_PORT");
+    _tcpPort = envPort.isEmpty()
+        ? settings.value("network/tcpPort", gy::protocol::kDefaultP2pPort).toUInt()
+        : envPort.toUInt();
 
     // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
     ensureDeviceId();
