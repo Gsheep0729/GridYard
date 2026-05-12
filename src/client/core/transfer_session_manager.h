@@ -60,7 +60,7 @@ private slots:
                                    const QString &fileName,
                                    qint64 fileSize);
 
-private:
+public:
     explicit TransferSessionManager(QObject *parent = nullptr);
     TransferSessionManager(const TransferSessionManager &)            = delete;
     TransferSessionManager &operator=(const TransferSessionManager &) = delete;
