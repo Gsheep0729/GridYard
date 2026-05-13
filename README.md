@@ -80,7 +80,7 @@ GridYard/
 
 1. **替换占位符**：使用时将 `<占位符>` 替换为实际值
    - `<仓库URL>` → `https://github.com/username/repo.git`
-   - `<分支名>` → `main`、`dev`、`feature/login`
+   - `<分支名>` → `dev`、`feature/login`、`release`
    - `<文件名>` → `src/main.cpp`、`README.md`
 
 2. **组合命令**：根据实际工作流组合使用
