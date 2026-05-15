@@ -102,6 +102,38 @@ classDiagram
         +transferRequestReceived(worker, senderName, fileName, fileSize) signal
     }
 
+    class FileSenderWorker {
+        <<QObject>>
+        -_socket : QTcpSocket*
+        -_codec : FrameCodec*
+        -_file : QFile
+        -_sessionId : QString
+        -_totalBytes : qint64
+        -_bytesSent : qint64
+        +startTransfer(host, port, filePath) : void
+        +progressChanged(bytesSent, totalBytes) signal
+        +transferFinished(success, errorMsg) signal
+        +requestAccepted() signal
+        +requestRejected(reason) signal
+    }
+
+    class FileReceiverWorker {
+        <<QObject>>
+        -_socket : QTcpSocket*
+        -_codec : FrameCodec*
+        -_file : QFile
+        -_sessionId : QString
+        -_senderName : QString
+        -_fileName : QString
+        -_fileSize : qint64
+        -_bytesReceived : qint64
+        +acceptTransfer() : void
+        +rejectTransfer(reason) : void
+        +transferRequestReceived(senderName, fileName, fileSize) signal
+        +progressChanged(bytesReceived, totalBytes) signal
+        +transferFinished(success, errorMsg) signal
+    }
+
     class Main {
         <<QML>>
         +tw_mainWindow : ApplicationWindow
