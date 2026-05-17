@@ -94,6 +94,18 @@ classDiagram
         +appReady() signal
     }
 
+    class TransferSessionManager {
+        <<QObject, QML_SINGLETON>>
+        +sessions : QVariantList
+        +create(engine: QQmlEngine, scriptEngine: QJSEngine)$ TransferSessionManager*
+        +createSendSession(deviceId, filePath) : void
+        +acceptReceiveSession(sessionId) : void
+        +rejectReceiveSession(sessionId) : void
+        +cancelSession(sessionId) : void
+        +sessionsChanged() signal
+        +receiveRequestReceived(sessionId, senderName, fileName, fileSize) signal
+    }
+
     class P2pServer {
         <<QObject>>
         +start() : bool
