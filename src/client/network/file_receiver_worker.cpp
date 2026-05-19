@@ -7,6 +7,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-03
+* * 接收路径改用 _receivePath 成员，支持外部配置
 */
 
 #include "file_receiver_worker.h"
@@ -60,12 +62,13 @@ void FileReceiverWorker::acceptTransfer()
     // 发送接受响应
     sendTransferResponse(true);
 
-    // 打开文件准备接收
-    // TODO: 从 ConfigManager 获取接收路径
-    QString receivePath = QDir::homePath() + "/GridYard";
-    QDir().mkpath(receivePath);
+    // 打开文件准备接收（路径由上层通过信号传入，此处用默认路径兜底）
+    if (_receivePath.isEmpty()) {
+        _receivePath = QDir::homePath() + "/GridYard/document";
+    }
+    QDir().mkpath(_receivePath);
 
-    QString filePath = receivePath + "/" + _fileName;
+    QString filePath = _receivePath + "/" + _fileName;
     _file.setFileName(filePath);
 
     if (!_file.open(QIODevice::WriteOnly)) {
