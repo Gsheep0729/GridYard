@@ -75,17 +75,27 @@ ApplicationWindow {
             }
         }
 
-        // 右侧：传输面板（Stage 3 填充）
-        Frame {
+        // 右侧：传输面板
+        TransferPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
+        }
+    }
 
-            Label {
-                anchors.centerIn: parent
-                text: qsTr("传输面板 — Stage 3 填充")
-                font.pixelSize: 16
-                color: "#888"
-            }
+    // 接收确认弹窗
+    AcceptDialog {
+        id: acceptDialog
+    }
+
+    // 连接 TransferSessionManager 的接收请求信号
+    Connections {
+        target: TransferSessionManager
+        function onRequestReceived(sessionId, senderName, fileName, fileSize) {
+            acceptDialog.sessionId = sessionId
+            acceptDialog.senderName = senderName
+            acceptDialog.fileName = fileName
+            acceptDialog.fileSize = fileSize
+            acceptDialog.open()
         }
     }
 }
