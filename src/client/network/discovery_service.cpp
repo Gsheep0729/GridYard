@@ -49,8 +49,8 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
             this,        &DiscoveryService::pruneOfflineNodes);
     _pruneTimer->start(kPruneIntervalSec * 1000);
 
-    // 立即发送一次 Hello
-    sendHelloPacket();
+    // 延迟发送第一次 Hello，确保 socket 已绑定
+    QTimer::singleShot(100, this, &DiscoveryService::sendHelloPacket);
 }
 
 QVariantList DiscoveryService::peers() const
