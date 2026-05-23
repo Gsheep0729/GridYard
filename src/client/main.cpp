@@ -24,6 +24,8 @@
 * * Stage 3：版本号更新，连接体验优化
 * [v0.4] GY   2026-06-03
 * * Stage 3.10：版本号更新到 v0.3.1
+* [v0.5] GY   2026-06-04
+* * Stage 4.1：DirSerializer 实现，版本号更新到 v0.4.1
 */
 
 #include <QCommandLineParser>
@@ -38,7 +40,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("0.3.1");
+    QGuiApplication::setApplicationVersion("0.4.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析
