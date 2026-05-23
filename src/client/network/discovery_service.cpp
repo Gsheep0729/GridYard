@@ -17,6 +17,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkInterface>
+#include <QNetworkProxy>
 
 // 心跳间隔（秒）
 static constexpr int kBroadcastIntervalSec = 5;
@@ -31,8 +32,34 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
 {
     // 初始化 UDP Socket
     _socket = new QUdpSocket(this);
-    _socket->bind(QHostAddress::AnyIPv4, gy::protocol::kDefaultDiscoveryPort,
-                  QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+
+    // 禁用代理（UDP 不支持某些代理类型）
+    QNetworkProxy noProxy;
+    noProxy.setType(QNetworkProxy::NoProxy);
+    _socket->setProxy(noProxy);
+
+    // 尝试绑定端口，允许共享地址
+    bool bound = _socket->bind(QHostAddress::AnyIPv4, gy::protocol::kDefaultDiscoveryPort,
+                                QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+
+    if (!bound) {
+        // 绑定失败（端口可能被占用），尝试绑定任意端口
+        qWarning() << "DiscoveryService: 绑定端口" << gy::protocol::kDefaultDiscoveryPort
+                    << "失败:" << _socket->errorString();
+        qWarning() << "DiscoveryService: 尝试绑定任意端口";
+
+        bound = _socket->bind(QHostAddress::AnyIPv4, 0,
+                              QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+
+        if (!bound) {
+            qCritical() << "DiscoveryService: 无法绑定 UDP socket:"
+                        << _socket->errorString();
+            return;
+        }
+    }
+
+    qDebug() << "DiscoveryService: UDP socket 绑定成功，本地端口:"
+             << _socket->localPort();
 
     connect(_socket, &QUdpSocket::readyRead,
             this,    &DiscoveryService::onDatagramReceived);
@@ -50,7 +77,7 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     _pruneTimer->start(kPruneIntervalSec * 1000);
 
     // 延迟发送第一次 Hello，确保 socket 已绑定
-    QTimer::singleShot(100, this, &DiscoveryService::sendHelloPacket);
+    QTimer::singleShot(200, this, &DiscoveryService::sendHelloPacket);
 }
 
 QVariantList DiscoveryService::peers() const
@@ -67,6 +94,11 @@ QVariantList DiscoveryService::peers() const
 
 void DiscoveryService::sendHelloPacket()
 {
+    // 检查 socket 是否已绑定
+    if (!_socket || _socket->state() == QAbstractSocket::UnconnectedState) {
+        return;
+    }
+
     const QByteArray data = buildHelloPayload();
 
     // 遍历所有激活的网络接口，向每个网卡的广播地址发送
@@ -82,8 +114,13 @@ void DiscoveryService::sendHelloPacket()
             if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
 
             // 向该网卡对应子网的广播地址精确发送
-            _socket->writeDatagram(data, entry.broadcast(),
-                                   gy::protocol::kDefaultDiscoveryPort);
+            qint64 sent = _socket->writeDatagram(data, entry.broadcast(),
+                                                  gy::protocol::kDefaultDiscoveryPort);
+            if (sent == -1) {
+                qWarning() << "DiscoveryService: 广播发送失败到"
+                           << entry.broadcast().toString()
+                           << ":" << _socket->errorString();
+            }
         }
     }
 }

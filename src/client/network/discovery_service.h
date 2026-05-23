@@ -20,6 +20,7 @@
 #include <QTimer>
 #include <QUdpSocket>
 #include <QVariantList>
+#include <QtQml/qqmlregistration.h>
 
 #include "data_types.h"
 
@@ -27,6 +28,7 @@ class ConfigManager;
 
 class DiscoveryService : public QObject {
     Q_OBJECT
+    QML_ANONYMOUS
     Q_PROPERTY(QVariantList peers READ peers NOTIFY peersChanged)
 
 public:
