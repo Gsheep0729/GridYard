@@ -7,6 +7,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-04
+* * Stage 4：支持多文件/目录传输，SHA-256 校验
 */
 
 #include "file_sender_worker.h"
@@ -27,13 +29,10 @@ FileSenderWorker::FileSenderWorker(QObject *parent)
     , _socket{new QTcpSocket{this}}
     , _codec{new FrameCodec{this}}
 {
-    // 连接 socket 信号
     connect(_socket, &QTcpSocket::readyRead,
             this,    &FileSenderWorker::onReadyRead);
     connect(_socket, &QTcpSocket::disconnected,
             this,    &FileSenderWorker::onDisconnected);
-
-    // 连接 codec 信号
     connect(_codec,  &FrameCodec::frameReady,
             this,    &FileSenderWorker::onFrameReady);
 }
@@ -46,37 +45,46 @@ FileSenderWorker::~FileSenderWorker()
 }
 
 void FileSenderWorker::startTransfer(const QString &host, quint16 port,
-                                     const QString &filePath)
+                                     const QString &path)
 {
-    _filePath = filePath;
+    _rootPath = path;
     _sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
-    // 打开文件
-    _file.setFileName(filePath);
-    if (!_file.open(QIODevice::ReadOnly)) {
-        emit transferFinished(false, tr("无法打开文件: %1").arg(_file.errorString()));
+    // 序列化文件列表
+    _fileList = gy::DirSerializer::serialize(path);
+    if (_fileList.isEmpty()) {
+        emit transferFinished(false, tr("没有可传输的文件"));
         return;
     }
 
-    _totalBytes = _file.size();
+    // 计算总字节数
+    _totalBytes = 0;
+    for (const auto &item : _fileList) {
+        _totalBytes += item.sizeBytes;
+    }
+
     _bytesSent = 0;
-    _chunkIndex = 0;
+    _currentFileIndex = 0;
+    _currentFileBytesSent = 0;
+
+    // 打开第一个文件
+    if (!openNextFile()) {
+        emit transferFinished(false, tr("无法打开文件"));
+        return;
+    }
 
     // 连接到接收端
     _socket->connectToHost(host, port);
-
     if (!_socket->waitForConnected(5000)) {
         emit transferFinished(false, tr("连接超时: %1").arg(_socket->errorString()));
         return;
     }
 
-    // 发送握手请求
     sendTransferRequest();
 }
 
 void FileSenderWorker::onReadyRead()
 {
-    // 将收到的数据喂入 codec
     _codec->feed(_socket->readAll());
 }
 
@@ -91,14 +99,12 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 {
     switch (type) {
     case gy::protocol::kTypeTransferRsp: {
-        // 解析握手响应
         QJsonDocument doc = QJsonDocument::fromJson(payload);
         QJsonObject json = doc.object();
 
         bool accepted = json["accepted"].toBool();
         if (accepted) {
             emit requestAccepted();
-            // 开始发送数据
             sendNextChunk();
         } else {
             QString reason = json["reason"].toString();
@@ -108,16 +114,35 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         break;
     }
     case gy::protocol::kTypeChunkAck: {
-        // 单文件完成确认
         QJsonDocument doc = QJsonDocument::fromJson(payload);
         QJsonObject json = doc.object();
 
         bool verified = json["verified"].toBool();
-        if (verified) {
-            emit transferFinished(true, "");
-        } else {
+        int fileIndex = json["file_index"].toInt();
+
+        if (!verified) {
             QString errorMsg = json["error_msg"].toString();
-            emit transferFinished(false, tr("校验失败: %1").arg(errorMsg));
+            emit transferFinished(false, tr("文件 %1 校验失败: %2")
+                                          .arg(fileIndex).arg(errorMsg));
+            return;
+        }
+
+        // 当前文件校验通过，继续下一个
+        _currentFileIndex++;
+        _currentFileBytesSent = 0;
+
+        if (_currentFileIndex < _fileList.size()) {
+            // 还有文件要发
+            if (!openNextFile()) {
+                emit transferFinished(false, tr("无法打开文件 %1")
+                                              .arg(_fileList[_currentFileIndex].relativePath));
+                return;
+            }
+            sendNextChunk();
+        } else {
+            // 所有文件发完
+            sendTransferDone();
+            emit transferFinished(true, "");
         }
         break;
     }
@@ -128,20 +153,21 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 
 void FileSenderWorker::sendTransferRequest()
 {
-    // 构建握手请求 JSON
     QJsonObject json;
     json["session_id"]  = _sessionId;
     json["sender_name"] = QHostInfo::localHostName();
-    json["total_files"] = 1;
+    json["total_files"] = _fileList.size();
     json["total_bytes"] = _totalBytes;
 
     QJsonArray files;
-    QJsonObject fileObj;
-    fileObj["file_index"]    = 0;
-    fileObj["relative_path"] = QFileInfo(_filePath).fileName();
-    fileObj["size_bytes"]    = _totalBytes;
-    fileObj["sha256"]        = "";  // Stage 4 实现
-    files.append(fileObj);
+    for (int i = 0; i < _fileList.size(); ++i) {
+        QJsonObject fileObj;
+        fileObj["file_index"]    = i;
+        fileObj["relative_path"] = _fileList[i].relativePath;
+        fileObj["size_bytes"]    = _fileList[i].sizeBytes;
+        fileObj["sha256"]        = _fileList[i].sha256;
+        files.append(fileObj);
+    }
     json["files"] = files;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
@@ -155,7 +181,6 @@ void FileSenderWorker::sendNextChunk()
         return;
     }
 
-    // 读取一块数据
     QByteArray chunkData = _file.read(kChunkSize);
     if (chunkData.isEmpty()) {
         emit transferFinished(false, tr("读取文件失败"));
@@ -167,36 +192,67 @@ void FileSenderWorker::sendNextChunk()
     QDataStream stream(&metadata, QDataStream::WriteOnly);
     stream.setByteOrder(QDataStream::BigEndian);
 
-    quint32 fileIndex = 0;
-    quint64 chunkOffset = static_cast<quint64>(_bytesSent);
+    quint32 fileIndex = static_cast<quint32>(_currentFileIndex);
+    quint64 chunkOffset = static_cast<quint64>(_currentFileBytesSent);
     quint32 chunkSize = static_cast<quint32>(chunkData.size());
-    quint32 isLastChunk = (_bytesSent + chunkData.size() >= _totalBytes) ? 1 : 0;
+    quint32 isLastChunk = (_currentFileBytesSent + chunkData.size()
+                           >= _fileList[_currentFileIndex].sizeBytes) ? 1 : 0;
 
     stream << fileIndex;
     stream << chunkOffset;
     stream << chunkSize;
     stream << isLastChunk;
 
-    // 拼接 metadata + chunkData
     QByteArray payload;
     payload.reserve(20 + chunkData.size());
     payload.append(metadata);
     payload.append(chunkData);
 
-    // 编码并发送
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeDataChunk, payload);
     _socket->write(frame);
 
-    // 更新进度
     _bytesSent += chunkData.size();
-    _chunkIndex++;
+    _currentFileBytesSent += chunkData.size();
     emit progressChanged(_bytesSent, _totalBytes);
 
-    // 如果还有数据，继续发送
     if (_bytesSent < _totalBytes) {
-        // 使用 QTimer::singleShot 避免阻塞事件循环
         QTimer::singleShot(0, this, &FileSenderWorker::sendNextChunk);
     }
+}
+
+bool FileSenderWorker::openNextFile()
+{
+    if (_file.isOpen()) {
+        _file.close();
+    }
+
+    if (_currentFileIndex >= _fileList.size()) {
+        return false;
+    }
+
+    // 构建完整路径
+    QString fullPath = _rootPath;
+    QFileInfo rootInfo(_rootPath);
+    if (rootInfo.isDir()) {
+        fullPath = _rootPath + "/" + _fileList[_currentFileIndex].relativePath;
+    }
+
+    _file.setFileName(fullPath);
+    if (!_file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+
+    return true;
+}
+
+void FileSenderWorker::sendTransferDone()
+{
+    QJsonObject json;
+    json["session_id"] = _sessionId;
+
+    QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferDone, data);
+    _socket->write(frame);
 }
 
 void FileSenderWorker::sendCancel(const QString &reason)
@@ -209,9 +265,7 @@ void FileSenderWorker::sendCancel(const QString &reason)
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeCancel, data);
     _socket->write(frame);
 
-    // 关闭连接
     _socket->disconnectFromHost();
-
     if (_file.isOpen()) {
         _file.close();
     }

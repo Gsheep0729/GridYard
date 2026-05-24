@@ -1,4 +1,4 @@
-# GridYard 类图（Stage 3 完成）
+# GridYard 类图（Stage 4.2 完成）
 
 ```mermaid
 classDiagram
@@ -121,16 +121,36 @@ classDiagram
         +transferRequestReceived(worker, senderName, fileName, fileSize) signal
     }
 
+    class DirSerializer {
+        <<gy>>
+        +serialize(path: QString)$ QList~FileItem~
+        +computeSha256(filePath: QString)$ QString
+        -traverseDir(basePath, currentPath, result)$ void
+    }
+
+    class FileItem {
+        <<gy>>
+        +relativePath : QString
+        +sizeBytes : qint64
+        +sha256 : QString
+    }
+
     class FileSenderWorker {
         <<QObject>>
         -_socket : QTcpSocket*
         -_codec : FrameCodec*
         -_file : QFile
+        -_rootPath : QString
         -_sessionId : QString
         -_totalBytes : qint64
         -_bytesSent : qint64
-        +startTransfer(host, port, filePath) : void
+        -_fileList : QList~FileItem~
+        -_currentFileIndex : int
+        -_currentFileBytesSent : qint64
+        +startTransfer(host, port, path) : void
         +cancel() : void
+        -openNextFile() : bool
+        -sendTransferDone() : void
         +progressChanged(bytesSent, totalBytes) signal
         +transferFinished(success, errorMsg) signal
         +requestAccepted() signal
@@ -193,6 +213,9 @@ classDiagram
     }
 
     %% 关系
+    DirSerializer --> FileItem : 生成
+    FileSenderWorker --> DirSerializer : 使用
+    FileSenderWorker --> FileItem : 管理列表
     FrameCodec ..> ProtocolConstants : 使用常量
     ConfigManager ..> ProtocolConstants : 使用默认端口
     Main --> AppController : 访问属性/调用方法
@@ -216,7 +239,9 @@ classDiagram
 - **AppController**：QML_SINGLETON 单例，QML 与 C++ 通信的桥梁
 - **TransferSessionManager**：QML_SINGLETON 单例，传输会话管理（Stage 3 新增，含 cancelSession）
 - **P2pServer**：TCP 服务器，监听入站连接（Stage 3 新增）
-- **FileSenderWorker**：文件发送 Worker-Object（Stage 3 新增，支持 cancel）
+- **DirSerializer**：目录序列化工具，递归遍历目录生成 FileItem 列表并计算 SHA-256（Stage 4 新增）
+- **FileItem**：文件条目信息结构体，含相对路径、大小、SHA-256（Stage 4 新增）
+- **FileSenderWorker**：文件发送 Worker-Object（Stage 3 新增，Stage 4 支持多文件/目录传输）
 - **FileReceiverWorker**：文件接收 Worker-Object（Stage 3 新增，支持接收路径配置）
 - **Main.qml**：根窗口，支持拖拽传输和完成通知
 - **DeviceCard.qml**：设备卡片，支持拖拽文件
