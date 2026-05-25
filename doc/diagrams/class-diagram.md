@@ -1,4 +1,4 @@
-# GridYard 类图（Stage 4.2 完成）
+# GridYard 类图（Stage 4.3 完成）
 
 ```mermaid
 classDiagram
@@ -164,6 +164,10 @@ classDiagram
         -_file : QFile
         -_sessionId : QString
         -_senderName : QString
+        -_totalFiles : int
+        -_totalBytes : qint64
+        -_fileList : QList~FileItem~
+        -_currentFileIndex : int
         -_fileName : QString
         -_fileSize : qint64
         -_bytesReceived : qint64
@@ -242,7 +246,7 @@ classDiagram
 - **DirSerializer**：目录序列化工具，递归遍历目录生成 FileItem 列表并计算 SHA-256（Stage 4 新增）
 - **FileItem**：文件条目信息结构体，含相对路径、大小、SHA-256（Stage 4 新增）
 - **FileSenderWorker**：文件发送 Worker-Object（Stage 3 新增，Stage 4 支持多文件/目录传输）
-- **FileReceiverWorker**：文件接收 Worker-Object（Stage 3 新增，支持接收路径配置）
+- **FileReceiverWorker**：文件接收 Worker-Object（Stage 3 新增，Stage 4 支持多文件接收 + SHA-256 校验）
 - **Main.qml**：根窗口，支持拖拽传输和完成通知
 - **DeviceCard.qml**：设备卡片，支持拖拽文件
 - **PeerListView.qml**：设备列表，支持拖拽信号传递

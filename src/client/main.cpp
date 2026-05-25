@@ -28,6 +28,8 @@
 * * Stage 4.1：DirSerializer 实现，版本号更新到 v0.4.1
 * [v0.6] GY   2026-06-04
 * * Stage 4.2：FileSenderWorker 支持多文件/目录传输
+* [v0.7] GY   2026-06-04
+* * Stage 4.3：FileReceiverWorker 支持多文件接收，版本号更新到 v0.4.3
 */
 
 #include <QCommandLineParser>
@@ -42,7 +44,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("0.4.2");
+    QGuiApplication::setApplicationVersion("0.4.3");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析

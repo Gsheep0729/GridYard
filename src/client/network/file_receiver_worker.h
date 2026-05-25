@@ -16,9 +16,13 @@
 * * Stage 3：初始版本
 * [v0.2] GY   2026-06-03
 * * 添加 setReceivePath() 方法和 _receivePath 成员
+* [v0.3] GY   2026-06-04
+* * Stage 4.3：添加文件列表成员，解析 TransferRequest 时保存所有文件信息
 */
 
 #pragma once
+
+#include "dir_serializer.h"
 
 #include <QFile>
 #include <QObject>
@@ -90,6 +94,9 @@ private:
     QString _senderName;
     int     _totalFiles = 0;
     qint64  _totalBytes = 0;
+
+    // 文件列表（含 sha256）
+    QList<gy::FileItem> _fileList;
 
     // 当前文件信息
     int     _currentFileIndex = 0;

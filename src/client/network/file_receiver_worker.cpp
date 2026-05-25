@@ -9,6 +9,8 @@
 * * Stage 3：初始版本
 * [v0.2] GY   2026-06-03
 * * 接收路径改用 _receivePath 成员，支持外部配置
+* [v0.3] GY   2026-06-04
+* * Stage 4.3：解析文件列表（含 sha256），支持多文件接收
 */
 
 #include "file_receiver_worker.h"
@@ -133,13 +135,23 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     _totalFiles = json["total_files"].toInt();
     _totalBytes = json["total_bytes"].toVariant().toLongLong();
 
-    // 获取第一个文件信息
+    // 解析文件列表
+    _fileList.clear();
     QJsonArray files = json["files"].toArray();
-    if (!files.isEmpty()) {
-        QJsonObject fileObj = files[0].toObject();
-        _currentFileIndex = fileObj["file_index"].toInt();
-        _fileName = fileObj["relative_path"].toString();
-        _fileSize = fileObj["size_bytes"].toVariant().toLongLong();
+    for (const auto &fileVal : files) {
+        QJsonObject fileObj = fileVal.toObject();
+        gy::FileItem item;
+        item.relativePath = fileObj["relative_path"].toString();
+        item.sizeBytes    = fileObj["size_bytes"].toVariant().toLongLong();
+        item.sha256       = fileObj["sha256"].toString();
+        _fileList.append(item);
+    }
+
+    // 设置第一个文件信息
+    if (!_fileList.isEmpty()) {
+        _currentFileIndex = 0;
+        _fileName = _fileList[0].relativePath;
+        _fileSize = _fileList[0].sizeBytes;
     }
 
     _waitingForUserConfirm = true;
@@ -149,8 +161,8 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
 
     qDebug() << "FileReceiverWorker: 收到传输请求"
              << "来自" << _senderName
-             << "文件" << _fileName
-             << "大小" << _fileSize;
+             << "文件数" << _totalFiles
+             << "总大小" << _totalBytes;
 }
 
 void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
