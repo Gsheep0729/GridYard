@@ -4,12 +4,15 @@
  * @author  GY
  * @brief   在线设备列表组件
  *
- * 绑定 AppController.discovery.peers，使用 DeviceCard 作为 delegate
- * 渲染设备列表。支持设备选择信号。
+ * 顶部显示本机设备名（可编辑）和 IP 地址，下方绑定
+ * AppController.discovery.peers 显示发现的其他设备。
+ * 支持手动刷新和设备名即时修改。
  *
  * Change Log:
  * [v0.1] GY   2026-06-02
  * * Stage 2：初始版本
+ * [v0.2] GY   2026-06-03
+ * * 添加本机信息区域（设备名可编辑 + IP 地址）和刷新按钮
  */
 
 import QtQuick
@@ -26,13 +29,114 @@ Frame {
         anchors.fill: parent
         spacing: 0
 
-        // 标题栏
+        // 本机信息区域
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 80
+            color: "#F8F9FA"
+            radius: 8
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+
+                // 本机标识
+                Rectangle {
+                    Layout.alignment: Qt.AlignVCenter
+                    width: 36
+                    height: 36
+                    radius: 18
+                    color: "#4A90D9"
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: "我"
+                        color: "#FFFFFF"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+                }
+
+                // 设备名 + IP
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    TextField {
+                        id: tw_nameField
+                        Layout.fillWidth: true
+                        text: ConfigManager.deviceName
+                        placeholderText: qsTr("输入设备名称")
+                        font.pixelSize: 14
+                        font.bold: true
+                        background: Rectangle {
+                            color: tw_nameField.activeFocus ? "#FFFFFF" : "transparent"
+                            border.color: tw_nameField.activeFocus ? "#4A90D9" : "transparent"
+                            border.width: 1
+                            radius: 4
+                        }
+                        padding: 2
+                        selectByMouse: true
+
+                        onEditingFinished: {
+                            let trimmed = text.trim()
+                            if (trimmed.length > 0 && trimmed !== ConfigManager.deviceName) {
+                                ConfigManager.deviceName = trimmed
+                            }
+                            focus = false
+                        }
+
+                        // 同步外部修改（如 SettingsDialog）
+                        Connections {
+                            target: ConfigManager
+                            function onDeviceNameChanged() {
+                                if (!tw_nameField.activeFocus) {
+                                    tw_nameField.text = ConfigManager.deviceName
+                                }
+                            }
+                        }
+                    }
+
+                    Label {
+                        text: ConfigManager.localIp.length > 0
+                              ? ConfigManager.localIp
+                              : qsTr("未获取到 IP")
+                        color: "#666666"
+                        font.pixelSize: 12
+                    }
+                }
+
+                // 刷新按钮
+                Button {
+                    Layout.alignment: Qt.AlignVCenter
+                    icon.name: "view-refresh"
+                    icon.width: 20
+                    icon.height: 20
+                    flat: true
+                    ToolTip.text: qsTr("刷新设备列表")
+                    ToolTip.visible: hovered
+                    onClicked: AppController.discovery.refresh()
+                }
+            }
+        }
+
+        // 分隔线
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            Layout.bottomMargin: 4
+            height: 1
+            color: "#E0E0E0"
+        }
+
+        // 在线设备标题
         Label {
             text: qsTr("在线设备")
-            font.pixelSize: 16
+            font.pixelSize: 14
             font.bold: true
             Layout.fillWidth: true
-            Layout.margins: 12
+            Layout.margins: 8
         }
 
         // 设备列表
@@ -43,7 +147,6 @@ Frame {
             clip: true
             spacing: 4
 
-            // 绑定 AppController 的设备发现服务
             model: AppController.discovery.peers
 
             delegate: DeviceCard {

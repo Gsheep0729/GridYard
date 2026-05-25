@@ -20,6 +20,8 @@
 * * Stage 0：空白窗口能起来；注册 PeerInfo 元类型
 * [v0.2] GY   2026-06-02
 * * Stage 3：添加命令行参数支持（本机回环测试）
+* [v0.3] GY   2026-06-03
+* * Stage 3：版本号更新，连接体验优化
 */
 
 #include <QCommandLineParser>
@@ -34,7 +36,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("0.2.0");
+    QGuiApplication::setApplicationVersion("0.3.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析

@@ -25,7 +25,7 @@ Dialog {
     modal: true
     anchors.centerIn: parent
     width: 480
-    height: 360
+    height: 420
 
     // 临时存储编辑中的值
     property string _tempDeviceName:  ConfigManager.deviceName
@@ -39,79 +39,84 @@ Dialog {
         _tempTcpPort     = ConfigManager.tcpPort
     }
 
-    contentItem: ColumnLayout {
-        spacing: 16
+    ScrollView {
+        id: tw_scrollView
+        anchors.fill: parent
+        clip: true
+        contentWidth: availableWidth
 
-        // 设备名
-        GroupBox {
-            title: qsTr("设备信息")
-            Layout.fillWidth: true
+        ColumnLayout {
+            width: tw_scrollView.availableWidth
+            spacing: 16
 
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 8
+            // 设备名
+            GroupBox {
+                title: qsTr("设备信息")
+                Layout.fillWidth: true
 
-                Label { text: qsTr("设备名称：") }
-                TextField {
-                    id: deviceNameField
-                    Layout.fillWidth: true
-                    text: tw_settingsDialog._tempDeviceName
-                    placeholderText: qsTr("输入设备名称")
-                    onTextChanged: tw_settingsDialog._tempDeviceName = text
-                }
-            }
-        }
-
-        // 接收路径
-        GroupBox {
-            title: qsTr("文件接收")
-            Layout.fillWidth: true
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 8
-
-                Label { text: qsTr("接收路径：") }
-                RowLayout {
-                    Layout.fillWidth: true
+                ColumnLayout {
+                    anchors.fill: parent
                     spacing: 8
 
+                    Label { text: qsTr("设备名称：") }
                     TextField {
-                        id: receivePathField
+                        id: deviceNameField
                         Layout.fillWidth: true
-                        text: tw_settingsDialog._tempReceivePath
-                        readOnly: true
+                        text: tw_settingsDialog._tempDeviceName
+                        placeholderText: qsTr("输入设备名称")
+                        onTextChanged: tw_settingsDialog._tempDeviceName = text
                     }
-                    Button {
-                        text: qsTr("浏览...")
-                        onClicked: folderDialog.open()
+                }
+            }
+
+            // 接收路径
+            GroupBox {
+                title: qsTr("文件接收")
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    Label { text: qsTr("接收路径：") }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        TextField {
+                            id: receivePathField
+                            Layout.fillWidth: true
+                            text: tw_settingsDialog._tempReceivePath
+                            readOnly: true
+                        }
+                        Button {
+                            text: qsTr("浏览...")
+                            onClicked: folderDialog.open()
+                        }
+                    }
+                }
+            }
+
+            // TCP 端口
+            GroupBox {
+                title: qsTr("网络设置")
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    Label { text: qsTr("TCP 端口：") }
+                    SpinBox {
+                        id: tcpPortSpinBox
+                        from: 1024
+                        to: 65535
+                        value: tw_settingsDialog._tempTcpPort
+                        onValueModified: tw_settingsDialog._tempTcpPort = value
                     }
                 }
             }
         }
-
-        // TCP 端口
-        GroupBox {
-            title: qsTr("网络设置")
-            Layout.fillWidth: true
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 8
-
-                Label { text: qsTr("TCP 端口：") }
-                SpinBox {
-                    id: tcpPortSpinBox
-                    from: 1024
-                    to: 65535
-                    value: tw_settingsDialog._tempTcpPort
-                    onValueModified: tw_settingsDialog._tempTcpPort = value
-                }
-            }
-        }
-
-        // 占位，推动按钮到底部
-        Item { Layout.fillHeight: true }
     }
 
     // 底部按钮

@@ -9,6 +9,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-03
+* * 添加 transferCompleted 信号；接收完成通知
 */
 
 #pragma once
@@ -52,6 +54,10 @@ signals:
                                 const QString &senderName,
                                 const QString &fileName,
                                 qint64 fileSize);
+    // 传输完成通知（接收方用于提示打开文件夹）
+    void transferCompleted(const QString &sessionId,
+                           const QString &fileName,
+                           const QString &filePath);
 
 private slots:
     // 处理新的传输请求

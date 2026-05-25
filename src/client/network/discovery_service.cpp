@@ -7,6 +7,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 2：初始版本
+* [v0.2] GY   2026-06-03
+* * 添加 refresh() 方法实现
 */
 
 #include "discovery_service.h"
@@ -224,4 +226,10 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 void DiscoveryService::notifyPeersChanged()
 {
     emit peersChanged();
+}
+
+void DiscoveryService::refresh()
+{
+    sendHelloPacket();
+    pruneOfflineNodes();
 }

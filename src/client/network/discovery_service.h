@@ -10,6 +10,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 2：初始版本
+* [v0.2] GY   2026-06-03
+* * 添加 refresh() 方法
 */
 
 #pragma once
@@ -40,6 +42,9 @@ public:
 
     // 获取当前在线节点列表（供 QML 绑定）
     QVariantList peers() const;
+
+    // 立即发送一次广播并清理离线节点
+    Q_INVOKABLE void refresh();
 
 signals:
     // 节点列表变化通知

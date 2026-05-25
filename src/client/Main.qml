@@ -87,7 +87,35 @@ ApplicationWindow {
         id: acceptDialog
     }
 
-    // 连接 TransferSessionManager 的接收请求信号
+    // 传输完成提示弹窗
+    Dialog {
+        id: tw_completeDialog
+        title: qsTr("接收完成")
+        modal: true
+        anchors.centerIn: parent
+        width: 360
+
+        property string _filePath: ""
+        property string _fileName: ""
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: qsTr("文件 \"%1\" 已接收完成").arg(tw_completeDialog._fileName)
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+        }
+
+        standardButtons: Dialog.Open | Dialog.Ok
+
+        onAccepted: {
+            // "打开" 按钮：打开文件所在目录
+            ConfigManager.openFolder(tw_completeDialog._filePath)
+        }
+    }
+
+    // 连接 TransferSessionManager 信号
     Connections {
         target: TransferSessionManager
         function onRequestReceived(sessionId, senderName, fileName, fileSize) {
@@ -96,6 +124,11 @@ ApplicationWindow {
             acceptDialog.fileName = fileName
             acceptDialog.fileSize = fileSize
             acceptDialog.open()
+        }
+        function onTransferCompleted(sessionId, fileName, filePath) {
+            tw_completeDialog._fileName = fileName
+            tw_completeDialog._filePath = filePath
+            tw_completeDialog.open()
         }
     }
 }
