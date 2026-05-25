@@ -7,6 +7,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-03
+* * 接收会话连接 transferFinished 信号；设置接收路径；触发完成通知
 */
 
 #include "transfer_session_manager.h"
@@ -181,6 +183,11 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     // 创建接收会话
     QString sessionId = worker->sessionId();
 
+    // 设置接收路径
+    if (_config) {
+        worker->setReceivePath(_config->receivePath());
+    }
+
     QVariantMap session;
     session["sessionId"] = sessionId;
     session["type"]      = "receive";
@@ -195,6 +202,28 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
 
     _sessions.append(session);
     emit sessionsChanged();
+
+    // 连接接收完成信号
+    connect(worker, &FileReceiverWorker::transferFinished,
+            this, [this, sessionId, worker](bool success, const QString &errorMsg) {
+        for (int i = 0; i < _sessions.size(); ++i) {
+            if (_sessions[i]["sessionId"].toString() == sessionId) {
+                _sessions[i]["status"] = success ? "completed" : "failed";
+                _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
+                _sessions[i]["errorMsg"] = errorMsg;
+                emit sessionsChanged();
+
+                // 接收成功时通知 UI 打开文件夹
+                if (success && _config) {
+                    emit transferCompleted(sessionId, worker->fileName(),
+                                           _config->receivePath());
+                }
+                break;
+            }
+        }
+
+        worker->deleteLater();
+    });
 
     // 通知 QML 弹窗确认
     emit receiveRequestReceived(sessionId, senderName, fileName, fileSize);

@@ -10,6 +10,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 2：初始版本
+* [v0.2] GY   2026-06-03
+* * 添加 localIp 属性、refreshLocalIp()、openFolder() 方法
 */
 
 #pragma once
@@ -27,6 +29,7 @@ class ConfigManager : public QObject {
     QML_SINGLETON
     Q_PROPERTY(QString  deviceId    READ deviceId    NOTIFY deviceIdChanged)
     Q_PROPERTY(QString  deviceName  READ deviceName  WRITE setDeviceName  NOTIFY deviceNameChanged)
+    Q_PROPERTY(QString  localIp     READ localIp     NOTIFY localIpChanged)
     Q_PROPERTY(QString  receivePath READ receivePath WRITE setReceivePath NOTIFY receivePathChanged)
     Q_PROPERTY(quint16  tcpPort     READ tcpPort     WRITE setTcpPort     NOTIFY tcpPortChanged)
 
@@ -35,6 +38,7 @@ public:
 
     QString  deviceId()    const;
     QString  deviceName()  const;
+    QString  localIp()     const;
     QString  receivePath() const;
     quint16  tcpPort()     const;
 
@@ -42,9 +46,13 @@ public:
     void setReceivePath(const QString &path);
     void setTcpPort(quint16 port);
 
+    Q_INVOKABLE void refreshLocalIp();
+    Q_INVOKABLE void openFolder(const QString &path);
+
 signals:
     void deviceIdChanged();
     void deviceNameChanged();
+    void localIpChanged();
     void receivePathChanged();
     void tcpPortChanged();
 
@@ -57,6 +65,7 @@ private:
 
     QString _deviceId;
     QString _deviceName;
+    QString _localIp;
     QString _receivePath;
     quint16 _tcpPort = 0;
 };

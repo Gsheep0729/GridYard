@@ -14,6 +14,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-03
+* * 添加 setReceivePath() 方法和 _receivePath 成员
 */
 
 #pragma once
@@ -39,6 +41,9 @@ public:
     QString senderName()   const { return _senderName; }
     QString fileName()     const { return _fileName; }
     qint64  fileSize()     const { return _fileSize; }
+
+    // 设置接收路径（由 TransferSessionManager 调用）
+    void setReceivePath(const QString &path) { _receivePath = path; }
 
 public slots:
     // 用户接受传输
@@ -95,4 +100,7 @@ private:
     // 状态
     bool _waitingForUserConfirm = false;
     bool _transferActive = false;
+
+    // 接收路径
+    QString _receivePath;
 };
