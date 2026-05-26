@@ -106,6 +106,7 @@ qmlcache/
 .ccls-cache/
 .clangd/
 # 其它编辑器扩展私有目录（按需补充）
+.antigravitycli/
 .claude/
 .cursor/
 .cursorignore
@@ -134,6 +135,7 @@ ASSISTANT.md
 notes_local/
 *.local.md
 *.draft.md
+doc/plans/history_stage0/
 
 
 # ============================================================================
