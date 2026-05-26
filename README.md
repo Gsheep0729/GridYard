@@ -32,44 +32,37 @@
 ```text
 GridYard/                                  ← Git 仓库根
 │
-├── CMakeLists.txt                     ✅  # 顶层：仅 add_subdirectory(src)
-├── README.md                          ✅  # 本文件
-├── .gitignore                         ✅  # Qt / CMake / IDE / OS 完整忽略规则
+├── README.md                              # 本项目说明文件
+├── .gitignore                             # Git 忽略配置（排除构建产物、IDE 配置等）
+├── CMakeLists.txt                         # 根目录 CMake 构建脚本（定义全局项目版本、C++23 选项及 Qt 包引入）
 │
-├── doc/                               ✅  # 项目文档（5 份核心 + templates 子目录）
-│   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md
-│   ├── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md
-│   ├── 鸽邮(GridYard)——团队开发者手册.md
-│   ├── 鸽邮(GridYard)——软件开发阶段计划.md
-│   └── templates/                         # CMake 模板 + qmldir 参考 + 集成示例
+├── doc/                                   # 项目文档目录（核心设计文档）
+│   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md # 业务需求、目标与系统规格
+│   ├── 鸽邮(GridYard)——软件开发阶段计划.md             # 各开发阶段（Stage）任务详细拆解
+│   ├── 鸽邮(GridYard)——团队开发者手册.md               # 团队协作规约、环境搭建与代码规范
+│   └── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md # 系统架构、网络协议设计与后续演进路线
 │
-├── scripts/                           ✅
-│   └── for_md.py                          # 代码归档工具
-│
-└── src/                               ✅  # 全部源代码（根目录只放配置/文档/脚本）
-    │
-    ├── CMakeLists.txt                 ✅  # 分发：add_subdirectory(shared) + (client) + ...
-    │
-    ├── shared/                        ✅  # 客户端 + 未来 V2.0 服务端共用静态库 gy_shared
-    │   ├── CMakeLists.txt             ✅
-    │   ├── protocol.h                 🟡  # 命名空间已建，Type 码集 Stage 1 任务 1.1 填
-    │   ├── data_types.h               ✅  # PeerInfo Q_GADGET 就位；其他类型 Stage 1 添
-    │   ├── frame_codec.h              🟡  # 类声明完整，状态机 Stage 1 任务 1.3 实现
-    │   └── frame_codec.cpp            🟡
-    │
-    ├── client/                        ✅  # 桌面客户端（QML + C++）
-    │   ├── CMakeLists.txt             ✅  # 单个 qt_add_qml_module，URI cqnu.gridyard.client
-    │   ├── main.cpp                   ✅  # QGuiApplication + loadFromModule 入口
-    │   ├── Main.qml                   ✅  # 根窗口（空白 ApplicationWindow）
-    │   ├── core/                      ✅  # 业务逻辑层
-    │   │   ├── app_controller.h       ✅  # QML_SINGLETON
-    │   │   └── app_controller.cpp     ✅
-    │   ├── network/                   🟡  # Stage 2 起填：DiscoveryService / P2pServer / Worker
-    │   └── ui/                        🟡  # Stage 2+ 填：DeviceCard / TransferPanel / ...
-    │
-    ├── server/                        —   # V2.0 才填：epoll 守护进程 + PostgreSQL 离线信箱
-    │
-    └── tests/                         —   # Stage 1 起填：Qt Test 单测
+└── src/                                   # 项目源代码与核心目录
+    ├── CMakeLists.txt                     # 源码级总控 CMake（负责注册 client、shared 等子模块）
+    ├── scripts/                           # 辅助脚本目录
+    │   └── for_md.py                      # 代码归档工具
+    ├── shared/                            # 客户端与服务端共用底层核心库 gy_shared
+    │   ├── CMakeLists.txt                 # shared 模块构建配置
+    │   ├── protocol.h                     # 通信协议类型、报文等定义
+    │   ├── data_types.h                   # 跨模块通用数据类型（如 PeerInfo）
+    │   ├── frame_codec.h                  # 帧编解码器核心声明
+    │   └── frame_codec.cpp                # 帧编解码器具体实现
+    ├── client/                            # 桌面客户端模块（QML + C++）
+    │   ├── CMakeLists.txt                 # client 模块构建配置（含 qml module 注册）
+    │   ├── main.cpp                       # C++ 主程序入口（负责注册类型与加载 QML）
+    │   ├── Main.qml                       # 桌面端 QML 根窗口/主界面
+    │   ├── core/                          # 业务逻辑控制器核心目录
+    │   │   ├── app_controller.h           # 应用全局控制器声明
+    │   │   └── app_controller.cpp         # 应用全局控制器实现
+    │   ├── network/                       # 预留：网络通信与发现层目录
+    │   └── ui/                            # 预留：自定义 QML 组件存放目录
+    ├── server/                            # 预留：服务端核心逻辑目录
+    └── tests/                             # 预留：单元测试目录
 ```
 
 ---
@@ -79,14 +72,15 @@ GridYard/                                  ← Git 仓库根
 **环境要求**：Manjaro Linux、GCC 15+、CMake 4.2.3+、Qt 6.5+。
 
 ```bash
-# 1. 首次配置（项目根目录执行）
+# 1. 首次配置（进入 src 目录执行）
+cd src
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
 # 2. 增量构建
 cmake --build build -j
 
-# 3. 运行客户端（注意：可执行文件在 build/src/client/ 下）
-./build/src/client/appGridYard
+# 3. 运行客户端（注意：可执行文件在 build/client/ 下）
+./build/client/appGridYard
 
 # 4. 跑全部单测（Stage 1+ 才有）
 ctest --test-dir build --output-on-failure
