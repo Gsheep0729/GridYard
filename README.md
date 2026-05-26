@@ -1,37 +1,117 @@
-# 仓库目录结构
+# GridYard — 鸽邮
 
-## 当前结构 (V1.0 启动阶段)
+> 局域网 P2P 文件传输 + IM 桌面应用。两台同网段电脑互相能看见、能直传文件，全程不走公网。
+
+| 字段       | 内容                                                                  |
+| :--------- | :-------------------------------------------------------------------- |
+| 项目版本   | v0.1.0（骨架）                                                        |
+| 当前阶段   | **Stage 0 工程奠基** ✅ 已完成                                         |
+| 下一阶段   | Stage 1 通信基石（填 protocol.h + 实现 FrameCodec + 写单测）           |
+| 技术栈     | C++23 · Qt 6.5+ · QML · CMake 4.2.3+ · GCC 15+                       |
+| 部署平台   | Manjaro Linux（开发、编译、运行三端统一）                              |
+| 团队成员   | 高扬 · 杜若贤 · 冯春霖                                                |
+
+---
+
+## 快速导航
+
+| 想找                       | 在哪                                                         |
+| :------------------------- | :----------------------------------------------------------- |
+| **现在该做什么？**         | [`doc/鸽邮(GridYard)——软件开发阶段计划.md`](doc/)             |
+| 业务需求                   | [`doc/鸽邮(GridYard)——技术需求与系统设计规格说明书.md`](doc/) |
+| 架构决策（V1.0 + V2.0 演进） | [`doc/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md`](doc/) |
+| 工程实践（CMake/Git/调试） | [`doc/鸽邮(GridYard)——团队开发者手册.md`](doc/)               |
+| CMake / qmldir / 集成示例  | [`doc/templates/`](doc/templates/)                            |
+
+---
+
+## 仓库目录结构
+
+> 图例：`✅` 已就位、`🟡` 占位（待后续阶段填充）、`—` 后续阶段才出现
+
 ```text
-GridYard/
-├── doc/                                  # 项目设计与技术文档
+GridYard/                                  ← Git 仓库根
+│
+├── CMakeLists.txt                     ✅  # 顶层：仅 add_subdirectory(src)
+├── README.md                          ✅  # 本文件
+├── .gitignore                         ✅  # Qt / CMake / IDE / OS 完整忽略规则
+│
+├── doc/                               ✅  # 项目文档（5 份核心 + templates 子目录）
 │   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md
-│   └── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md
-├── src/                                  # 源代码目录
-│   └── for_md.py                         # Markdown 处理辅助脚本
-└── README.md                             # 项目主说明文档
+│   ├── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md
+│   ├── 鸽邮(GridYard)——团队开发者手册.md
+│   ├── 鸽邮(GridYard)——软件开发阶段计划.md
+│   └── templates/                         # CMake 模板 + qmldir 参考 + 集成示例
+│
+├── scripts/                           ✅
+│   └── for_md.py                          # 代码归档工具
+│
+└── src/                               ✅  # 全部源代码（根目录只放配置/文档/脚本）
+    │
+    ├── CMakeLists.txt                 ✅  # 分发：add_subdirectory(shared) + (client) + ...
+    │
+    ├── shared/                        ✅  # 客户端 + 未来 V2.0 服务端共用静态库 gy_shared
+    │   ├── CMakeLists.txt             ✅
+    │   ├── protocol.h                 🟡  # 命名空间已建，Type 码集 Stage 1 任务 1.1 填
+    │   ├── data_types.h               ✅  # PeerInfo Q_GADGET 就位；其他类型 Stage 1 添
+    │   ├── frame_codec.h              🟡  # 类声明完整，状态机 Stage 1 任务 1.3 实现
+    │   └── frame_codec.cpp            🟡
+    │
+    ├── client/                        ✅  # 桌面客户端（QML + C++）
+    │   ├── CMakeLists.txt             ✅  # 单个 qt_add_qml_module，URI cqnu.gridyard.client
+    │   ├── main.cpp                   ✅  # QGuiApplication + loadFromModule 入口
+    │   ├── Main.qml                   ✅  # 根窗口（空白 ApplicationWindow）
+    │   ├── core/                      ✅  # 业务逻辑层
+    │   │   ├── app_controller.h       ✅  # QML_SINGLETON
+    │   │   └── app_controller.cpp     ✅
+    │   ├── network/                   🟡  # Stage 2 起填：DiscoveryService / P2pServer / Worker
+    │   └── ui/                        🟡  # Stage 2+ 填：DeviceCard / TransferPanel / ...
+    │
+    ├── server/                        —   # V2.0 才填：epoll 守护进程 + PostgreSQL 离线信箱
+    │
+    └── tests/                         —   # Stage 1 起填：Qt Test 单测
 ```
 
-## 目录规范规划 (V1.0 - V2.0 演进)
-为确保项目在功能扩展（如增加客户端、服务器端及自动化测试）过程中的可维护性，建议遵循以下目录规范：
+---
 
-```text
-GridYard/
-├── bin/                                  # 二进制可执行文件输出目录 (编译生成)
-├── build/                                # 构建过程中产生的中间文件 (CMake/Make 等)
-├── doc/                                  # 深度设计文档、需求规格书、API 文档
-├── include/                              # 公共头文件 (.h, .hpp)，按模块分子目录
-├── src/                                  # 核心实现代码
-│   ├── client/                           # 客户端逻辑实现
-│   ├── server/                           # 服务端逻辑实现
-│   ├── common/                           # 前后端通用逻辑与工具类
-│   └── ...                               # 其他核心业务模块
-├── tests/                                # 单元测试、集成测试用例
-├── resources/                            # 静态资源（图标、样式表、本地数据库模版等）
-├── scripts/                              # 辅助开发脚本（CI/CD、自动化部署、数据初始化等）
-├── .gitignore                            # Git 忽略配置
-├── CMakeLists.txt                        # 项目构建主入口文件
-└── README.md                             # 项目概览与开发指南
+## 构建与运行
+
+**环境要求**：Manjaro Linux、GCC 15+、CMake 4.2.3+、Qt 6.5+。
+
+```bash
+# 1. 首次配置（项目根目录执行）
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+# 2. 增量构建
+cmake --build build -j
+
+# 3. 运行客户端（注意：可执行文件在 build/src/client/ 下）
+./build/src/client/appGridYard
+
+# 4. 跑全部单测（Stage 1+ 才有）
+ctest --test-dir build --output-on-failure
 ```
+
+**Stage 0 预期效果**：弹出 960×640 空白窗口，标题 `GridYard v0.1.0`，中间一行文字 *"GridYard 骨架就绪 — 等待 Stage 1 填充协议层"*。关窗会在终端打印 `AppController::quit invoked from QML`，证明 QML → C++ 链路通了。
+
+---
+
+## 给团队成员
+
+入坑顺序：
+
+1. **先读 [`doc/鸽邮(GridYard)——团队开发者手册.md`](doc/)**——工程实践（CMake / Git / 调试 / 测试）一站式
+2. **再读 [`doc/鸽邮(GridYard)——软件开发阶段计划.md`](doc/)** 了解现在做什么、下一步做什么、哪些必要、哪些加分
+3. **写代码前对照老师下发的《代码规范要求文档.md》**——红线很多
+4. **任务认领制**：当阶段必要任务在群公告，谁感兴趣谁认领；没人认领 24h 由 Tech Lead 兜底派活
+
+工作时：
+
+- 走 `feature/<模块名简写>-<动词>` 分支 → PR 合 `dev`（详见手册 §6）
+- 单次 PR 控制在 300 行以内
+- 代码提交前对照《Qt6 + QML 代码规范》§9 自检清单
+
+---
 
 # 快速加入仓库开发
 
