@@ -11,6 +11,8 @@
 * * 接收路径改用 _receivePath 成员，支持外部配置
 * [v0.3] GY   2026-06-04
 * * Stage 4.3：解析文件列表（含 sha256），支持多文件接收
+* [v0.4] GY   2026-06-04
+* * Stage 4.3：SHA-256 校验实现，多文件接收支持
 */
 
 #include "file_receiver_worker.h"
@@ -18,6 +20,7 @@
 #include "frame_codec.h"
 #include "protocol.h"
 
+#include <QCryptographicHash>
 #include <QDataStream>
 #include <QDir>
 #include <QFileInfo>
@@ -207,14 +210,61 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     // 检查是否是最后一个块
     if (isLastChunk == 1) {
         _file.close();
-        _transferActive = false;
+
+        // 计算 SHA-256 校验
+        QString computedHash = gy::DirSerializer::computeSha256(_file.fileName());
+        bool verified = true;
+        QString errorMsg;
+
+        if (_currentFileIndex < _fileList.size()) {
+            QString expectedHash = _fileList[_currentFileIndex].sha256;
+            if (!expectedHash.isEmpty() && computedHash != expectedHash) {
+                verified = false;
+                errorMsg = tr("SHA-256 校验失败");
+                qWarning() << "FileReceiverWorker: SHA-256 不匹配"
+                           << "期望" << expectedHash
+                           << "实际" << computedHash;
+            }
+        }
 
         // 发送块确认
-        sendChunkAck(true);
+        sendChunkAck(verified, errorMsg);
 
-        emit transferFinished(true, "");
+        if (!verified) {
+            _transferActive = false;
+            emit transferFinished(false, errorMsg);
+            return;
+        }
 
+        // 当前文件校验通过
         qDebug() << "FileReceiverWorker: 文件接收完成" << _fileName;
+
+        // 切换到下一个文件
+        _currentFileIndex++;
+        if (_currentFileIndex < _fileList.size()) {
+            // 还有文件要接收
+            _fileName = _fileList[_currentFileIndex].relativePath;
+            _fileSize = _fileList[_currentFileIndex].sizeBytes;
+            _bytesReceived = 0;
+
+            // 创建目录并打开文件
+            QString filePath = _receivePath + "/" + _fileName;
+            QString dirPath = QFileInfo(filePath).path();
+            QDir().mkpath(dirPath);
+
+            _file.setFileName(filePath);
+            if (!_file.open(QIODevice::WriteOnly)) {
+                _transferActive = false;
+                emit transferFinished(false, tr("无法创建文件: %1").arg(_file.errorString()));
+                return;
+            }
+
+            qDebug() << "FileReceiverWorker: 开始接收下一个文件" << _fileName;
+        } else {
+            // 所有文件接收完成
+            _transferActive = false;
+            emit transferFinished(true, "");
+        }
     }
 }
 
