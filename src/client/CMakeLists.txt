@@ -22,9 +22,12 @@ target_compile_features(appGridYard PRIVATE cxx_std_23)
 
 target_link_libraries(appGridYard PRIVATE
     Qt6::Quick
+    Qt6::QuickControls2
     Qt6::Network
     gy_shared
 )
+
+target_include_directories(appGridYard PRIVATE core)
 
 # ---- 安装规则 ---------------------------------------------------------
 set(CMAKE_INSTALL_PREFIX "/opt/${PROJECT_NAME}" CACHE PATH "Install path prefix" FORCE)
