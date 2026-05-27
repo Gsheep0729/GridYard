@@ -5,9 +5,9 @@
 | 字段       | 内容                                                                  |
 | :--------- | :-------------------------------------------------------------------- |
 | 项目版本   | v0.1.0（骨架）                                                        |
-| 当前阶段   | **Stage 0 工程奠基** ✅ 已完成                                         |
+| 当前阶段   | **Stage 0 工程奠基** 已完成                                            |
 | 下一阶段   | Stage 1 通信基石（填 protocol.h + 实现 FrameCodec + 写单测）           |
-| 技术栈     | C++23 · Qt 6.5+ · QML · CMake 4.2.3+ · GCC 15+                       |
+| 技术栈     | C++23 · Qt 6.11 · QML · CMake 4.2.3 · GCC 16.1                        |
 | 部署平台   | Manjaro Linux（开发、编译、运行三端统一）                              |
 | 团队成员   | 高扬 · 杜若贤 · 冯春霖                                                |
 
@@ -27,60 +27,57 @@
 
 ## 仓库目录结构
 
-> 图例：`✅` 已就位、`🟡` 占位（待后续阶段填充）、`—` 后续阶段才出现
+> `[done]` 已就位、`[wip]` 占位（待后续阶段填充）
 
 ```text
-GridYard/                                  ← Git 仓库根
-│
-├── README.md                              # [✅] 本项目说明文件
-├── .gitignore                             # [✅] Git 忽略配置（排除构建产物、IDE 配置等）
-├── doc/                                   # [✅] 项目文档目录（分层规范收纳）
-│   ├── spec/                              # [✅] 核心规格与设计文档
+GridYard/
+├── README.md                              # 项目说明、构建指引、速查表
+├── .gitignore                             # Git 忽略配置
+├── doc/
+│   ├── spec/                              # 核心规格与设计文档
 │   │   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md
 │   │   └── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md
-│   ├── manuals/                           # [✅] 指导手册与踩坑心得
+│   ├── manuals/                           # 指导手册与踩坑心得
 │   │   ├── 鸽邮(GridYard)——团队开发者手册.md
 │   │   └── 开发心得_从架构设计到踩坑记录.md
-│   ├── plans/                             # [✅] 迭代开发计划与重构草稿
+│   ├── plans/                             # 迭代开发计划与历史归档
 │   │   ├── 鸽邮(GridYard)——软件开发阶段计划.md
-│   │   └── history_stage0/                # [✅] 已脱敏的 Stage 0 历史归档 (已屏蔽跟踪)
-│   │       ├── 从0重构GridYard实施计划.md
-│   │       └── AI重构实施计划_草稿.md
-│   └── templates/                         # [✅] 统一规范的开发模板与集成演示项目
-│       ├── integration_demo/              # [✅] C++ ↔ QML 交互集成最小可运行示例 (教学/回归)
-│       ├── CMakeLists.qml.template        # [✅] Qt Quick 项目 CMake 模板
-│       ├── CMakeLists.widgets.template    # [✅] Widgets 项目 CMake 模板
-│       ├── qmldir.template                # [✅] qmldir 声明文件模板
-│       └── README.md                      # [✅] 模板使用指南
+│   │   └── history_stage0/                # [done] 已脱敏的 Stage 0 历史归档
+│   └── templates/                         # 开发模板与集成演示
+│       ├── integration_demo/              # C++ <-> QML 交互集成示例
+│       ├── CMakeLists.qml.template        # Qt Quick 项目 CMake 模板
+│       ├── CMakeLists.widgets.template    # Widgets 项目 CMake 模板
+│       ├── qmldir.template                # qmldir 声明文件模板
+│       └── README.md                      # 模板使用指南
 │
-└── src/                                   # [✅] 项目核心目录（源码与构建总控）
-    ├── CMakeLists.txt                     # [✅] 唯一构建入口（负责项目全局配置与子模块注册）
-    ├── scripts/                           # [✅] 辅助脚本目录
-    │   └── for_md.py                      # [✅] 代码归档工具
-    ├── shared/                            # [✅] 客户端与服务端共用底层核心库 gy_shared
-    │   ├── CMakeLists.txt                 # [✅] shared 模块构建配置
-    │   ├── protocol.h                     # [🟡] 通信协议类型定义（Stage 1 填充）
-    │   ├── data_types.h                   # [✅] 跨模块通用数据类型（如 PeerInfo）
-    │   ├── frame_codec.h                  # [🟡] 帧编解码器核心声明（Stage 1 实现）
-    │   └── frame_codec.cpp                # [🟡] 帧编解码器具体实现（Stage 1 实现）
-    ├── client/                            # [✅] 桌面客户端模块（QML + C++）
-    │   ├── CMakeLists.txt                 # [✅] client 模块构建配置（含 qml module 注册）
-    │   ├── main.cpp                       # [✅] C++ 主程序入口（负责注册类型与加载 QML）
-    │   ├── Main.qml                       # [✅] 桌面端 QML 根窗口/主界面
-    │   ├── core/                          # [✅] 业务逻辑控制器核心目录
-    │   │   ├── app_controller.h           # [✅] 应用全局控制器声明
-    │   │   └── app_controller.cpp         # [✅] 应用全局控制器实现
-    │   ├── network/                       # [🟡] 预留：网络通信与发现层目录（Stage 2 填充）
-    │   └── ui/                            # [🟡] 预留：自定义 QML 组件存放目录（Stage 3 填充）
-    ├── server/                            # [🟡] 预留：服务端核心逻辑目录（V2.0 阶段）
-    └── tests/                             # [🟡] 预留：单元测试目录（Stage 1+ 启用）
+└── src/
+    ├── CMakeLists.txt                     # 顶层构建入口
+    ├── scripts/
+    │   └── for_md.py                      # 代码归档工具
+    ├── shared/                            # [done] 共用核心库 gy_shared
+    │   ├── CMakeLists.txt                 # shared 模块构建配置
+    │   ├── protocol.h                     # [wip] 通信协议定义（Stage 1 填充）
+    │   ├── data_types.h                   # [done] 跨模块通用数据类型
+    │   ├── frame_codec.h                  # [wip] 帧编解码器声明（Stage 1 实现）
+    │   └── frame_codec.cpp                # [wip] 帧编解码器实现（Stage 1 实现）
+    ├── client/                            # [done] 桌面客户端（QML + C++）
+    │   ├── CMakeLists.txt                 # client 模块构建配置（含 qml module 注册）
+    │   ├── main.cpp                       # C++ 主程序入口
+    │   ├── Main.qml                       # QML 根窗口
+    │   ├── core/                          # 业务逻辑控制器
+    │   │   ├── app_controller.h           # 应用全局控制器声明
+    │   │   └── app_controller.cpp         # 应用全局控制器实现
+    │   ├── network/                       # [wip] 网络通信层（Stage 2 填充）
+    │   └── ui/                            # [wip] QML 子组件（Stage 3 填充）
+    ├── server/                            # [wip] 服务端（V2.0 阶段）
+    └── tests/                             # [wip] 单元测试（Stage 1+ 启用）
 ```
 
 ---
 
 ## 构建与运行
 
-**环境要求**：Manjaro Linux、GCC 15+、CMake 4.2.3+、Qt 6.5+。
+**环境要求**：Manjaro Linux、GCC 16.1+、CMake 4.2.3+、Qt 6.11+、Ninja 1.13+。
 
 ```bash
 # 1. 首次配置（进入 src 目录执行）
@@ -98,23 +95,6 @@ ctest --test-dir build --output-on-failure
 ```
 
 **Stage 0 预期效果**：弹出 960×640 空白窗口，标题 `GridYard v0.1.0`，中间一行文字 *"GridYard 骨架就绪 — 等待 Stage 1 填充协议层"*。关窗会在终端打印 `AppController::quit invoked from QML`，证明 QML → C++ 链路通了。
-
----
-
-## 给团队成员
-
-入坑顺序：
-
-1. **先读 [`doc/manuals/鸽邮(GridYard)——团队开发者手册.md`](doc/manuals/)**——工程实践（CMake / Git / 调试 / 测试）一站式
-2. **再读 [`doc/plans/鸽邮(GridYard)——软件开发阶段计划.md`](doc/plans/)** 了解现在做什么、下一步做什么、哪些必要、哪些加分
-3. **写代码前对照老师下发的《代码规范要求文档.md》**——红线很多
-4. **任务认领制**：当阶段必要任务在群公告，谁感兴趣谁认领；没人认领 24h 由 Tech Lead 兜底派活
-
-工作时：
-
-- 走 `feature/<模块名简写>-<动词>` 分支 → PR 合 `dev`（详见手册 §6）
-- 单次 PR 控制在 300 行以内
-- 代码提交前对照《Qt6 + QML 代码规范》§9 自检清单
 
 ---
 
