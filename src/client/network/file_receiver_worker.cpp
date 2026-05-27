@@ -160,7 +160,8 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     _waitingForUserConfirm = true;
 
     // 通知 UI 弹窗确认
-    emit transferRequestReceived(_senderName, _fileName, _fileSize);
+    emit transferRequestReceived(_senderName, _fileName, _fileSize,
+                                 _totalFiles, _totalBytes);
 
     qDebug() << "FileReceiverWorker: 收到传输请求"
              << "来自" << _senderName

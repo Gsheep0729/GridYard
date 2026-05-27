@@ -11,6 +11,8 @@
 * * 接收会话连接 transferFinished 信号；设置接收路径；触发完成通知
 * [v0.3] GY   2026-06-03
 * * Stage 3.10：实现 cancelSession()；保存/清理发送方 worker
+* [v0.4] GY   2026-06-04
+* * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
 */
 
 #include "transfer_session_manager.h"
@@ -211,7 +213,9 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
 void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worker,
                                                         const QString &senderName,
                                                         const QString &fileName,
-                                                        qint64 fileSize)
+                                                        qint64 fileSize,
+                                                        int totalFiles,
+                                                        qint64 totalBytes)
 {
     // 创建接收会话
     QString sessionId = worker->sessionId();
@@ -227,10 +231,11 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["senderName"] = senderName;
     session["fileName"]  = fileName;
     session["fileSize"]  = fileSize;
+    session["totalFiles"] = totalFiles;
+    session["totalBytes"] = totalBytes;
     session["status"]    = "waiting_confirm";
     session["progress"]  = 0;
     session["bytesTransferred"] = 0;
-    session["totalBytes"] = fileSize;
     session["worker"]    = QVariant::fromValue(worker);
 
     _sessions.append(session);
@@ -264,7 +269,8 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     });
 
     // 通知 QML 弹窗确认
-    emit receiveRequestReceived(sessionId, senderName, fileName, fileSize);
+    emit receiveRequestReceived(sessionId, senderName, fileName,
+                                fileSize, totalFiles, totalBytes);
 
     qDebug() << "TransferSessionManager: 收到接收请求" << sessionId
              << "来自" << senderName << "文件" << fileName;

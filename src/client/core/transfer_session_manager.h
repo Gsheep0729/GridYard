@@ -13,6 +13,8 @@
 * * 添加 transferCompleted 信号；接收完成通知
 * [v0.3] GY   2026-06-03
 * * Stage 3.10：实现 cancelSession()；保存发送方 worker 引用
+* [v0.4] GY   2026-06-04
+* * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
 */
 
 #pragma once
@@ -55,7 +57,9 @@ signals:
     void receiveRequestReceived(const QString &sessionId,
                                 const QString &senderName,
                                 const QString &fileName,
-                                qint64 fileSize);
+                                qint64 fileSize,
+                                int totalFiles,
+                                qint64 totalBytes);
     // 传输完成通知（接收方用于提示打开文件夹）
     void transferCompleted(const QString &sessionId,
                            const QString &fileName,
@@ -66,7 +70,9 @@ private slots:
     void onTransferRequestReceived(FileReceiverWorker *worker,
                                    const QString &senderName,
                                    const QString &fileName,
-                                   qint64 fileSize);
+                                   qint64 fileSize,
+                                   int totalFiles,
+                                   qint64 totalBytes);
 
 public:
     explicit TransferSessionManager(QObject *parent = nullptr);
