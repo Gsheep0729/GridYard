@@ -13,6 +13,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-03
+* * Stage 3.10：添加 cancel() 槽函数
 */
 
 #pragma once
@@ -39,6 +41,8 @@ public:
 public slots:
     // 启动传输（在工作线程中调用）
     void startTransfer(const QString &host, quint16 port, const QString &filePath);
+    // 取消传输
+    void cancel();
 
 signals:
     // 传输进度更新

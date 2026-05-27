@@ -73,6 +73,10 @@ ApplicationWindow {
             onDeviceSelected: function(deviceId) {
                 console.log("选中设备:", deviceId)
             }
+            onFileDropped: function(deviceId, filePath) {
+                console.log("拖拽文件到设备:", deviceId, filePath)
+                TransferSessionManager.createSendSession(deviceId, filePath)
+            }
         }
 
         // 右侧：传输面板

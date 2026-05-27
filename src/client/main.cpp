@@ -22,6 +22,8 @@
 * * Stage 3：添加命令行参数支持（本机回环测试）
 * [v0.3] GY   2026-06-03
 * * Stage 3：版本号更新，连接体验优化
+* [v0.4] GY   2026-06-03
+* * Stage 3.10：版本号更新到 v0.3.1
 */
 
 #include <QCommandLineParser>
@@ -36,7 +38,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("0.3.0");
+    QGuiApplication::setApplicationVersion("0.3.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析

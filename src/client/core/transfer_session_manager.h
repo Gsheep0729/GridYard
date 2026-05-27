@@ -11,6 +11,8 @@
 * * Stage 3：初始版本
 * [v0.2] GY   2026-06-03
 * * 添加 transferCompleted 信号；接收完成通知
+* [v0.3] GY   2026-06-03
+* * Stage 3.10：实现 cancelSession()；保存发送方 worker 引用
 */
 
 #pragma once
@@ -77,4 +79,6 @@ public:
 
     // 会话列表
     QList<QVariantMap> _sessions;
+    // 发送方 worker 映射（sessionId -> worker）
+    QHash<QString, FileSenderWorker*> _sendWorkers;
 };

@@ -9,6 +9,8 @@
 * * Stage 3：初始版本
 * [v0.2] GY   2026-06-03
 * * 接收会话连接 transferFinished 信号；设置接收路径；触发完成通知
+* [v0.3] GY   2026-06-03
+* * Stage 3.10：实现 cancelSession()；保存/清理发送方 worker
 */
 
 #include "transfer_session_manager.h"
@@ -87,6 +89,9 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     worker->moveToThread(thread);
 
+    // 保存 worker 引用
+    _sendWorkers[sessionId] = worker;
+
     // 连接信号
     connect(thread, &QThread::started, worker, [worker, host, port, filePath]() {
         worker->startTransfer(host, port, filePath);
@@ -119,6 +124,9 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
                 break;
             }
         }
+
+        // 清理 worker 引用
+        _sendWorkers.remove(sessionId);
 
         // 清理线程
         thread->quit();
@@ -171,8 +179,33 @@ void TransferSessionManager::rejectReceiveSession(const QString &sessionId)
 
 void TransferSessionManager::cancelSession(const QString &sessionId)
 {
-    // TODO: 实现取消功能
-    Q_UNUSED(sessionId);
+    // 查找会话
+    for (int i = 0; i < _sessions.size(); ++i) {
+        if (_sessions[i]["sessionId"].toString() == sessionId) {
+            QString type = _sessions[i]["type"].toString();
+
+            if (type == "send") {
+                // 发送方：通过 worker 发送 Cancel 帧
+                FileSenderWorker *worker = _sendWorkers.value(sessionId);
+                if (worker) {
+                    QMetaObject::invokeMethod(worker, "cancel");
+                }
+            } else if (type == "receive") {
+                // 接收方：拒绝传输（会触发对方超时或连接断开）
+                FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
+                if (worker) {
+                    worker->rejectTransfer(tr("用户取消"));
+                }
+            }
+
+            // 更新状态
+            _sessions[i]["status"] = "cancelled";
+            emit sessionsChanged();
+
+            qDebug() << "TransferSessionManager: 取消会话" << sessionId;
+            break;
+        }
+    }
 }
 
 void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worker,
@@ -208,6 +241,11 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
             this, [this, sessionId, worker](bool success, const QString &errorMsg) {
         for (int i = 0; i < _sessions.size(); ++i) {
             if (_sessions[i]["sessionId"].toString() == sessionId) {
+                // 如果已经是 cancelled 状态，不覆盖
+                if (_sessions[i]["status"].toString() == "cancelled") {
+                    break;
+                }
+
                 _sessions[i]["status"] = success ? "completed" : "failed";
                 _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
                 _sessions[i]["errorMsg"] = errorMsg;
