@@ -216,3 +216,9 @@ void FileSenderWorker::sendCancel(const QString &reason)
         _file.close();
     }
 }
+
+void FileSenderWorker::cancel()
+{
+    sendCancel(tr("用户取消"));
+    emit transferFinished(false, tr("已取消"));
+}

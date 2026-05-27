@@ -1,4 +1,4 @@
-# GridYard 类图（Stage 2 完成）
+# GridYard 类图（Stage 3 完成）
 
 ```mermaid
 classDiagram
@@ -63,13 +63,17 @@ classDiagram
         +deviceName : QString
         +receivePath : QString
         +tcpPort : quint16
+        +localIp : QString
         +create(engine: QQmlEngine, scriptEngine: QJSEngine)$ ConfigManager*
         +setDeviceName(name: QString) : void
         +setReceivePath(path: QString) : void
         +setTcpPort(port: quint16) : void
+        +refreshLocalIp() : void
+        +openFolder(path: QString) : void
         +deviceNameChanged() signal
         +receivePathChanged() signal
         +tcpPortChanged() signal
+        +localIpChanged() signal
     }
 
     class DiscoveryService {
@@ -78,6 +82,7 @@ classDiagram
         +sendHelloPacket() : void
         +onDatagramReceived() : void
         +pruneOfflineNodes() : void
+        +refresh() : void
         +peersChanged() signal
         +nodeDiscovered(deviceId: QString) signal
         +nodeExpired(deviceId: QString) signal
@@ -97,6 +102,7 @@ classDiagram
     class TransferSessionManager {
         <<QObject, QML_SINGLETON>>
         +sessions : QVariantList
+        -_sendWorkers : QHash~QString, FileSenderWorker*~
         +create(engine: QQmlEngine, scriptEngine: QJSEngine)$ TransferSessionManager*
         +createSendSession(deviceId, filePath) : void
         +acceptReceiveSession(sessionId) : void
@@ -104,6 +110,7 @@ classDiagram
         +cancelSession(sessionId) : void
         +sessionsChanged() signal
         +receiveRequestReceived(sessionId, senderName, fileName, fileSize) signal
+        +transferCompleted(sessionId, fileName, filePath) signal
     }
 
     class P2pServer {
@@ -123,6 +130,7 @@ classDiagram
         -_totalBytes : qint64
         -_bytesSent : qint64
         +startTransfer(host, port, filePath) : void
+        +cancel() : void
         +progressChanged(bytesSent, totalBytes) signal
         +transferFinished(success, errorMsg) signal
         +requestAccepted() signal
@@ -139,8 +147,12 @@ classDiagram
         -_fileName : QString
         -_fileSize : qint64
         -_bytesReceived : qint64
+        -_receivePath : QString
         +acceptTransfer() : void
         +rejectTransfer(reason) : void
+        +setReceivePath(path: QString) : void
+        +sessionId() : QString
+        +fileName() : QString
         +transferRequestReceived(senderName, fileName, fileSize) signal
         +progressChanged(bytesReceived, totalBytes) signal
         +transferFinished(success, errorMsg) signal
@@ -151,10 +163,45 @@ classDiagram
         +tw_mainWindow : ApplicationWindow
     }
 
+    class DeviceCard {
+        <<QML>>
+        +deviceId : string
+        +deviceName : string
+        +ipAddress : string
+        +isOnline : bool
+        +cardClicked(deviceId) signal
+        +fileDropped(deviceId, filePath) signal
+    }
+
+    class PeerListView {
+        <<QML>>
+        +deviceSelected(deviceId) signal
+        +fileDropped(deviceId, filePath) signal
+    }
+
+    class TransferPanel {
+        <<QML>>
+    }
+
+    class TransferTaskCard {
+        <<QML>>
+        +sessionId : string
+        +taskType : string
+        +taskName : string
+        +status : string
+        +progress : int
+    }
+
     %% 关系
     FrameCodec ..> ProtocolConstants : 使用常量
     ConfigManager ..> ProtocolConstants : 使用默认端口
     Main --> AppController : 访问属性/调用方法
+    Main --> TransferSessionManager : 调用方法
+    PeerListView --> DeviceCard : 包含
+    TransferPanel --> TransferTaskCard : 包含
+    TransferSessionManager --> FileSenderWorker : 管理
+    TransferSessionManager --> FileReceiverWorker : 管理
+    P2pServer --> FileReceiverWorker : 创建
 ```
 
 ## 说明
@@ -164,6 +211,15 @@ classDiagram
 - **FileEntry**：Q_GADGET 值类型，文件元数据（Stage 1 新增）
 - **TransferSession**：Q_GADGET 值类型，传输会话状态（Stage 1 新增）
 - **FrameCodec**：TLV 帧编解码器，含粘包/半包状态机（Stage 1 实现）
-- **ConfigManager**：QML_SINGLETON 单例，应用配置管理器（Stage 2 新增）
+- **ConfigManager**：QML_SINGLETON 单例，应用配置管理器（Stage 2 新增，Stage 3 添加 localIp/openFolder）
+- **DiscoveryService**：UDP 广播发现服务（Stage 2 新增，Stage 3 添加 refresh 方法）
 - **AppController**：QML_SINGLETON 单例，QML 与 C++ 通信的桥梁
-- **Main.qml**：根窗口，通过 AppController 访问 C++ 功能
+- **TransferSessionManager**：QML_SINGLETON 单例，传输会话管理（Stage 3 新增，含 cancelSession）
+- **P2pServer**：TCP 服务器，监听入站连接（Stage 3 新增）
+- **FileSenderWorker**：文件发送 Worker-Object（Stage 3 新增，支持 cancel）
+- **FileReceiverWorker**：文件接收 Worker-Object（Stage 3 新增，支持接收路径配置）
+- **Main.qml**：根窗口，支持拖拽传输和完成通知
+- **DeviceCard.qml**：设备卡片，支持拖拽文件
+- **PeerListView.qml**：设备列表，支持拖拽信号传递
+- **TransferPanel.qml**：传输面板，显示任务列表
+- **TransferTaskCard.qml**：传输任务卡片，支持取消按钮
