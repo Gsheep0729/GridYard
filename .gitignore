@@ -184,8 +184,8 @@ coverage/
 callgrind.out.*
 massif.out.*
 perf.data*
-core
-core.*
+/core
+/core.*
 vgcore.*
 
 
