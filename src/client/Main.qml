@@ -15,6 +15,8 @@
 * * Stage 1：添加 test 按钮验证 C++↔QML 通信
 * [v0.3] GY   2026-06-02
 * * Stage 2：嵌入设备列表，实现左右分栏布局
+* [v0.4] GY   2026-06-04
+* * Stage 4.3：更新接收请求信号处理，支持多文件信息
 */
 
 import QtQuick
@@ -122,11 +124,14 @@ ApplicationWindow {
     // 连接 TransferSessionManager 信号
     Connections {
         target: TransferSessionManager
-        function onRequestReceived(sessionId, senderName, fileName, fileSize) {
+        function onReceiveRequestReceived(sessionId, senderName, fileName,
+                                          fileSize, totalFiles, totalBytes) {
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName
             acceptDialog.fileName = fileName
             acceptDialog.fileSize = fileSize
+            acceptDialog.totalFiles = totalFiles
+            acceptDialog.totalBytes = totalBytes
             acceptDialog.open()
         }
         function onTransferCompleted(sessionId, fileName, filePath) {
