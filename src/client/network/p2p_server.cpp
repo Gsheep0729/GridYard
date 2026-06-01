@@ -64,6 +64,10 @@ void P2pServer::onNewConnection()
                  << socket->peerAddress().toString()
                  << ":" << socket->peerPort();
 
+        // 优化 socket buffer
+        socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
+        socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
+
         // 创建 FileReceiverWorker 处理这个连接
         auto *worker = new FileReceiverWorker{socket, this};
 
