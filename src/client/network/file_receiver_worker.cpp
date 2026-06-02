@@ -249,7 +249,12 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     }
 
     _bytesReceived += chunkData.size();
-    emit progressChanged(_bytesReceived, _fileSize);
+
+    // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
+    static int chunkCount = 0;
+    if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+        emit progressChanged(_bytesReceived, _fileSize);
+    }
 
     // 检查是否是最后一个块
     if (isLastChunk == 1) {
