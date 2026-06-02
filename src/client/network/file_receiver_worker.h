@@ -61,7 +61,9 @@ signals:
     // 传输请求到达（需要弹窗确认）
     void transferRequestReceived(const QString &senderName,
                                  const QString &fileName,
-                                 qint64 fileSize);
+                                 qint64 fileSize,
+                                 int totalFiles,
+                                 qint64 totalBytes);
     // 传输进度更新
     void progressChanged(qint64 bytesReceived, qint64 totalBytes);
     // 传输完成

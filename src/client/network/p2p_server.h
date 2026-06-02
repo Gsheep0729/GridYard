@@ -10,6 +10,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-04
+* * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
 */
 
 #pragma once
@@ -44,7 +46,9 @@ signals:
     void transferRequestReceived(FileReceiverWorker *worker,
                                  const QString &senderName,
                                  const QString &fileName,
-                                 qint64 fileSize);
+                                 qint64 fileSize,
+                                 int totalFiles,
+                                 qint64 totalBytes);
 
 private slots:
     // 新连接到达

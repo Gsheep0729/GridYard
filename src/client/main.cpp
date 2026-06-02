@@ -32,6 +32,8 @@
 * * Stage 4.3：FileReceiverWorker 支持多文件接收，版本号更新到 v0.4.3
 * [v0.8] GY   2026-06-04
 * * Stage 4.3：SHA-256 校验实现，版本号更新到 v0.4.4
+* [v0.9] GY   2026-06-04
+* * Stage 4.3：UI 适配，信号签名添加 totalFiles/totalBytes，版本号更新到 v0.4.5
 */
 
 #include <QCommandLineParser>
@@ -46,7 +48,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("0.4.4");
+    QGuiApplication::setApplicationVersion("0.4.5");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析

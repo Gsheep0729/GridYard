@@ -7,6 +7,8 @@
 * Change Log:
 * [v0.1] GY   2026-06-02
 * * Stage 3：初始版本
+* [v0.2] GY   2026-06-04
+* * Stage 4.3：信号转发添加 totalFiles/totalBytes 参数
 */
 
 #include "p2p_server.h"
@@ -69,8 +71,11 @@ void P2pServer::onNewConnection()
         connect(worker, &FileReceiverWorker::transferRequestReceived,
                 this, [this, worker](const QString &senderName,
                                      const QString &fileName,
-                                     qint64 fileSize) {
-            emit transferRequestReceived(worker, senderName, fileName, fileSize);
+                                     qint64 fileSize,
+                                     int totalFiles,
+                                     qint64 totalBytes) {
+            emit transferRequestReceived(worker, senderName, fileName,
+                                         fileSize, totalFiles, totalBytes);
         });
 
         // 传输完成时清理
