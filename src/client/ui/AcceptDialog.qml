@@ -30,6 +30,8 @@ Dialog {
     property string senderName: ""
     property string fileName: ""
     property int    fileSize: 0
+    property int    totalFiles: 1
+    property int    totalBytes: 0
 
     contentItem: ColumnLayout {
         spacing: 16
@@ -63,6 +65,19 @@ Dialog {
                 RowLayout {
                     Label { text: qsTr("大小："); font.bold: true }
                     Label { text: formatFileSize(tw_acceptDialog.fileSize) }
+                }
+
+                // 多文件信息
+                RowLayout {
+                    visible: tw_acceptDialog.totalFiles > 1
+                    Label { text: qsTr("总文件数："); font.bold: true }
+                    Label { text: tw_acceptDialog.totalFiles }
+                }
+
+                RowLayout {
+                    visible: tw_acceptDialog.totalFiles > 1
+                    Label { text: qsTr("总大小："); font.bold: true }
+                    Label { text: formatFileSize(tw_acceptDialog.totalBytes) }
                 }
             }
         }
