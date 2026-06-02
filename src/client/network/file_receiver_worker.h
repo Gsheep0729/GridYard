@@ -18,6 +18,8 @@
 * * 添加 setReceivePath() 方法和 _receivePath 成员
 * [v0.3] GY   2026-06-04
 * * Stage 4.3：添加文件列表成员，解析 TransferRequest 时保存所有文件信息
+* [v0.4] GY   2026-06-04
+* * Stage 4.3：SHA-256 校验实现，多文件接收支持
 */
 
 #pragma once
