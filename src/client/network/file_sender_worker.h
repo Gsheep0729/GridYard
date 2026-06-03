@@ -32,8 +32,8 @@
 
 class FrameCodec;
 
-// 分块大小：4MB
-static constexpr qint64 kChunkSize = 4 * 1024 * 1024;
+// 分块大小：8MB（优化吞吐量）
+static constexpr qint64 kChunkSize = 8 * 1024 * 1024;
 
 class FileSenderWorker : public QObject {
     Q_OBJECT
