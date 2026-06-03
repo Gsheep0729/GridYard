@@ -17,6 +17,8 @@
 * * Stage 3.10：添加 cancel() 槽函数
 * [v0.3] GY   2026-06-04
 * * Stage 4：支持多文件/目录传输，SHA-256 校验
+* [v0.4] GY   2026-06-04
+* * Stage 4.4：添加超时检测机制
 */
 
 #pragma once
@@ -26,6 +28,7 @@
 #include <QFile>
 #include <QObject>
 #include <QTcpSocket>
+#include <QTimer>
 
 class FrameCodec;
 
@@ -65,6 +68,8 @@ private slots:
     void onDisconnected();
     // 处理收到的帧
     void onFrameReady(quint32 type, const QByteArray &payload);
+    // 超时处理
+    void onTimeout();
 
 private:
     // 发送握手请求
@@ -77,10 +82,13 @@ private:
     void sendTransferDone();
     // 发送取消请求
     void sendCancel(const QString &reason);
+    // 清理资源
+    void cleanup();
 
     QTcpSocket  *_socket = nullptr;
     FrameCodec  *_codec  = nullptr;
     QFile        _file;
+    QTimer      *_timeoutTimer = nullptr;
     QString      _rootPath;         // 传入的根路径
     QString      _sessionId;
     qint64       _totalBytes = 0;

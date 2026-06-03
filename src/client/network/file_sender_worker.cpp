@@ -9,6 +9,8 @@
 * * Stage 3：初始版本
 * [v0.2] GY   2026-06-04
 * * Stage 4：支持多文件/目录传输，SHA-256 校验
+* [v0.3] GY   2026-06-04
+* * Stage 4.4：添加超时检测机制
 */
 
 #include "file_sender_worker.h"
@@ -24,10 +26,14 @@
 #include <QTimer>
 #include <QUuid>
 
+// 超时时间：30 秒
+static constexpr int kTimeoutMs = 30000;
+
 FileSenderWorker::FileSenderWorker(QObject *parent)
     : QObject{parent}
     , _socket{new QTcpSocket{this}}
     , _codec{new FrameCodec{this}}
+    , _timeoutTimer{new QTimer{this}}
 {
     connect(_socket, &QTcpSocket::readyRead,
             this,    &FileSenderWorker::onReadyRead);
@@ -35,13 +41,16 @@ FileSenderWorker::FileSenderWorker(QObject *parent)
             this,    &FileSenderWorker::onDisconnected);
     connect(_codec,  &FrameCodec::frameReady,
             this,    &FileSenderWorker::onFrameReady);
+
+    // 超时定时器
+    _timeoutTimer->setSingleShot(true);
+    connect(_timeoutTimer, &QTimer::timeout,
+            this,          &FileSenderWorker::onTimeout);
 }
 
 FileSenderWorker::~FileSenderWorker()
 {
-    if (_file.isOpen()) {
-        _file.close();
-    }
+    cleanup();
 }
 
 void FileSenderWorker::startTransfer(const QString &host, quint16 port,
@@ -81,17 +90,46 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     }
 
     sendTransferRequest();
+
+    // 启动超时定时器
+    _timeoutTimer->start(kTimeoutMs);
 }
 
 void FileSenderWorker::onReadyRead()
 {
     _codec->feed(_socket->readAll());
+
+    // 重置超时定时器
+    if (_bytesSent < _totalBytes) {
+        _timeoutTimer->start(kTimeoutMs);
+    }
 }
 
 void FileSenderWorker::onDisconnected()
 {
     if (_bytesSent < _totalBytes) {
+        cleanup();
         emit transferFinished(false, tr("连接断开"));
+    }
+}
+
+void FileSenderWorker::onTimeout()
+{
+    if (_bytesSent < _totalBytes) {
+        qWarning() << "FileSenderWorker: 传输超时";
+        cleanup();
+        emit transferFinished(false, tr("传输超时"));
+    }
+}
+
+void FileSenderWorker::cleanup()
+{
+    // 停止超时定时器
+    _timeoutTimer->stop();
+
+    // 关闭文件
+    if (_file.isOpen()) {
+        _file.close();
     }
 }
 
