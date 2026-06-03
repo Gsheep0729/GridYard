@@ -20,6 +20,8 @@
 * * Stage 4.3：添加文件列表成员，解析 TransferRequest 时保存所有文件信息
 * [v0.4] GY   2026-06-04
 * * Stage 4.3：SHA-256 校验实现，多文件接收支持
+* [v0.5] GY   2026-06-04
+* * Stage 4.4：添加超时检测机制
 */
 
 #pragma once
@@ -29,6 +31,7 @@
 #include <QFile>
 #include <QObject>
 #include <QTcpSocket>
+#include <QTimer>
 
 class FrameCodec;
 
@@ -76,6 +79,8 @@ private slots:
     void onDisconnected();
     // 处理收到的帧
     void onFrameReady(quint32 type, const QByteArray &payload);
+    // 超时处理
+    void onTimeout();
 
 private:
     // 处理握手请求
@@ -88,10 +93,13 @@ private:
     void sendTransferResponse(bool accepted, const QString &reason = "");
     // 发送块确认
     void sendChunkAck(bool verified, const QString &errorMsg = "");
+    // 清理资源
+    void cleanup();
 
     QTcpSocket  *_socket = nullptr;
     FrameCodec  *_codec  = nullptr;
     QFile        _file;
+    QTimer      *_timeoutTimer = nullptr;
 
     // 会话信息
     QString _sessionId;

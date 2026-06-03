@@ -13,6 +13,8 @@
 * * Stage 4.3：解析文件列表（含 sha256），支持多文件接收
 * [v0.4] GY   2026-06-04
 * * Stage 4.3：SHA-256 校验实现，多文件接收支持
+* [v0.5] GY   2026-06-04
+* * Stage 4.4：添加超时检测机制
 */
 
 #include "file_receiver_worker.h"
@@ -28,10 +30,14 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+// 超时时间：30 秒
+static constexpr int kTimeoutMs = 30000;
+
 FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
     : QObject{parent}
     , _socket{socket}
     , _codec{new FrameCodec{this}}
+    , _timeoutTimer{new QTimer{this}}
 {
     // socket 父对象设为 nullptr，避免自动删除
     _socket->setParent(nullptr);
@@ -45,13 +51,16 @@ FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
     // 连接 codec 信号
     connect(_codec,  &FrameCodec::frameReady,
             this,    &FileReceiverWorker::onFrameReady);
+
+    // 超时定时器
+    _timeoutTimer->setSingleShot(true);
+    connect(_timeoutTimer, &QTimer::timeout,
+            this,          &FileReceiverWorker::onTimeout);
 }
 
 FileReceiverWorker::~FileReceiverWorker()
 {
-    if (_file.isOpen()) {
-        _file.close();
-    }
+    cleanup();
     if (_socket) {
         _socket->deleteLater();
     }
@@ -81,6 +90,9 @@ void FileReceiverWorker::acceptTransfer()
         return;
     }
 
+    // 启动超时定时器
+    _timeoutTimer->start(kTimeoutMs);
+
     qDebug() << "FileReceiverWorker: 开始接收文件" << filePath;
 }
 
@@ -101,13 +113,44 @@ void FileReceiverWorker::onReadyRead()
 {
     // 将收到的数据喂入 codec
     _codec->feed(_socket->readAll());
+
+    // 重置超时定时器
+    if (_transferActive) {
+        _timeoutTimer->start(kTimeoutMs);
+    }
 }
 
 void FileReceiverWorker::onDisconnected()
 {
-    if (_transferActive && _bytesReceived < _fileSize) {
+    if (_transferActive) {
+        cleanup();
         emit transferFinished(false, tr("连接断开"));
     }
+}
+
+void FileReceiverWorker::onTimeout()
+{
+    if (_transferActive) {
+        qWarning() << "FileReceiverWorker: 传输超时";
+        cleanup();
+        emit transferFinished(false, tr("传输超时"));
+    }
+}
+
+void FileReceiverWorker::cleanup()
+{
+    // 停止超时定时器
+    _timeoutTimer->stop();
+
+    // 关闭文件并删除不完整文件
+    if (_file.isOpen()) {
+        QString filePath = _file.fileName();
+        _file.close();
+        QFile::remove(filePath);
+        qDebug() << "FileReceiverWorker: 已删除不完整文件" << filePath;
+    }
+
+    _transferActive = false;
 }
 
 void FileReceiverWorker::onFrameReady(quint32 type, const QByteArray &payload)
