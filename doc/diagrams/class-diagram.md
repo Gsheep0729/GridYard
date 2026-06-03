@@ -1,4 +1,4 @@
-# GridYard 类图（Stage 4.3 完成）
+# GridYard 类图（Stage 4.4 完成）
 
 ```mermaid
 classDiagram
@@ -109,7 +109,7 @@ classDiagram
         +rejectReceiveSession(sessionId) : void
         +cancelSession(sessionId) : void
         +sessionsChanged() signal
-        +receiveRequestReceived(sessionId, senderName, fileName, fileSize) signal
+        +receiveRequestReceived(sessionId, senderName, fileName, fileSize, totalFiles, totalBytes) signal
         +transferCompleted(sessionId, fileName, filePath) signal
     }
 
@@ -118,7 +118,7 @@ classDiagram
         +start() : bool
         +stop() : void
         +isListening() : bool
-        +transferRequestReceived(worker, senderName, fileName, fileSize) signal
+        +transferRequestReceived(worker, senderName, fileName, fileSize, totalFiles, totalBytes) signal
     }
 
     class DirSerializer {
@@ -140,6 +140,7 @@ classDiagram
         -_socket : QTcpSocket*
         -_codec : FrameCodec*
         -_file : QFile
+        -_timeoutTimer : QTimer*
         -_rootPath : QString
         -_sessionId : QString
         -_totalBytes : qint64
@@ -162,6 +163,7 @@ classDiagram
         -_socket : QTcpSocket*
         -_codec : FrameCodec*
         -_file : QFile
+        -_timeoutTimer : QTimer*
         -_sessionId : QString
         -_senderName : QString
         -_totalFiles : int
@@ -177,7 +179,7 @@ classDiagram
         +setReceivePath(path: QString) : void
         +sessionId() : QString
         +fileName() : QString
-        +transferRequestReceived(senderName, fileName, fileSize) signal
+        +transferRequestReceived(senderName, fileName, fileSize, totalFiles, totalBytes) signal
         +progressChanged(bytesReceived, totalBytes) signal
         +transferFinished(success, errorMsg) signal
     }
@@ -245,8 +247,8 @@ classDiagram
 - **P2pServer**：TCP 服务器，监听入站连接（Stage 3 新增）
 - **DirSerializer**：目录序列化工具，递归遍历目录生成 FileItem 列表并计算 SHA-256（Stage 4 新增）
 - **FileItem**：文件条目信息结构体，含相对路径、大小、SHA-256（Stage 4 新增）
-- **FileSenderWorker**：文件发送 Worker-Object（Stage 3 新增，Stage 4 支持多文件/目录传输）
-- **FileReceiverWorker**：文件接收 Worker-Object（Stage 3 新增，Stage 4 支持多文件接收 + SHA-256 校验）
+- **FileSenderWorker**：文件发送 Worker-Object（Stage 3 新增，Stage 4 支持多文件/目录传输 + 超时检测）
+- **FileReceiverWorker**：文件接收 Worker-Object（Stage 3 新增，Stage 4 支持多文件接收 + SHA-256 校验 + 超时检测）
 - **Main.qml**：根窗口，支持拖拽传输和完成通知
 - **DeviceCard.qml**：设备卡片，支持拖拽文件
 - **PeerListView.qml**：设备列表，支持拖拽信号传递
