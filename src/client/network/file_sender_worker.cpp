@@ -89,6 +89,10 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
         return;
     }
 
+    // 优化 socket buffer
+    _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
+    _socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
+
     sendTransferRequest();
 
     // 启动超时定时器
