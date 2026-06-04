@@ -255,7 +255,12 @@ void FileSenderWorker::sendNextChunk()
 
     _bytesSent += chunkData.size();
     _currentFileBytesSent += chunkData.size();
-    emit progressChanged(_bytesSent, _totalBytes);
+
+    // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
+    static int chunkCount = 0;
+    if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+        emit progressChanged(_bytesSent, _totalBytes);
+    }
 
     if (_bytesSent < _totalBytes) {
         QTimer::singleShot(0, this, &FileSenderWorker::sendNextChunk);
