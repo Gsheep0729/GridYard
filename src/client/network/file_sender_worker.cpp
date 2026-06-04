@@ -224,7 +224,11 @@ void FileSenderWorker::sendNextChunk()
     }
 
     QByteArray chunkData = _file.read(kChunkSize);
-    if (chunkData.isEmpty()) {
+
+    // 处理零字节文件：直接发送 isLastChunk=1
+    if (chunkData.isEmpty() && _fileList[_currentFileIndex].sizeBytes == 0) {
+        chunkData = QByteArray();  // 空数据
+    } else if (chunkData.isEmpty()) {
         emit transferFinished(false, tr("读取文件失败"));
         return;
     }
