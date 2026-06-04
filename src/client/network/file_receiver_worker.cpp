@@ -244,7 +244,9 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
 
     qint64 written = _file.write(chunkData);
     if (written != chunkData.size()) {
-        qWarning() << "FileReceiverWorker: 写入文件失败";
+        qWarning() << "FileReceiverWorker: 写入文件失败，可能是磁盘空间不足";
+        cleanup();
+        emit transferFinished(false, tr("写入文件失败，可能是磁盘空间不足"));
         return;
     }
 
