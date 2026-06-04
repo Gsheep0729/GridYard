@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("4.6.2");
+    QGuiApplication::setApplicationVersion("4.6.3");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析
