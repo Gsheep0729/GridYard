@@ -38,6 +38,8 @@
 * * 运行日志系统：Logger 类拦截 Qt 日志输出到文件，版本号更新到 v4.7.0
 * [v0.11] GY   2026-06-05
 * * 传输功能修复：初始化 TransferSessionManager，添加测试代码，版本号更新到 v4.7.1
+* [v0.12] GY   2026-06-05
+* * 业务逻辑文档：添加 GridYard业务逻辑说明.md，更新 CLAUDE.md 目录结构
 */
 
 #include <QCommandLineParser>
