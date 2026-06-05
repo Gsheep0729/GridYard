@@ -26,6 +26,7 @@
 Q_DECLARE_METATYPE(FileReceiverWorker*)
 
 #include <QDebug>
+#include <QFileInfo>
 #include <QThread>
 #include <QUuid>
 
@@ -63,19 +64,30 @@ void TransferSessionManager::init(ConfigManager *config, DiscoveryService *disco
 
 void TransferSessionManager::createSendSession(const QString &deviceId, const QString &filePath)
 {
+    qDebug() << "[TransferSession] 创建发送会话";
+    qDebug() << "[TransferSession] 目标设备ID:" << deviceId;
+    qDebug() << "[TransferSession] 文件路径:" << filePath;
+
     // 从 DiscoveryService 获取目标设备信息
     PeerInfo peer = _discovery->peerInfo(deviceId);
     if (peer.deviceId.isEmpty()) {
+        qWarning() << "[TransferSession] 目标设备不存在:" << deviceId;
         emit errorOccurred(tr("目标设备不存在"));
         return;
     }
     if (!peer.isOnline) {
+        qWarning() << "[TransferSession] 目标设备已离线:" << peer.deviceName;
         emit errorOccurred(tr("目标设备 \"%1\" 已离线").arg(peer.deviceName));
         return;
     }
 
     QString host = peer.ipAddress;
     quint16 port = peer.tcpPort > 0 ? peer.tcpPort : _config->tcpPort();
+
+    qDebug() << "[TransferSession] 目标设备信息:";
+    qDebug() << "  设备名:" << peer.deviceName;
+    qDebug() << "  IP 地址:" << host;
+    qDebug() << "  端口:" << port;
 
     // 创建发送会话
     QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -92,6 +104,8 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     _sessions.append(session);
     emit sessionsChanged();
+
+    qDebug() << "[TransferSession] 会话已创建，ID:" << sessionId;
 
     // 创建 FileSenderWorker 并在工作线程中运行
     auto *worker = new FileSenderWorker{};
@@ -131,6 +145,15 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
                 _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
                 _sessions[i]["errorMsg"] = errorMsg;
                 emit sessionsChanged();
+
+                // 通知用户传输结果
+                if (success) {
+                    QString fileName = _sessions[i]["filePath"].toString();
+                    QFileInfo info(fileName);
+                    emit messageOccurred(tr("文件 \"%1\" 发送成功").arg(info.fileName()));
+                } else {
+                    emit errorOccurred(tr("发送失败：%1").arg(errorMsg));
+                }
                 break;
             }
         }
@@ -225,12 +248,20 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                                                         int totalFiles,
                                                         qint64 totalBytes)
 {
+    qDebug() << "[TransferSession] 收到传输请求";
+    qDebug() << "[TransferSession] 发送方:" << senderName;
+    qDebug() << "[TransferSession] 文件名:" << fileName;
+    qDebug() << "[TransferSession] 文件大小:" << fileSize;
+    qDebug() << "[TransferSession] 总文件数:" << totalFiles;
+    qDebug() << "[TransferSession] 总大小:" << totalBytes;
+
     // 创建接收会话
     QString sessionId = worker->sessionId();
 
     // 设置接收路径
     if (_config) {
         worker->setReceivePath(_config->receivePath());
+        qDebug() << "[TransferSession] 接收路径:" << _config->receivePath();
     }
 
     QVariantMap session;
@@ -249,13 +280,18 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     _sessions.append(session);
     emit sessionsChanged();
 
+    qDebug() << "[TransferSession] 接收会话已创建，ID:" << sessionId;
+
     // 连接接收完成信号
     connect(worker, &FileReceiverWorker::transferFinished,
             this, [this, sessionId, worker](bool success, const QString &errorMsg) {
+        qDebug() << "[TransferSession] 接收传输完成，成功:" << success << "错误:" << errorMsg;
+
         for (int i = 0; i < _sessions.size(); ++i) {
             if (_sessions[i]["sessionId"].toString() == sessionId) {
                 // 如果已经是 cancelled 状态，不覆盖
                 if (_sessions[i]["status"].toString() == "cancelled") {
+                    qDebug() << "[TransferSession] 会话已取消，跳过状态更新";
                     break;
                 }
 
@@ -264,10 +300,15 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                 _sessions[i]["errorMsg"] = errorMsg;
                 emit sessionsChanged();
 
-                // 接收成功时通知 UI 打开文件夹
-                if (success && _config) {
-                    emit transferCompleted(sessionId, worker->fileName(),
-                                           _config->receivePath());
+                if (success) {
+                    // 接收成功时通知 UI 打开文件夹
+                    if (_config) {
+                        emit transferCompleted(sessionId, worker->fileName(),
+                                               _config->receivePath());
+                    }
+                    emit messageOccurred(tr("文件 \"%1\" 接收成功").arg(worker->fileName()));
+                } else {
+                    emit errorOccurred(tr("接收失败：%1").arg(errorMsg));
                 }
                 break;
             }

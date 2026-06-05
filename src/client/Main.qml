@@ -143,6 +143,10 @@ ApplicationWindow {
             tw_errorLabel.text = message
             tw_errorPopup.open()
         }
+        function onMessageOccurred(message) {
+            tw_successLabel.text = message
+            tw_successPopup.open()
+        }
     }
 
     // 错误提示弹窗
@@ -174,6 +178,38 @@ ApplicationWindow {
             interval: 3000
             running: tw_errorPopup.visible
             onTriggered: tw_errorPopup.close()
+        }
+    }
+
+    // 成功提示弹窗
+    Popup {
+        id: tw_successPopup
+        anchors.centerIn: parent
+        width: 300
+        height: tw_successLabel.implicitHeight + 48
+        modal: true
+        closePolicy: Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: "#4CAF50"
+            radius: 8
+        }
+
+        contentItem: Label {
+            id: tw_successLabel
+            color: "#FFFFFF"
+            font.pixelSize: 14
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            padding: 12
+        }
+
+        // 3 秒后自动关闭
+        Timer {
+            interval: 3000
+            running: tw_successPopup.visible
+            onTriggered: tw_successPopup.close()
         }
     }
 }
