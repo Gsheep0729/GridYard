@@ -68,12 +68,18 @@ FileReceiverWorker::~FileReceiverWorker()
 
 void FileReceiverWorker::acceptTransfer()
 {
-    if (!_waitingForUserConfirm) return;
+    qDebug() << "[FileReceiver] 用户接受传输";
+
+    if (!_waitingForUserConfirm) {
+        qWarning() << "[FileReceiver] 不在等待确认状态，忽略接受请求";
+        return;
+    }
 
     _waitingForUserConfirm = false;
     _transferActive = true;
 
     // 发送接受响应
+    qDebug() << "[FileReceiver] 发送接受响应";
     sendTransferResponse(true);
 
     // 打开文件准备接收（路径由上层通过信号传入，此处用默认路径兜底）
@@ -85,7 +91,10 @@ void FileReceiverWorker::acceptTransfer()
     QString filePath = _receivePath + "/" + _fileName;
     _file.setFileName(filePath);
 
+    qDebug() << "[FileReceiver] 准备接收文件:" << filePath;
+
     if (!_file.open(QIODevice::WriteOnly)) {
+        qWarning() << "[FileReceiver] 无法创建文件:" << _file.errorString();
         emit transferFinished(false, tr("无法创建文件: %1").arg(_file.errorString()));
         return;
     }
@@ -93,12 +102,17 @@ void FileReceiverWorker::acceptTransfer()
     // 启动超时定时器
     _timeoutTimer->start(kTimeoutMs);
 
-    qDebug() << "FileReceiverWorker: 开始接收文件" << filePath;
+    qDebug() << "[FileReceiver] 开始接收文件:" << filePath;
 }
 
 void FileReceiverWorker::rejectTransfer(const QString &reason)
 {
-    if (!_waitingForUserConfirm) return;
+    qDebug() << "[FileReceiver] 用户拒绝传输，原因:" << reason;
+
+    if (!_waitingForUserConfirm) {
+        qWarning() << "[FileReceiver] 不在等待确认状态，忽略拒绝请求";
+        return;
+    }
 
     _waitingForUserConfirm = false;
 
@@ -155,23 +169,30 @@ void FileReceiverWorker::cleanup()
 
 void FileReceiverWorker::onFrameReady(quint32 type, const QByteArray &payload)
 {
+    qDebug() << "[FileReceiver] 收到帧，类型:" << type;
+
     switch (type) {
     case gy::protocol::kTypeTransferReq:
+        qDebug() << "[FileReceiver] 处理传输请求";
         handleTransferRequest(payload);
         break;
     case gy::protocol::kTypeDataChunk:
         handleDataChunk(payload);
         break;
     case gy::protocol::kTypeCancel:
+        qDebug() << "[FileReceiver] 处理取消请求";
         handleCancel(payload);
         break;
     default:
+        qDebug() << "[FileReceiver] 未知帧类型:" << type;
         break;
     }
 }
 
 void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
 {
+    qDebug() << "[FileReceiver] 解析传输请求";
+
     // 解析握手请求
     QJsonDocument doc = QJsonDocument::fromJson(payload);
     QJsonObject json = doc.object();
@@ -202,23 +223,30 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
 
     _waitingForUserConfirm = true;
 
+    qDebug() << "[FileReceiver] 传输请求详情:";
+    qDebug() << "  会话ID:" << _sessionId;
+    qDebug() << "  发送方:" << _senderName;
+    qDebug() << "  文件数:" << _totalFiles;
+    qDebug() << "  总大小:" << _totalBytes;
+    qDebug() << "  第一个文件:" << _fileName;
+
     // 通知 UI 弹窗确认
     emit transferRequestReceived(_senderName, _fileName, _fileSize,
                                  _totalFiles, _totalBytes);
 
-    qDebug() << "FileReceiverWorker: 收到传输请求"
-             << "来自" << _senderName
-             << "文件数" << _totalFiles
-             << "总大小" << _totalBytes;
+    qDebug() << "[FileReceiver] 已通知 UI 弹窗确认";
 }
 
 void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
 {
-    if (!_transferActive || !_file.isOpen()) return;
+    if (!_transferActive || !_file.isOpen()) {
+        qDebug() << "[FileReceiver] 忽略数据块，传输未激活或文件未打开";
+        return;
+    }
 
     // 解析 20 字节元数据
     if (payload.size() < 20) {
-        qWarning() << "FileReceiverWorker: 数据块过小";
+        qWarning() << "[FileReceiver] 数据块过小:" << payload.size() << "字节";
         return;
     }
 
@@ -238,13 +266,13 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
 
     // 写入文件
     if (!_file.seek(chunkOffset)) {
-        qWarning() << "FileReceiverWorker: 文件 seek 失败";
+        qWarning() << "[FileReceiver] 文件 seek 失败，偏移量:" << chunkOffset;
         return;
     }
 
     qint64 written = _file.write(chunkData);
     if (written != chunkData.size()) {
-        qWarning() << "FileReceiverWorker: 写入文件失败，可能是磁盘空间不足";
+        qWarning() << "[FileReceiver] 写入文件失败，可能是磁盘空间不足";
         cleanup();
         emit transferFinished(false, tr("写入文件失败，可能是磁盘空间不足"));
         return;
@@ -255,11 +283,14 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
     static int chunkCount = 0;
     if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+        qDebug() << "[FileReceiver] 接收进度:" << _bytesReceived << "/" << _fileSize
+                 << "(" << (_bytesReceived * 100 / _fileSize) << "%)";
         emit progressChanged(_bytesReceived, _fileSize);
     }
 
     // 检查是否是最后一个块
     if (isLastChunk == 1) {
+        qDebug() << "[FileReceiver] 文件" << _fileName << "接收完成，开始校验";
         _file.close();
 
         // 计算 SHA-256 校验
@@ -272,7 +303,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
             if (!expectedHash.isEmpty() && computedHash != expectedHash) {
                 verified = false;
                 errorMsg = tr("SHA-256 校验失败");
-                qWarning() << "FileReceiverWorker: SHA-256 不匹配"
+                qWarning() << "[FileReceiver] SHA-256 不匹配"
                            << "期望" << expectedHash
                            << "实际" << computedHash;
             }
@@ -288,7 +319,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         }
 
         // 当前文件校验通过
-        qDebug() << "FileReceiverWorker: 文件接收完成" << _fileName;
+        qDebug() << "[FileReceiver] 文件接收完成:" << _fileName;
 
         // 切换到下一个文件
         _currentFileIndex++;
@@ -310,9 +341,10 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
                 return;
             }
 
-            qDebug() << "FileReceiverWorker: 开始接收下一个文件" << _fileName;
+            qDebug() << "[FileReceiver] 开始接收下一个文件:" << _fileName;
         } else {
             // 所有文件接收完成
+            qDebug() << "[FileReceiver] 所有文件接收完成";
             _transferActive = false;
             emit transferFinished(true, "");
         }
