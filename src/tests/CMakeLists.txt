@@ -1,39 +1,103 @@
-find_package(Qt6 REQUIRED COMPONENTS Test)
+find_package(Qt6 REQUIRED COMPONENTS Test Gui)
 
-# FrameCodec 单测
+# 通用 include 路径
+set(CLIENT_CORE_DIR ${CMAKE_SOURCE_DIR}/client/core)
+set(CLIENT_NET_DIR ${CMAKE_SOURCE_DIR}/client/network)
+
+# --- FrameCodec 单测 ---
 qt_add_executable(test_frame_codec test_frame_codec.cpp)
-target_link_libraries(test_frame_codec PRIVATE
-    gy_shared
-    Qt6::Test
-)
+target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)
 target_compile_features(test_frame_codec PRIVATE cxx_std_23)
-
 add_test(NAME test_frame_codec COMMAND test_frame_codec)
 
-# 边缘场景测试
+# --- 边缘场景测试 ---
 qt_add_executable(test_edge_cases test_edge_cases.cpp
-    ${CMAKE_SOURCE_DIR}/client/core/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
 )
-target_link_libraries(test_edge_cases PRIVATE
-    gy_shared
-    Qt6::Test
-    Qt6::Core
-)
-target_include_directories(test_edge_cases PRIVATE ${CMAKE_SOURCE_DIR}/client/core)
+target_link_libraries(test_edge_cases PRIVATE gy_shared Qt6::Test Qt6::Core)
+target_include_directories(test_edge_cases PRIVATE ${CLIENT_CORE_DIR})
 target_compile_features(test_edge_cases PRIVATE cxx_std_23)
-
 add_test(NAME test_edge_cases COMMAND test_edge_cases)
 
-# 传输功能测试
+# --- 传输功能测试 ---
 qt_add_executable(test_transfer test_transfer.cpp
-    ${CMAKE_SOURCE_DIR}/client/core/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
 )
-target_link_libraries(test_transfer PRIVATE
-    gy_shared
-    Qt6::Test
-    Qt6::Core
-)
-target_include_directories(test_transfer PRIVATE ${CMAKE_SOURCE_DIR}/client/core)
+target_link_libraries(test_transfer PRIVATE gy_shared Qt6::Test Qt6::Core)
+target_include_directories(test_transfer PRIVATE ${CLIENT_CORE_DIR})
 target_compile_features(test_transfer PRIVATE cxx_std_23)
-
 add_test(NAME test_transfer COMMAND test_transfer)
+
+# --- ConfigManager 配置测试 ---
+qt_add_executable(test_config_manager test_config_manager.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+)
+target_link_libraries(test_config_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_config_manager PRIVATE ${CLIENT_CORE_DIR})
+target_compile_features(test_config_manager PRIVATE cxx_std_23)
+add_test(NAME test_config_manager COMMAND test_config_manager)
+
+# --- DiscoveryService 设备发现测试 ---
+qt_add_executable(test_discovery test_discovery.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+)
+target_link_libraries(test_discovery PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_discovery PRIVATE ${CLIENT_CORE_DIR} ${CLIENT_NET_DIR})
+target_compile_features(test_discovery PRIVATE cxx_std_23)
+add_test(NAME test_discovery COMMAND test_discovery)
+
+# --- 文件传输集成测试 ---
+qt_add_executable(test_file_transfer test_file_transfer.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+)
+target_link_libraries(test_file_transfer PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_file_transfer PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_file_transfer PRIVATE cxx_std_23)
+add_test(NAME test_file_transfer COMMAND test_file_transfer)
+
+# --- 会话管理测试 ---
+qt_add_executable(test_session_manager test_session_manager.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+)
+target_link_libraries(test_session_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_session_manager PRIVATE ${CLIENT_CORE_DIR} ${CLIENT_NET_DIR})
+target_compile_features(test_session_manager PRIVATE cxx_std_23)
+add_test(NAME test_session_manager COMMAND test_session_manager)
+
+# --- 集成测试（单机多实例模拟）---
+qt_add_executable(test_integration test_integration.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+)
+target_link_libraries(test_integration PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_integration PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_integration PRIVATE cxx_std_23)
+add_test(NAME test_integration COMMAND test_integration)

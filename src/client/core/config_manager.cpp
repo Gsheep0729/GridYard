@@ -28,9 +28,10 @@ ConfigManager::ConfigManager(QObject *parent)
 {
     // 检查是否有自定义配置文件路径
     QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    QSettings settings(configPath.isEmpty() ? QSettings::IniFormat : QSettings::IniFormat,
-                       configPath.isEmpty() ? QSettings::UserScope : QSettings::SystemScope,
-                       configPath.isEmpty() ? QString() : configPath);
+
+    // 创建 QSettings 对象
+    // 如果指定了配置文件路径，直接使用该文件；否则使用系统默认路径
+    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
 
     // 设备名：优先使用命令行参数，否则读配置，否则用主机名
     QString envName = qEnvironmentVariable("GRIDYARD_NAME");
@@ -123,7 +124,8 @@ void ConfigManager::setDeviceName(const QString &name)
     _deviceName = name;
 
     // 持久化到 QSettings
-    QSettings settings;
+    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
     settings.setValue("device/name", name);
 
     emit deviceNameChanged();
@@ -138,7 +140,8 @@ void ConfigManager::setReceivePath(const QString &path)
     // 确保目录存在
     QDir().mkpath(path);
 
-    QSettings settings;
+    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
     settings.setValue("device/receivePath", path);
 
     emit receivePathChanged();
@@ -150,7 +153,8 @@ void ConfigManager::setTcpPort(quint16 port)
 
     _tcpPort = port;
 
-    QSettings settings;
+    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
     settings.setValue("network/tcpPort", port);
 
     emit tcpPortChanged();
@@ -158,12 +162,16 @@ void ConfigManager::setTcpPort(quint16 port)
 
 void ConfigManager::ensureDeviceId()
 {
-    QSettings settings;
+    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
     _deviceId = settings.value("device/id").toString();
 
     // 首次运行时生成 UUID 并持久化，确保设备标识跨会话稳定
     if (_deviceId.isEmpty()) {
         _deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         settings.setValue("device/id", _deviceId);
+        qDebug() << "ConfigManager: 生成新的 deviceId:" << _deviceId;
+    } else {
+        qDebug() << "ConfigManager: 使用已有的 deviceId:" << _deviceId;
     }
 }
