@@ -5,7 +5,7 @@
 | 字段       | 内容                                                                  |
 | :--------- | :-------------------------------------------------------------------- |
 | 项目版本   | v4.6.3                                                                |
-| 当前阶段   | **Stage 4 健壮性增强** 进行中                                          |
+| 当前阶段   | **Stage 4 健壮性增强** 已完成                                          |
 | 技术栈     | C++23 · Qt 6.11 · QML · CMake 4.2.3 · GCC 16.1                        |
 | 部署平台   | Manjaro Linux（开发、编译、运行三端统一）                              |
 | 团队成员   | 高扬 · 杜若贤 · 冯春霖                                                |
@@ -99,7 +99,8 @@ GridYard/
     │   ├── core/                          # 业务逻辑层
     │   │   ├── app_controller.{h,cpp}     # 全局控制器（QML_SINGLETON）
     │   │   ├── config_manager.{h,cpp}     # 配置管理器
-    │   │   └── transfer_session_manager.* # 传输会话管理（Stage 3）
+    │   │   ├── transfer_session_manager.* # 传输会话管理
+    │   │   └── dir_serializer.{h,cpp}     # 目录序列化工具（Stage 4）
     │   ├── network/                       # 网络通信层
     │   │   ├── discovery_service.{h,cpp}  # UDP 设备发现
     │   │   ├── p2p_server.{h,cpp}         # TCP 文件传输服务器
@@ -110,10 +111,12 @@ GridYard/
     │       ├── PeerListView.qml           # 设备列表
     │       ├── SettingsDialog.qml         # 设置对话框
     │       ├── AcceptDialog.qml           # 接收确认弹窗
-    │       └── TransferPanel.qml          # 传输面板
+    │       ├── TransferPanel.qml          # 传输面板
+    │       └── TransferTaskCard.qml       # 传输任务卡片
     ├── server/                            # V2.0 服务端（占位）
     └── tests/                             # 单元测试
-        └── test_frame_codec.cpp           # FrameCodec 测试
+        ├── test_frame_codec.cpp           # FrameCodec 测试
+        └── test_edge_cases.cpp            # 边缘场景测试（Stage 4）
 ```
 
 ---
@@ -125,8 +128,8 @@ GridYard/
 | Stage 0 | 工程奠基 | ✅ 完成 | 项目骨架、构建配置 |
 | Stage 1 | 通信基石 | ✅ 完成 | 协议定义、帧编解码、C++↔QML 通信 |
 | Stage 2 | 设备发现 | ✅ 完成 | UDP 广播、设备列表、配置管理 |
-| Stage 3 | 文件传输 | 🔄 进行中 | P2P 文件传输、进度显示 |
-| Stage 4 | 健壮性 | ⏳ 待开始 | 文件夹传输、SHA-256 校验 |
+| Stage 3 | 文件传输 | ✅ 完成 | P2P 文件传输、拖拽传输、取消功能 |
+| Stage 4 | 健壮性增强 | ✅ 完成 | 目录传输、SHA-256 校验、超时检测、吞吐量优化 |
 | Stage 5 | 体验打磨 | ⏳ 待开始 | 托盘、配置持久化 |
 
 ---
