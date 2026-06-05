@@ -45,15 +45,15 @@ Frame {
 
             delegate: TransferTaskCard {
                 width: listView.width
-                sessionId: modelData.sessionId || ""
-                taskType: modelData.type || ""
-                taskName: modelData.type === "send"
-                    ? (modelData.filePath || "").split("/").pop()
-                    : (modelData.fileName || "")
-                status: modelData.status || ""
-                progress: modelData.progress || 0
-                bytesTransferred: modelData.bytesTransferred || 0
-                totalBytes: modelData.totalBytes || 0
+                sessionId: model.sessionId || ""
+                taskType: model.type || ""
+                taskName: model.type === "send"
+                    ? (model.filePath || "").split("/").pop()
+                    : (model.fileName || "")
+                status: model.status || ""
+                progress: model.progress || 0
+                bytesTransferred: model.bytesTransferred || 0
+                totalBytes: model.totalBytes || 0
             }
 
             // 空列表提示
