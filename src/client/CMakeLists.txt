@@ -17,6 +17,8 @@ qt_add_qml_module(appGridYard
         core/config_manager.cpp
         core/dir_serializer.h
         core/dir_serializer.cpp
+        core/logger.h
+        core/logger.cpp
         core/transfer_session_manager.h
         core/transfer_session_manager.cpp
         network/discovery_service.cpp

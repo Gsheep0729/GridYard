@@ -34,6 +34,10 @@
 * * Stage 4.3：SHA-256 校验实现，版本号更新到 v0.4.4
 * [v0.9] GY   2026-06-04
 * * Stage 4.3：UI 适配，信号签名添加 totalFiles/totalBytes，版本号更新到 v0.4.5
+* [v0.10] GY   2026-06-05
+* * 运行日志系统：Logger 类拦截 Qt 日志输出到文件，版本号更新到 v4.7.0
+* [v0.11] GY   2026-06-05
+* * 传输功能修复：初始化 TransferSessionManager，添加测试代码，版本号更新到 v4.7.1
 */
 
 #include <QCommandLineParser>
@@ -43,12 +47,13 @@
 #include <QQuickStyle>
 
 #include "data_types.h"
+#include "logger.h"
 
 int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("4.6.3");
+    QGuiApplication::setApplicationVersion("4.7.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析
@@ -88,6 +93,9 @@ int main(int argc, char *argv[]) {
     }
 
     QQuickStyle::setStyle("Material");
+
+    // 初始化日志系统
+    Logger::instance()->init();
 
     qRegisterMetaType<PeerInfo>("PeerInfo");
 
