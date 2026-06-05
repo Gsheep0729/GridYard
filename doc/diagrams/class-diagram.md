@@ -1,4 +1,4 @@
-# GridYard 类图（Stage 4.5 完成）
+# GridYard 类图（Stage 4 完成）
 
 ```mermaid
 classDiagram
