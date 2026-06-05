@@ -23,6 +23,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkProxy>
 #include <QTimer>
 #include <QUuid>
 
@@ -35,6 +36,10 @@ FileSenderWorker::FileSenderWorker(QObject *parent)
     , _codec{new FrameCodec{this}}
     , _timeoutTimer{new QTimer{this}}
 {
+    // 禁用代理，避免局域网连接被代理拦截
+    QNetworkProxy noProxy;
+    noProxy.setType(QNetworkProxy::NoProxy);
+    _socket->setProxy(noProxy);
     connect(_socket, &QTcpSocket::readyRead,
             this,    &FileSenderWorker::onReadyRead);
     connect(_socket, &QTcpSocket::disconnected,

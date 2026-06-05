@@ -95,12 +95,12 @@ Dialog {
 
     onAccepted: {
         // 用户接受
-        TransferSessionManager.acceptReceiveSession(sessionId)
+        AppController.transfer.acceptReceiveSession(sessionId)
     }
 
     onRejected: {
         // 用户拒绝
-        TransferSessionManager.rejectReceiveSession(sessionId)
+        AppController.transfer.rejectReceiveSession(sessionId)
     }
 
     // 格式化文件大小

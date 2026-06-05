@@ -100,7 +100,7 @@ Frame {
             Button {
                 text: qsTr("取消")
                 visible: status === "transferring"
-                onClicked: TransferSessionManager.cancelSession(sessionId)
+                onClicked: AppController.transfer.cancelSession(sessionId)
             }
         }
 

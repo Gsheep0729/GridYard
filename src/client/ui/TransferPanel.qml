@@ -41,7 +41,7 @@ Frame {
             clip: true
             spacing: 8
 
-            model: TransferSessionManager.sessions
+            model: AppController.transfer.sessions
 
             delegate: TransferTaskCard {
                 width: listView.width
