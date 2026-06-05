@@ -21,6 +21,8 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDir>
+#include <QProcess>
 
 AppController::AppController(QObject *parent)
     : QObject{parent}
@@ -71,4 +73,44 @@ void AppController::quit()
 void AppController::test()
 {
     qDebug() << "AppController::test() invoked from QML - C++↔QML 通信正常";
+}
+
+QStringList AppController::openNativeFileDialog()
+{
+    QStringList files;
+
+    // 优先使用 kdialog（KDE），其次 zenity（GNOME）
+    QString cmd;
+    QStringList args;
+
+    if (qEnvironmentVariable("XDG_CURRENT_DESKTOP").contains("KDE", Qt::CaseInsensitive)) {
+        cmd = "kdialog";
+        args << "--getopenfilename" << QDir::homePath() << "--multiple" << "--separate";
+    } else {
+        cmd = "zenity";
+        args << "--file-selection" << "--multiple" << "--separator=\n";
+    }
+
+    // 检查命令是否存在
+    QProcess checkProcess;
+    checkProcess.start("which", QStringList() << cmd);
+    checkProcess.waitForFinished(1000);
+
+    if (checkProcess.exitCode() != 0) {
+        qWarning() << "Native file dialog not available:" << cmd << "not found";
+        return files;  // 返回空列表，QML 会回退到 Qt FileDialog
+    }
+
+    QProcess process;
+    process.start(cmd, args);
+    process.waitForFinished(-1);
+
+    if (process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!output.isEmpty()) {
+            files = output.split('\n', Qt::SkipEmptyParts);
+        }
+    }
+
+    return files;
 }

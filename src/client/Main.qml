@@ -36,6 +36,28 @@ ApplicationWindow {
 
     onClosing: AppController.quit()
 
+    // 目标设备 ID（点击设备卡片时设置）
+    property string _targetDeviceId: ""
+
+    // Qt 文件选择对话框（回退方案）
+    FileDialog {
+        id: tw_fallbackFileDialog
+        title: qsTr("选择要发送的文件")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [qsTr("所有文件 (*)")]
+
+        onAccepted: {
+            let urls = tw_fallbackFileDialog.selectedFiles
+            for (let i = 0; i < urls.length; i++) {
+                let path = urls[i].toString()
+                if (path.startsWith("file://")) {
+                    path = path.substring(7)
+                }
+                AppController.transfer.createSendSession(tw_mainWindow._targetDeviceId, path)
+            }
+        }
+    }
+
     // 工具栏
     header: ToolBar {
         RowLayout {
@@ -62,27 +84,6 @@ ApplicationWindow {
         id: settingsDialog
     }
 
-    // 文件选择对话框
-    FileDialog {
-        id: tw_fileDialog
-        title: qsTr("选择要发送的文件")
-        fileMode: FileDialog.OpenFiles
-        nameFilters: [qsTr("所有文件 (*)")]
-
-        property string _targetDeviceId: ""
-
-        onAccepted: {
-            let urls = tw_fileDialog.selectedFiles
-            for (let i = 0; i < urls.length; i++) {
-                let path = urls[i].toString()
-                if (path.startsWith("file://")) {
-                    path = path.substring(7)
-                }
-                AppController.transfer.createSendSession(_targetDeviceId, path)
-            }
-        }
-    }
-
     // 左右分栏布局
     RowLayout {
         anchors.fill: parent
@@ -96,8 +97,18 @@ ApplicationWindow {
 
             onDeviceSelected: function(deviceId) {
                 console.log("选中设备:", deviceId)
-                tw_fileDialog._targetDeviceId = deviceId
-                tw_fileDialog.open()
+                tw_mainWindow._targetDeviceId = deviceId
+                // 使用系统原生文件选择器
+                let files = AppController.openNativeFileDialog()
+                if (files.length > 0) {
+                    // 系统选择器可用，直接发送
+                    for (let i = 0; i < files.length; i++) {
+                        AppController.transfer.createSendSession(deviceId, files[i])
+                    }
+                } else {
+                    // 系统选择器不可用，回退到 Qt FileDialog
+                    tw_fallbackFileDialog.open()
+                }
             }
             onFileDropped: function(deviceId, filePath) {
                 console.log("拖拽文件到设备:", deviceId, filePath)
@@ -140,8 +151,13 @@ ApplicationWindow {
         standardButtons: Dialog.Open | Dialog.Ok
 
         onAccepted: {
-            // "打开" 按钮：打开文件所在目录
+            // Open 按钮触发 accepted
             ConfigManager.openFolder(tw_completeDialog._filePath)
+        }
+
+        onRejected: {
+            // Ok 按钮触发 rejected（当有 Open 时，Ok 会变成 reject 角色）
+            tw_completeDialog.close()
         }
     }
 
