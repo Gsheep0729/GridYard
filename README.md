@@ -115,8 +115,14 @@ GridYard/
     │       └── TransferTaskCard.qml       # 传输任务卡片
     ├── server/                            # V2.0 服务端（占位）
     └── tests/                             # 单元测试
-        ├── test_frame_codec.cpp           # FrameCodec 测试
-        └── test_edge_cases.cpp            # 边缘场景测试（Stage 4）
+        ├── test_frame_codec.cpp           # FrameCodec 编解码测试
+        ├── test_edge_cases.cpp            # 边缘场景测试
+        ├── test_transfer.cpp              # 传输功能测试
+        ├── test_config_manager.cpp        # 配置管理器测试
+        ├── test_discovery.cpp             # 设备发现测试
+        ├── test_file_transfer.cpp         # 文件传输集成测试
+        ├── test_session_manager.cpp       # 会话管理测试
+        └── test_integration.cpp           # 综合集成测试
 ```
 
 ---
