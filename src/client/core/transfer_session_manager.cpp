@@ -63,11 +63,19 @@ void TransferSessionManager::init(ConfigManager *config, DiscoveryService *disco
 
 void TransferSessionManager::createSendSession(const QString &deviceId, const QString &filePath)
 {
-    // 查找目标设备的 IP 和端口
-    // TODO: 从 DiscoveryService 获取设备信息
-    // 暂时使用 localhost 测试
-    QString host = "127.0.0.1";
-    quint16 port = _config->tcpPort();
+    // 从 DiscoveryService 获取目标设备信息
+    PeerInfo peer = _discovery->peerInfo(deviceId);
+    if (peer.deviceId.isEmpty()) {
+        emit errorOccurred(tr("目标设备不存在"));
+        return;
+    }
+    if (!peer.isOnline) {
+        emit errorOccurred(tr("目标设备 \"%1\" 已离线").arg(peer.deviceName));
+        return;
+    }
+
+    QString host = peer.ipAddress;
+    quint16 port = peer.tcpPort > 0 ? peer.tcpPort : _config->tcpPort();
 
     // 创建发送会话
     QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);

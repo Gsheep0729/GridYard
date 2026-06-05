@@ -94,6 +94,11 @@ QVariantList DiscoveryService::peers() const
     return list;
 }
 
+PeerInfo DiscoveryService::peerInfo(const QString &deviceId) const
+{
+    return _peers.value(deviceId, PeerInfo{});
+}
+
 void DiscoveryService::sendHelloPacket()
 {
     // 检查 socket 是否已绑定

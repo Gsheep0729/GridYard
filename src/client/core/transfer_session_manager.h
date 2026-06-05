@@ -64,6 +64,8 @@ signals:
     void transferCompleted(const QString &sessionId,
                            const QString &fileName,
                            const QString &filePath);
+    // 错误提示（显示给用户）
+    void errorOccurred(const QString &message);
 
 private slots:
     // 处理新的传输请求

@@ -139,5 +139,41 @@ ApplicationWindow {
             tw_completeDialog._filePath = filePath
             tw_completeDialog.open()
         }
+        function onErrorOccurred(message) {
+            tw_errorLabel.text = message
+            tw_errorPopup.open()
+        }
+    }
+
+    // 错误提示弹窗
+    Popup {
+        id: tw_errorPopup
+        anchors.centerIn: parent
+        width: 300
+        height: tw_errorLabel.implicitHeight + 48
+        modal: true
+        closePolicy: Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: "#F44336"
+            radius: 8
+        }
+
+        contentItem: Label {
+            id: tw_errorLabel
+            color: "#FFFFFF"
+            font.pixelSize: 14
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            padding: 12
+        }
+
+        // 3 秒后自动关闭
+        Timer {
+            interval: 3000
+            running: tw_errorPopup.visible
+            onTriggered: tw_errorPopup.close()
+        }
     }
 }

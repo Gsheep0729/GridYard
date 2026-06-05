@@ -43,6 +43,9 @@ public:
     // 获取当前在线节点列表（供 QML 绑定）
     QVariantList peers() const;
 
+    // 根据 deviceId 获取设备信息
+    PeerInfo peerInfo(const QString &deviceId) const;
+
     // 立即发送一次广播并清理离线节点
     Q_INVOKABLE void refresh();
 
