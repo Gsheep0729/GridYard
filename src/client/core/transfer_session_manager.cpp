@@ -35,12 +35,6 @@ TransferSessionManager::TransferSessionManager(QObject *parent)
 {
 }
 
-TransferSessionManager *TransferSessionManager::create(QQmlEngine *engine, QJSEngine *)
-{
-    Q_UNUSED(engine);
-    return new TransferSessionManager{};
-}
-
 QVariantList TransferSessionManager::sessions() const
 {
     QVariantList list;

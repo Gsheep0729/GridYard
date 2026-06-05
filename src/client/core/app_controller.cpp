@@ -57,6 +57,11 @@ DiscoveryService *AppController::discovery() const
     return _discovery;
 }
 
+TransferSessionManager *AppController::transfer() const
+{
+    return _transfer;
+}
+
 void AppController::quit()
 {
     qDebug() << "AppController::quit invoked from QML";

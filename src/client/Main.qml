@@ -78,7 +78,7 @@ ApplicationWindow {
                 if (path.startsWith("file://")) {
                     path = path.substring(7)
                 }
-                TransferSessionManager.createSendSession(_targetDeviceId, path)
+                AppController.transfer.createSendSession(_targetDeviceId, path)
             }
         }
     }
@@ -101,7 +101,7 @@ ApplicationWindow {
             }
             onFileDropped: function(deviceId, filePath) {
                 console.log("拖拽文件到设备:", deviceId, filePath)
-                TransferSessionManager.createSendSession(deviceId, filePath)
+                AppController.transfer.createSendSession(deviceId, filePath)
             }
         }
 
@@ -147,7 +147,7 @@ ApplicationWindow {
 
     // 连接 TransferSessionManager 信号
     Connections {
-        target: TransferSessionManager
+        target: AppController.transfer
         function onReceiveRequestReceived(sessionId, senderName, fileName,
                                           fileSize, totalFiles, totalBytes) {
             acceptDialog.sessionId = sessionId
