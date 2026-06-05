@@ -63,8 +63,8 @@ ItemDelegate {
 
             let urls = drop.urls
             for (let i = 0; i < urls.length; i++) {
-                let path = urls[i]
-                // 去掉 file:// 前缀
+                // 转换为字符串并去掉 file:// 前缀
+                let path = urls[i].toString()
                 if (path.startsWith("file://")) {
                     path = path.substring(7)
                 }

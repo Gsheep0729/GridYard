@@ -40,28 +40,30 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     noProxy.setType(QNetworkProxy::NoProxy);
     _socket->setProxy(noProxy);
 
-    // 尝试绑定端口，允许共享地址
+    // 尝试绑定到发现端口，使用 ShareAddress 允许多进程共享
     bool bound = _socket->bind(QHostAddress::AnyIPv4, gy::protocol::kDefaultDiscoveryPort,
                                 QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
 
     if (!bound) {
-        // 绑定失败（端口可能被占用），尝试绑定任意端口
         qWarning() << "DiscoveryService: 绑定端口" << gy::protocol::kDefaultDiscoveryPort
                     << "失败:" << _socket->errorString();
-        qWarning() << "DiscoveryService: 尝试绑定任意端口";
+        qWarning() << "DiscoveryService: 尝试绑定到任意端口";
 
+        // 绑定到任意可用端口
         bound = _socket->bind(QHostAddress::AnyIPv4, 0,
                               QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
 
-        if (!bound) {
+        if (bound) {
+            qDebug() << "DiscoveryService: 绑定到备用端口:" << _socket->localPort();
+        } else {
             qCritical() << "DiscoveryService: 无法绑定 UDP socket:"
                         << _socket->errorString();
             return;
         }
+    } else {
+        qDebug() << "DiscoveryService: UDP socket 绑定成功，本地端口:"
+                 << _socket->localPort();
     }
-
-    qDebug() << "DiscoveryService: UDP socket 绑定成功，本地端口:"
-             << _socket->localPort();
 
     connect(_socket, &QUdpSocket::readyRead,
             this,    &DiscoveryService::onDatagramReceived);
@@ -103,10 +105,14 @@ void DiscoveryService::sendHelloPacket()
 {
     // 检查 socket 是否已绑定
     if (!_socket || _socket->state() == QAbstractSocket::UnconnectedState) {
+        qDebug() << "DiscoveryService: socket 未绑定，跳过广播";
         return;
     }
 
     const QByteArray data = buildHelloPayload();
+    qDebug() << "DiscoveryService: 发送广播，deviceId:" << _config->deviceId()
+             << "name:" << _config->deviceName()
+             << "本地端口:" << _socket->localPort();
 
     // 遍历所有激活的网络接口，向每个网卡的广播地址发送
     const auto interfaces = QNetworkInterface::allInterfaces();
@@ -121,12 +127,18 @@ void DiscoveryService::sendHelloPacket()
             if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
 
             // 向该网卡对应子网的广播地址精确发送
+            // 发送到默认端口
             qint64 sent = _socket->writeDatagram(data, entry.broadcast(),
                                                   gy::protocol::kDefaultDiscoveryPort);
             if (sent == -1) {
                 qWarning() << "DiscoveryService: 广播发送失败到"
                            << entry.broadcast().toString()
                            << ":" << _socket->errorString();
+            }
+
+            // 如果本地端口不是默认端口，也发送到本地端口（确保绑定到备用端口的实例也能收到）
+            if (_socket->localPort() != gy::protocol::kDefaultDiscoveryPort) {
+                _socket->writeDatagram(data, entry.broadcast(), _socket->localPort());
             }
         }
     }
@@ -198,10 +210,21 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
     const quint16 tcpPort    = static_cast<quint16>(json["tcp_port"].toInt());
 
     // 过滤无效数据
-    if (deviceId.isEmpty()) return;
+    if (deviceId.isEmpty()) {
+        qDebug() << "DiscoveryService: 收到无效的 Hello 包（deviceId 为空）";
+        return;
+    }
 
     // 本机过滤：忽略自己发出的广播
-    if (deviceId == _config->deviceId()) return;
+    if (deviceId == _config->deviceId()) {
+        qDebug() << "DiscoveryService: 忽略自己的广播，deviceId:" << deviceId;
+        return;
+    }
+
+    qDebug() << "DiscoveryService: 收到设备广播，deviceId:" << deviceId
+             << "name:" << deviceName
+             << "ip:" << sender.toString()
+             << "tcpPort:" << tcpPort;
 
     // 构建 PeerInfo
     PeerInfo info;
