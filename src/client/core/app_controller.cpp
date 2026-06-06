@@ -17,6 +17,7 @@
 #include "config_manager.h"
 #include "discovery_service.h"
 #include "p2p_server.h"
+#include "transfer_session_manager.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -26,9 +27,13 @@ AppController::AppController(QObject *parent)
     , _config{ConfigManager::create(nullptr, nullptr)}
     , _discovery{new DiscoveryService{_config, this}}
     , _p2pServer{new P2pServer{_config, this}}
+    , _transfer{new TransferSessionManager{this}}
 {
     // 启动 P2P 服务器
     _p2pServer->start();
+
+    // 初始化传输会话管理器
+    _transfer->init(_config, _discovery, _p2pServer);
 }
 
 AppController *AppController::create(QQmlEngine *engine, QJSEngine *)

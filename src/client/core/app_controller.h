@@ -31,6 +31,7 @@ class QJSEngine;
 
 class ConfigManager;
 class P2pServer;
+class TransferSessionManager;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -61,7 +62,8 @@ private:
     AppController(const AppController &)            = delete;
     AppController &operator=(const AppController &) = delete;
 
-    ConfigManager    *_config    = nullptr;
-    DiscoveryService *_discovery = nullptr;
-    P2pServer        *_p2pServer = nullptr;
+    ConfigManager           *_config    = nullptr;
+    DiscoveryService        *_discovery = nullptr;
+    P2pServer               *_p2pServer = nullptr;
+    TransferSessionManager  *_transfer  = nullptr;
 };

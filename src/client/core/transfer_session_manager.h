@@ -35,6 +35,7 @@ class P2pServer;
 class TransferSessionManager : public QObject {
     Q_OBJECT
     QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
 
 public:
