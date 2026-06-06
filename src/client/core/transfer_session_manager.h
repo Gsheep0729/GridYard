@@ -66,6 +66,8 @@ signals:
                            const QString &filePath);
     // 错误提示（显示给用户）
     void errorOccurred(const QString &message);
+    // 成功提示（显示给用户）
+    void messageOccurred(const QString &message);
 
 private slots:
     // 处理新的传输请求

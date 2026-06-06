@@ -56,11 +56,16 @@ bool P2pServer::isListening() const
 
 void P2pServer::onNewConnection()
 {
+    qDebug() << "[P2pServer] 检测到新连接";
+
     while (_server->hasPendingConnections()) {
         QTcpSocket *socket = _server->nextPendingConnection();
-        if (!socket) continue;
+        if (!socket) {
+            qWarning() << "[P2pServer] 获取 socket 失败";
+            continue;
+        }
 
-        qDebug() << "P2pServer: 新连接来自"
+        qDebug() << "[P2pServer] 新连接来自"
                  << socket->peerAddress().toString()
                  << ":" << socket->peerPort();
 
@@ -70,6 +75,7 @@ void P2pServer::onNewConnection()
 
         // 创建 FileReceiverWorker 处理这个连接
         auto *worker = new FileReceiverWorker{socket, this};
+        qDebug() << "[P2pServer] 创建 FileReceiverWorker 处理连接";
 
         // 转发传输请求信号
         connect(worker, &FileReceiverWorker::transferRequestReceived,
@@ -78,6 +84,7 @@ void P2pServer::onNewConnection()
                                      qint64 fileSize,
                                      int totalFiles,
                                      qint64 totalBytes) {
+            qDebug() << "[P2pServer] 转发传输请求信号到 TransferSessionManager";
             emit transferRequestReceived(worker, senderName, fileName,
                                          fileSize, totalFiles, totalBytes);
         });
@@ -85,7 +92,7 @@ void P2pServer::onNewConnection()
         // 传输完成时清理
         connect(worker, &FileReceiverWorker::transferFinished,
                 this, [worker](bool success, const QString &errorMsg) {
-            qDebug() << "P2pServer: 传输完成"
+            qDebug() << "[P2pServer] 传输完成"
                      << "成功:" << success
                      << "错误:" << errorMsg;
             worker->deleteLater();

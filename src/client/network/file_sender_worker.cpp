@@ -56,12 +56,17 @@ FileSenderWorker::~FileSenderWorker()
 void FileSenderWorker::startTransfer(const QString &host, quint16 port,
                                      const QString &path)
 {
+    qDebug() << "[FileSender] 开始传输流程";
+    qDebug() << "[FileSender] 目标地址:" << host << ":" << port;
+    qDebug() << "[FileSender] 文件路径:" << path;
+
     _rootPath = path;
     _sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     // 序列化文件列表
     _fileList = gy::DirSerializer::serialize(path);
     if (_fileList.isEmpty()) {
+        qWarning() << "[FileSender] 序列化文件列表为空，没有可传输的文件";
         emit transferFinished(false, tr("没有可传输的文件"));
         return;
     }
@@ -76,18 +81,26 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _currentFileIndex = 0;
     _currentFileBytesSent = 0;
 
+    qDebug() << "[FileSender] 文件列表大小:" << _fileList.size();
+    qDebug() << "[FileSender] 总字节数:" << _totalBytes;
+
     // 打开第一个文件
     if (!openNextFile()) {
+        qWarning() << "[FileSender] 无法打开第一个文件";
         emit transferFinished(false, tr("无法打开文件"));
         return;
     }
 
     // 连接到接收端
+    qDebug() << "[FileSender] 正在连接到" << host << ":" << port;
     _socket->connectToHost(host, port);
     if (!_socket->waitForConnected(5000)) {
+        qWarning() << "[FileSender] 连接失败:" << _socket->errorString();
         emit transferFinished(false, tr("连接超时: %1").arg(_socket->errorString()));
         return;
     }
+
+    qDebug() << "[FileSender] 连接成功";
 
     // 优化 socket buffer
     _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
@@ -139,17 +152,25 @@ void FileSenderWorker::cleanup()
 
 void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 {
+    qDebug() << "[FileSender] 收到帧，类型:" << type;
+
     switch (type) {
     case gy::protocol::kTypeTransferRsp: {
         QJsonDocument doc = QJsonDocument::fromJson(payload);
         QJsonObject json = doc.object();
 
         bool accepted = json["accepted"].toBool();
+        QString reason = json["reason"].toString();
+
+        qDebug() << "[FileSender] 收到传输响应:" << (accepted ? "接受" : "拒绝");
+        if (!accepted) {
+            qDebug() << "[FileSender] 拒绝原因:" << reason;
+        }
+
         if (accepted) {
             emit requestAccepted();
             sendNextChunk();
         } else {
-            QString reason = json["reason"].toString();
             emit requestRejected(reason);
             emit transferFinished(false, tr("请求被拒绝: %1").arg(reason));
         }
@@ -162,8 +183,12 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         bool verified = json["verified"].toBool();
         int fileIndex = json["file_index"].toInt();
 
+        qDebug() << "[FileSender] 收到块确认，文件索引:" << fileIndex
+                 << "校验结果:" << (verified ? "通过" : "失败");
+
         if (!verified) {
             QString errorMsg = json["error_msg"].toString();
+            qWarning() << "[FileSender] 文件校验失败:" << errorMsg;
             emit transferFinished(false, tr("文件 %1 校验失败: %2")
                                           .arg(fileIndex).arg(errorMsg));
             return;
@@ -173,9 +198,12 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         _currentFileIndex++;
         _currentFileBytesSent = 0;
 
+        qDebug() << "[FileSender] 文件" << fileIndex << "传输完成，准备下一个文件";
+
         if (_currentFileIndex < _fileList.size()) {
             // 还有文件要发
             if (!openNextFile()) {
+                qWarning() << "[FileSender] 无法打开文件" << _fileList[_currentFileIndex].relativePath;
                 emit transferFinished(false, tr("无法打开文件 %1")
                                               .arg(_fileList[_currentFileIndex].relativePath));
                 return;
@@ -183,18 +211,22 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             sendNextChunk();
         } else {
             // 所有文件发完
+            qDebug() << "[FileSender] 所有文件传输完成";
             sendTransferDone();
             emit transferFinished(true, "");
         }
         break;
     }
     default:
+        qDebug() << "[FileSender] 未知帧类型:" << type;
         break;
     }
 }
 
 void FileSenderWorker::sendTransferRequest()
 {
+    qDebug() << "[FileSender] 发送传输请求";
+
     QJsonObject json;
     json["session_id"]  = _sessionId;
     json["sender_name"] = QHostInfo::localHostName();
@@ -215,11 +247,14 @@ void FileSenderWorker::sendTransferRequest()
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
     _socket->write(frame);
+
+    qDebug() << "[FileSender] 传输请求已发送，会话ID:" << _sessionId;
 }
 
 void FileSenderWorker::sendNextChunk()
 {
     if (!_file.isOpen() || _bytesSent >= _totalBytes) {
+        qDebug() << "[FileSender] 跳过发送，文件未打开或已发送完成";
         return;
     }
 
@@ -228,7 +263,9 @@ void FileSenderWorker::sendNextChunk()
     // 处理零字节文件：直接发送 isLastChunk=1
     if (chunkData.isEmpty() && _fileList[_currentFileIndex].sizeBytes == 0) {
         chunkData = QByteArray();  // 空数据
+        qDebug() << "[FileSender] 处理零字节文件";
     } else if (chunkData.isEmpty()) {
+        qWarning() << "[FileSender] 读取文件失败";
         emit transferFinished(false, tr("读取文件失败"));
         return;
     }
@@ -263,6 +300,8 @@ void FileSenderWorker::sendNextChunk()
     // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
     static int chunkCount = 0;
     if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+        qDebug() << "[FileSender] 传输进度:" << _bytesSent << "/" << _totalBytes
+                 << "(" << (_bytesSent * 100 / _totalBytes) << "%)";
         emit progressChanged(_bytesSent, _totalBytes);
     }
 
