@@ -22,6 +22,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
 
 ApplicationWindow {
@@ -61,6 +62,27 @@ ApplicationWindow {
         id: settingsDialog
     }
 
+    // 文件选择对话框
+    FileDialog {
+        id: tw_fileDialog
+        title: qsTr("选择要发送的文件")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [qsTr("所有文件 (*)")]
+
+        property string _targetDeviceId: ""
+
+        onAccepted: {
+            let urls = tw_fileDialog.selectedFiles
+            for (let i = 0; i < urls.length; i++) {
+                let path = urls[i].toString()
+                if (path.startsWith("file://")) {
+                    path = path.substring(7)
+                }
+                TransferSessionManager.createSendSession(_targetDeviceId, path)
+            }
+        }
+    }
+
     // 左右分栏布局
     RowLayout {
         anchors.fill: parent
@@ -74,6 +96,8 @@ ApplicationWindow {
 
             onDeviceSelected: function(deviceId) {
                 console.log("选中设备:", deviceId)
+                tw_fileDialog._targetDeviceId = deviceId
+                tw_fileDialog.open()
             }
             onFileDropped: function(deviceId, filePath) {
                 console.log("拖拽文件到设备:", deviceId, filePath)
