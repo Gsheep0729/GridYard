@@ -2,9 +2,10 @@
 * @file    transfer_session_manager.h
 * @date    2026-06-02
 * @author  GY
-* @brief   传输会话管理器（QML_SINGLETON）
+* @brief   传输会话管理器
 *
 * 管理所有进行中的传输会话，提供 Q_INVOKABLE 方法供 QML 调用。
+* 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
 * [v0.1] GY   2026-06-02
@@ -15,6 +16,8 @@
 * * Stage 3.10：实现 cancelSession()；保存发送方 worker 引用
 * [v0.4] GY   2026-06-04
 * * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
+* [v0.5] GY   2026-06-05
+* * 移除 QML_SINGLETON，改为通过 AppController 暴露
 */
 
 #pragma once
@@ -34,13 +37,9 @@ class P2pServer;
 
 class TransferSessionManager : public QObject {
     Q_OBJECT
-    QML_ELEMENT
-    QML_SINGLETON
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
 
 public:
-    static TransferSessionManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
-
     QVariantList sessions() const;
 
     // 初始化（由 AppController 调用）
@@ -84,6 +83,7 @@ public:
     TransferSessionManager(const TransferSessionManager &)            = delete;
     TransferSessionManager &operator=(const TransferSessionManager &) = delete;
 
+private:
     ConfigManager    *_config    = nullptr;
     DiscoveryService *_discovery = nullptr;
     P2pServer        *_p2pServer = nullptr;
