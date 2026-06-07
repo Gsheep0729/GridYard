@@ -68,6 +68,10 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     connect(_socket, &QUdpSocket::readyRead,
             this,    &DiscoveryService::onDatagramReceived);
 
+    // 设备名称变化时立即广播，让其他设备尽快更新
+    connect(_config, &ConfigManager::deviceNameChanged,
+            this,    &DiscoveryService::sendHelloPacket);
+
     // 初始化广播定时器
     _broadcastTimer = new QTimer(this);
     connect(_broadcastTimer, &QTimer::timeout,
@@ -258,6 +262,7 @@ void DiscoveryService::notifyPeersChanged()
 
 void DiscoveryService::refresh()
 {
+    qDebug() << "DiscoveryService: 手动刷新，发送广播并清理离线节点";
     sendHelloPacket();
     pruneOfflineNodes();
 }
