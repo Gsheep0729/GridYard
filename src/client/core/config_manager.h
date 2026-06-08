@@ -17,6 +17,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
@@ -35,6 +36,8 @@ class ConfigManager : public QObject {
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
+
+    ~ConfigManager() override;
 
     QString  deviceId()    const;
     QString  deviceName()  const;
@@ -61,7 +64,14 @@ private:
     ConfigManager(const ConfigManager &)            = delete;
     ConfigManager &operator=(const ConfigManager &) = delete;
 
+    // 允许测试代码访问私有构造函数
+    friend class TestDiscovery;
+    friend class TestIntegration;
+
     void ensureDeviceId();
+
+    // 全局实例指针（用于单例模式）
+    static QPointer<ConfigManager> s_instance;
 
     QString _deviceId;
     QString _deviceName;

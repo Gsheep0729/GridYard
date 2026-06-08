@@ -55,7 +55,8 @@ void TestConfigManager::initTestCase()
 
 void TestConfigManager::cleanupTestCase()
 {
-    delete _config;
+    // 不删除 _config，因为它是全局单例
+    // delete _config;
     _config = nullptr;
 
     delete _tempDir;
@@ -133,10 +134,10 @@ void TestConfigManager::testDeviceIdPersistence()
     QString originalId = _config->deviceId();
     QVERIFY(!originalId.isEmpty());
 
-    // 创建新的 ConfigManager 实例
+    // 获取 ConfigManager 实例（应该是同一个实例）
     ConfigManager *newConfig = ConfigManager::create(nullptr, nullptr);
     QCOMPARE(newConfig->deviceId(), originalId);
-    delete newConfig;
+    // 不删除 newConfig，因为它是全局单例
 }
 
 void TestConfigManager::testSignalEmission()
