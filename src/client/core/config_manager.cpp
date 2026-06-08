@@ -23,6 +23,9 @@
 #include <QUrl>
 #include <QUuid>
 
+// 静态成员变量定义
+QPointer<ConfigManager> ConfigManager::s_instance;
+
 ConfigManager::ConfigManager(QObject *parent)
     : QObject{parent}
 {
@@ -57,10 +60,24 @@ ConfigManager::ConfigManager(QObject *parent)
     refreshLocalIp();
 }
 
+ConfigManager::~ConfigManager()
+{
+    // 清除静态实例指针
+    if (s_instance == this) {
+        s_instance = nullptr;
+        qDebug() << "ConfigManager: 全局实例已销毁";
+    }
+}
+
 ConfigManager *ConfigManager::create(QQmlEngine *engine, QJSEngine *)
 {
     Q_UNUSED(engine);
-    return new ConfigManager{};
+    // 使用静态变量确保全局只有一个实例
+    if (!s_instance) {
+        s_instance = new ConfigManager{};
+        qDebug() << "ConfigManager: 创建全局实例";
+    }
+    return s_instance;
 }
 
 QString ConfigManager::deviceId() const
@@ -127,6 +144,11 @@ void ConfigManager::setDeviceName(const QString &name)
     QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
     QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
     settings.setValue("device/name", name);
+
+    // 清除环境变量影响，确保下次启动时使用 QSettings 中的值
+    qunsetenv("GRIDYARD_NAME");
+
+    qDebug() << "ConfigManager: 设备名称已更新为:" << name;
 
     emit deviceNameChanged();
 }

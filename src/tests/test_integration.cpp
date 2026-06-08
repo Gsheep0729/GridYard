@@ -131,12 +131,12 @@ void TestIntegration::testConfigIsolation()
     // 测试配置隔离 - 使用端口参数自动生成不同配置文件
     qputenv("GRIDYARD_PORT", "35200");
     qputenv("GRIDYARD_NAME", "Device1");
-    ConfigManager *mgr1 = ConfigManager::create(nullptr, nullptr);
+    ConfigManager *mgr1 = new ConfigManager{};
     mgr1->setDeviceName("Device1");
 
     qputenv("GRIDYARD_PORT", "35201");
     qputenv("GRIDYARD_NAME", "Device2");
-    ConfigManager *mgr2 = ConfigManager::create(nullptr, nullptr);
+    ConfigManager *mgr2 = new ConfigManager{};
     mgr2->setDeviceName("Device2");
 
     // 验证配置隔离

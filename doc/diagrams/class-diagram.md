@@ -59,6 +59,7 @@ classDiagram
     %% 客户端层（client/）
     class ConfigManager {
         <<QObject, QML_SINGLETON>>
+        -s_instance$ : QPointer~ConfigManager~
         +deviceId : QString
         +deviceName : QString
         +receivePath : QString
@@ -240,7 +241,7 @@ classDiagram
 - **FileEntry**：Q_GADGET 值类型，文件元数据（Stage 1 新增）
 - **TransferSession**：Q_GADGET 值类型，传输会话状态（Stage 1 新增）
 - **FrameCodec**：TLV 帧编解码器，含粘包/半包状态机（Stage 1 实现）
-- **ConfigManager**：QML_SINGLETON 单例，应用配置管理器（Stage 2 新增，Stage 3 添加 localIp/openFolder）
+- **ConfigManager**：QML_SINGLETON 单例，应用配置管理器（Stage 2 新增，Stage 3 添加 localIp/openFolder，Stage 4 实现单例模式确保全局唯一实例）
 - **DiscoveryService**：UDP 广播发现服务（Stage 2 新增，Stage 3 添加 refresh 方法）
 - **AppController**：QML_SINGLETON 单例，QML 与 C++ 通信的桥梁
 - **TransferSessionManager**：QML_SINGLETON 单例，传输会话管理（Stage 3 新增，含 cancelSession）
