@@ -120,6 +120,7 @@ void DiscoveryService::sendHelloPacket()
 
     // 遍历所有激活的网络接口，向每个网卡的广播地址发送
     const auto interfaces = QNetworkInterface::allInterfaces();
+    int sentCount = 0;
     for (const QNetworkInterface &iface : interfaces) {
         // 过滤：必须是激活中的、非回环的、支持广播的物理网卡
         if (!(iface.flags() & QNetworkInterface::IsUp))       continue;
@@ -138,6 +139,8 @@ void DiscoveryService::sendHelloPacket()
                 qWarning() << "DiscoveryService: 广播发送失败到"
                            << entry.broadcast().toString()
                            << ":" << _socket->errorString();
+            } else {
+                sentCount++;
             }
 
             // 如果本地端口不是默认端口，也发送到本地端口（确保绑定到备用端口的实例也能收到）
@@ -146,6 +149,7 @@ void DiscoveryService::sendHelloPacket()
             }
         }
     }
+    qDebug() << "DiscoveryService: 广播发送完成，共发送到" << sentCount << "个网卡";
 }
 
 void DiscoveryService::onDatagramReceived()
@@ -246,9 +250,21 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 {
     const bool isNew = !_peers.contains(deviceId);
 
+    // 检查设备名称是否变化
+    if (!isNew) {
+        const PeerInfo &oldInfo = _peers.value(deviceId);
+        if (oldInfo.deviceName != info.deviceName) {
+            qDebug() << "DiscoveryService: 设备名称更新"
+                     << "deviceId:" << deviceId
+                     << "旧名称:" << oldInfo.deviceName
+                     << "新名称:" << info.deviceName;
+        }
+    }
+
     _peers.insert(deviceId, info);
 
     if (isNew) {
+        qDebug() << "DiscoveryService: 发现新设备" << deviceId << info.deviceName;
         emit nodeDiscovered(deviceId);
     }
 
@@ -262,7 +278,12 @@ void DiscoveryService::notifyPeersChanged()
 
 void DiscoveryService::refresh()
 {
-    qDebug() << "DiscoveryService: 手动刷新，发送广播并清理离线节点";
+    qDebug() << "DiscoveryService: 手动刷新，清空设备列表并重新发现";
+
+    // 清空所有已发现的设备
+    _peers.clear();
+    notifyPeersChanged();
+
+    // 发送广播，让其他设备响应
     sendHelloPacket();
-    pruneOfflineNodes();
 }

@@ -48,17 +48,17 @@ void TestDiscovery::initTestCase()
     _tempDir = new QTemporaryDir();
     QVERIFY(_tempDir->isValid());
 
-    // 创建两个独立的配置
+    // 创建两个独立的配置（直接创建实例，不使用单例）
     QString config1Path = _tempDir->path() + "/config1.ini";
     QString config2Path = _tempDir->path() + "/config2.ini";
 
     qputenv("GRIDYARD_CONFIG", config1Path.toUtf8());
     qputenv("GRIDYARD_NAME", "Device1");
-    _config1 = ConfigManager::create(nullptr, nullptr);
+    _config1 = new ConfigManager{};
 
     qputenv("GRIDYARD_CONFIG", config2Path.toUtf8());
     qputenv("GRIDYARD_NAME", "Device2");
-    _config2 = ConfigManager::create(nullptr, nullptr);
+    _config2 = new ConfigManager{};
 
     // 创建发现服务
     _discovery1 = new DiscoveryService(_config1, this);

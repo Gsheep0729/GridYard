@@ -97,6 +97,8 @@ Frame {
                                 if (!tw_nameField.activeFocus) {
                                     tw_nameField.text = ConfigManager.deviceName
                                 }
+                                // 通知 DiscoveryService 设备名称已更新，触发广播
+                                AppController.discovery.refresh()
                             }
                         }
                     }
