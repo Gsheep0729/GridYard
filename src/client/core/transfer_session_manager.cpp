@@ -77,6 +77,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     QString host = peer.ipAddress;
     quint16 port = peer.tcpPort > 0 ? peer.tcpPort : _config->tcpPort();
+    const QString senderName = _config->deviceName();
 
     qDebug() << "[TransferSession] 目标设备信息:";
     qDebug() << "  设备名:" << peer.deviceName;
@@ -111,8 +112,8 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     _sendWorkers[sessionId] = worker;
 
     // 连接信号
-    connect(thread, &QThread::started, worker, [worker, host, port, filePath]() {
-        worker->startTransfer(host, port, filePath);
+    connect(thread, &QThread::started, worker, [worker, host, port, filePath, senderName]() {
+        worker->startTransfer(host, port, filePath, senderName);
     });
 
     connect(worker, &FileSenderWorker::progressChanged,
