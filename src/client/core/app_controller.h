@@ -56,8 +56,6 @@ public:
 
     Q_INVOKABLE void quit();
     Q_INVOKABLE void test();  // Stage 1：验证 C++↔QML 通信
-    // 打开系统文件选择器，返回选择的文件路径列表
-    Q_INVOKABLE QStringList openNativeFileDialog();
 
 signals:
     void appReady();
