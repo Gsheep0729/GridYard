@@ -122,11 +122,15 @@ void TestFileTransfer::testSingleFileTransfer()
     P2pServer server(_config);
     QVERIFY(server.start());
 
+    QString receivedSenderDeviceId;
     QString receivedSenderName;
     connect(&server, &P2pServer::transferRequestReceived,
-            this, [&receivedSenderName](FileReceiverWorker *worker, const QString &,
+            this, [&receivedSenderDeviceId, &receivedSenderName](
+                                        FileReceiverWorker *worker,
+                                        const QString &senderDeviceId,
                                         const QString &senderName,
                                         const QString &, qint64, int, qint64) {
+        receivedSenderDeviceId = senderDeviceId;
         receivedSenderName = senderName;
         worker->rejectTransfer("测试完成");
     });
@@ -148,6 +152,7 @@ void TestFileTransfer::testSingleFileTransfer()
                               Q_ARG(QString, "TestSender"));
 
     // 接收端应显示发送方当前设置的设备别名
+    QTRY_COMPARE_WITH_TIMEOUT(receivedSenderDeviceId, QString("test-sender-id"), 5000);
     QTRY_COMPARE_WITH_TIMEOUT(receivedSenderName, QString("TestSender"), 5000);
     QVERIFY(waitForTransfer(senderSpy, 5000));
 
