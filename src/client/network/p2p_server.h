@@ -44,6 +44,7 @@ public:
 signals:
     // 新的传输请求到达（需要弹窗确认）
     void transferRequestReceived(FileReceiverWorker *worker,
+                                 const QString &senderDeviceId,
                                  const QString &senderName,
                                  const QString &fileName,
                                  qint64 fileSize,

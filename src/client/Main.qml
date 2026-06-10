@@ -154,7 +154,7 @@ ApplicationWindow {
     // 连接 TransferSessionManager 信号
     Connections {
         target: AppController.transfer
-        function onReceiveRequestReceived(sessionId, senderName, fileName,
+        function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
                                           fileSize, totalFiles, totalBytes) {
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName

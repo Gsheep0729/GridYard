@@ -77,6 +77,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     QString host = peer.ipAddress;
     quint16 port = peer.tcpPort > 0 ? peer.tcpPort : _config->tcpPort();
+    const QString senderDeviceId = _config->deviceId();
     const QString senderName = _config->deviceName();
 
     qDebug() << "[TransferSession] 目标设备信息:";
@@ -91,7 +92,9 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session["sessionId"] = sessionId;
     session["type"]      = "send";
     session["deviceId"]  = deviceId;
+    session["peerDeviceName"] = peer.deviceName;
     session["filePath"]  = filePath;
+    session["fileName"]  = QFileInfo{filePath}.fileName();
     session["status"]    = "connecting";
     session["progress"]  = 0;
     session["bytesTransferred"] = 0;
@@ -112,8 +115,9 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     _sendWorkers[sessionId] = worker;
 
     // 连接信号
-    connect(thread, &QThread::started, worker, [worker, host, port, filePath, senderName]() {
-        worker->startTransfer(host, port, filePath, senderName);
+    connect(thread, &QThread::started, worker,
+            [worker, host, port, filePath, senderDeviceId, senderName]() {
+        worker->startTransfer(host, port, filePath, senderDeviceId, senderName);
     });
 
     connect(worker, &FileSenderWorker::progressChanged,
@@ -237,6 +241,7 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
 }
 
 void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worker,
+                                                        const QString &senderDeviceId,
                                                         const QString &senderName,
                                                         const QString &fileName,
                                                         qint64 fileSize,
@@ -244,6 +249,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                                                         qint64 totalBytes)
 {
     qDebug() << "[TransferSession] 收到传输请求";
+    qDebug() << "[TransferSession] 发送方设备ID:" << senderDeviceId;
     qDebug() << "[TransferSession] 发送方:" << senderName;
     qDebug() << "[TransferSession] 文件名:" << fileName;
     qDebug() << "[TransferSession] 文件大小:" << fileSize;
@@ -262,6 +268,8 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     QVariantMap session;
     session["sessionId"] = sessionId;
     session["type"]      = "receive";
+    session["deviceId"]  = senderDeviceId;
+    session["peerDeviceName"] = senderName;
     session["senderName"] = senderName;
     session["fileName"]  = fileName;
     session["fileSize"]  = fileSize;
@@ -313,7 +321,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     });
 
     // 通知 QML 弹窗确认
-    emit receiveRequestReceived(sessionId, senderName, fileName,
+    emit receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
                                 fileSize, totalFiles, totalBytes);
 
     qDebug() << "TransferSessionManager: 收到接收请求" << sessionId

@@ -198,6 +198,7 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     QJsonObject json = doc.object();
 
     _sessionId  = json["session_id"].toString();
+    _senderDeviceId = json["sender_device_id"].toString();
     _senderName = json["sender_name"].toString();
     _totalFiles = json["total_files"].toInt();
     _totalBytes = json["total_bytes"].toVariant().toLongLong();
@@ -225,13 +226,14 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
 
     qDebug() << "[FileReceiver] 传输请求详情:";
     qDebug() << "  会话ID:" << _sessionId;
+    qDebug() << "  发送方设备ID:" << _senderDeviceId;
     qDebug() << "  发送方:" << _senderName;
     qDebug() << "  文件数:" << _totalFiles;
     qDebug() << "  总大小:" << _totalBytes;
     qDebug() << "  第一个文件:" << _fileName;
 
     // 通知 UI 弹窗确认
-    emit transferRequestReceived(_senderName, _fileName, _fileSize,
+    emit transferRequestReceived(_senderDeviceId, _senderName, _fileName, _fileSize,
                                  _totalFiles, _totalBytes);
 
     qDebug() << "[FileReceiver] 已通知 UI 弹窗确认";
