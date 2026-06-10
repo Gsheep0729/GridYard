@@ -441,6 +441,7 @@ tw_ProgressBar_Transfer->setValue(percent); // 危险：直接跨线程操作 UI
 ```json
 {
   "session_id":  "b7e2a1f0-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
+  "sender_device_id": "发送方设备 UUID",
   "sender_name": "高扬的工作站",
   "total_files": 2,
   "total_bytes": 2147483648,
