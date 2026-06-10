@@ -15,6 +15,8 @@
  * * Stage 2：初始版本
  * [v0.2] GY   2026-06-03
  * * Stage 3.9：添加 DropArea 支持拖拽传输
+ * [v0.3] GY   2026-06-13
+ * * 增加会话选中样式，点击时传递完整设备信息
  */
 
 import QtQuick
@@ -29,13 +31,14 @@ ItemDelegate {
     required property string deviceName
     required property string ipAddress
     required property bool   isOnline
+    required property bool   isSelected
 
     readonly property int   kCardHeight: 72
     readonly property color kOnlineColor:  "#3DDC84"
     readonly property color kOfflineColor: "#999999"
     readonly property color kDropHighlight: "#E3F2FD"
 
-    signal cardClicked(string deviceId)
+    signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal fileDropped(string deviceId, string filePath)
 
     height: kCardHeight
@@ -43,14 +46,19 @@ ItemDelegate {
     // 卡片背景样式（拖拽高亮）
     background: Rectangle {
         color: tw_dropArea.containsDrag ? tw_deviceCard.kDropHighlight
+             : tw_deviceCard.isSelected ? "#E8F2FC"
              : tw_deviceCard.hovered   ? "#F2F2F2"
              :                           "#FFFFFF"
-        border.color: tw_dropArea.containsDrag ? "#2196F3" : "#E0E0E0"
-        border.width: tw_dropArea.containsDrag ? 2 : 1
+        border.color: tw_dropArea.containsDrag || tw_deviceCard.isSelected
+                      ? "#2196F3" : "#E0E0E0"
+        border.width: tw_dropArea.containsDrag || tw_deviceCard.isSelected ? 2 : 1
         radius: 8
     }
 
-    onClicked: tw_deviceCard.cardClicked(tw_deviceCard.deviceId)
+    onClicked: tw_deviceCard.cardClicked(tw_deviceCard.deviceId,
+                                         tw_deviceCard.deviceName,
+                                         tw_deviceCard.ipAddress,
+                                         tw_deviceCard.isOnline)
 
     // 拖拽接收区域
     DropArea {

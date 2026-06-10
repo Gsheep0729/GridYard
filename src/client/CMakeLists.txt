@@ -34,6 +34,7 @@ qt_add_qml_module(appGridYard
         ui/AcceptDialog.qml
         ui/TransferPanel.qml
         ui/TransferTaskCard.qml
+        ui/DeviceSessionView.qml
 )
 
 target_compile_features(appGridYard PRIVATE cxx_std_23)
