@@ -47,7 +47,8 @@ public:
 
 public slots:
     // 启动传输（在工作线程中调用，支持文件或目录）
-    void startTransfer(const QString &host, quint16 port, const QString &path);
+    void startTransfer(const QString &host, quint16 port, const QString &path,
+                       const QString &senderName);
     // 取消传输
     void cancel();
 
@@ -91,6 +92,7 @@ private:
     QTimer      *_timeoutTimer = nullptr;
     QString      _rootPath;         // 传入的根路径
     QString      _sessionId;
+    QString      _senderName;
     qint64       _totalBytes = 0;
     qint64       _bytesSent  = 0;
 
