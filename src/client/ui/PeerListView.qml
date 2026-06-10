@@ -15,6 +15,8 @@
  * * 添加本机信息区域（设备名可编辑 + IP 地址）和刷新按钮
  * [v0.3] GY   2026-06-03
  * * Stage 3.9：传递拖拽文件信号
+ * [v0.4] GY   2026-06-13
+ * * 增加当前设备选中态
  */
 
 import QtQuick
@@ -25,7 +27,9 @@ import cqnu.gridyard.client 1.0
 Frame {
     id: tw_peerListView
 
-    signal deviceSelected(string deviceId)
+    property string selectedDeviceId: ""
+
+    signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal fileDropped(string deviceId, string filePath)
 
     ColumnLayout {
@@ -156,8 +160,9 @@ Frame {
 
             delegate: DeviceCard {
                 width: listView.width
-                onCardClicked: function(deviceId) {
-                    tw_peerListView.deviceSelected(deviceId)
+                isSelected: tw_peerListView.selectedDeviceId === deviceId
+                onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
+                    tw_peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)
                 }
                 onFileDropped: function(deviceId, filePath) {
                     tw_peerListView.fileDropped(deviceId, filePath)
