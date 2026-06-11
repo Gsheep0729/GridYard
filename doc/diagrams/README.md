@@ -6,7 +6,7 @@
 
 | 文件 | 内容 | 说明 |
 |:-----|:-----|:-----|
-| [class-diagram.md](class-diagram.md) | 类图 | 展示类结构、属性、方法和关系 |
+| [class-diagram.md](class-diagram.md) | 分层类图 | 按表现层、应用逻辑层、领域层和数据管理层说明当前类关系 |
 | [component-diagram.md](component-diagram.md) | 组件图 | 展示模块结构和依赖关系 |
 | [sequence-diagram.md](sequence-diagram.md) | 序列图 | 展示 C++↔QML 通信流程 |
 | [data-flow-diagram.md](data-flow-diagram.md) | 数据流图 | 展示数据在各层间的流动 |
@@ -93,3 +93,4 @@ done
 - Stage 0（2026-05-24）：初始版本，展示工程骨架
 - Stage 2（2026-06-02）：更新类图，新增 ConfigManager / DiscoveryService / TransferSessionManager
 - 2026-06-03：导出全部 SVG 高清版（dark 主题、3x 缩放）
+- v4.9（2026-06-13）：类图按层拆分，补充设备会话页、运行时会话记录和 senderDeviceId 链路

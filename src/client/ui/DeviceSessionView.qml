@@ -2,13 +2,13 @@
  * @file    DeviceSessionView.qml
  * @date    2026-06-13
  * @author  GY
- * @brief   当前设备的文件传输会话页
+ * 当前设备的文件传输会话页
  *
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
  *
  * Change Log:
  * [v1.0] GY   2026-06-13
- * * Initial creation
+ * * 初始版本
  */
 
 import QtQuick
