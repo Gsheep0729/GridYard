@@ -50,6 +50,7 @@ public:
     Q_INVOKABLE void acceptReceiveSession(const QString &sessionId);
     Q_INVOKABLE void rejectReceiveSession(const QString &sessionId);
     Q_INVOKABLE void cancelSession(const QString &sessionId);
+    Q_INVOKABLE void removeSession(const QString &sessionId);
 
 signals:
     void sessionsChanged();
