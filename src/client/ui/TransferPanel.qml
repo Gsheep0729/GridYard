@@ -1,6 +1,6 @@
 /**
  * @file    TransferPanel.qml
- * @version 4.10.0
+ * @version 4.10.1
  * @date    2026-06-13
  * @author  GY
  * @brief   传输面板
@@ -9,6 +9,8 @@
  * 绑定 TransferSessionManager.sessions。
  *
  * Change Log:
+ * [v4.10.1] GY   2026-06-13
+ * * 修复会话字段绑定
  * [v0.2.0] GY   2026-06-02
  * * Stage 3：初始版本
  */
@@ -44,17 +46,39 @@ Frame {
 
             model: AppController.transfer.sessions
 
-            delegate: TransferTaskCard {
+            delegate: Item {
+                id: sessionDelegate
+
+                required property string sessionId
+                required property string type
+                required property string filePath
+                required property string fileName
+                required property string status
+                required property int progress
+                required property var bytesTransferred
+                required property var totalBytes
+                required property string createdAt
+                required property string peerDeviceName
+
                 width: listView.width
-                sessionId: model.sessionId || ""
-                taskType: model.type || ""
-                taskName: model.type === "send"
-                    ? (model.filePath || "").split("/").pop()
-                    : (model.fileName || "")
-                status: model.status || ""
-                progress: model.progress || 0
-                bytesTransferred: model.bytesTransferred || 0
-                totalBytes: model.totalBytes || 0
+                height: taskCard.height
+
+                TransferTaskCard {
+                    id: taskCard
+
+                    width: sessionDelegate.width
+                    sessionId: sessionDelegate.sessionId
+                    taskType: sessionDelegate.type
+                    taskName: sessionDelegate.type === "send"
+                        ? sessionDelegate.filePath.split("/").pop()
+                        : sessionDelegate.fileName
+                    status: sessionDelegate.status
+                    progress: sessionDelegate.progress
+                    bytesTransferred: sessionDelegate.bytesTransferred
+                    totalBytes: sessionDelegate.totalBytes
+                    createdAt: sessionDelegate.createdAt
+                    peerDeviceName: sessionDelegate.peerDeviceName
+                }
             }
 
             // 空列表提示
