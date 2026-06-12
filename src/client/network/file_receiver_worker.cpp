@@ -1,20 +1,23 @@
 /**
 * @file    file_receiver_worker.cpp
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   FileReceiverWorker 实现
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
-* [v0.2] GY   2026-06-03
-* * 接收路径改用 _receivePath 成员，支持外部配置
-* [v0.3] GY   2026-06-04
-* * Stage 4.3：解析文件列表（含 sha256），支持多文件接收
-* [v0.4] GY   2026-06-04
-* * Stage 4.3：SHA-256 校验实现，多文件接收支持
-* [v0.5] GY   2026-06-04
+* [v4.8.3] GY   2026-06-13
+* * 传输请求中使用发送方设备别名
+* [v4.4.2] GY   2026-06-04
 * * Stage 4.4：添加超时检测机制
+* [v4.3.4] GY   2026-06-04
+* * Stage 4.3：SHA-256 校验实现，多文件接收支持
+* [v4.3.1] GY   2026-06-04
+* * Stage 4.3：解析文件列表（含 sha256），支持多文件接收
+* [v0.3.0] GY   2026-06-03
+* * 接收路径改用 _receivePath 成员，支持外部配置
+* [v0.2.0] GY   2026-06-02
+* * Stage 3：初始版本
 */
 
 #include "file_receiver_worker.h"

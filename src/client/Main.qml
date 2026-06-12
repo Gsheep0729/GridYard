@@ -1,24 +1,25 @@
 /**
 * @file    Main.qml
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   GridYard 客户端根窗口
 *
 * 标题通过 AppController.applicationName/Version 绑定，
 * 关窗触发 AppController.quit()。
-* 左侧显示在线设备列表，右侧预留传输面板区域。
+* 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0：空白窗口框架
-* [v0.2] GY   2026-06-02
-* * Stage 1：添加 test 按钮验证 C++↔QML 通信
-* [v0.3] GY   2026-06-02
-* * Stage 2：嵌入设备列表，实现左右分栏布局
-* [v0.4] GY   2026-06-04
-* * Stage 4.3：更新接收请求信号处理，支持多文件信息
-* [v0.5] GY   2026-06-13
+* [v4.10.0] GY   2026-06-13
+* * 传输完成弹窗改为自定义按钮
+* [v4.9.0] GY   2026-06-13
 * * 点击设备切换会话页，增加文件与文件夹发送入口
+* [v4.3.4] GY   2026-06-04
+* * Stage 4.3：更新接收请求信号处理，支持多文件信息
+* [v0.2.0] GY   2026-06-02
+* * Stage 2：嵌入设备列表，实现左右分栏布局
+* [v0.1.0] GY   2026-05-24
+* * Stage 0：空白窗口框架
 */
 
 import QtQuick
@@ -28,7 +29,7 @@ import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
 
 ApplicationWindow {
-    id: tw_mainWindow
+    id: mainWindow
 
     width:   960
     height:  640
@@ -69,25 +70,25 @@ ApplicationWindow {
 
     // 文件选择对话框由 Qt 平台主题接入系统原生实现
     FileDialog {
-        id: tw_fileDialog
+        id: fileDialog
         title: qsTr("选择要发送的文件")
         fileMode: FileDialog.OpenFiles
         nameFilters: [qsTr("所有文件 (*)")]
 
         onAccepted: {
-            let urls = tw_fileDialog.selectedFiles
+            let urls = fileDialog.selectedFiles
             for (let i = 0; i < urls.length; i++) {
                 let path = urls[i].toString()
                 if (path.startsWith("file://")) {
                     path = path.substring(7)
                 }
-                AppController.transfer.createSendSession(tw_mainWindow._targetDeviceId, path)
+                AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
             }
         }
     }
 
     FolderDialog {
-        id: tw_folderDialog
+        id: folderDialog
         title: qsTr("选择要发送的文件夹")
 
         onAccepted: {
@@ -95,7 +96,7 @@ ApplicationWindow {
             if (path.startsWith("file://")) {
                 path = path.substring(7)
             }
-            AppController.transfer.createSendSession(tw_mainWindow._targetDeviceId, path)
+            AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
         }
     }
 
@@ -105,7 +106,7 @@ ApplicationWindow {
             anchors.fill: parent
 
             Label {
-                text: tw_mainWindow.title
+                text: mainWindow.title
                 font.pixelSize: 14
                 font.bold: true
                 Layout.leftMargin: 12
@@ -133,21 +134,21 @@ ApplicationWindow {
 
         // 左侧：设备列表
         PeerListView {
-            id: tw_peerListView
+            id: peerListView
             Layout.preferredWidth: 280
             Layout.fillHeight: true
-            selectedDeviceId: tw_mainWindow._targetDeviceId
+            selectedDeviceId: mainWindow._targetDeviceId
 
             onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
                 console.log("选中设备:", deviceId)
-                tw_mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
+                mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
             }
             onFileDropped: function(deviceId, filePath) {
                 console.log("拖拽文件到设备:", deviceId, filePath)
                 const peers = AppController.discovery.peers
                 for (let i = 0; i < peers.length; i++) {
                     if (peers[i].deviceId === deviceId) {
-                        tw_mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
+                        mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
                                                    peers[i].ipAddress, peers[i].isOnline)
                         break
                     }
@@ -159,7 +160,7 @@ ApplicationWindow {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: tw_mainWindow._targetDeviceId.length > 0 ? 1 : 0
+            currentIndex: mainWindow._targetDeviceId.length > 0 ? 1 : 0
 
             Frame {
                 ColumnLayout {
@@ -183,15 +184,15 @@ ApplicationWindow {
             }
 
             DeviceSessionView {
-                deviceId: tw_mainWindow._targetDeviceId
-                deviceName: tw_mainWindow._targetDeviceName
-                ipAddress: tw_mainWindow._targetIpAddress
-                isOnline: tw_mainWindow._targetIsOnline
+                deviceId: mainWindow._targetDeviceId
+                deviceName: mainWindow._targetDeviceName
+                ipAddress: mainWindow._targetIpAddress
+                isOnline: mainWindow._targetIsOnline
 
-                onSendFileRequested: tw_fileDialog.open()
-                onSendFolderRequested: tw_folderDialog.open()
+                onSendFileRequested: fileDialog.open()
+                onSendFolderRequested: folderDialog.open()
                 onFileDropped: function(filePath) {
-                    AppController.transfer.createSendSession(tw_mainWindow._targetDeviceId, filePath)
+                    AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
                 }
             }
         }
@@ -204,7 +205,7 @@ ApplicationWindow {
 
     // 传输完成提示弹窗
     Dialog {
-        id: tw_completeDialog
+        id: completeDialog
         title: qsTr("接收完成")
         modal: true
         anchors.centerIn: parent
@@ -216,7 +217,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
             Label {
-                text: qsTr("文件 \"%1\" 已接收完成").arg(tw_completeDialog._fileName)
+                text: qsTr("文件 \"%1\" 已接收完成").arg(completeDialog._fileName)
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
@@ -234,11 +235,11 @@ ApplicationWindow {
         }
 
         onAccepted: {
-            ConfigManager.openFolder(tw_completeDialog._filePath)
+            ConfigManager.openFolder(completeDialog._filePath)
         }
 
         onRejected: {
-            tw_completeDialog.close()
+            completeDialog.close()
         }
     }
 
@@ -250,7 +251,7 @@ ApplicationWindow {
             const peers = AppController.discovery.peers
             for (let i = 0; i < peers.length; i++) {
                 if (peers[i].deviceId === senderDeviceId) {
-                    tw_mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
+                    mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
                                                peers[i].ipAddress, peers[i].isOnline)
                     break
                 }
@@ -264,33 +265,33 @@ ApplicationWindow {
             acceptDialog.open()
         }
         function onTransferCompleted(sessionId, fileName, filePath) {
-            tw_completeDialog._fileName = fileName
-            tw_completeDialog._filePath = filePath
-            tw_completeDialog.open()
+            completeDialog._fileName = fileName
+            completeDialog._filePath = filePath
+            completeDialog.open()
         }
         function onErrorOccurred(message) {
-            tw_errorLabel.text = message
-            tw_errorPopup.open()
+            errorLabel.text = message
+            errorPopup.open()
         }
         function onMessageOccurred(message) {
-            tw_successLabel.text = message
-            tw_successPopup.open()
+            successLabel.text = message
+            successPopup.open()
         }
     }
 
     Connections {
         target: AppController.discovery
         function onPeersChanged() {
-            tw_mainWindow.refreshSelectedDevice()
+            mainWindow.refreshSelectedDevice()
         }
     }
 
     // 错误提示弹窗
     Popup {
-        id: tw_errorPopup
+        id: errorPopup
         anchors.centerIn: parent
         width: 300
-        height: tw_errorLabel.implicitHeight + 48
+        height: errorLabel.implicitHeight + 48
         modal: true
         closePolicy: Popup.CloseOnPressOutside
 
@@ -300,7 +301,7 @@ ApplicationWindow {
         }
 
         contentItem: Label {
-            id: tw_errorLabel
+            id: errorLabel
             color: "#FFFFFF"
             font.pixelSize: 14
             wrapMode: Text.Wrap
@@ -312,17 +313,17 @@ ApplicationWindow {
         // 3 秒后自动关闭
         Timer {
             interval: 3000
-            running: tw_errorPopup.visible
-            onTriggered: tw_errorPopup.close()
+            running: errorPopup.visible
+            onTriggered: errorPopup.close()
         }
     }
 
     // 成功提示弹窗
     Popup {
-        id: tw_successPopup
+        id: successPopup
         anchors.centerIn: parent
         width: 300
-        height: tw_successLabel.implicitHeight + 48
+        height: successLabel.implicitHeight + 48
         modal: true
         closePolicy: Popup.CloseOnPressOutside
 
@@ -332,7 +333,7 @@ ApplicationWindow {
         }
 
         contentItem: Label {
-            id: tw_successLabel
+            id: successLabel
             color: "#FFFFFF"
             font.pixelSize: 14
             wrapMode: Text.Wrap
@@ -344,8 +345,8 @@ ApplicationWindow {
         // 3 秒后自动关闭
         Timer {
             interval: 3000
-            running: tw_successPopup.visible
-            onTriggered: tw_successPopup.close()
+            running: successPopup.visible
+            onTriggered: successPopup.close()
         }
     }
 }

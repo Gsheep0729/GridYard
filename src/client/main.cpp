@@ -1,6 +1,7 @@
 /**
 * @file    main.cpp
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   GridYard 客户端程序入口
 *
@@ -8,7 +9,7 @@
 * cqnu.gridyard.client 模块的 Main 根 QML。所有 C++ 类型通过
 * QML_ELEMENT + qt_add_qml_module 路径自动注册，全程不使用
 * setContextProperty。自定义值类型（PeerInfo 等）在此统一
-* qRegisterMetaType 注册，供 Stage 2+ 跨线程 QueuedConnection 使用。
+* qRegisterMetaType 注册，供跨线程 QueuedConnection 使用。
 *
 * 支持命令行参数（本机回环测试用）：
 *   --port <port>       指定 TCP 端口（默认 35100）
@@ -16,30 +17,18 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0：空白窗口能起来；注册 PeerInfo 元类型
-* [v0.2] GY   2026-06-02
+* [v4.10.0] GY   2026-06-13
+* * 版本号更新到 v4.10.0
+* [v4.8.2] GY   2026-06-13
+* * 修复 KDE 原生文件选择器
+* [v4.7.1] GY   2026-06-05
+* * 初始化 Logger，添加命令行参数支持
+* [v0.3.1] GY   2026-06-03
+* * 版本号更新到 v0.3.1
+* [v0.2.0] GY   2026-06-02
 * * Stage 3：添加命令行参数支持（本机回环测试）
-* [v0.3] GY   2026-06-03
-* * Stage 3：版本号更新，连接体验优化
-* [v0.4] GY   2026-06-03
-* * Stage 3.10：版本号更新到 v0.3.1
-* [v0.5] GY   2026-06-04
-* * Stage 4.1：DirSerializer 实现，版本号更新到 v0.4.1
-* [v0.6] GY   2026-06-04
-* * Stage 4.2：FileSenderWorker 支持多文件/目录传输
-* [v0.7] GY   2026-06-04
-* * Stage 4.3：FileReceiverWorker 支持多文件接收，版本号更新到 v0.4.3
-* [v0.8] GY   2026-06-04
-* * Stage 4.3：SHA-256 校验实现，版本号更新到 v0.4.4
-* [v0.9] GY   2026-06-04
-* * Stage 4.3：UI 适配，信号签名添加 totalFiles/totalBytes，版本号更新到 v0.4.5
-* [v0.10] GY   2026-06-05
-* * 运行日志系统：Logger 类拦截 Qt 日志输出到文件，版本号更新到 v4.7.0
-* [v0.11] GY   2026-06-05
-* * 传输功能修复：初始化 TransferSessionManager，添加测试代码，版本号更新到 v4.7.1
-* [v0.12] GY   2026-06-05
-* * 业务逻辑文档：添加 GridYard业务逻辑说明.md，更新 CLAUDE.md 目录结构
+* [v0.1.0] GY   2026-05-24
+* * Stage 0：空白窗口能起来；注册 PeerInfo 元类型
 */
 
 #include <QCommandLineParser>

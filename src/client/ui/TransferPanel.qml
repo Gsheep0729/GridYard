@@ -1,6 +1,7 @@
 /**
  * @file    TransferPanel.qml
- * @date    2026-06-02
+ * @version 4.10.0
+ * @date    2026-06-13
  * @author  GY
  * @brief   传输面板
  *
@@ -8,8 +9,8 @@
  * 绑定 TransferSessionManager.sessions。
  *
  * Change Log:
- * [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
+ * [v0.2.0] GY   2026-06-02
+ * * Stage 3：初始版本
  */
 
 import QtQuick
@@ -18,7 +19,7 @@ import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 
 Frame {
-    id: tw_transferPanel
+    id: transferPanel
 
     ColumnLayout {
         anchors.fill: parent

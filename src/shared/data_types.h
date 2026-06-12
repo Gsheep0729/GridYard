@@ -1,6 +1,7 @@
 /**
 * @file    data_types.h
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   GridYard 共享数据类型（值类型 / POD）
 *
@@ -9,12 +10,12 @@
 * QObject 的身份语义不适合。QML 端通过 Q_PROPERTY MEMBER 反射访问。
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0 占位：仅 PeerInfo 骨架；FileEntry / TransferSession 待 Stage 1
-* [v0.2] GY   2026-06-02
-* * Stage 1：补充 FileEntry / TransferSession 数据结构
-* [v0.3] GY   2026-06-02
+* [v0.2.0] GY   2026-06-02
 * * Stage 2 准备：PeerInfo 补充 isOnline / lastSeen 字段
+* [v0.1.0] GY   2026-06-02
+* * Stage 1：补充 FileEntry / TransferSession 数据结构
+* [v0.0.1] GY   2026-05-24
+* * Stage 0 占位：仅 PeerInfo 骨架
 */
 
 #pragma once

@@ -1,6 +1,7 @@
 /**
 * @file    p2p_server.h
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   P2P 文件传输服务器
 *
@@ -8,10 +9,10 @@
 * 为每个入站连接创建 FrameCodec 和 FileReceiverWorker。
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
-* [v0.2] GY   2026-06-04
+* [v4.3.4] GY   2026-06-04
 * * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
+* [v0.2.0] GY   2026-06-02
+* * Stage 3：初始版本
 */
 
 #pragma once
