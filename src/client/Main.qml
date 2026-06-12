@@ -222,15 +222,22 @@ ApplicationWindow {
             }
         }
 
-        standardButtons: Dialog.Open | Dialog.Ok
+        footer: DialogButtonBox {
+            Button {
+                text: qsTr("确定")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+            Button {
+                text: qsTr("打开文件所在位置")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+        }
 
         onAccepted: {
-            // Open 按钮触发 accepted
             ConfigManager.openFolder(tw_completeDialog._filePath)
         }
 
         onRejected: {
-            // Ok 按钮触发 rejected（当有 Open 时，Ok 会变成 reject 角色）
             tw_completeDialog.close()
         }
     }
