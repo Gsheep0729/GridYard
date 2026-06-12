@@ -1,4 +1,4 @@
-# GridYard 分层类图（v4.9 当前架构）
+# GridYard 分层类图（v4.10 当前架构）
 
 当前客户端以表现层、应用逻辑层、领域层和数据管理层为目标。为避免所有类挤在一张图中，本文件按职责拆成多张类图。
 
@@ -59,6 +59,7 @@ classDiagram
         +acceptReceiveSession(sessionId)
         +rejectReceiveSession(sessionId)
         +cancelSession(sessionId)
+        +removeSession(sessionId)
         +receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName, fileSize, totalFiles, totalBytes) signal
     }
 
@@ -193,6 +194,7 @@ classDiagram
         +acceptReceiveSession(sessionId)
         +rejectReceiveSession(sessionId)
         +cancelSession(sessionId)
+        +removeSession(sessionId)
         -onTransferRequestReceived(worker, senderDeviceId, senderName, fileName, fileSize, totalFiles, totalBytes)
         +sessionsChanged() signal
         +transferCompleted(sessionId, fileName, filePath) signal
@@ -209,6 +211,7 @@ classDiagram
         +progress : int
         +bytesTransferred : qint64
         +totalBytes : qint64
+        +createdAt : QString
     }
 
     class P2pServer {
@@ -326,7 +329,7 @@ classDiagram
         +deviceName : string
         +ipAddress : string
         +isOnline : bool
-        +sessionsForCurrentDevice()
+        +filteredSessions : var
         +sendFileRequested() signal
         +sendFolderRequested() signal
         +fileDropped(filePath) signal
@@ -341,6 +344,8 @@ classDiagram
         +progress : int
         +bytesTransferred : int
         +totalBytes : int
+        +createdAt : string
+        +peerDeviceName : string
     }
 
     class SettingsDialog {

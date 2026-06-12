@@ -29,6 +29,7 @@ Q_DECLARE_METATYPE(FileReceiverWorker*)
 #include <QFileInfo>
 #include <QThread>
 #include <QUuid>
+#include <QDateTime>
 
 TransferSessionManager::TransferSessionManager(QObject *parent)
     : QObject{parent}
@@ -99,6 +100,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session["progress"]  = 0;
     session["bytesTransferred"] = 0;
     session["totalBytes"] = 0;
+    session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
     _sessions.append(session);
     emit sessionsChanged();
@@ -240,6 +242,26 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
     }
 }
 
+void TransferSessionManager::removeSession(const QString &sessionId)
+{
+    for (int i = 0; i < _sessions.size(); ++i) {
+        if (_sessions[i]["sessionId"].toString() == sessionId) {
+            QString status = _sessions[i]["status"].toString();
+
+            // 只允许移除已完成、失败、取消的会话
+            if (status == "completed" || status == "failed" ||
+                status == "rejected" || status == "cancelled") {
+                _sessions.removeAt(i);
+                emit sessionsChanged();
+                qDebug() << "TransferSessionManager: 移除会话" << sessionId;
+            } else {
+                qWarning() << "TransferSessionManager: 无法移除进行中的会话" << sessionId;
+            }
+            break;
+        }
+    }
+}
+
 void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worker,
                                                         const QString &senderDeviceId,
                                                         const QString &senderName,
@@ -279,6 +301,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["progress"]  = 0;
     session["bytesTransferred"] = 0;
     session["worker"]    = QVariant::fromValue(worker);
+    session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
     _sessions.append(session);
     emit sessionsChanged();
