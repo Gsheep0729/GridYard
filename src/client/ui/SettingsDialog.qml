@@ -10,6 +10,8 @@
  * Change Log:
  * [v0.1] GY   2026-06-02
  * * Stage 2：初始版本
+ * [v0.2] GY   2026-06-13
+ * * 重构为卡片式设置页，增加本机摘要、输入校验和修改状态提示
  */
 
 import QtQuick
@@ -24,13 +26,22 @@ Dialog {
     title: qsTr("设置")
     modal: true
     anchors.centerIn: parent
-    width: 480
-    height: 420
+    width: Math.min(680, parent ? parent.width - 32 : 680)
+    height: Math.min(620, parent ? parent.height - 32 : 620)
+    padding: 0
 
     // 临时存储编辑中的值
     property string _tempDeviceName:  ConfigManager.deviceName
     property string _tempReceivePath: ConfigManager.receivePath
     property int    _tempTcpPort:     ConfigManager.tcpPort
+
+    readonly property bool _isValid: _tempDeviceName.trim().length > 0
+                                    && _tempReceivePath.length > 0
+                                    && _tempTcpPort >= 1024
+                                    && _tempTcpPort <= 65535
+    readonly property bool _isDirty: _tempDeviceName.trim() !== ConfigManager.deviceName
+                                    || _tempReceivePath !== ConfigManager.receivePath
+                                    || _tempTcpPort !== ConfigManager.tcpPort
 
     // 打开对话框时重置临时值
     onAboutToShow: {
@@ -39,79 +50,208 @@ Dialog {
         _tempTcpPort     = ConfigManager.tcpPort
     }
 
-    ScrollView {
+    background: Rectangle {
+        color: "#F5F7FA"
+        radius: 10
+        border.color: "#D8DEE6"
+    }
+
+    header: Rectangle {
+        implicitHeight: 96
+        color: "#FFFFFF"
+        radius: 10
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 14
+
+            Rectangle {
+                Layout.preferredWidth: 52
+                Layout.preferredHeight: 52
+                radius: 26
+                color: "#4A90D9"
+
+                Label {
+                    anchors.centerIn: parent
+                    text: tw_settingsDialog._tempDeviceName.trim().length > 0
+                          ? tw_settingsDialog._tempDeviceName.trim().charAt(0)
+                          : "?"
+                    color: "#FFFFFF"
+                    font.pixelSize: 22
+                    font.bold: true
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 3
+
+                Label {
+                    text: qsTr("本机设置")
+                    font.pixelSize: 20
+                    font.bold: true
+                }
+
+                Label {
+                    text: qsTr("%1 · %2").arg(ConfigManager.localIp).arg(ConfigManager.deviceId)
+                    color: "#6B7280"
+                    font.pixelSize: 12
+                    elide: Text.ElideMiddle
+                    Layout.fillWidth: true
+                }
+            }
+        }
+    }
+
+    contentItem: ScrollView {
         id: tw_scrollView
-        anchors.fill: parent
         clip: true
         contentWidth: availableWidth
 
         ColumnLayout {
             width: tw_scrollView.availableWidth
-            spacing: 16
+            spacing: 12
 
-            // 设备名
-            GroupBox {
-                title: qsTr("设备信息")
+            Item {
+                Layout.preferredHeight: 4
+            }
+
+            Rectangle {
                 Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                implicitHeight: tw_deviceSection.implicitHeight + 32
+                color: "#FFFFFF"
+                radius: 8
+                border.color: "#E4E8EE"
 
                 ColumnLayout {
+                    id: tw_deviceSection
                     anchors.fill: parent
+                    anchors.margins: 16
                     spacing: 8
 
-                    Label { text: qsTr("设备名称：") }
+                    Label {
+                        text: qsTr("设备信息")
+                        font.pixelSize: 15
+                        font.bold: true
+                    }
+
+                    Label {
+                        text: qsTr("其他设备会通过这个名称识别你，修改后会实时同步。")
+                        color: "#6B7280"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                    }
+
                     TextField {
-                        id: deviceNameField
+                        id: tw_deviceNameField
                         Layout.fillWidth: true
                         text: tw_settingsDialog._tempDeviceName
                         placeholderText: qsTr("输入设备名称")
+                        selectByMouse: true
                         onTextChanged: tw_settingsDialog._tempDeviceName = text
+                    }
+
+                    Label {
+                        visible: tw_settingsDialog._tempDeviceName.trim().length === 0
+                        text: qsTr("设备名称不能为空")
+                        color: "#C62828"
+                        font.pixelSize: 11
                     }
                 }
             }
 
-            // 接收路径
-            GroupBox {
-                title: qsTr("文件接收")
+            Rectangle {
                 Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                implicitHeight: tw_receiveSection.implicitHeight + 32
+                color: "#FFFFFF"
+                radius: 8
+                border.color: "#E4E8EE"
 
                 ColumnLayout {
+                    id: tw_receiveSection
                     anchors.fill: parent
-                    spacing: 8
+                    anchors.margins: 16
+                    spacing: 10
 
-                    Label { text: qsTr("接收路径：") }
+                    Label {
+                        text: qsTr("文件接收")
+                        font.pixelSize: 15
+                        font.bold: true
+                    }
+
+                    Label {
+                        text: qsTr("接收完成的文件会保存到以下目录。")
+                        color: "#6B7280"
+                        font.pixelSize: 12
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
                         TextField {
-                            id: receivePathField
+                            id: tw_receivePathField
                             Layout.fillWidth: true
                             text: tw_settingsDialog._tempReceivePath
                             readOnly: true
+                            selectByMouse: true
                         }
+
                         Button {
-                            text: qsTr("浏览...")
-                            onClicked: folderDialog.open()
+                            text: qsTr("选择目录")
+                            onClicked: tw_folderDialog.open()
                         }
                     }
                 }
             }
 
-            // TCP 端口
-            GroupBox {
-                title: qsTr("网络设置")
+            Rectangle {
                 Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 4
+                implicitHeight: tw_networkSection.implicitHeight + 32
+                color: "#FFFFFF"
+                radius: 8
+                border.color: "#E4E8EE"
 
-                ColumnLayout {
+                RowLayout {
+                    id: tw_networkSection
                     anchors.fill: parent
-                    spacing: 8
+                    anchors.margins: 16
+                    spacing: 16
 
-                    Label { text: qsTr("TCP 端口：") }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 5
+
+                        Label {
+                            text: qsTr("网络连接")
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Label {
+                            text: qsTr("TCP 端口用于局域网设备建立文件传输连接。")
+                            color: "#6B7280"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
                     SpinBox {
-                        id: tcpPortSpinBox
+                        id: tw_tcpPortSpinBox
                         from: 1024
                         to: 65535
                         value: tw_settingsDialog._tempTcpPort
+                        editable: true
                         onValueModified: tw_settingsDialog._tempTcpPort = value
                     }
                 }
@@ -119,19 +259,47 @@ Dialog {
         }
     }
 
-    // 底部按钮
-    standardButtons: Dialog.Ok | Dialog.Cancel
+    footer: Rectangle {
+        implicitHeight: 68
+        color: "#FFFFFF"
+        radius: 10
 
-    onAccepted: {
-        // 保存配置
-        ConfigManager.deviceName  = tw_settingsDialog._tempDeviceName
-        ConfigManager.receivePath = tw_settingsDialog._tempReceivePath
-        ConfigManager.tcpPort     = tw_settingsDialog._tempTcpPort
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: tw_settingsDialog._isDirty
+                      ? qsTr("有尚未保存的修改")
+                      : qsTr("所有设置均已保存")
+                color: tw_settingsDialog._isDirty ? "#B26A00" : "#6B7280"
+                font.pixelSize: 12
+            }
+
+            Button {
+                text: qsTr("取消")
+                onClicked: tw_settingsDialog.reject()
+            }
+
+            Button {
+                text: qsTr("保存设置")
+                enabled: tw_settingsDialog._isDirty && tw_settingsDialog._isValid
+                highlighted: true
+                onClicked: {
+                    ConfigManager.deviceName = tw_settingsDialog._tempDeviceName.trim()
+                    ConfigManager.receivePath = tw_settingsDialog._tempReceivePath
+                    ConfigManager.tcpPort = tw_settingsDialog._tempTcpPort
+                    tw_settingsDialog.accept()
+                }
+            }
+        }
     }
 
     // 文件夹选择对话框
     FolderDialog {
-        id: folderDialog
+        id: tw_folderDialog
         title: qsTr("选择接收路径")
         currentFolder: "file://" + tw_settingsDialog._tempReceivePath
         onAccepted: {
