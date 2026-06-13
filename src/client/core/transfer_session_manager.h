@@ -55,6 +55,7 @@ signals:
     void sessionsChanged();
     // 新的接收请求（需要弹窗确认）
     void receiveRequestReceived(const QString &sessionId,
+                                const QString &senderDeviceId,
                                 const QString &senderName,
                                 const QString &fileName,
                                 qint64 fileSize,
@@ -72,6 +73,7 @@ signals:
 private slots:
     // 处理新的传输请求
     void onTransferRequestReceived(FileReceiverWorker *worker,
+                                   const QString &senderDeviceId,
                                    const QString &senderName,
                                    const QString &fileName,
                                    qint64 fileSize,

@@ -79,13 +79,14 @@ void P2pServer::onNewConnection()
 
         // 转发传输请求信号
         connect(worker, &FileReceiverWorker::transferRequestReceived,
-                this, [this, worker](const QString &senderName,
+                this, [this, worker](const QString &senderDeviceId,
+                                     const QString &senderName,
                                      const QString &fileName,
                                      qint64 fileSize,
                                      int totalFiles,
                                      qint64 totalBytes) {
             qDebug() << "[P2pServer] 转发传输请求信号到 TransferSessionManager";
-            emit transferRequestReceived(worker, senderName, fileName,
+            emit transferRequestReceived(worker, senderDeviceId, senderName, fileName,
                                          fileSize, totalFiles, totalBytes);
         });
 

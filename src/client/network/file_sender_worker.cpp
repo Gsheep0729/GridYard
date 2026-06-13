@@ -58,13 +58,15 @@ FileSenderWorker::~FileSenderWorker()
 }
 
 void FileSenderWorker::startTransfer(const QString &host, quint16 port,
-                                     const QString &path, const QString &senderName)
+                                     const QString &path, const QString &senderDeviceId,
+                                     const QString &senderName)
 {
     qDebug() << "[FileSender] 开始传输流程";
     qDebug() << "[FileSender] 目标地址:" << host << ":" << port;
     qDebug() << "[FileSender] 文件路径:" << path;
 
     _rootPath = path;
+    _senderDeviceId = senderDeviceId;
     _senderName = senderName;
     _sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
@@ -234,6 +236,7 @@ void FileSenderWorker::sendTransferRequest()
 
     QJsonObject json;
     json["session_id"]  = _sessionId;
+    json["sender_device_id"] = _senderDeviceId;
     json["sender_name"] = _senderName;
     json["total_files"] = _fileList.size();
     json["total_bytes"] = _totalBytes;

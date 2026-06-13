@@ -124,7 +124,7 @@ void TestFileTransfer::testSingleFileTransfer()
 
     QString receivedSenderName;
     connect(&server, &P2pServer::transferRequestReceived,
-            this, [&receivedSenderName](FileReceiverWorker *worker,
+            this, [&receivedSenderName](FileReceiverWorker *worker, const QString &,
                                         const QString &senderName,
                                         const QString &, qint64, int, qint64) {
         receivedSenderName = senderName;
@@ -144,6 +144,7 @@ void TestFileTransfer::testSingleFileTransfer()
                               Q_ARG(QString, "127.0.0.1"),
                               Q_ARG(quint16, _testPort),
                               Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "test-sender-id"),
                               Q_ARG(QString, "TestSender"));
 
     // 接收端应显示发送方当前设置的设备别名

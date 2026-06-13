@@ -47,6 +47,7 @@ public:
 
     // 获取会话信息
     QString sessionId()    const { return _sessionId; }
+    QString senderDeviceId() const { return _senderDeviceId; }
     QString senderName()   const { return _senderName; }
     QString fileName()     const { return _fileName; }
     qint64  fileSize()     const { return _fileSize; }
@@ -62,7 +63,8 @@ public slots:
 
 signals:
     // 传输请求到达（需要弹窗确认）
-    void transferRequestReceived(const QString &senderName,
+    void transferRequestReceived(const QString &senderDeviceId,
+                                 const QString &senderName,
                                  const QString &fileName,
                                  qint64 fileSize,
                                  int totalFiles,
@@ -103,6 +105,7 @@ private:
 
     // 会话信息
     QString _sessionId;
+    QString _senderDeviceId;
     QString _senderName;
     int     _totalFiles = 0;
     qint64  _totalBytes = 0;
