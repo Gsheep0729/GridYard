@@ -2,13 +2,13 @@
 * @file    p2p_server.cpp
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   P2pServer 实现
 *
 * Change Log:
-* [v4.3.4] GY   2026-06-04
+* [v4.3.4] FengChunlin   2026-06-04
 * * Stage 4.3：信号转发添加 totalFiles/totalBytes 参数
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] FengChunlin   2026-06-02
 * * Stage 3：初始版本
 */
 

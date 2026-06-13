@@ -1,7 +1,7 @@
 /**
 * @file    test_integration.cpp
 * @date    2026-06-05
-* @author  GY
+* @author  GridYard Team
 * @brief   集成测试 - 单机多实例模拟
 *
 * 在同一台机器上启动多个实例，模拟多设备传输场景。

@@ -2,7 +2,7 @@
 * @file    test_file_transfer.cpp
 * @version 4.11.0
 * @date    2026-06-05
-* @author  GY
+* @author  GridYard Team
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
