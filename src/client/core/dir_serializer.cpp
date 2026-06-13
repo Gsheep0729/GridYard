@@ -2,11 +2,11 @@
 * @file    dir_serializer.cpp
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   DirSerializer 实现
 *
 * Change Log:
-* [v4.1.0] GY   2026-06-04
+* [v4.1.0] FengChunlin   2026-06-04
 * * Stage 4：初始实现
 */
 

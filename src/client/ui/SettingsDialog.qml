@@ -2,7 +2,7 @@
  * @file    SettingsDialog.qml
  * @version 4.11.0
  * @date    2026-06-13
- * @author  GY
+ * @author  GridYard Team
  * @brief   设置对话框
  *
  * 编辑设备名、选择接收路径、修改 TCP 端口。
@@ -11,9 +11,9 @@
  * Change Log:
  * [v4.11.0] GY   2026-06-13
  * * 新增自动接收并保存文件设置
- * [v4.9.0] GY   2026-06-13
+ * [v4.9.0] DuRuoxian   2026-06-13
  * * 重构为卡片式设置页，增加本机摘要、输入校验和修改状态提示
- * [v0.2.0] GY   2026-06-02
+ * [v0.2.0] DuRuoxian   2026-06-02
  * * Stage 2：初始版本
  */
 

@@ -2,7 +2,7 @@
 * @file    app_controller.cpp
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   AppController 实现
 *
 * Change Log:

@@ -1,7 +1,7 @@
 /**
 * @file    test_discovery.cpp
 * @date    2026-06-05
-* @author  GY
+* @author  GridYard Team
 * @brief   DiscoveryService 设备发现测试
 *
 * 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()

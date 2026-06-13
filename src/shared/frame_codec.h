@@ -2,7 +2,7 @@
 * @file    frame_codec.h
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   TLV 帧编解码器（含粘包/半包状态机）
 *
 * encode() 把 type + payload 拼成 8 字节帧头 + 载荷字节流（大端序）。

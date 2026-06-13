@@ -2,23 +2,23 @@
 * @file    file_receiver_worker.cpp
 * @version 4.11.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   FileReceiverWorker 实现
 *
 * Change Log:
-* [v4.11.0] GY   2026-06-13
+* [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹接收保留顶层目录，校验路径并避免覆盖
-* [v4.8.3] GY   2026-06-13
+* [v4.8.3] FengChunlin   2026-06-13
 * * 传输请求中使用发送方设备别名
-* [v4.4.2] GY   2026-06-04
+* [v4.4.2] FengChunlin   2026-06-04
 * * Stage 4.4：添加超时检测机制
-* [v4.3.4] GY   2026-06-04
+* [v4.3.4] FengChunlin   2026-06-04
 * * Stage 4.3：SHA-256 校验实现，多文件接收支持
-* [v4.3.1] GY   2026-06-04
+* [v4.3.1] FengChunlin   2026-06-04
 * * Stage 4.3：解析文件列表（含 sha256），支持多文件接收
-* [v0.3.0] GY   2026-06-03
+* [v0.3.0] FengChunlin   2026-06-03
 * * 接收路径改用 _receivePath 成员，支持外部配置
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] FengChunlin   2026-06-02
 * * Stage 3：初始版本
 */
 

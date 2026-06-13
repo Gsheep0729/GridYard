@@ -2,7 +2,7 @@
 * @file    config_manager.h
 * @version 4.11.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
 * 使用 QSettings 管理设备名、接收路径、TCP 端口等配置。

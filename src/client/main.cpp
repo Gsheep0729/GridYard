@@ -2,7 +2,7 @@
 * @file    main.cpp
 * @version 4.11.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   GridYard 客户端程序入口
 *
 * 启动 QQmlApplicationEngine，通过 loadFromModule 加载
