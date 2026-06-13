@@ -51,11 +51,28 @@
 #include "data_types.h"
 #include "logger.h"
 
+namespace {
+
+void configurePlatformTheme()
+{
+#ifdef Q_OS_LINUX
+    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP");
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORMTHEME")
+        && desktop.contains("KDE", Qt::CaseInsensitive)) {
+        qputenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
+    }
+#endif
+}
+
+}
+
 int main(int argc, char *argv[]) {
+    configurePlatformTheme();
+
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("4.8.1");
+    QGuiApplication::setApplicationVersion("4.8.2");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析

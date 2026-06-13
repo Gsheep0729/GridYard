@@ -39,15 +39,15 @@ ApplicationWindow {
     // 目标设备 ID（点击设备卡片时设置）
     property string _targetDeviceId: ""
 
-    // Qt 文件选择对话框（回退方案）
+    // 文件选择对话框由 Qt 平台主题接入系统原生实现
     FileDialog {
-        id: tw_fallbackFileDialog
+        id: tw_fileDialog
         title: qsTr("选择要发送的文件")
         fileMode: FileDialog.OpenFiles
         nameFilters: [qsTr("所有文件 (*)")]
 
         onAccepted: {
-            let urls = tw_fallbackFileDialog.selectedFiles
+            let urls = tw_fileDialog.selectedFiles
             for (let i = 0; i < urls.length; i++) {
                 let path = urls[i].toString()
                 if (path.startsWith("file://")) {
@@ -98,17 +98,7 @@ ApplicationWindow {
             onDeviceSelected: function(deviceId) {
                 console.log("选中设备:", deviceId)
                 tw_mainWindow._targetDeviceId = deviceId
-                // 使用系统原生文件选择器
-                let files = AppController.openNativeFileDialog()
-                if (files.length > 0) {
-                    // 系统选择器可用，直接发送
-                    for (let i = 0; i < files.length; i++) {
-                        AppController.transfer.createSendSession(deviceId, files[i])
-                    }
-                } else {
-                    // 系统选择器不可用，回退到 Qt FileDialog
-                    tw_fallbackFileDialog.open()
-                }
+                tw_fileDialog.open()
             }
             onFileDropped: function(deviceId, filePath) {
                 console.log("拖拽文件到设备:", deviceId, filePath)
