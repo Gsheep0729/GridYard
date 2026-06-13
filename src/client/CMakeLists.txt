@@ -5,6 +5,10 @@
 
 qt_add_executable(appGridYard WIN32)
 
+set_source_files_properties(utils/FormatUtils.js PROPERTIES
+    QT_QML_SKIP_QMLDIR_ENTRY TRUE
+)
+
 qt_add_qml_module(appGridYard
     URI         "cqnu.gridyard.client"
     VERSION     1.0
@@ -35,6 +39,7 @@ qt_add_qml_module(appGridYard
         ui/TransferPanel.qml
         ui/TransferTaskCard.qml
         ui/DeviceSessionView.qml
+        utils/FormatUtils.js
 )
 
 target_compile_features(appGridYard PRIVATE cxx_std_23)

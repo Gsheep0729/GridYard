@@ -1,4 +1,4 @@
-# GridYard 分层类图（v4.11.0 当前架构）
+# GridYard 分层类图（v4.12.0 当前架构）
 
 当前客户端以表现层、应用逻辑层、领域层和数据管理层为目标。为避免所有类挤在一张图中，本文件按职责拆成多张类图。
 
@@ -338,7 +338,7 @@ classDiagram
         +deviceName : string
         +ipAddress : string
         +isOnline : bool
-        +filteredSessions : var
+        +filteredCount : int
         +sendFileRequested() signal
         +sendFolderRequested() signal
         +fileDropped(filePath) signal
@@ -357,10 +357,17 @@ classDiagram
         +peerDeviceName : string
     }
 
+    class FormatUtils {
+        <<JavaScript .pragma library>>
+        +formatBytes(bytes) string
+        +formatTime(timeString) string
+    }
+
     class SettingsDialog {
         <<QML Dialog>>
         -_tempDeviceName : string
         -_tempReceivePath : string
+        -_tempAutoAcceptFiles : bool
         -_tempTcpPort : int
         -_isValid : bool
         -_isDirty : bool
@@ -396,13 +403,15 @@ classDiagram
     MainQml *-- AcceptDialog
     PeerListView *-- DeviceCard
     DeviceSessionView *-- TransferTaskCard
+    TransferTaskCard --> FormatUtils : 格式化大小和时间
+    AcceptDialog --> FormatUtils : 格式化文件大小
     PeerListView --> AppController : 绑定 discovery.peers
     DeviceSessionView --> AppController : 按 deviceId 筛选 transfer.sessions
     AcceptDialog --> AppController : 接受或拒绝接收会话
     SettingsDialog --> ConfigManager : 读取并保存配置
 ```
 
-主窗口只保存当前选中设备的信息。左侧 `PeerListView` 负责选择设备，右侧 `DeviceSessionView` 根据稳定的 `deviceId` 筛选会话记录，不再把点击设备直接解释为发送文件。
+主窗口只保存当前选中设备的信息。左侧 `PeerListView` 负责选择设备，右侧 `DeviceSessionView` 根据稳定的 `deviceId` 筛选会话记录。`FormatUtils` 只提供无状态展示格式化，动画继续由 QML 声明。
 
 ## 5. 数据管理层现状
 
