@@ -28,7 +28,8 @@ Frame {
     signal sendFolderRequested()
     signal fileDropped(string filePath)
 
-    function sessionsForCurrentDevice() {
+    // 当前设备的传输会话列表（响应式）
+    property var filteredSessions: {
         const result = []
         const sessions = AppController.transfer.sessions
         for (let i = 0; i < sessions.length; i++) {
@@ -108,7 +109,7 @@ Frame {
             Layout.topMargin: 8
             clip: true
             spacing: 8
-            model: tw_deviceSessionView.sessionsForCurrentDevice()
+            model: tw_deviceSessionView.filteredSessions
 
             delegate: TransferTaskCard {
                 width: tw_sessionList.width
@@ -119,6 +120,8 @@ Frame {
                 progress: modelData.progress || 0
                 bytesTransferred: modelData.bytesTransferred || 0
                 totalBytes: modelData.totalBytes || 0
+                createdAt: modelData.createdAt || ""
+                peerDeviceName: modelData.peerDeviceName || ""
             }
 
             Label {
