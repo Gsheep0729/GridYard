@@ -2,7 +2,7 @@
  * @file    DeviceCard.qml
  * @version 4.10.0
  * @date    2026-06-13
- * @author  GY
+ * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
  * 全部 4 个 property 都声明为 required：当本组件作为 delegate
@@ -12,11 +12,11 @@
  * 支持拖拽文件到卡片触发传输。
  *
  * Change Log:
- * [v4.9.0] GY   2026-06-13
+ * [v4.9.0] DuRuoxian   2026-06-13
  * * 增加会话选中样式，点击时传递完整设备信息
- * [v0.3.1] GY   2026-06-03
+ * [v0.3.1] DuRuoxian   2026-06-03
  * * Stage 3.9：添加 DropArea 支持拖拽传输
- * [v0.2.0] GY   2026-06-02
+ * [v0.2.0] DuRuoxian   2026-06-02
  * * Stage 2：初始版本
  */
 

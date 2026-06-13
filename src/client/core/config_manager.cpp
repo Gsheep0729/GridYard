@@ -2,7 +2,7 @@
 * @file    config_manager.cpp
 * @version 4.11.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   ConfigManager 实现
 *
 * Change Log:

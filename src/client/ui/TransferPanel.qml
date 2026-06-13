@@ -2,16 +2,16 @@
  * @file    TransferPanel.qml
  * @version 4.10.1
  * @date    2026-06-13
- * @author  GY
+ * @author  GridYard Team
  * @brief   传输面板
  *
  * 显示所有进行中的传输任务，每个任务显示进度条、速度、取消按钮。
  * 绑定 TransferSessionManager.sessions。
  *
  * Change Log:
- * [v4.10.1] GY   2026-06-13
+ * [v4.10.1] DuRuoxian   2026-06-13
  * * 修复会话字段绑定
- * [v0.2.0] GY   2026-06-02
+ * [v0.2.0] DuRuoxian   2026-06-02
  * * Stage 3：初始版本
  */
 

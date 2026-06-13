@@ -2,7 +2,7 @@
 * @file    app_controller.h
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   GridYard 应用全局控制器（QML 单例）
 *
 * 按【代码规范 §3.5 四层架构】，AppController 是中介者单例。

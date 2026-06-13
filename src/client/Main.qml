@@ -2,7 +2,7 @@
 * @file    Main.qml
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
 * 标题通过 AppController.applicationName/Version 绑定，
@@ -10,15 +10,15 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
-* [v4.10.0] GY   2026-06-13
+* [v4.10.0] DuRuoxian   2026-06-13
 * * 传输完成弹窗改为自定义按钮
-* [v4.9.0] GY   2026-06-13
+* [v4.9.0] DuRuoxian   2026-06-13
 * * 点击设备切换会话页，增加文件与文件夹发送入口
-* [v4.3.4] GY   2026-06-04
+* [v4.3.4] DuRuoxian   2026-06-04
 * * Stage 4.3：更新接收请求信号处理，支持多文件信息
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] DuRuoxian   2026-06-02
 * * Stage 2：嵌入设备列表，实现左右分栏布局
-* [v0.1.0] GY   2026-05-24
+* [v0.1.0] DuRuoxian   2026-05-24
 * * Stage 0：空白窗口框架
 */
 

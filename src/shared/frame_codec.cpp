@@ -2,7 +2,7 @@
 * @file    frame_codec.cpp
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   FrameCodec 实现
 *
 * Change Log:

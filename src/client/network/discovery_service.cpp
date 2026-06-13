@@ -2,15 +2,15 @@
 * @file    discovery_service.cpp
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   DiscoveryService 实现
 *
 * Change Log:
-* [v4.7.1] GY   2026-06-05
+* [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
-* [v0.3.0] GY   2026-06-03
+* [v0.3.0] FengChunlin   2026-06-03
 * * 添加 refresh() 方法实现
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] FengChunlin   2026-06-02
 * * Stage 2：初始版本
 */
 

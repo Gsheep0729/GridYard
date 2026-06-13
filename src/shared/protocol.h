@@ -2,7 +2,7 @@
 * @file    protocol.h
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   GridYard 应用层通信协议（TLV 帧 + Type 码）
 *
 * 全局唯一的协议常量定义入口。所有 Type 码、帧头字段、Payload 字段名

@@ -2,7 +2,7 @@
 * @file    transfer_session_manager.h
 * @version 4.11.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   传输会话管理器
 *
 * 管理所有进行中的传输会话，提供 Q_INVOKABLE 方法供 QML 调用。

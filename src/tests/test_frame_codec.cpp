@@ -1,7 +1,7 @@
 /**
 * @file    test_frame_codec.cpp
 * @date    2026-06-02
-* @author  GY
+* @author  GridYard Team
 * @brief   FrameCodec 单元测试
 *
 * 测试用例：单帧 / 粘包 / 半包 / 空 payload / 超大 payload

@@ -2,18 +2,18 @@
 * @file    discovery_service.h
 * @version 4.10.0
 * @date    2026-06-13
-* @author  GY
+* @author  GridYard Team
 * @brief   局域网设备发现服务
 *
 * 通过 UDP 广播实现局域网内设备自动发现。
 * 每 5 秒发送 Hello 包，维护在线节点表，15 秒无心跳自动剔除。
 *
 * Change Log:
-* [v4.7.1] GY   2026-06-05
+* [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
-* [v0.3.0] GY   2026-06-03
+* [v0.3.0] FengChunlin   2026-06-03
 * * 添加 refresh() 方法
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] FengChunlin   2026-06-02
 * * Stage 2：初始版本
 */
 

@@ -2,17 +2,17 @@
  * @file    DeviceSessionView.qml
  * @version 4.10.1
  * @date    2026-06-13
- * @author  GY
+ * @author  GridYard Team
  * @brief   当前设备的文件传输会话页
  *
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
  *
  * Change Log:
- * [v4.10.1] GY   2026-06-13
+ * [v4.10.1] DuRuoxian   2026-06-13
  * * 使用显式模型角色修复传输记录字段为空
- * [v4.10.0] GY   2026-06-13
+ * [v4.10.0] DuRuoxian   2026-06-13
  * * 修复 delegate 绑定问题，添加 filteredCount 属性
- * [v4.9.0] GY   2026-06-13
+ * [v4.9.0] DuRuoxian   2026-06-13
  * * 初始版本
  */
 
