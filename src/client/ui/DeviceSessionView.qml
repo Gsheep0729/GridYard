@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 4.10.0
+ * @version 4.10.1
  * @date    2026-06-13
  * @author  GY
  * @brief   当前设备的文件传输会话页
@@ -8,6 +8,8 @@
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
  *
  * Change Log:
+ * [v4.10.1] GY   2026-06-13
+ * * 使用显式模型角色修复传输记录字段为空
  * [v4.10.0] GY   2026-06-13
  * * 修复 delegate 绑定问题，添加 filteredCount 属性
  * [v4.9.0] GY   2026-06-13
@@ -114,19 +116,38 @@ Frame {
             spacing: 8
             model: AppController.transfer.sessions
 
-            delegate: TransferTaskCard {
+            delegate: Item {
+                id: sessionDelegate
+
+                required property string sessionId
+                required property string type
+                required property string deviceId
+                required property string fileName
+                required property string status
+                required property int progress
+                required property var bytesTransferred
+                required property var totalBytes
+                required property string createdAt
+                required property string peerDeviceName
+
                 width: sessionList.width
-                visible: modelData.deviceId === deviceSessionView.deviceId
-                height: visible ? implicitHeight : 0
-                sessionId: modelData.sessionId || ""
-                taskType: modelData.type || ""
-                taskName: modelData.fileName || ""
-                status: modelData.status || ""
-                progress: modelData.progress || 0
-                bytesTransferred: modelData.bytesTransferred || 0
-                totalBytes: modelData.totalBytes || 0
-                createdAt: modelData.createdAt || ""
-                peerDeviceName: modelData.peerDeviceName || ""
+                visible: deviceId === deviceSessionView.deviceId
+                height: visible ? taskCard.height : 0
+
+                TransferTaskCard {
+                    id: taskCard
+
+                    width: sessionDelegate.width
+                    sessionId: sessionDelegate.sessionId
+                    taskType: sessionDelegate.type
+                    taskName: sessionDelegate.fileName
+                    status: sessionDelegate.status
+                    progress: sessionDelegate.progress
+                    bytesTransferred: sessionDelegate.bytesTransferred
+                    totalBytes: sessionDelegate.totalBytes
+                    createdAt: sessionDelegate.createdAt
+                    peerDeviceName: sessionDelegate.peerDeviceName
+                }
             }
 
             Label {

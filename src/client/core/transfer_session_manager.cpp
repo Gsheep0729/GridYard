@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 4.10.0
+* @version 4.10.1
 * @date    2026-06-13
 * @author  GY
 * @brief   TransferSessionManager 实现
 *
 * Change Log:
+* [v4.10.1] GY   2026-06-13
+* * 补齐接收会话字段，保证 QML 模型角色一致
 * [v4.10.0] GY   2026-06-13
 * * 新增 removeSession() 方法，添加 createdAt 时间戳
 * [v4.8.3] GY   2026-06-13
@@ -300,6 +302,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["deviceId"]  = senderDeviceId;
     session["peerDeviceName"] = senderName;
     session["senderName"] = senderName;
+    session["filePath"]  = "";
     session["fileName"]  = fileName;
     session["fileSize"]  = fileSize;
     session["totalFiles"] = totalFiles;
