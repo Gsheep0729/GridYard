@@ -118,8 +118,18 @@ void TestFileTransfer::testSingleFileTransfer()
     createTestFile(sendPath, "Hello, GridYard!");
 
     // 启动接收服务器
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
+
+    QString receivedSenderName;
+    connect(&server, &P2pServer::transferRequestReceived,
+            this, [&receivedSenderName](FileReceiverWorker *worker,
+                                        const QString &senderName,
+                                        const QString &, qint64, int, qint64) {
+        receivedSenderName = senderName;
+        worker->rejectTransfer("测试完成");
+    });
 
     // 创建发送 Worker
     FileSenderWorker sender;
@@ -133,10 +143,12 @@ void TestFileTransfer::testSingleFileTransfer()
     QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
                               Q_ARG(QString, "127.0.0.1"),
                               Q_ARG(quint16, _testPort),
-                              Q_ARG(QString, sendPath));
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "TestSender"));
 
-    // 等待传输完成
-    waitForTransfer(senderSpy, 15000);
+    // 接收端应显示发送方当前设置的设备别名
+    QTRY_COMPARE_WITH_TIMEOUT(receivedSenderName, QString("TestSender"), 5000);
+    QVERIFY(waitForTransfer(senderSpy, 5000));
 
     // 清理
     senderThread.quit();
