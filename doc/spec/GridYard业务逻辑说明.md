@@ -199,6 +199,7 @@
 ```json
 {
   "session_id": "uuid",
+  "sender_device_id": "发送方设备 UUID",
   "sender_name": "设备名",
   "total_files": 2,
   "total_bytes": 1024000,
