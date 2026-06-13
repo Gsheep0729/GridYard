@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.h
-* @version 4.10.0
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   文件接收 Worker（Worker-Object 模式）
@@ -13,6 +13,8 @@
 * 5. 接收完成后发送 kTypeChunkAck
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 文件夹接收保留顶层目录并避免覆盖同名目标
 * [v4.8.3] GY   2026-06-13
 * * 传输请求中使用发送方设备别名
 * [v4.4.2] GY   2026-06-04
@@ -33,6 +35,7 @@
 
 #include <QFile>
 #include <QObject>
+#include <QStringList>
 #include <QTcpSocket>
 #include <QTimer>
 
@@ -52,7 +55,7 @@ public:
     QString sessionId()    const { return _sessionId; }
     QString senderDeviceId() const { return _senderDeviceId; }
     QString senderName()   const { return _senderName; }
-    QString fileName()     const { return _fileName; }
+    QString fileName()     const { return _displayName; }
     qint64  fileSize()     const { return _fileSize; }
 
     // 设置接收路径（由 TransferSessionManager 调用）
@@ -94,6 +97,10 @@ private:
     void handleDataChunk(const QByteArray &payload);
     // 处理取消请求
     void handleCancel(const QByteArray &payload);
+    // 处理传输完成请求
+    void handleTransferDone();
+    // 打开当前文件
+    bool openCurrentFile();
     // 发送握手响应
     void sendTransferResponse(bool accepted, const QString &reason = "");
     // 发送块确认
@@ -110,6 +117,9 @@ private:
     QString _sessionId;
     QString _senderDeviceId;
     QString _senderName;
+    QString _displayName;
+    QString _rootName;
+    QStringList _emptyDirectories;
     int     _totalFiles = 0;
     qint64  _totalBytes = 0;
 
@@ -125,7 +135,10 @@ private:
     // 状态
     bool _waitingForUserConfirm = false;
     bool _transferActive = false;
+    bool _isDirectory = false;
 
     // 接收路径
     QString _receivePath;
+    QString _destinationRoot;
+    QString _singleFilePath;
 };

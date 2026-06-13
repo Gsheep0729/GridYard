@@ -1,11 +1,13 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 4.10.0
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   FileReceiverWorker 实现
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 文件夹接收保留顶层目录，校验路径并避免覆盖
 * [v4.8.3] GY   2026-06-13
 * * 传输请求中使用发送方设备别名
 * [v4.4.2] GY   2026-06-04
@@ -35,6 +37,46 @@
 
 // 超时时间：30 秒
 static constexpr int kTimeoutMs = 30000;
+
+namespace {
+
+bool isSafeRelativePath(const QString &path)
+{
+    if (path.isEmpty() || QDir::isAbsolutePath(path)) {
+        return false;
+    }
+
+    const QString cleanPath = QDir::cleanPath(path);
+    return cleanPath != ".." && !cleanPath.startsWith("../");
+}
+
+QString uniqueTargetPath(const QString &path, bool directory)
+{
+    if (!QFileInfo::exists(path)) {
+        return path;
+    }
+
+    const QFileInfo info{path};
+    const QString parentPath = info.path();
+    const QString suffix = directory || info.suffix().isEmpty()
+        ? QString()
+        : "." + info.suffix();
+    const QString baseName = directory || info.suffix().isEmpty()
+        ? info.fileName()
+        : info.completeBaseName();
+
+    for (int index = 1; ; ++index) {
+        const QString candidate = QString("%1/%2 (%3)%4")
+                                      .arg(parentPath, baseName)
+                                      .arg(index)
+                                      .arg(suffix);
+        if (!QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+}
+
+}
 
 FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
     : QObject{parent}
@@ -81,31 +123,50 @@ void FileReceiverWorker::acceptTransfer()
     _waitingForUserConfirm = false;
     _transferActive = true;
 
-    // 发送接受响应
-    qDebug() << "[FileReceiver] 发送接受响应";
-    sendTransferResponse(true);
+    const auto failPreparation = [this](const QString &errorMsg) {
+        sendTransferResponse(false, errorMsg);
+        cleanup();
+        emit transferFinished(false, errorMsg);
+        _socket->disconnectFromHost();
+    };
 
-    // 打开文件准备接收（路径由上层通过信号传入，此处用默认路径兜底）
+    // 准备接收目录（路径由上层通过信号传入，此处用默认路径兜底）
     if (_receivePath.isEmpty()) {
         _receivePath = QDir::homePath() + "/GridYard/document";
     }
-    QDir().mkpath(_receivePath);
-
-    QString filePath = _receivePath + "/" + _fileName;
-    _file.setFileName(filePath);
-
-    qDebug() << "[FileReceiver] 准备接收文件:" << filePath;
-
-    if (!_file.open(QIODevice::WriteOnly)) {
-        qWarning() << "[FileReceiver] 无法创建文件:" << _file.errorString();
-        emit transferFinished(false, tr("无法创建文件: %1").arg(_file.errorString()));
+    if (!QDir().mkpath(_receivePath)) {
+        failPreparation(tr("无法创建接收目录"));
         return;
     }
 
+    if (_isDirectory) {
+        _destinationRoot = uniqueTargetPath(_receivePath + "/" + _rootName, true);
+        if (!QDir().mkpath(_destinationRoot)) {
+            failPreparation(tr("无法创建接收目录"));
+            return;
+        }
+
+        for (const QString &relativePath : _emptyDirectories) {
+            if (!QDir().mkpath(_destinationRoot + "/" + QDir::cleanPath(relativePath))) {
+                failPreparation(tr("无法创建目录: %1").arg(relativePath));
+                return;
+            }
+        }
+    } else {
+        _destinationRoot = _receivePath;
+        _singleFilePath = uniqueTargetPath(_receivePath + "/" + _fileName, false);
+    }
+
+    if (!_fileList.isEmpty() && !openCurrentFile()) {
+        failPreparation(tr("无法创建文件: %1").arg(_file.errorString()));
+        return;
+    }
+
+    qDebug() << "[FileReceiver] 发送接受响应";
+    sendTransferResponse(true);
+
     // 启动超时定时器
     _timeoutTimer->start(kTimeoutMs);
-
-    qDebug() << "[FileReceiver] 开始接收文件:" << filePath;
 }
 
 void FileReceiverWorker::rejectTransfer(const QString &reason)
@@ -186,6 +247,9 @@ void FileReceiverWorker::onFrameReady(quint32 type, const QByteArray &payload)
         qDebug() << "[FileReceiver] 处理取消请求";
         handleCancel(payload);
         break;
+    case gy::protocol::kTypeTransferDone:
+        handleTransferDone();
+        break;
     default:
         qDebug() << "[FileReceiver] 未知帧类型:" << type;
         break;
@@ -203,8 +267,16 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     _sessionId  = json["session_id"].toString();
     _senderDeviceId = json["sender_device_id"].toString();
     _senderName = json["sender_name"].toString();
+    _isDirectory = json["is_directory"].toBool(false);
+    _rootName = json["root_name"].toString();
     _totalFiles = json["total_files"].toInt();
     _totalBytes = json["total_bytes"].toVariant().toLongLong();
+
+    if (_rootName.isEmpty() || QFileInfo{_rootName}.fileName() != _rootName) {
+        sendTransferResponse(false, tr("无效的文件名称"));
+        _socket->disconnectFromHost();
+        return;
+    }
 
     // 解析文件列表
     _fileList.clear();
@@ -215,7 +287,30 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
         item.relativePath = fileObj["relative_path"].toString();
         item.sizeBytes    = fileObj["size_bytes"].toVariant().toLongLong();
         item.sha256       = fileObj["sha256"].toString();
+        if (!isSafeRelativePath(item.relativePath)) {
+            sendTransferResponse(false, tr("无效的文件路径"));
+            _socket->disconnectFromHost();
+            return;
+        }
         _fileList.append(item);
+    }
+
+    _emptyDirectories.clear();
+    const QJsonArray directories = json["empty_directories"].toArray();
+    for (const QJsonValue &directory : directories) {
+        const QString relativePath = directory.toString();
+        if (!isSafeRelativePath(relativePath)) {
+            sendTransferResponse(false, tr("无效的目录路径"));
+            _socket->disconnectFromHost();
+            return;
+        }
+        _emptyDirectories.append(relativePath);
+    }
+
+    if (_totalFiles != _fileList.size()) {
+        sendTransferResponse(false, tr("文件列表数量不一致"));
+        _socket->disconnectFromHost();
+        return;
     }
 
     // 设置第一个文件信息
@@ -224,6 +319,7 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
         _fileName = _fileList[0].relativePath;
         _fileSize = _fileList[0].sizeBytes;
     }
+    _displayName = _isDirectory ? _rootName : _fileName;
 
     _waitingForUserConfirm = true;
 
@@ -233,10 +329,10 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     qDebug() << "  发送方:" << _senderName;
     qDebug() << "  文件数:" << _totalFiles;
     qDebug() << "  总大小:" << _totalBytes;
-    qDebug() << "  第一个文件:" << _fileName;
+    qDebug() << "  显示名称:" << _displayName;
 
     // 通知 UI 弹窗确认
-    emit transferRequestReceived(_senderDeviceId, _senderName, _fileName, _fileSize,
+    emit transferRequestReceived(_senderDeviceId, _senderName, _displayName, _fileSize,
                                  _totalFiles, _totalBytes);
 
     qDebug() << "[FileReceiver] 已通知 UI 弹窗确认";
@@ -288,8 +384,9 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
     static int chunkCount = 0;
     if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+        const qint64 percent = _fileSize > 0 ? (_bytesReceived * 100 / _fileSize) : 100;
         qDebug() << "[FileReceiver] 接收进度:" << _bytesReceived << "/" << _fileSize
-                 << "(" << (_bytesReceived * 100 / _fileSize) << "%)";
+                 << "(" << percent << "%)";
         emit progressChanged(_bytesReceived, _fileSize);
     }
 
@@ -334,13 +431,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
             _fileSize = _fileList[_currentFileIndex].sizeBytes;
             _bytesReceived = 0;
 
-            // 创建目录并打开文件
-            QString filePath = _receivePath + "/" + _fileName;
-            QString dirPath = QFileInfo(filePath).path();
-            QDir().mkpath(dirPath);
-
-            _file.setFileName(filePath);
-            if (!_file.open(QIODevice::WriteOnly)) {
+            if (!openCurrentFile()) {
                 _transferActive = false;
                 emit transferFinished(false, tr("无法创建文件: %1").arg(_file.errorString()));
                 return;
@@ -354,6 +445,37 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
             emit transferFinished(true, "");
         }
     }
+}
+
+void FileReceiverWorker::handleTransferDone()
+{
+    if (!_transferActive || !_fileList.isEmpty()) {
+        return;
+    }
+
+    qDebug() << "[FileReceiver] 空文件夹接收完成:" << _displayName;
+    _transferActive = false;
+    emit transferFinished(true, "");
+}
+
+bool FileReceiverWorker::openCurrentFile()
+{
+    QString filePath = _singleFilePath;
+    if (_isDirectory) {
+        filePath = _destinationRoot + "/" + _fileName;
+        if (!QDir().mkpath(QFileInfo{filePath}.path())) {
+            return false;
+        }
+    }
+
+    _file.setFileName(filePath);
+    if (!_file.open(QIODevice::WriteOnly)) {
+        qWarning() << "[FileReceiver] 无法创建文件:" << _file.errorString();
+        return false;
+    }
+
+    qDebug() << "[FileReceiver] 开始接收文件:" << filePath;
+    return true;
 }
 
 void FileReceiverWorker::handleCancel(const QByteArray &payload)

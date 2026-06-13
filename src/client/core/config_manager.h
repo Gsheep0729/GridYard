@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.h
-* @version 4.10.0
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   应用配置管理器（QML 单例）
@@ -9,6 +9,8 @@
 * 首次启动生成 UUID 并持久化，确保设备标识跨会话稳定。
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 新增自动接收并保存文件配置
 * [v4.8.1] GY   2026-06-08
 * * 修复设备名称更新不及时问题，单例模式实现
 * [v0.3.0] GY   2026-06-03
@@ -35,6 +37,7 @@ class ConfigManager : public QObject {
     Q_PROPERTY(QString  deviceName  READ deviceName  WRITE setDeviceName  NOTIFY deviceNameChanged)
     Q_PROPERTY(QString  localIp     READ localIp     NOTIFY localIpChanged)
     Q_PROPERTY(QString  receivePath READ receivePath WRITE setReceivePath NOTIFY receivePathChanged)
+    Q_PROPERTY(bool     autoAcceptFiles READ autoAcceptFiles WRITE setAutoAcceptFiles NOTIFY autoAcceptFilesChanged)
     Q_PROPERTY(quint16  tcpPort     READ tcpPort     WRITE setTcpPort     NOTIFY tcpPortChanged)
 
 public:
@@ -46,10 +49,12 @@ public:
     QString  deviceName()  const;
     QString  localIp()     const;
     QString  receivePath() const;
+    bool     autoAcceptFiles() const;
     quint16  tcpPort()     const;
 
     void setDeviceName(const QString &name);
     void setReceivePath(const QString &path);
+    void setAutoAcceptFiles(bool enabled);
     void setTcpPort(quint16 port);
 
     Q_INVOKABLE void refreshLocalIp();
@@ -60,6 +65,7 @@ signals:
     void deviceNameChanged();
     void localIpChanged();
     void receivePathChanged();
+    void autoAcceptFilesChanged();
     void tcpPortChanged();
 
 private:
@@ -80,5 +86,6 @@ private:
     QString _deviceName;
     QString _localIp;
     QString _receivePath;
+    bool    _autoAcceptFiles = false;
     quint16 _tcpPort = 0;
 };
