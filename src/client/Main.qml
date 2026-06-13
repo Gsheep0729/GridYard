@@ -17,6 +17,8 @@
 * * Stage 2：嵌入设备列表，实现左右分栏布局
 * [v0.4] GY   2026-06-04
 * * Stage 4.3：更新接收请求信号处理，支持多文件信息
+* [v0.5] GY   2026-06-13
+* * 点击设备切换会话页，增加文件与文件夹发送入口
 */
 
 import QtQuick
@@ -38,6 +40,32 @@ ApplicationWindow {
 
     // 目标设备 ID（点击设备卡片时设置）
     property string _targetDeviceId: ""
+    property string _targetDeviceName: ""
+    property string _targetIpAddress: ""
+    property bool _targetIsOnline: false
+
+    function selectDevice(deviceId: string, deviceName: string,
+                          ipAddress: string, isOnline: bool): void {
+        _targetDeviceId = deviceId
+        _targetDeviceName = deviceName
+        _targetIpAddress = ipAddress
+        _targetIsOnline = isOnline
+    }
+
+    function refreshSelectedDevice(): void {
+        if (_targetDeviceId.length === 0) {
+            return
+        }
+        const peers = AppController.discovery.peers
+        for (let i = 0; i < peers.length; i++) {
+            if (peers[i].deviceId === _targetDeviceId) {
+                selectDevice(peers[i].deviceId, peers[i].deviceName,
+                             peers[i].ipAddress, peers[i].isOnline)
+                return
+            }
+        }
+        _targetIsOnline = false
+    }
 
     // 文件选择对话框由 Qt 平台主题接入系统原生实现
     FileDialog {
@@ -55,6 +83,19 @@ ApplicationWindow {
                 }
                 AppController.transfer.createSendSession(tw_mainWindow._targetDeviceId, path)
             }
+        }
+    }
+
+    FolderDialog {
+        id: tw_folderDialog
+        title: qsTr("选择要发送的文件夹")
+
+        onAccepted: {
+            let path = selectedFolder.toString()
+            if (path.startsWith("file://")) {
+                path = path.substring(7)
+            }
+            AppController.transfer.createSendSession(tw_mainWindow._targetDeviceId, path)
         }
     }
 
@@ -92,24 +133,67 @@ ApplicationWindow {
 
         // 左侧：设备列表
         PeerListView {
+            id: tw_peerListView
             Layout.preferredWidth: 280
             Layout.fillHeight: true
+            selectedDeviceId: tw_mainWindow._targetDeviceId
 
-            onDeviceSelected: function(deviceId) {
+            onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
                 console.log("选中设备:", deviceId)
-                tw_mainWindow._targetDeviceId = deviceId
-                tw_fileDialog.open()
+                tw_mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
             }
             onFileDropped: function(deviceId, filePath) {
                 console.log("拖拽文件到设备:", deviceId, filePath)
+                const peers = AppController.discovery.peers
+                for (let i = 0; i < peers.length; i++) {
+                    if (peers[i].deviceId === deviceId) {
+                        tw_mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
+                                                   peers[i].ipAddress, peers[i].isOnline)
+                        break
+                    }
+                }
                 AppController.transfer.createSendSession(deviceId, filePath)
             }
         }
 
-        // 右侧：传输面板
-        TransferPanel {
+        StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            currentIndex: tw_mainWindow._targetDeviceId.length > 0 ? 1 : 0
+
+            Frame {
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    spacing: 12
+
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr("选择一台在线设备")
+                        font.pixelSize: 20
+                        font.bold: true
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr("点击左侧设备进入传输会话，也可以直接拖放文件到设备卡片")
+                        color: "#777777"
+                        font.pixelSize: 13
+                    }
+                }
+            }
+
+            DeviceSessionView {
+                deviceId: tw_mainWindow._targetDeviceId
+                deviceName: tw_mainWindow._targetDeviceName
+                ipAddress: tw_mainWindow._targetIpAddress
+                isOnline: tw_mainWindow._targetIsOnline
+
+                onSendFileRequested: tw_fileDialog.open()
+                onSendFolderRequested: tw_folderDialog.open()
+                onFileDropped: function(filePath) {
+                    AppController.transfer.createSendSession(tw_mainWindow._targetDeviceId, filePath)
+                }
+            }
         }
     }
 
@@ -156,6 +240,14 @@ ApplicationWindow {
         target: AppController.transfer
         function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
                                           fileSize, totalFiles, totalBytes) {
+            const peers = AppController.discovery.peers
+            for (let i = 0; i < peers.length; i++) {
+                if (peers[i].deviceId === senderDeviceId) {
+                    tw_mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
+                                               peers[i].ipAddress, peers[i].isOnline)
+                    break
+                }
+            }
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName
             acceptDialog.fileName = fileName
@@ -176,6 +268,13 @@ ApplicationWindow {
         function onMessageOccurred(message) {
             tw_successLabel.text = message
             tw_successPopup.open()
+        }
+    }
+
+    Connections {
+        target: AppController.discovery
+        function onPeersChanged() {
+            tw_mainWindow.refreshSelectedDevice()
         }
     }
 
