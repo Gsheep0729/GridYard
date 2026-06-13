@@ -1,5 +1,6 @@
 /**
 * @file    test_file_transfer.cpp
+* @version 4.11.0
 * @date    2026-06-05
 * @author  GY
 * @brief   文件传输完整流程测试
@@ -7,6 +8,8 @@
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 新增文件夹根目录与空文件夹端到端传输测试
 * [v1.0] GY   2026-06-05
 * * 初始版本
 */
@@ -26,8 +29,10 @@
 #include "file_receiver_worker.h"
 #include "p2p_server.h"
 #include "config_manager.h"
+#include "discovery_service.h"
 #include "dir_serializer.h"
 #include "protocol.h"
+#include "transfer_session_manager.h"
 
 using gy::DirSerializer;
 
@@ -40,6 +45,9 @@ private slots:
     void testSingleFileTransfer();
     void testMultiFileTransfer();
     void testDirectoryTransfer();
+    void testDirectoryTransferEndToEnd();
+    void testEmptyDirectoryTransferEndToEnd();
+    void testAutoAcceptAndSave();
     void testCancelTransfer();
     void testLargeFileTransfer();
     void testSha256Verification();
@@ -50,6 +58,7 @@ private:
     void createTestFile(const QString &path, const QByteArray &content);
     void createTestDirectory(const QString &basePath, int fileCount);
     bool waitForTransfer(QSignalSpy &spy, int timeout = 10000);
+    void stopSenderThread(FileSenderWorker &sender, QThread &thread);
 
     QTemporaryDir *_sendDir = nullptr;
     QTemporaryDir *_recvDir = nullptr;
@@ -111,6 +120,16 @@ bool TestFileTransfer::waitForTransfer(QSignalSpy &spy, int timeout)
     return true;
 }
 
+void TestFileTransfer::stopSenderThread(FileSenderWorker &sender, QThread &thread)
+{
+    QThread *mainThread = QCoreApplication::instance()->thread();
+    QMetaObject::invokeMethod(&sender, [&sender, mainThread]() {
+        sender.moveToThread(mainThread);
+    }, Qt::BlockingQueuedConnection);
+    thread.quit();
+    thread.wait();
+}
+
 void TestFileTransfer::testSingleFileTransfer()
 {
     // 创建测试文件
@@ -157,8 +176,7 @@ void TestFileTransfer::testSingleFileTransfer()
     QVERIFY(waitForTransfer(senderSpy, 5000));
 
     // 清理
-    senderThread.quit();
-    senderThread.wait();
+    stopSenderThread(sender, senderThread);
 }
 
 void TestFileTransfer::testMultiFileTransfer()
@@ -199,6 +217,137 @@ void TestFileTransfer::testDirectoryTransfer()
         QVERIFY(item.sizeBytes > 0);
         QVERIFY(!item.sha256.isEmpty());
     }
+}
+
+void TestFileTransfer::testDirectoryTransferEndToEnd()
+{
+    const QString sourcePath = _sendDir->path() + "/folder_e2e";
+    QVERIFY(QDir().mkpath(sourcePath + "/nested/empty"));
+    createTestFile(sourcePath + "/nested/content.txt", "folder transfer content");
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool receiverFinished = false;
+    bool receiverSuccess = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [this, &receiverFinished, &receiverSuccess](
+                FileReceiverWorker *worker, const QString &, const QString &,
+                const QString &, qint64, int, qint64) {
+        worker->setReceivePath(_recvDir->path());
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+        });
+        worker->acceptTransfer();
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sourcePath),
+                              Q_ARG(QString, "folder-sender-id"),
+                              Q_ARG(QString, "FolderSender"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 10000);
+    QVERIFY(receiverSuccess);
+    QVERIFY(waitForTransfer(senderSpy));
+    QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/content.txt"));
+    QVERIFY(QDir(_recvDir->path() + "/folder_e2e/nested/empty").exists());
+
+    stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
+{
+    const QString sourcePath = _sendDir->path() + "/empty_folder_e2e";
+    QVERIFY(QDir().mkpath(sourcePath));
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool receiverFinished = false;
+    bool receiverSuccess = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [this, &receiverFinished, &receiverSuccess](
+                FileReceiverWorker *worker, const QString &, const QString &,
+                const QString &, qint64, int, qint64) {
+        worker->setReceivePath(_recvDir->path());
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+        });
+        worker->acceptTransfer();
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sourcePath),
+                              Q_ARG(QString, "folder-sender-id"),
+                              Q_ARG(QString, "FolderSender"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 10000);
+    QVERIFY(receiverSuccess);
+    QVERIFY(waitForTransfer(senderSpy));
+    QVERIFY(QDir(_recvDir->path() + "/empty_folder_e2e").exists());
+
+    stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testAutoAcceptAndSave()
+{
+    const QString sendPath = _sendDir->path() + "/auto_accept.txt";
+    createTestFile(sendPath, "auto accept content");
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setAutoAcceptFiles(true);
+    _config->setTcpPort(++_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    QSignalSpy requestSpy(&manager, &TransferSessionManager::receiveRequestReceived);
+    QSignalSpy completedSpy(&manager, &TransferSessionManager::transferCompleted);
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "auto-sender-id"),
+                              Q_ARG(QString, "AutoSender"));
+
+    QVERIFY(waitForTransfer(completedSpy));
+    QVERIFY(waitForTransfer(senderSpy));
+    QCOMPARE(requestSpy.count(), 0);
+    QVERIFY(QFile::exists(_recvDir->path() + "/auto_accept.txt"));
+
+    stopSenderThread(sender, senderThread);
+    _config->setAutoAcceptFiles(false);
 }
 
 void TestFileTransfer::testCancelTransfer()

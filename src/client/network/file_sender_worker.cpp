@@ -1,11 +1,13 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 4.10.0
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   FileSenderWorker 实现
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 文件夹传输保留顶层目录并支持空文件夹
 * [v4.8.3] GY   2026-06-13
 * * 使用传入的设备别名作为发送方名称
 * [v4.5.3] GY   2026-06-04
@@ -77,7 +79,18 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
 
     // 序列化文件列表
     _fileList = gy::DirSerializer::serialize(path);
-    if (_fileList.isEmpty()) {
+    const QFileInfo rootInfo{path};
+    _isDirectory = rootInfo.isDir();
+    _rootName = rootInfo.fileName();
+    _emptyDirectories.clear();
+
+    for (qsizetype i = _fileList.size(); i-- > 0;) {
+        if (_fileList[i].relativePath.endsWith('/')) {
+            _emptyDirectories.prepend(_fileList.takeAt(i).relativePath);
+        }
+    }
+
+    if (_fileList.isEmpty() && !_isDirectory) {
         qWarning() << "[FileSender] 序列化文件列表为空，没有可传输的文件";
         emit transferFinished(false, tr("没有可传输的文件"));
         return;
@@ -96,8 +109,8 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     qDebug() << "[FileSender] 文件列表大小:" << _fileList.size();
     qDebug() << "[FileSender] 总字节数:" << _totalBytes;
 
-    // 打开第一个文件
-    if (!openNextFile()) {
+    // 打开第一个文件；空文件夹没有文件数据，只发送目录元数据
+    if (!_fileList.isEmpty() && !openNextFile()) {
         qWarning() << "[FileSender] 无法打开第一个文件";
         emit transferFinished(false, tr("无法打开文件"));
         return;
@@ -181,7 +194,12 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 
         if (accepted) {
             emit requestAccepted();
-            sendNextChunk();
+            if (_fileList.isEmpty()) {
+                sendTransferDone();
+                emit transferFinished(true, "");
+            } else {
+                sendNextChunk();
+            }
         } else {
             emit requestRejected(reason);
             emit transferFinished(false, tr("请求被拒绝: %1").arg(reason));
@@ -243,6 +261,8 @@ void FileSenderWorker::sendTransferRequest()
     json["session_id"]  = _sessionId;
     json["sender_device_id"] = _senderDeviceId;
     json["sender_name"] = _senderName;
+    json["is_directory"] = _isDirectory;
+    json["root_name"] = _rootName;
     json["total_files"] = _fileList.size();
     json["total_bytes"] = _totalBytes;
 
@@ -256,6 +276,12 @@ void FileSenderWorker::sendTransferRequest()
         files.append(fileObj);
     }
     json["files"] = files;
+
+    QJsonArray directories;
+    for (const QString &relativePath : _emptyDirectories) {
+        directories.append(relativePath);
+    }
+    json["empty_directories"] = directories;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
@@ -313,8 +339,9 @@ void FileSenderWorker::sendNextChunk()
     // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
     static int chunkCount = 0;
     if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+        const qint64 percent = _totalBytes > 0 ? (_bytesSent * 100 / _totalBytes) : 100;
         qDebug() << "[FileSender] 传输进度:" << _bytesSent << "/" << _totalBytes
-                 << "(" << (_bytesSent * 100 / _totalBytes) << "%)";
+                 << "(" << percent << "%)";
         emit progressChanged(_bytesSent, _totalBytes);
     }
 

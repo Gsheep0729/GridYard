@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 4.10.0
+ * @version 4.11.0
  * @date    2026-06-13
  * @author  GY
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v4.11.0] GY   2026-06-13
+ * * 新增自动接收并保存文件设置
  * [v4.9.0] GY   2026-06-13
  * * 重构为卡片式设置页，增加本机摘要、输入校验和修改状态提示
  * [v0.2.0] GY   2026-06-02
@@ -34,6 +36,7 @@ Dialog {
     // 临时存储编辑中的值
     property string _tempDeviceName:  ConfigManager.deviceName
     property string _tempReceivePath: ConfigManager.receivePath
+    property bool   _tempAutoAcceptFiles: ConfigManager.autoAcceptFiles
     property int    _tempTcpPort:     ConfigManager.tcpPort
 
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
@@ -42,12 +45,14 @@ Dialog {
                                     && _tempTcpPort <= 65535
     readonly property bool _isDirty: _tempDeviceName.trim() !== ConfigManager.deviceName
                                     || _tempReceivePath !== ConfigManager.receivePath
+                                    || _tempAutoAcceptFiles !== ConfigManager.autoAcceptFiles
                                     || _tempTcpPort !== ConfigManager.tcpPort
 
     // 打开对话框时重置临时值
     onAboutToShow: {
         _tempDeviceName  = ConfigManager.deviceName
         _tempReceivePath = ConfigManager.receivePath
+        _tempAutoAcceptFiles = ConfigManager.autoAcceptFiles
         _tempTcpPort     = ConfigManager.tcpPort
     }
 
@@ -209,6 +214,34 @@ Dialog {
                             onClicked: folderDialog.open()
                         }
                     }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 16
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+
+                            Label {
+                                text: qsTr("自动接收并保存")
+                                font.bold: true
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("开启后跳过接收确认，文件将直接保存到上述目录。")
+                                color: "#6B7280"
+                                font.pixelSize: 12
+                                wrapMode: Text.Wrap
+                            }
+                        }
+
+                        Switch {
+                            checked: settingsDialog._tempAutoAcceptFiles
+                            onToggled: settingsDialog._tempAutoAcceptFiles = checked
+                        }
+                    }
                 }
             }
 
@@ -291,6 +324,7 @@ Dialog {
                 onClicked: {
                     ConfigManager.deviceName = settingsDialog._tempDeviceName.trim()
                     ConfigManager.receivePath = settingsDialog._tempReceivePath
+                    ConfigManager.autoAcceptFiles = settingsDialog._tempAutoAcceptFiles
                     ConfigManager.tcpPort = settingsDialog._tempTcpPort
                     settingsDialog.accept()
                 }

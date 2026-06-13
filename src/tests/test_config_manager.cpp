@@ -1,5 +1,6 @@
 /**
 * @file    test_config_manager.cpp
+* @version 4.11.0
 * @date    2026-06-05
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
@@ -7,6 +8,8 @@
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 新增自动接收文件配置测试
 * [v1.0] GY   2026-06-05
 * * 初始版本
 */
@@ -28,6 +31,7 @@ private slots:
     void testDefaultValue();
     void testDeviceName();
     void testReceivePath();
+    void testAutoAcceptFiles();
     void testTcpPort();
     void testDeviceIdPersistence();
     void testSignalEmission();
@@ -75,6 +79,7 @@ void TestConfigManager::testDefaultValue()
     QVERIFY(!_config->deviceName().isEmpty());
     QVERIFY(!_config->receivePath().isEmpty());
     QVERIFY(_config->tcpPort() > 0);
+    QVERIFY(!_config->autoAcceptFiles());
 }
 
 void TestConfigManager::testDeviceName()
@@ -128,6 +133,22 @@ void TestConfigManager::testTcpPort()
     QCOMPARE(spy.count(), 1);
 }
 
+void TestConfigManager::testAutoAcceptFiles()
+{
+    QSignalSpy spy(_config, &ConfigManager::autoAcceptFilesChanged);
+
+    _config->setAutoAcceptFiles(true);
+    QVERIFY(_config->autoAcceptFiles());
+    QCOMPARE(spy.count(), 1);
+
+    _config->setAutoAcceptFiles(true);
+    QCOMPARE(spy.count(), 1);
+
+    _config->setAutoAcceptFiles(false);
+    QVERIFY(!_config->autoAcceptFiles());
+    QCOMPARE(spy.count(), 2);
+}
+
 void TestConfigManager::testDeviceIdPersistence()
 {
     // 保存当前 ID
@@ -159,6 +180,11 @@ void TestConfigManager::testSignalEmission()
     QSignalSpy portSpy(_config, &ConfigManager::tcpPortChanged);
     _config->setTcpPort(9999);
     QCOMPARE(portSpy.count(), 1);
+
+    QSignalSpy autoAcceptSpy(_config, &ConfigManager::autoAcceptFilesChanged);
+    _config->setAutoAcceptFiles(true);
+    QCOMPARE(autoAcceptSpy.count(), 1);
+    _config->setAutoAcceptFiles(false);
 }
 
 void TestConfigManager::testLocalIp()

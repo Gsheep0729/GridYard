@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 4.10.0
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   传输会话管理器
@@ -9,6 +9,8 @@
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 支持按配置自动接受并保存接收文件
 * [v4.10.0] GY   2026-06-13
 * * 新增 removeSession() 方法
 * [v4.8.3] GY   2026-06-13
