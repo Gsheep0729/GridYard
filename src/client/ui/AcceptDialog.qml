@@ -1,7 +1,7 @@
 /**
  * @file    AcceptDialog.qml
- * @version 4.10.0
- * @date    2026-06-13
+ * @version 4.12.0
+ * @date    2026-06-14
  * @author  GridYard Team
  * @brief   接收确认弹窗
  *
@@ -9,6 +9,8 @@
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
+ * [v4.12.0] DuRuoxian   2026-06-14
+ * * 使用共享文件大小格式化工具
  * [v4.3.4] DuRuoxian   2026-06-04
  * * 支持多文件信息显示（总文件数、总大小）
  * [v0.2.0] DuRuoxian   2026-06-02
@@ -19,6 +21,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
+import "../utils/FormatUtils.js" as FormatUtils
 
 Dialog {
     id: acceptDialog
@@ -67,7 +70,7 @@ Dialog {
 
                 RowLayout {
                     Label { text: qsTr("大小："); font.bold: true }
-                    Label { text: formatFileSize(acceptDialog.fileSize) }
+                    Label { text: FormatUtils.formatBytes(acceptDialog.fileSize) }
                 }
 
                 // 多文件信息
@@ -80,7 +83,7 @@ Dialog {
                 RowLayout {
                     visible: acceptDialog.totalFiles > 1
                     Label { text: qsTr("总大小："); font.bold: true }
-                    Label { text: formatFileSize(acceptDialog.totalBytes) }
+                    Label { text: FormatUtils.formatBytes(acceptDialog.totalBytes) }
                 }
             }
         }
@@ -104,13 +107,5 @@ Dialog {
     onRejected: {
         // 用户拒绝
         AppController.transfer.rejectReceiveSession(sessionId)
-    }
-
-    // 格式化文件大小
-    function formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + " B"
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB"
-        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB"
-        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB"
     }
 }
