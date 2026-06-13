@@ -24,21 +24,21 @@ Frame {
     required property string ipAddress
     required property bool isOnline
 
-    signal sendFileRequested()
-    signal sendFolderRequested()
-    signal fileDropped(string filePath)
-
-    // 当前设备的传输会话列表（响应式）
-    property var filteredSessions: {
-        const result = []
+    // 当前设备的会话数量（用于空列表判断）
+    property int filteredCount: {
+        let count = 0
         const sessions = AppController.transfer.sessions
         for (let i = 0; i < sessions.length; i++) {
             if (sessions[i].deviceId === tw_deviceSessionView.deviceId) {
-                result.push(sessions[i])
+                count++
             }
         }
-        return result
+        return count
     }
+
+    signal sendFileRequested()
+    signal sendFolderRequested()
+    signal fileDropped(string filePath)
 
     ColumnLayout {
         anchors.fill: parent
@@ -109,10 +109,12 @@ Frame {
             Layout.topMargin: 8
             clip: true
             spacing: 8
-            model: tw_deviceSessionView.filteredSessions
+            model: AppController.transfer.sessions
 
             delegate: TransferTaskCard {
                 width: tw_sessionList.width
+                visible: modelData.deviceId === tw_deviceSessionView.deviceId
+                height: visible ? implicitHeight : 0
                 sessionId: modelData.sessionId || ""
                 taskType: modelData.type || ""
                 taskName: modelData.fileName || ""
@@ -126,7 +128,7 @@ Frame {
 
             Label {
                 anchors.centerIn: parent
-                visible: tw_sessionList.count === 0
+                visible: tw_deviceSessionView.filteredCount === 0
                 text: qsTr("还没有传输记录\n从下方选择文件，或直接拖放到这里")
                 color: "#888888"
                 horizontalAlignment: Text.AlignHCenter
