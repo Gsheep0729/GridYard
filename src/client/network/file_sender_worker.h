@@ -1,6 +1,6 @@
 /**
 * @file    file_sender_worker.h
-* @version 4.10.0
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   文件发送 Worker（Worker-Object 模式）
@@ -12,6 +12,8 @@
 * 4. 以 8MB 分块发送文件数据
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 文件夹传输保留顶层目录并支持空文件夹
 * [v4.8.3] GY   2026-06-13
 * * 使用传入的设备别名作为发送方名称
 * [v4.5.3] GY   2026-06-04
@@ -32,6 +34,7 @@
 
 #include <QFile>
 #include <QObject>
+#include <QStringList>
 #include <QTcpSocket>
 #include <QTimer>
 
@@ -99,6 +102,9 @@ private:
     QString      _sessionId;
     QString      _senderDeviceId;
     QString      _senderName;
+    QString      _rootName;
+    QStringList  _emptyDirectories;
+    bool         _isDirectory = false;
     qint64       _totalBytes = 0;
     qint64       _bytesSent  = 0;
 
