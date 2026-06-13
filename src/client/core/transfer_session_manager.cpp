@@ -1,18 +1,25 @@
 /**
 * @file    transfer_session_manager.cpp
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   TransferSessionManager 实现
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
-* [v0.2] GY   2026-06-03
-* * 接收会话连接 transferFinished 信号；设置接收路径；触发完成通知
-* [v0.3] GY   2026-06-03
-* * Stage 3.10：实现 cancelSession()；保存/清理发送方 worker
-* [v0.4] GY   2026-06-04
+* [v4.10.0] GY   2026-06-13
+* * 新增 removeSession() 方法，添加 createdAt 时间戳
+* [v4.8.3] GY   2026-06-13
+* * 文件传输使用发送方设备别名
+* [v4.7.1] GY   2026-06-05
+* * 移除 QML_SINGLETON，改为通过 AppController 暴露
+* [v4.3.4] GY   2026-06-04
 * * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
+* [v0.3.1] GY   2026-06-03
+* * Stage 3.10：实现 cancelSession()；保存/清理发送方 worker
+* [v0.3.0] GY   2026-06-03
+* * 接收会话连接 transferFinished 信号；设置接收路径
+* [v0.2.0] GY   2026-06-02
+* * Stage 3：初始版本
 */
 
 #include "transfer_session_manager.h"

@@ -1,6 +1,7 @@
 /**
  * @file    SettingsDialog.qml
- * @date    2026-06-02
+ * @version 4.10.0
+ * @date    2026-06-13
  * @author  GY
  * @brief   设置对话框
  *
@@ -8,10 +9,10 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
- * [v0.1] GY   2026-06-02
- * * Stage 2：初始版本
- * [v0.2] GY   2026-06-13
+ * [v4.9.0] GY   2026-06-13
  * * 重构为卡片式设置页，增加本机摘要、输入校验和修改状态提示
+ * [v0.2.0] GY   2026-06-02
+ * * Stage 2：初始版本
  */
 
 import QtQuick
@@ -21,7 +22,7 @@ import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
 
 Dialog {
-    id: tw_settingsDialog
+    id: settingsDialog
 
     title: qsTr("设置")
     modal: true
@@ -74,8 +75,8 @@ Dialog {
 
                 Label {
                     anchors.centerIn: parent
-                    text: tw_settingsDialog._tempDeviceName.trim().length > 0
-                          ? tw_settingsDialog._tempDeviceName.trim().charAt(0)
+                    text: settingsDialog._tempDeviceName.trim().length > 0
+                          ? settingsDialog._tempDeviceName.trim().charAt(0)
                           : "?"
                     color: "#FFFFFF"
                     font.pixelSize: 22
@@ -105,12 +106,12 @@ Dialog {
     }
 
     contentItem: ScrollView {
-        id: tw_scrollView
+        id: scrollView
         clip: true
         contentWidth: availableWidth
 
         ColumnLayout {
-            width: tw_scrollView.availableWidth
+            width: scrollView.availableWidth
             spacing: 12
 
             Item {
@@ -121,13 +122,13 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
-                implicitHeight: tw_deviceSection.implicitHeight + 32
+                implicitHeight: deviceSection.implicitHeight + 32
                 color: "#FFFFFF"
                 radius: 8
                 border.color: "#E4E8EE"
 
                 ColumnLayout {
-                    id: tw_deviceSection
+                    id: deviceSection
                     anchors.fill: parent
                     anchors.margins: 16
                     spacing: 8
@@ -147,16 +148,16 @@ Dialog {
                     }
 
                     TextField {
-                        id: tw_deviceNameField
+                        id: deviceNameField
                         Layout.fillWidth: true
-                        text: tw_settingsDialog._tempDeviceName
+                        text: settingsDialog._tempDeviceName
                         placeholderText: qsTr("输入设备名称")
                         selectByMouse: true
-                        onTextChanged: tw_settingsDialog._tempDeviceName = text
+                        onTextChanged: settingsDialog._tempDeviceName = text
                     }
 
                     Label {
-                        visible: tw_settingsDialog._tempDeviceName.trim().length === 0
+                        visible: settingsDialog._tempDeviceName.trim().length === 0
                         text: qsTr("设备名称不能为空")
                         color: "#C62828"
                         font.pixelSize: 11
@@ -168,13 +169,13 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
-                implicitHeight: tw_receiveSection.implicitHeight + 32
+                implicitHeight: receiveSection.implicitHeight + 32
                 color: "#FFFFFF"
                 radius: 8
                 border.color: "#E4E8EE"
 
                 ColumnLayout {
-                    id: tw_receiveSection
+                    id: receiveSection
                     anchors.fill: parent
                     anchors.margins: 16
                     spacing: 10
@@ -196,16 +197,16 @@ Dialog {
                         spacing: 8
 
                         TextField {
-                            id: tw_receivePathField
+                            id: receivePathField
                             Layout.fillWidth: true
-                            text: tw_settingsDialog._tempReceivePath
+                            text: settingsDialog._tempReceivePath
                             readOnly: true
                             selectByMouse: true
                         }
 
                         Button {
                             text: qsTr("选择目录")
-                            onClicked: tw_folderDialog.open()
+                            onClicked: folderDialog.open()
                         }
                     }
                 }
@@ -216,13 +217,13 @@ Dialog {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
                 Layout.bottomMargin: 4
-                implicitHeight: tw_networkSection.implicitHeight + 32
+                implicitHeight: networkSection.implicitHeight + 32
                 color: "#FFFFFF"
                 radius: 8
                 border.color: "#E4E8EE"
 
                 RowLayout {
-                    id: tw_networkSection
+                    id: networkSection
                     anchors.fill: parent
                     anchors.margins: 16
                     spacing: 16
@@ -247,12 +248,12 @@ Dialog {
                     }
 
                     SpinBox {
-                        id: tw_tcpPortSpinBox
+                        id: tcpPortSpinBox
                         from: 1024
                         to: 65535
-                        value: tw_settingsDialog._tempTcpPort
+                        value: settingsDialog._tempTcpPort
                         editable: true
-                        onValueModified: tw_settingsDialog._tempTcpPort = value
+                        onValueModified: settingsDialog._tempTcpPort = value
                     }
                 }
             }
@@ -271,27 +272,27 @@ Dialog {
 
             Label {
                 Layout.fillWidth: true
-                text: tw_settingsDialog._isDirty
+                text: settingsDialog._isDirty
                       ? qsTr("有尚未保存的修改")
                       : qsTr("所有设置均已保存")
-                color: tw_settingsDialog._isDirty ? "#B26A00" : "#6B7280"
+                color: settingsDialog._isDirty ? "#B26A00" : "#6B7280"
                 font.pixelSize: 12
             }
 
             Button {
                 text: qsTr("取消")
-                onClicked: tw_settingsDialog.reject()
+                onClicked: settingsDialog.reject()
             }
 
             Button {
                 text: qsTr("保存设置")
-                enabled: tw_settingsDialog._isDirty && tw_settingsDialog._isValid
+                enabled: settingsDialog._isDirty && settingsDialog._isValid
                 highlighted: true
                 onClicked: {
-                    ConfigManager.deviceName = tw_settingsDialog._tempDeviceName.trim()
-                    ConfigManager.receivePath = tw_settingsDialog._tempReceivePath
-                    ConfigManager.tcpPort = tw_settingsDialog._tempTcpPort
-                    tw_settingsDialog.accept()
+                    ConfigManager.deviceName = settingsDialog._tempDeviceName.trim()
+                    ConfigManager.receivePath = settingsDialog._tempReceivePath
+                    ConfigManager.tcpPort = settingsDialog._tempTcpPort
+                    settingsDialog.accept()
                 }
             }
         }
@@ -299,16 +300,16 @@ Dialog {
 
     // 文件夹选择对话框
     FolderDialog {
-        id: tw_folderDialog
+        id: folderDialog
         title: qsTr("选择接收路径")
-        currentFolder: "file://" + tw_settingsDialog._tempReceivePath
+        currentFolder: "file://" + settingsDialog._tempReceivePath
         onAccepted: {
             // 提取路径字符串
             let path = selectedFolder.toString()
             if (path.startsWith("file://")) {
                 path = path.substring(7)
             }
-            tw_settingsDialog._tempReceivePath = path
+            settingsDialog._tempReceivePath = path
         }
     }
 }

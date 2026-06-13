@@ -1,6 +1,7 @@
 /**
 * @file    discovery_service.h
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   局域网设备发现服务
 *
@@ -8,10 +9,12 @@
 * 每 5 秒发送 Hello 包，维护在线节点表，15 秒无心跳自动剔除。
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 2：初始版本
-* [v0.2] GY   2026-06-03
+* [v4.7.1] GY   2026-06-05
+* * 修复文件传输使用真实 IP 地址
+* [v0.3.0] GY   2026-06-03
 * * 添加 refresh() 方法
+* [v0.2.0] GY   2026-06-02
+* * Stage 2：初始版本
 */
 
 #pragma once

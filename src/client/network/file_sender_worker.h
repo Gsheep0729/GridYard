@@ -1,6 +1,7 @@
 /**
 * @file    file_sender_worker.h
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
@@ -8,17 +9,21 @@
 * 1. 建立 TCP 连接到接收端
 * 2. 发送 kTypeTransferReq 握手请求
 * 3. 等待 kTypeTransferRsp 响应
-* 4. 以 4MB 分块发送文件数据
+* 4. 以 8MB 分块发送文件数据
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
-* [v0.2] GY   2026-06-03
-* * Stage 3.10：添加 cancel() 槽函数
-* [v0.3] GY   2026-06-04
-* * Stage 4：支持多文件/目录传输，SHA-256 校验
-* [v0.4] GY   2026-06-04
+* [v4.8.3] GY   2026-06-13
+* * 使用传入的设备别名作为发送方名称
+* [v4.5.3] GY   2026-06-04
+* * Stage 4.5：调大 socket buffer，减少进度信号频率
+* [v4.4.2] GY   2026-06-04
 * * Stage 4.4：添加超时检测机制
+* [v4.2.0] GY   2026-06-04
+* * Stage 4.2：支持多文件/目录传输，SHA-256 校验
+* [v0.3.1] GY   2026-06-03
+* * Stage 3.10：添加 cancel() 槽函数
+* [v0.2.0] GY   2026-06-02
+* * Stage 3：初始版本
 */
 
 #pragma once

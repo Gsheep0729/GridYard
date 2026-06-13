@@ -1,6 +1,7 @@
 /**
 * @file    protocol.h
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   GridYard 应用层通信协议（TLV 帧 + Type 码）
 *
@@ -10,8 +11,10 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0 占位：仅声明命名空间与默认端口；Type 码集合留待 Stage 1
+* [v0.1.0] GY   2026-06-02
+* * Stage 1：定义 V1.0 Type 码集合
+* [v0.0.1] GY   2026-05-24
+* * Stage 0 占位：仅声明命名空间与默认端口
 */
 
 #pragma once

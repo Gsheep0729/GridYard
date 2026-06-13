@@ -1,14 +1,17 @@
 /**
 * @file    config_manager.cpp
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   ConfigManager 实现
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
+* [v4.8.1] GY   2026-06-08
+* * 单例模式实现，修复设备名称更新问题
+* [v0.3.0] GY   2026-06-03
+* * 添加 localIp、refreshLocalIp、openFolder
+* [v0.2.0] GY   2026-06-02
 * * Stage 2：初始版本
-* [v0.2] GY   2026-06-03
-* * 添加 localIp、refreshLocalIp、openFolder；默认路径改为 ~/GridYard/document
 */
 
 #include "config_manager.h"

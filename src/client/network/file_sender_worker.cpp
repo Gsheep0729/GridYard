@@ -1,16 +1,21 @@
 /**
 * @file    file_sender_worker.cpp
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   FileSenderWorker 实现
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
-* [v0.2] GY   2026-06-04
-* * Stage 4：支持多文件/目录传输，SHA-256 校验
-* [v0.3] GY   2026-06-04
+* [v4.8.3] GY   2026-06-13
+* * 使用传入的设备别名作为发送方名称
+* [v4.5.3] GY   2026-06-04
+* * Stage 4.5：调大 socket buffer，减少进度信号频率
+* [v4.4.2] GY   2026-06-04
 * * Stage 4.4：添加超时检测机制
+* [v4.2.0] GY   2026-06-04
+* * Stage 4.2：支持多文件/目录传输，SHA-256 校验
+* [v0.2.0] GY   2026-06-02
+* * Stage 3：初始版本
 */
 
 #include "file_sender_worker.h"

@@ -1,6 +1,7 @@
 /**
 * @file    frame_codec.h
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   TLV 帧编解码器（含粘包/半包状态机）
 *
@@ -10,10 +11,10 @@
 * TCP 收发链路所有模块统一使用本类，禁止自行拼字节。
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0 占位：仅类声明与空实现；状态机逻辑 Stage 1 任务 1.3 填充
-* [v0.2] GY   2026-06-02
+* [v0.1.0] GY   2026-06-02
 * * Stage 1：实现 encode() + 粘包状态机 feed()
+* [v0.0.1] GY   2026-05-24
+* * Stage 0 占位：仅类声明与空实现
 */
 
 #pragma once
