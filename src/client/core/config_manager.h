@@ -1,6 +1,7 @@
 /**
 * @file    config_manager.h
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   应用配置管理器（QML 单例）
 *
@@ -8,10 +9,12 @@
 * 首次启动生成 UUID 并持久化，确保设备标识跨会话稳定。
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 2：初始版本
-* [v0.2] GY   2026-06-03
+* [v4.8.1] GY   2026-06-08
+* * 修复设备名称更新不及时问题，单例模式实现
+* [v0.3.0] GY   2026-06-03
 * * 添加 localIp 属性、refreshLocalIp()、openFolder() 方法
+* [v0.2.0] GY   2026-06-02
+* * Stage 2：初始版本
 */
 
 #pragma once

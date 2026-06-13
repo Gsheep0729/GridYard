@@ -1,14 +1,15 @@
 /**
 * @file    frame_codec.cpp
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   FrameCodec 实现
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0 占位：空实现保证链接通过；真正逻辑 Stage 1 任务 1.3 落地
-* [v0.2] GY   2026-06-02
+* [v0.1.0] GY   2026-06-02
 * * Stage 1：实现 encode() + 粘包状态机 feed()
+* [v0.0.1] GY   2026-05-24
+* * Stage 0 占位：空实现保证链接通过
 */
 
 #include "frame_codec.h"

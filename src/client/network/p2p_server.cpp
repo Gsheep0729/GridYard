@@ -1,14 +1,15 @@
 /**
 * @file    p2p_server.cpp
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   P2pServer 实现
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
-* [v0.2] GY   2026-06-04
+* [v4.3.4] GY   2026-06-04
 * * Stage 4.3：信号转发添加 totalFiles/totalBytes 参数
+* [v0.2.0] GY   2026-06-02
+* * Stage 3：初始版本
 */
 
 #include "p2p_server.h"

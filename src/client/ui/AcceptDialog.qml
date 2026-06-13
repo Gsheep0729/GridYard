@@ -1,6 +1,7 @@
 /**
  * @file    AcceptDialog.qml
- * @date    2026-06-02
+ * @version 4.10.0
+ * @date    2026-06-13
  * @author  GY
  * @brief   接收确认弹窗
  *
@@ -8,7 +9,9 @@
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
- * [v0.1] GY   2026-06-02
+ * [v4.3.4] GY   2026-06-04
+ * * 支持多文件信息显示（总文件数、总大小）
+ * [v0.2.0] GY   2026-06-02
  * * Stage 3：初始版本
  */
 
@@ -18,7 +21,7 @@ import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 
 Dialog {
-    id: tw_acceptDialog
+    id: acceptDialog
 
     title: qsTr("接收文件")
     modal: true
@@ -42,7 +45,7 @@ Dialog {
             Layout.fillWidth: true
 
             Label {
-                text: tw_acceptDialog.senderName
+                text: acceptDialog.senderName
                 font.pixelSize: 14
                 font.bold: true
             }
@@ -59,25 +62,25 @@ Dialog {
 
                 RowLayout {
                     Label { text: qsTr("文件名："); font.bold: true }
-                    Label { text: tw_acceptDialog.fileName }
+                    Label { text: acceptDialog.fileName }
                 }
 
                 RowLayout {
                     Label { text: qsTr("大小："); font.bold: true }
-                    Label { text: formatFileSize(tw_acceptDialog.fileSize) }
+                    Label { text: formatFileSize(acceptDialog.fileSize) }
                 }
 
                 // 多文件信息
                 RowLayout {
-                    visible: tw_acceptDialog.totalFiles > 1
+                    visible: acceptDialog.totalFiles > 1
                     Label { text: qsTr("总文件数："); font.bold: true }
-                    Label { text: tw_acceptDialog.totalFiles }
+                    Label { text: acceptDialog.totalFiles }
                 }
 
                 RowLayout {
-                    visible: tw_acceptDialog.totalFiles > 1
+                    visible: acceptDialog.totalFiles > 1
                     Label { text: qsTr("总大小："); font.bold: true }
-                    Label { text: formatFileSize(tw_acceptDialog.totalBytes) }
+                    Label { text: formatFileSize(acceptDialog.totalBytes) }
                 }
             }
         }

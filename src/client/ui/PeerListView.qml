@@ -1,6 +1,7 @@
 /**
  * @file    PeerListView.qml
- * @date    2026-06-02
+ * @version 4.10.0
+ * @date    2026-06-13
  * @author  GY
  * @brief   在线设备列表组件
  *
@@ -9,14 +10,14 @@
  * 支持手动刷新和设备名即时修改。
  *
  * Change Log:
- * [v0.1] GY   2026-06-02
- * * Stage 2：初始版本
- * [v0.2] GY   2026-06-03
- * * 添加本机信息区域（设备名可编辑 + IP 地址）和刷新按钮
- * [v0.3] GY   2026-06-03
- * * Stage 3.9：传递拖拽文件信号
- * [v0.4] GY   2026-06-13
+ * [v4.9.0] GY   2026-06-13
  * * 增加当前设备选中态
+* [v0.3.1] GY   2026-06-03
+ * * Stage 3.9：传递拖拽文件信号
+ * [v0.3.0] GY   2026-06-03
+ * * 添加本机信息区域（设备名可编辑 + IP 地址）和刷新按钮
+ * [v0.2.0] GY   2026-06-02
+ * * Stage 2：初始版本
  */
 
 import QtQuick
@@ -25,7 +26,7 @@ import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 
 Frame {
-    id: tw_peerListView
+    id: peerListView
 
     property string selectedDeviceId: ""
 
@@ -71,15 +72,15 @@ Frame {
                     spacing: 2
 
                     TextField {
-                        id: tw_nameField
+                        id: nameField
                         Layout.fillWidth: true
                         text: ConfigManager.deviceName
                         placeholderText: qsTr("输入设备名称")
                         font.pixelSize: 14
                         font.bold: true
                         background: Rectangle {
-                            color: tw_nameField.activeFocus ? "#FFFFFF" : "transparent"
-                            border.color: tw_nameField.activeFocus ? "#4A90D9" : "transparent"
+                            color: nameField.activeFocus ? "#FFFFFF" : "transparent"
+                            border.color: nameField.activeFocus ? "#4A90D9" : "transparent"
                             border.width: 1
                             radius: 4
                         }
@@ -98,8 +99,8 @@ Frame {
                         Connections {
                             target: ConfigManager
                             function onDeviceNameChanged() {
-                                if (!tw_nameField.activeFocus) {
-                                    tw_nameField.text = ConfigManager.deviceName
+                                if (!nameField.activeFocus) {
+                                    nameField.text = ConfigManager.deviceName
                                 }
                                 // 通知 DiscoveryService 设备名称已更新，触发广播
                                 AppController.discovery.refresh()
@@ -160,12 +161,12 @@ Frame {
 
             delegate: DeviceCard {
                 width: listView.width
-                isSelected: tw_peerListView.selectedDeviceId === deviceId
+                isSelected: peerListView.selectedDeviceId === deviceId
                 onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
-                    tw_peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)
+                    peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)
                 }
                 onFileDropped: function(deviceId, filePath) {
-                    tw_peerListView.fileDropped(deviceId, filePath)
+                    peerListView.fileDropped(deviceId, filePath)
                 }
             }
 

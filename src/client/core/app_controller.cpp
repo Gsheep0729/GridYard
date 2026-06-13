@@ -1,16 +1,17 @@
 /**
 * @file    app_controller.cpp
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   AppController 实现
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0：实现 applicationName / applicationVersion / quit
-* [v0.2] GY   2026-06-02
-* * Stage 1：添加 test() 验证 C++↔QML 通信路径
-* [v0.3] GY   2026-06-02
+* [v4.7.1] GY   2026-06-05
+* * 创建 TransferSessionManager 并初始化
+* [v0.2.0] GY   2026-06-02
 * * Stage 2：持有 ConfigManager 和 DiscoveryService
+* [v0.1.0] GY   2026-05-24
+* * Stage 0：实现 applicationName / applicationVersion / quit
 */
 
 #include "app_controller.h"

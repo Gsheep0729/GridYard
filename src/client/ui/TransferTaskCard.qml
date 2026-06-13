@@ -1,16 +1,17 @@
 /**
  * @file    TransferTaskCard.qml
- * @date    2026-06-02
+ * @version 4.10.0
+ * @date    2026-06-13
  * @author  GY
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
- * [v0.1] GY   2026-06-02
+ * [v4.10.0] GY   2026-06-13
+ * * 改进布局：添加方向标识、时间信息、文件大小、移除记录
+ * [v0.2.0] GY   2026-06-02
  * * Stage 3：初始版本
- * [v0.2] GY   2026-06-13
- * * 改进布局：添加方向标识、时间信息、文件大小
  */
 
 import QtQuick
@@ -19,7 +20,7 @@ import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 
 Frame {
-    id: tw_taskCard
+    id: taskCard
 
     required property string sessionId
     required property string taskType

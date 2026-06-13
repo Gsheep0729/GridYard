@@ -1,6 +1,7 @@
 /**
 * @file    app_controller.h
-* @date    2026-05-24
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   GridYard 应用全局控制器（QML 单例）
 *
@@ -10,12 +11,14 @@
 * QML 端禁止使用 setContextProperty 暴露 C++ 对象。
 *
 * Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0：仅暴露 applicationName / applicationVersion / quit
-* [v0.2] GY   2026-06-02
-* * Stage 1：添加 test() 验证 C++↔QML 通信路径
-* [v0.3] GY   2026-06-02
+* [v4.8.2] GY   2026-06-13
+* * 修复 KDE 原生文件选择器
+* [v4.7.1] GY   2026-06-05
+* * 添加日志系统、修复传输功能
+* [v0.2.0] GY   2026-06-02
 * * Stage 2：持有 DiscoveryService，暴露 discovery 属性给 QML
+* [v0.1.0] GY   2026-05-24
+* * Stage 0：仅暴露 applicationName / applicationVersion / quit
 */
 
 #pragma once

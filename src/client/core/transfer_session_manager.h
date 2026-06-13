@@ -1,6 +1,7 @@
 /**
 * @file    transfer_session_manager.h
-* @date    2026-06-02
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   传输会话管理器
 *
@@ -8,16 +9,20 @@
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
-* [v0.1] GY   2026-06-02
-* * Stage 3：初始版本
-* [v0.2] GY   2026-06-03
-* * 添加 transferCompleted 信号；接收完成通知
-* [v0.3] GY   2026-06-03
-* * Stage 3.10：实现 cancelSession()；保存发送方 worker 引用
-* [v0.4] GY   2026-06-04
-* * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
-* [v0.5] GY   2026-06-05
+* [v4.10.0] GY   2026-06-13
+* * 新增 removeSession() 方法
+* [v4.8.3] GY   2026-06-13
+* * 文件传输使用发送方设备别名
+* [v4.7.1] GY   2026-06-05
 * * 移除 QML_SINGLETON，改为通过 AppController 暴露
+* [v4.3.4] GY   2026-06-04
+* * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
+* [v0.3.1] GY   2026-06-03
+* * Stage 3.10：实现 cancelSession()；保存发送方 worker 引用
+* [v0.3.0] GY   2026-06-03
+* * 添加 transferCompleted 信号；接收完成通知
+* [v0.2.0] GY   2026-06-02
+* * Stage 3：初始版本
 */
 
 #pragma once

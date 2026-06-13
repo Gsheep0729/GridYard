@@ -1,11 +1,12 @@
 /**
 * @file    logger.cpp
-* @date    2026-06-05
+* @version 4.10.0
+* @date    2026-06-13
 * @author  GY
 * @brief   Logger 实现
 *
 * Change Log:
-* [v1.0] GY   2026-06-05
+* [v4.7.0] GY   2026-06-05
 * * 初始版本：文件输出 + 控制台输出 + 线程安全
 */
 
