@@ -1,11 +1,13 @@
 /**
 * @file    config_manager.cpp
-* @version 4.10.0
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   ConfigManager 实现
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 新增自动接收并保存文件配置
 * [v4.8.1] GY   2026-06-08
 * * 单例模式实现，修复设备名称更新问题
 * [v0.3.0] GY   2026-06-03
@@ -49,6 +51,7 @@ ConfigManager::ConfigManager(QObject *parent)
     const QString defaultPath = QDir::homePath() + "/GridYard/document";
     _receivePath = settings.value("device/receivePath", defaultPath).toString();
     QDir().mkpath(_receivePath);
+    _autoAcceptFiles = settings.value("device/autoAcceptFiles", false).toBool();
 
     // TCP 端口：优先使用命令行参数，否则读配置
     QString envPort = qEnvironmentVariable("GRIDYARD_PORT");
@@ -96,6 +99,11 @@ QString ConfigManager::deviceName() const
 QString ConfigManager::receivePath() const
 {
     return _receivePath;
+}
+
+bool ConfigManager::autoAcceptFiles() const
+{
+    return _autoAcceptFiles;
 }
 
 quint16 ConfigManager::tcpPort() const
@@ -170,6 +178,19 @@ void ConfigManager::setReceivePath(const QString &path)
     settings.setValue("device/receivePath", path);
 
     emit receivePathChanged();
+}
+
+void ConfigManager::setAutoAcceptFiles(bool enabled)
+{
+    if (_autoAcceptFiles == enabled) return;
+
+    _autoAcceptFiles = enabled;
+
+    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    settings.setValue("device/autoAcceptFiles", enabled);
+
+    emit autoAcceptFilesChanged();
 }
 
 void ConfigManager::setTcpPort(quint16 port)

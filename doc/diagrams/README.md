@@ -94,3 +94,4 @@ done
 - Stage 2（2026-06-02）：更新类图，新增 ConfigManager / DiscoveryService / TransferSessionManager
 - 2026-06-03：导出全部 SVG 高清版（dark 主题、3x 缩放）
 - v4.9（2026-06-13）：类图按层拆分，补充设备会话页、运行时会话记录和 senderDeviceId 链路
+- v4.11（2026-06-13）：类图补充自动接收配置、文件夹根目录和空目录传输状态

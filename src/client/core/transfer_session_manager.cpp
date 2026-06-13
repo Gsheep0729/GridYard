@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 4.10.1
+* @version 4.11.0
 * @date    2026-06-13
 * @author  GY
 * @brief   TransferSessionManager 实现
 *
 * Change Log:
+* [v4.11.0] GY   2026-06-13
+* * 支持按配置自动接受并保存接收文件
 * [v4.10.1] GY   2026-06-13
 * * 补齐接收会话字段，保证 QML 模型角色一致
 * [v4.10.0] GY   2026-06-13
@@ -353,9 +355,15 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
         worker->deleteLater();
     });
 
-    // 通知 QML 弹窗确认
-    emit receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
-                                fileSize, totalFiles, totalBytes);
+    if (_config && _config->autoAcceptFiles()) {
+        qDebug() << "[TransferSession] 自动接受接收请求:" << sessionId;
+        acceptReceiveSession(sessionId);
+        emit messageOccurred(tr("已自动接受 \"%1\"，正在保存").arg(fileName));
+    } else {
+        // 通知 QML 弹窗确认
+        emit receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
+                                    fileSize, totalFiles, totalBytes);
+    }
 
     qDebug() << "TransferSessionManager: 收到接收请求" << sessionId
              << "来自" << senderName << "文件" << fileName;

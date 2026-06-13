@@ -1,4 +1,4 @@
-# GridYard 分层类图（v4.10 当前架构）
+# GridYard 分层类图（v4.11.0 当前架构）
 
 当前客户端以表现层、应用逻辑层、领域层和数据管理层为目标。为避免所有类挤在一张图中，本文件按职责拆成多张类图。
 
@@ -28,9 +28,11 @@ classDiagram
         +deviceName : QString
         +localIp : QString
         +receivePath : QString
+        +autoAcceptFiles : bool
         +tcpPort : quint16
         +setDeviceName(name)
         +setReceivePath(path)
+        +setAutoAcceptFiles(enabled)
         +setTcpPort(port)
         +openFolder(path)
     }
@@ -152,6 +154,7 @@ classDiagram
         -QString _deviceName
         -QString _localIp
         -QString _receivePath
+        -bool _autoAcceptFiles
         -quint16 _tcpPort
         +create(engine, scriptEngine)$ ConfigManager*
         +refreshLocalIp()
@@ -231,6 +234,9 @@ classDiagram
         -QString _senderDeviceId
         -QString _senderName
         -QList~FileItem~ _fileList
+        -QString _rootName
+        -QStringList _emptyDirectories
+        -bool _isDirectory
         +startTransfer(host, port, path, senderDeviceId, senderName)
         +cancel()
         -sendTransferRequest()
@@ -247,6 +253,9 @@ classDiagram
         -QString _senderName
         -QList~FileItem~ _fileList
         -QString _receivePath
+        -QString _destinationRoot
+        -QStringList _emptyDirectories
+        -bool _isDirectory
         +acceptTransfer()
         +rejectTransfer(reason)
         +setReceivePath(path)
@@ -290,7 +299,7 @@ classDiagram
     FileReceiverWorker *-- FrameCodec
 ```
 
-发送请求携带 `senderDeviceId` 和当前设备别名。接收端把 `senderDeviceId` 保存为运行时会话的 `deviceId`，因此设备改名或出现同名设备时，页面仍能把任务归入正确会话。
+发送请求携带 `senderDeviceId`、当前设备别名、顶层目录名和空目录列表。接收端把 `senderDeviceId` 保存为运行时会话的 `deviceId`，并在配置的接收目录下创建唯一目标路径，因此设备改名、出现同名设备或接收重名文件夹时，任务归属和落盘结果仍然明确。
 
 ## 4. QML 表现层组件
 
@@ -377,6 +386,7 @@ classDiagram
         <<C++ QML_SINGLETON>>
         +deviceName : QString
         +receivePath : QString
+        +autoAcceptFiles : bool
         +tcpPort : quint16
     }
 
@@ -405,9 +415,11 @@ classDiagram
         -QString _deviceId
         -QString _deviceName
         -QString _receivePath
+        -bool _autoAcceptFiles
         -quint16 _tcpPort
         +setDeviceName(name)
         +setReceivePath(path)
+        +setAutoAcceptFiles(enabled)
         +setTcpPort(port)
         +openFolder(path)
     }
