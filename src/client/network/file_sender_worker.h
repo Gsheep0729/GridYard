@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.h
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.12.1
+* @date    2026-06-14
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
@@ -12,6 +12,8 @@
 * 4. 以 8MB 分块发送文件数据
 *
 * Change Log:
+* [v4.12.1] FengChunlin   2026-06-14
+* * 修复多文件重复读取并为大型文件发送增加背压
 * [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹传输保留顶层目录并支持空文件夹
 * [v4.8.3] FengChunlin   2026-06-13
@@ -42,6 +44,8 @@ class FrameCodec;
 
 // 分块大小：8MB（优化吞吐量）
 static constexpr qint64 kChunkSize = 8 * 1024 * 1024;
+// 限制 Qt socket 写队列，避免大型文件一次性堆积到内存
+static constexpr qint64 kMaxQueuedBytes = 16 * 1024 * 1024;
 
 class FileSenderWorker : public QObject {
     Q_OBJECT
@@ -79,12 +83,16 @@ private slots:
     void onFrameReady(quint32 type, const QByteArray &payload);
     // 超时处理
     void onTimeout();
+    // socket 写入进度
+    void onBytesWritten(qint64 bytes);
 
 private:
     // 发送握手请求
     void sendTransferRequest();
     // 发送下一个数据块
     void sendNextChunk();
+    // 在事件循环中安排下一块发送
+    void scheduleNextChunk();
     // 打开下一个文件
     bool openNextFile();
     // 发送传输完成帧
@@ -105,6 +113,9 @@ private:
     QString      _rootName;
     QStringList  _emptyDirectories;
     bool         _isDirectory = false;
+    bool         _transferActive = false;
+    bool         _waitingForFileAck = false;
+    bool         _sendScheduled = false;
     qint64       _totalBytes = 0;
     qint64       _bytesSent  = 0;
 
