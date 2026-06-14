@@ -48,7 +48,7 @@ Frame {
     readonly property int kProgressDuration: 180
 
     Layout.fillWidth: true
-    height: 100
+    height: 120
     opacity: 1
 
     // 状态映射
@@ -248,6 +248,11 @@ Frame {
                 visible: status !== "transferring"
                 onClicked: AppController.transfer.removeSession(sessionId)
             }
+        }
+
+        // 底部填充，确保按钮不被遮挡
+        Item {
+            Layout.fillHeight: true
         }
     }
 
