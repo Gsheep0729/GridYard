@@ -32,6 +32,7 @@ Frame {
     required property int    progress
     required property int    bytesTransferred
     required property int    totalBytes
+    property bool   isDirectory: false
     property string createdAt: ""
     property string peerDeviceName: ""
 

@@ -107,6 +107,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session["peerDeviceName"] = peer.deviceName;
     session["filePath"]  = filePath;
     session["fileName"]  = QFileInfo{filePath}.fileName();
+    session["isDirectory"] = QFileInfo{filePath}.isDir();
     session["status"]    = "connecting";
     session["progress"]  = 0;
     session["bytesTransferred"] = 0;
@@ -306,6 +307,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["senderName"] = senderName;
     session["filePath"]  = "";
     session["fileName"]  = fileName;
+    session["isDirectory"] = worker->isDirectory();
     session["fileSize"]  = fileSize;
     session["totalFiles"] = totalFiles;
     session["totalBytes"] = totalBytes;

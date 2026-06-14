@@ -60,6 +60,7 @@ public:
     QString senderName()   const { return _senderName; }
     QString fileName()     const { return _displayName; }
     qint64  fileSize()     const { return _fileSize; }
+    bool    isDirectory()  const { return _isDirectory; }
 
     // 设置接收路径（由 TransferSessionManager 调用）
     void setReceivePath(const QString &path) { _receivePath = path; }
