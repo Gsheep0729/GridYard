@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.h
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.12.1
+* @date    2026-06-14
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
@@ -13,6 +13,8 @@
 * 5. 接收完成后发送 kTypeChunkAck
 *
 * Change Log:
+* [v4.12.1] FengChunlin   2026-06-14
+* * 校验数据块、修正文件夹累计进度，并等待最终完成确认
 * [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹接收保留顶层目录并避免覆盖同名目标
 * [v4.8.3] FengChunlin   2026-06-13
@@ -131,6 +133,7 @@ private:
     QString _fileName;
     qint64  _fileSize = 0;
     qint64  _bytesReceived = 0;
+    qint64  _totalBytesReceived = 0;
 
     // 状态
     bool _waitingForUserConfirm = false;

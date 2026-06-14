@@ -1,11 +1,13 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.12.1
+* @date    2026-06-14
 * @author  GridYard Team
 * @brief   FileSenderWorker 实现
 *
 * Change Log:
+* [v4.12.1] FengChunlin   2026-06-14
+* * 修复多文件最后一块重复读取并限制大型文件写队列
 * [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹传输保留顶层目录并支持空文件夹
 * [v4.8.3] FengChunlin   2026-06-13
@@ -50,6 +52,8 @@ FileSenderWorker::FileSenderWorker(QObject *parent)
             this,    &FileSenderWorker::onReadyRead);
     connect(_socket, &QTcpSocket::disconnected,
             this,    &FileSenderWorker::onDisconnected);
+    connect(_socket, &QTcpSocket::bytesWritten,
+            this,    &FileSenderWorker::onBytesWritten);
     connect(_codec,  &FrameCodec::frameReady,
             this,    &FileSenderWorker::onFrameReady);
 
@@ -105,6 +109,9 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _bytesSent = 0;
     _currentFileIndex = 0;
     _currentFileBytesSent = 0;
+    _transferActive = false;
+    _waitingForFileAck = false;
+    _sendScheduled = false;
 
     qDebug() << "[FileSender] 文件列表大小:" << _fileList.size();
     qDebug() << "[FileSender] 总字节数:" << _totalBytes;
@@ -141,15 +148,14 @@ void FileSenderWorker::onReadyRead()
 {
     _codec->feed(_socket->readAll());
 
-    // 重置超时定时器
-    if (_bytesSent < _totalBytes) {
+    if (_transferActive) {
         _timeoutTimer->start(kTimeoutMs);
     }
 }
 
 void FileSenderWorker::onDisconnected()
 {
-    if (_bytesSent < _totalBytes) {
+    if (_transferActive) {
         cleanup();
         emit transferFinished(false, tr("连接断开"));
     }
@@ -157,10 +163,22 @@ void FileSenderWorker::onDisconnected()
 
 void FileSenderWorker::onTimeout()
 {
-    if (_bytesSent < _totalBytes) {
+    if (_transferActive) {
         qWarning() << "FileSenderWorker: 传输超时";
         cleanup();
         emit transferFinished(false, tr("传输超时"));
+    }
+}
+
+void FileSenderWorker::onBytesWritten(qint64)
+{
+    if (!_transferActive) {
+        return;
+    }
+
+    _timeoutTimer->start(kTimeoutMs);
+    if (!_waitingForFileAck && _socket->bytesToWrite() <= kMaxQueuedBytes) {
+        scheduleNextChunk();
     }
 }
 
@@ -173,6 +191,8 @@ void FileSenderWorker::cleanup()
     if (_file.isOpen()) {
         _file.close();
     }
+    _transferActive = false;
+    _sendScheduled = false;
 }
 
 void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
@@ -194,13 +214,17 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 
         if (accepted) {
             emit requestAccepted();
+            _transferActive = true;
+            _timeoutTimer->start(kTimeoutMs);
             if (_fileList.isEmpty()) {
                 sendTransferDone();
+                cleanup();
                 emit transferFinished(true, "");
             } else {
-                sendNextChunk();
+                scheduleNextChunk();
             }
         } else {
+            cleanup();
             emit requestRejected(reason);
             emit transferFinished(false, tr("请求被拒绝: %1").arg(reason));
         }
@@ -216,15 +240,23 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         qDebug() << "[FileSender] 收到块确认，文件索引:" << fileIndex
                  << "校验结果:" << (verified ? "通过" : "失败");
 
+        if (fileIndex != _currentFileIndex) {
+            cleanup();
+            emit transferFinished(false, tr("收到无效的文件确认"));
+            return;
+        }
+
         if (!verified) {
             QString errorMsg = json["error_msg"].toString();
             qWarning() << "[FileSender] 文件校验失败:" << errorMsg;
+            cleanup();
             emit transferFinished(false, tr("文件 %1 校验失败: %2")
                                           .arg(fileIndex).arg(errorMsg));
             return;
         }
 
         // 当前文件校验通过，继续下一个
+        _waitingForFileAck = false;
         _currentFileIndex++;
         _currentFileBytesSent = 0;
 
@@ -234,15 +266,17 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             // 还有文件要发
             if (!openNextFile()) {
                 qWarning() << "[FileSender] 无法打开文件" << _fileList[_currentFileIndex].relativePath;
+                cleanup();
                 emit transferFinished(false, tr("无法打开文件 %1")
                                               .arg(_fileList[_currentFileIndex].relativePath));
                 return;
             }
-            sendNextChunk();
+            scheduleNextChunk();
         } else {
             // 所有文件发完
             qDebug() << "[FileSender] 所有文件传输完成";
             sendTransferDone();
+            cleanup();
             emit transferFinished(true, "");
         }
         break;
@@ -292,19 +326,23 @@ void FileSenderWorker::sendTransferRequest()
 
 void FileSenderWorker::sendNextChunk()
 {
-    if (!_file.isOpen() || _bytesSent >= _totalBytes) {
-        qDebug() << "[FileSender] 跳过发送，文件未打开或已发送完成";
+    _sendScheduled = false;
+
+    if (!_transferActive || _waitingForFileAck || !_file.isOpen()
+        || _currentFileIndex >= _fileList.size()) {
         return;
     }
 
+    const qint64 currentFileSize = _fileList[_currentFileIndex].sizeBytes;
     QByteArray chunkData = _file.read(kChunkSize);
 
     // 处理零字节文件：直接发送 isLastChunk=1
-    if (chunkData.isEmpty() && _fileList[_currentFileIndex].sizeBytes == 0) {
+    if (chunkData.isEmpty() && currentFileSize == 0 && _currentFileBytesSent == 0) {
         chunkData = QByteArray();  // 空数据
         qDebug() << "[FileSender] 处理零字节文件";
     } else if (chunkData.isEmpty()) {
         qWarning() << "[FileSender] 读取文件失败";
+        cleanup();
         emit transferFinished(false, tr("读取文件失败"));
         return;
     }
@@ -317,8 +355,7 @@ void FileSenderWorker::sendNextChunk()
     quint32 fileIndex = static_cast<quint32>(_currentFileIndex);
     quint64 chunkOffset = static_cast<quint64>(_currentFileBytesSent);
     quint32 chunkSize = static_cast<quint32>(chunkData.size());
-    quint32 isLastChunk = (_currentFileBytesSent + chunkData.size()
-                           >= _fileList[_currentFileIndex].sizeBytes) ? 1 : 0;
+    quint32 isLastChunk = (_currentFileBytesSent + chunkData.size() >= currentFileSize) ? 1 : 0;
 
     stream << fileIndex;
     stream << chunkOffset;
@@ -331,7 +368,12 @@ void FileSenderWorker::sendNextChunk()
     payload.append(chunkData);
 
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeDataChunk, payload);
-    _socket->write(frame);
+    if (_socket->write(frame) < 0) {
+        const QString errorMsg = _socket->errorString();
+        cleanup();
+        emit transferFinished(false, tr("发送数据失败: %1").arg(errorMsg));
+        return;
+    }
 
     _bytesSent += chunkData.size();
     _currentFileBytesSent += chunkData.size();
@@ -345,9 +387,23 @@ void FileSenderWorker::sendNextChunk()
         emit progressChanged(_bytesSent, _totalBytes);
     }
 
-    if (_bytesSent < _totalBytes) {
-        QTimer::singleShot(0, this, &FileSenderWorker::sendNextChunk);
+    _timeoutTimer->start(kTimeoutMs);
+
+    if (isLastChunk == 1) {
+        _waitingForFileAck = true;
+    } else if (_socket->bytesToWrite() <= kMaxQueuedBytes) {
+        scheduleNextChunk();
     }
+}
+
+void FileSenderWorker::scheduleNextChunk()
+{
+    if (_sendScheduled || !_transferActive || _waitingForFileAck) {
+        return;
+    }
+
+    _sendScheduled = true;
+    QTimer::singleShot(0, this, &FileSenderWorker::sendNextChunk);
 }
 
 bool FileSenderWorker::openNextFile()
