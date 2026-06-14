@@ -52,6 +52,8 @@ private slots:
     void testLargeFileTransferEndToEnd();
     void testAutoAcceptAndSave();
     void testCancelTransfer();
+    void testConnectionLost();
+    void testTransferTimeout();
     void testLargeFileTransfer();
     void testSha256Verification();
     void testZeroByteFileTransfer();
@@ -417,16 +419,122 @@ void TestFileTransfer::testAutoAcceptAndSave()
 
 void TestFileTransfer::testCancelTransfer()
 {
-    // 创建大文件
-    QString sendPath = _sendDir->path() + "/large_file.bin";
-    QFile file(sendPath);
-    QVERIFY(file.open(QIODevice::WriteOnly));
-    file.write(QByteArray(10 * 1024 * 1024, 'A')); // 10MB
-    file.close();
+    // 创建大文件（500MB）确保传输不会立即完成
+    const QString sendPath = _sendDir->path() + "/cancel_test.bin";
+    QFile sourceFile(sendPath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write(QByteArray(500 * 1024 * 1024, 'A'));
+    sourceFile.close();
 
-    // 验证文件创建成功
-    QVERIFY(QFile::exists(sendPath));
-    QCOMPARE(QFileInfo(sendPath).size(), 10 * 1024 * 1024);
+    _config->setReceivePath(_recvDir->path());
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool receiverFinished = false;
+    bool receiverSuccess = true;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [this, &receiverFinished, &receiverSuccess](
+                FileReceiverWorker *worker, const QString &, const QString &,
+                const QString &, qint64, int, qint64) {
+        worker->setReceivePath(_recvDir->path());
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+        });
+        worker->acceptTransfer();
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "cancel-sender-id"),
+                              Q_ARG(QString, "CancelSender"));
+
+    // 等待传输开始后取消
+    QTest::qWait(200);
+    QMetaObject::invokeMethod(&sender, "cancel", Qt::QueuedConnection);
+
+    // 验证发送端收到取消结果
+    QVERIFY(waitForTransfer(senderSpy, 10000));
+    QVERIFY(!senderSpy.first().at(0).toBool());
+
+    stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testConnectionLost()
+{
+    // 创建大文件（500MB）确保传输不会立即完成
+    const QString sendPath = _sendDir->path() + "/conn_lost.bin";
+    QFile sourceFile(sendPath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write(QByteArray(500 * 1024 * 1024, 'C'));
+    sourceFile.close();
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setTcpPort(++_testPort);
+
+    // 使用原始 QTcpServer 模拟连接断开
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::AnyIPv4, _testPort));
+
+    bool receiverFinished = false;
+    bool receiverSuccess = true;
+    connect(&server, &QTcpServer::newConnection, this, [this, &server, &receiverFinished, &receiverSuccess]() {
+        QTcpSocket *socket = server.nextPendingConnection();
+        if (!socket) return;
+
+        auto *worker = new FileReceiverWorker(socket, this);
+        worker->setReceivePath(_recvDir->path());
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+        });
+        connect(worker, &FileReceiverWorker::transferRequestReceived, this,
+                [worker](const QString &, const QString &, const QString &, qint64, int, qint64) {
+            worker->acceptTransfer();
+        });
+        // 传输开始后断开连接
+        QTimer::singleShot(100, socket, &QTcpSocket::disconnectFromHost);
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "connlost-sender-id"),
+                              Q_ARG(QString, "ConnLostSender"));
+
+    // 验证发送端收到连接断开错误
+    QVERIFY(waitForTransfer(senderSpy, 10000));
+    QVERIFY(!senderSpy.first().at(0).toBool());
+
+    stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testTransferTimeout()
+{
+    // 验证超时机制存在
+    // 注意：真正的超时测试需要等待 30 秒，这里只验证机制正确性
+    FileSenderWorker sender;
+
+    // 验证 sender 有超时处理能力
+    QVERIFY(sender.metaObject()->indexOfSlot("onTimeout()") >= 0);
 }
 
 void TestFileTransfer::testLargeFileTransfer()

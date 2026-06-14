@@ -320,6 +320,21 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
 
     qDebug() << "[TransferSession] 接收会话已创建，ID:" << sessionId;
 
+    // 连接接收进度信号
+    connect(worker, &FileReceiverWorker::progressChanged,
+            this, [this, sessionId](qint64 bytesReceived, qint64 totalBytes) {
+        for (int i = 0; i < _sessions.size(); ++i) {
+            if (_sessions[i]["sessionId"].toString() == sessionId) {
+                _sessions[i]["status"] = "transferring";
+                _sessions[i]["progress"] = totalBytes > 0 ? (bytesReceived * 100 / totalBytes) : 0;
+                _sessions[i]["bytesTransferred"] = bytesReceived;
+                _sessions[i]["totalBytes"] = totalBytes;
+                emit sessionsChanged();
+                break;
+            }
+        }
+    });
+
     // 连接接收完成信号
     connect(worker, &FileReceiverWorker::transferFinished,
             this, [this, sessionId, worker](bool success, const QString &errorMsg) {

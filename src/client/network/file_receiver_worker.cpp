@@ -85,6 +85,7 @@ FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
     , _socket{socket}
     , _codec{new FrameCodec{this}}
     , _timeoutTimer{new QTimer{this}}
+    , _hash{new QCryptographicHash{QCryptographicHash::Sha256}}
 {
     // socket 父对象设为 nullptr，避免自动删除
     _socket->setParent(nullptr);
@@ -108,6 +109,7 @@ FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
 FileReceiverWorker::~FileReceiverWorker()
 {
     cleanup();
+    delete _hash;
     if (_socket) {
         _socket->deleteLater();
     }
@@ -230,6 +232,9 @@ void FileReceiverWorker::cleanup()
         qDebug() << "FileReceiverWorker: 已删除不完整文件" << filePath;
     }
 
+    // 重置 SHA-256 计算
+    _hash->reset();
+
     _transferActive = false;
 }
 
@@ -273,6 +278,13 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     _rootName = json["root_name"].toString();
     _totalFiles = json["total_files"].toInt();
     _totalBytes = json["total_bytes"].toVariant().toLongLong();
+
+    // 协议版本检查（只记录警告，不拒绝连接）
+    quint16 senderVersion = static_cast<quint16>(json["protocol_version"].toInt());
+    if (senderVersion > 0 && senderVersion != gy::protocol::kProtocolVersion) {
+        qWarning() << "[FileReceiver] 发送方协议版本不匹配，本地:"
+                   << gy::protocol::kProtocolVersion << "对端:" << senderVersion;
+    }
 
     if (_rootName.isEmpty() || QFileInfo{_rootName}.fileName() != _rootName) {
         sendTransferResponse(false, tr("无效的文件名称"));
@@ -400,6 +412,9 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         return;
     }
 
+    // 增量更新 SHA-256
+    _hash->addData(chunkData);
+
     _bytesReceived += chunkData.size();
     _totalBytesReceived += chunkData.size();
 
@@ -419,8 +434,9 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         qDebug() << "[FileReceiver] 文件" << _fileName << "接收完成，开始校验";
         _file.close();
 
-        // 计算 SHA-256 校验
-        QString computedHash = gy::DirSerializer::computeSha256(_file.fileName());
+        // 使用增量计算的 SHA-256 结果
+        QString computedHash = _hash->result().toHex();
+        _hash->reset();
         bool verified = true;
         QString errorMsg;
 

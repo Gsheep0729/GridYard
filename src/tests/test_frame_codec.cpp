@@ -24,6 +24,9 @@ private slots:
     void testPartialFrame();
     void testEmptyPayload();
     void testLargePayload();
+    void testOversizedPayload();
+    void testOversizedFrame();
+    void testProtocolVersion();
 };
 
 void TestFrameCodec::testSingleFrame()
@@ -126,6 +129,55 @@ void TestFrameCodec::testLargePayload()
     QList<QVariant> args = spy.takeFirst();
     QCOMPARE(args[0].toUInt(), type);
     QCOMPARE(args[1].toByteArray(), payload);
+}
+
+void TestFrameCodec::testOversizedPayload()
+{
+    // encode() 应拒绝超大 payload，返回空 QByteArray
+    quint32 type = gy::protocol::kTypeDataChunk;
+    QByteArray oversizedPayload(gy::protocol::kMaxPayloadBytes + 1, 'X');
+    QByteArray frame = FrameCodec::encode(type, oversizedPayload);
+
+    // 验证返回空
+    QVERIFY(frame.isEmpty());
+}
+
+void TestFrameCodec::testOversizedFrame()
+{
+    // feed() 应拒绝超长帧，发射 errorOccurred 信号
+    FrameCodec codec;
+    QSignalSpy errorSpy(&codec, &FrameCodec::errorOccurred);
+    QSignalSpy frameSpy(&codec, &FrameCodec::frameReady);
+
+    // 手动构造一个声称载荷超长的帧头
+    QByteArray fakeFrame;
+    fakeFrame.resize(gy::protocol::kHeaderBytes);
+    QDataStream stream(&fakeFrame, QDataStream::WriteOnly);
+    stream.setByteOrder(QDataStream::BigEndian);
+    stream << static_cast<quint32>(gy::protocol::kTypeDataChunk);
+    stream << static_cast<quint32>(gy::protocol::kMaxPayloadBytes + 1);
+
+    // 喂入解码器
+    codec.feed(fakeFrame);
+
+    // 验证发射了错误信号，没有发射帧就绪信号
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(frameSpy.count(), 0);
+}
+
+void TestFrameCodec::testProtocolVersion()
+{
+    // 验证协议版本常量
+    QCOMPARE(gy::protocol::kProtocolVersion, quint16(1));
+
+    // 验证最大帧载荷常量
+    QCOMPARE(gy::protocol::kMaxPayloadBytes, quint32(256 * 1024 * 1024));
+
+    // 验证错误码枚举值
+    QCOMPARE(static_cast<quint16>(gy::protocol::ErrorCode::Success), quint16(0));
+    QCOMPARE(static_cast<quint16>(gy::protocol::ErrorCode::ConnectionTimeout), quint16(1001));
+    QCOMPARE(static_cast<quint16>(gy::protocol::ErrorCode::FrameTooLarge), quint16(2002));
+    QCOMPARE(static_cast<quint16>(gy::protocol::ErrorCode::Sha256Mismatch), quint16(4003));
 }
 
 QTEST_MAIN(TestFrameCodec)

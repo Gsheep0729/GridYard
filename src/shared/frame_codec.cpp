@@ -1,11 +1,13 @@
 /**
 * @file    frame_codec.cpp
-* @version 4.10.0
-* @date    2026-06-13
+* @version 4.13.0
+* @date    2026-06-15
 * @author  GridYard Team
 * @brief   FrameCodec 实现
 *
 * Change Log:
+* [v4.13.0] GY   2026-06-15
+* * 添加帧载荷长度检查，超限时发射 errorOccurred 信号
 * [v0.1.0] GY   2026-06-02
 * * Stage 1：实现 encode() + 粘包状态机 feed()
 * [v0.0.1] GY   2026-05-24
@@ -16,6 +18,7 @@
 #include "protocol.h"
 
 #include <QDataStream>
+#include <QDebug>
 
 FrameCodec::FrameCodec(QObject *parent)
     : QObject{parent}
@@ -24,6 +27,13 @@ FrameCodec::FrameCodec(QObject *parent)
 
 QByteArray FrameCodec::encode(quint32 type, const QByteArray &payload)
 {
+    // 检查载荷长度是否超限
+    if (static_cast<quint32>(payload.size()) > gy::protocol::kMaxPayloadBytes) {
+        qWarning() << "FrameCodec::encode: payload size" << payload.size()
+                   << "exceeds maximum" << gy::protocol::kMaxPayloadBytes;
+        return {};
+    }
+
     QByteArray frame;
     frame.reserve(gy::protocol::kHeaderBytes + payload.size());
 
@@ -56,6 +66,21 @@ void FrameCodec::feed(const QByteArray &data)
             stream.setByteOrder(QDataStream::BigEndian);
             stream >> _pendingType;
             stream >> _pendingLength;
+
+            // 检查帧载荷长度是否超限
+            if (_pendingLength > gy::protocol::kMaxPayloadBytes) {
+                qWarning() << "FrameCodec::feed: payload length" << _pendingLength
+                           << "exceeds maximum" << gy::protocol::kMaxPayloadBytes;
+                emit errorOccurred(tr("帧载荷长度 %1 超出限制 %2")
+                                       .arg(_pendingLength)
+                                       .arg(gy::protocol::kMaxPayloadBytes));
+                // 清空缓冲区，重置状态
+                _buffer.clear();
+                _state = State::WaitingHeader;
+                _pendingType = 0;
+                _pendingLength = 0;
+                break;
+            }
 
             // 移除已解析的帧头
             _buffer.remove(0, gy::protocol::kHeaderBytes);
