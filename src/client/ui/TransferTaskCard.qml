@@ -1,13 +1,15 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.10.0
- * @date    2026-06-13
+ * @version 4.12.0
+ * @date    2026-06-14
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v4.12.0] DuRuoxian   2026-06-14
+ * * 使用共享格式化工具，增加进度、状态和进入过渡
  * [v4.10.0] DuRuoxian   2026-06-13
  * * 改进布局：添加方向标识、时间信息、文件大小、移除记录
  * [v0.2.0] DuRuoxian   2026-06-02
@@ -18,6 +20,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
+import "../utils/FormatUtils.js" as FormatUtils
 
 Frame {
     id: taskCard
@@ -39,9 +42,13 @@ Frame {
     readonly property color kWaitingColor: "#FF9800"
     readonly property color kSendBgColor:  "#E3F2FD"
     readonly property color kRecvBgColor:  "#F3E5F5"
+    readonly property int kColorDuration: 160
+    readonly property int kEnterDuration: 200
+    readonly property int kProgressDuration: 180
 
     Layout.fillWidth: true
     height: 100
+    opacity: 1
 
     // 状态映射
     function statusText() {
@@ -70,26 +77,18 @@ Frame {
         }
     }
 
-    // 格式化字节数
-    function formatBytes(bytes) {
-        if (bytes < 1024) return bytes + " B"
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB"
-        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB"
-        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB"
-    }
-
-    // 格式化时间
-    function formatTime(timeStr) {
-        if (!timeStr) return ""
-        const date = new Date(timeStr)
-        return date.toLocaleTimeString(Qt.locale(), "HH:mm")
-    }
-
     background: Rectangle {
         radius: 8
-        color: taskType === "send" ? kSendBgColor : kRecvBgColor
-        border.color: statusColor()
+        color: taskCard.taskType === "send" ? taskCard.kSendBgColor : taskCard.kRecvBgColor
+        border.color: taskCard.statusColor()
         border.width: 1
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: taskCard.kColorDuration
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     ColumnLayout {
@@ -132,7 +131,14 @@ Frame {
                 width: statusLabel.implicitWidth + 12
                 height: statusLabel.implicitHeight + 6
                 radius: 4
-                color: statusColor()
+                color: taskCard.statusColor()
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: taskCard.kColorDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 Label {
                     id: statusLabel
@@ -160,14 +166,14 @@ Frame {
             Item { Layout.fillWidth: true }
 
             Label {
-                text: formatTime(createdAt)
+                text: FormatUtils.formatTime(taskCard.createdAt)
                 font.pixelSize: 12
                 color: "#888888"
                 visible: createdAt.length > 0
             }
 
             Label {
-                text: formatBytes(totalBytes)
+                text: FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
                 color: "#666666"
                 visible: totalBytes > 0
@@ -181,6 +187,12 @@ Frame {
             value: progress
             Layout.fillWidth: true
             visible: status === "transferring" || status === "completed"
+
+            Behavior on value {
+                SmoothedAnimation {
+                    duration: taskCard.kProgressDuration
+                }
+            }
         }
 
         // 第四行：传输信息 + 操作按钮
@@ -189,7 +201,8 @@ Frame {
             visible: status === "transferring" || status === "waiting_confirm"
 
             Label {
-                text: formatBytes(bytesTransferred) + " / " + formatBytes(totalBytes)
+                text: FormatUtils.formatBytes(taskCard.bytesTransferred)
+                      + " / " + FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
                 color: "#666"
                 visible: status === "transferring"
@@ -230,4 +243,16 @@ Frame {
             }
         }
     }
+
+    NumberAnimation {
+        id: enterAnimation
+        target: taskCard
+        property: "opacity"
+        from: 0
+        to: 1
+        duration: taskCard.kEnterDuration
+        easing.type: Easing.OutCubic
+    }
+
+    Component.onCompleted: enterAnimation.restart()
 }

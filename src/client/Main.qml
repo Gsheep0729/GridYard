@@ -1,7 +1,7 @@
 /**
 * @file    Main.qml
-* @version 4.10.0
-* @date    2026-06-13
+* @version 4.12.0
+* @date    2026-06-14
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
@@ -10,6 +10,8 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v4.12.0] DuRuoxian   2026-06-14
+* * 增加成功和错误提示进入过渡
 * [v4.10.0] DuRuoxian   2026-06-13
 * * 传输完成弹窗改为自定义按钮
 * [v4.9.0] DuRuoxian   2026-06-13
@@ -44,6 +46,7 @@ ApplicationWindow {
     property string _targetDeviceName: ""
     property string _targetIpAddress: ""
     property bool _targetIsOnline: false
+    readonly property int kPopupEnterDuration: 180
 
     function selectDevice(deviceId: string, deviceName: string,
                           ipAddress: string, isOnline: bool): void {
@@ -295,6 +298,16 @@ ApplicationWindow {
         modal: true
         closePolicy: Popup.CloseOnPressOutside
 
+        enter: Transition {
+            NumberAnimation {
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: mainWindow.kPopupEnterDuration
+                easing.type: Easing.OutCubic
+            }
+        }
+
         background: Rectangle {
             color: "#F44336"
             radius: 8
@@ -326,6 +339,16 @@ ApplicationWindow {
         height: successLabel.implicitHeight + 48
         modal: true
         closePolicy: Popup.CloseOnPressOutside
+
+        enter: Transition {
+            NumberAnimation {
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: mainWindow.kPopupEnterDuration
+                easing.type: Easing.OutCubic
+            }
+        }
 
         background: Rectangle {
             color: "#4CAF50"

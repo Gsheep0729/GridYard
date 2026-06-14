@@ -1,7 +1,7 @@
 /**
  * @file    SettingsDialog.qml
- * @version 4.11.0
- * @date    2026-06-13
+ * @version 4.12.0
+ * @date    2026-06-14
  * @author  GridYard Team
  * @brief   设置对话框
  *
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v4.12.0] DuRuoxian   2026-06-14
+ * * 增加设置状态和对话框进入过渡
  * [v4.11.0] GY   2026-06-13
  * * 新增自动接收并保存文件设置
  * [v4.9.0] DuRuoxian   2026-06-13
@@ -47,6 +49,18 @@ Dialog {
                                     || _tempReceivePath !== ConfigManager.receivePath
                                     || _tempAutoAcceptFiles !== ConfigManager.autoAcceptFiles
                                     || _tempTcpPort !== ConfigManager.tcpPort
+    readonly property int kColorDuration: 160
+    readonly property int kEnterDuration: 200
+
+    enter: Transition {
+        NumberAnimation {
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: settingsDialog.kEnterDuration
+            easing.type: Easing.OutCubic
+        }
+    }
 
     // 打开对话框时重置临时值
     onAboutToShow: {
@@ -310,6 +324,13 @@ Dialog {
                       : qsTr("所有设置均已保存")
                 color: settingsDialog._isDirty ? "#B26A00" : "#6B7280"
                 font.pixelSize: 12
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: settingsDialog.kColorDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
             }
 
             Button {

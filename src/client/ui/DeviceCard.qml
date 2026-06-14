@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 4.10.0
- * @date    2026-06-13
+ * @version 4.12.0
+ * @date    2026-06-14
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -12,6 +12,8 @@
  * 支持拖拽文件到卡片触发传输。
  *
  * Change Log:
+ * [v4.12.0] DuRuoxian   2026-06-14
+ * * 增加悬停、选中、拖放和在线状态过渡
  * [v4.9.0] DuRuoxian   2026-06-13
  * * 增加会话选中样式，点击时传递完整设备信息
  * [v0.3.1] DuRuoxian   2026-06-03
@@ -38,6 +40,8 @@ ItemDelegate {
     readonly property color kOnlineColor:  "#3DDC84"
     readonly property color kOfflineColor: "#999999"
     readonly property color kDropHighlight: "#E3F2FD"
+    readonly property int kColorDuration: 150
+    readonly property int kStatusDuration: 180
 
     signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal fileDropped(string deviceId, string filePath)
@@ -54,6 +58,20 @@ ItemDelegate {
                       ? "#2196F3" : "#E0E0E0"
         border.width: dropArea.containsDrag || deviceCard.isSelected ? 2 : 1
         radius: 8
+
+        Behavior on color {
+            ColorAnimation {
+                duration: deviceCard.kColorDuration
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: deviceCard.kColorDuration
+                easing.type: Easing.OutCubic
+            }
+        }
     }
 
     onClicked: deviceCard.cardClicked(deviceCard.deviceId,
@@ -96,6 +114,21 @@ ItemDelegate {
             radius: 6
             color: deviceCard.isOnline ? deviceCard.kOnlineColor
                                           : deviceCard.kOfflineColor
+            opacity: deviceCard.isOnline ? 1 : 0.55
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: deviceCard.kStatusDuration
+                    easing.type: Easing.OutCubic
+                }
+            }
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: deviceCard.kStatusDuration
+                    easing.type: Easing.OutCubic
+                }
+            }
         }
 
         // 设备信息区域
