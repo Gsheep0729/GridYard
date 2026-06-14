@@ -4,11 +4,11 @@
 
 | 字段       | 内容                          |
 | :--------- | :---------------------------- |
-| 文档版本   | v1.0                          |
+| 文档版本   | v1.1                          |
 | 创建日期   | 2026-04-23                    |
 | 项目负责人 | 冯春霖                        |
 | 核心成员   | 高扬 / 杜若贤 / 冯春霖        |
-| 文档状态   | 草稿                          |
+| 文档状态   | 当前设计基线                  |
 | 开发平台   | Manjaro Linux                 |
 | 语言标准   | C++23 / Qt 框架（头文件机制） |
 
@@ -26,6 +26,20 @@
 8. [关键技术攻关方案](#8-关键技术攻关方案)
 9. [开发路线图与团队分工](#9-开发路线图与团队分工)
 10. [V2.0 架构升级演进规划](#10-v20-架构升级演进规划)
+
+---
+
+## 当前有效设计说明
+
+本文档早期内容同时描述了 V1.0 与完整混合架构，部分 Type 码、Widgets 示例和阶段顺序已不再代表当前实现。自 2026-06-15 起，以以下决策为准：
+
+- 客户端 UI 使用 Qt Quick/QML；QML 文件 PascalCase，`id` 小写开头，不使用 Widgets 的 `tw_` 命名规则。
+- C++ 与 QML 遵循单向数据流：QML -> AppController/应用逻辑 -> 领域服务 -> Storage。
+- V1.0 使用 UDP 广播发现与自定义 TLV TCP 文件传输；保留现有协议，不整体改写为 LocalSend REST 或 IPMSG 文本协议。
+- LocalSend 作为产品和协议语义参考，重点借鉴版本/能力声明、主动发现回应、会话 token、部分接受、限流和安全降级。
+- SQLite 首先服务于本地传输历史；登录后可选择同步必要传输元数据。
+- GridYard-Server 不中转 P2P 文件内容，只负责身份、记录同步、IM 路由和离线消息。
+- V2.0 Type 码统一从 `0x1000` 起分配，低位区间仅保留 V1.0 P2P Type。
 
 ---
 
@@ -96,6 +110,8 @@
 | F-106 | 任务生命周期控制   | 支持对进行中的传输任务执行暂停、恢复、取消操作                                               | 中     |
 | F-107 | 实时传输反馈       | 在 UI 中实时展示传输速度（MB/s）、已完成百分比进度条与预估剩余时间                          | 中     |
 | F-108 | 拖拽发起传输       | 支持将本地文件或文件夹拖拽至目标设备节点图标上，快速发起传输请求                            | 低     |
+| F-109 | 本地传输历史       | 使用 SQLite 保存必要传输元数据，支持跨重启查询、删除和保留期限配置                          | 高     |
+| F-110 | 协议能力协商       | 发现包声明协议版本、设备类型和能力列表；不兼容版本安全拒绝或降级                            | 中     |
 
 ### 3.2 C/S 局域网即时通讯子系统
 
@@ -108,6 +124,7 @@
 | F-205 | 离线消息漫游       | 当接收方不在线时，服务端暂存消息；接收方上线后，自动从服务端拉取期间所有的离线未读消息       | 高     |
 | F-206 | 本地历史记录缓存   | 客户端将已收到的消息持久化到本地 SQLite，断网状态下仍可正常查阅历史记录                      | 高     |
 | F-207 | 系统通知           | 收到新消息或传输请求时，通过系统托盘（System Tray）弹出气泡通知，支持声音提醒                | 中     |
+| F-208 | 传输记录漫游       | 登录用户可选择将必要传输元数据同步到服务端并跨设备查询，文件内容不上传                      | 中     |
 
 ---
 
@@ -134,7 +151,7 @@
 graph TD
     subgraph LAN["局域网 (Local Area Network)"]
         subgraph ClientA["节点 A（鸽邮客户端）"]
-            UA["Qt UI 层\n(tw_ 控件)"]
+            UA["Qt Quick/QML\n表现层"]
             BA["业务逻辑层"]
             NA["网络层"]
             DA["SQLite 本地缓存"]
@@ -144,7 +161,7 @@ graph TD
         end
 
         subgraph ClientB["节点 B（鸽邮客户端）"]
-            UB["Qt UI 层\n(tw_ 控件)"]
+            UB["Qt Quick/QML\n表现层"]
             BB["业务逻辑层"]
             NB["网络层"]
             DB["SQLite 本地缓存"]
@@ -220,30 +237,24 @@ graph TD
 
 | 层次             | 选型                              | 职责说明                                                     |
 | :--------------- | :-------------------------------- | :----------------------------------------------------------- |
-| GUI 框架         | Qt Widgets / Qt Designer          | 构建全部客户端 UI，提供事件循环与信号/槽机制                 |
+| GUI 框架         | Qt Quick / QML / Quick Controls 2 | 构建客户端 UI，通过属性绑定与信号向应用逻辑层表达用户意图   |
 | 多线程           | `QThread` + Worker Object 模式    | 将所有阻塞 I/O 操作隔离至独立后台线程，保证主线程响应不卡顿 |
 | 设备发现（UDP）  | `QUdpSocket` + `QNetworkInterface` | 局域网组播/广播发现在线节点                                   |
 | 数据传输（TCP）  | `QTcpServer` + `QTcpSocket`       | C/S 长连接消息通道 & P2P 文件直传通道                        |
 | 数据序列化       | `QDataStream` + `QByteArray`      | 负责统一大小端对齐，实现跨平台安全的二进制协议帧编解码       |
 | 服务端数据库     | PostgreSQL + 原生 C++ 客户端库    | 全局用户与消息持久化，处理高并发写入                         |
-| 客户端数据库     | SQLite（通过 `QSqlDatabase`）      | 本地聊天记录缓存，支持断网查阅历史                           |
+| 客户端数据库     | SQLite（通过 `QSqlDatabase`）      | 本地传输历史与聊天记录缓存，支持跨重启和断网查询             |
 | 文件 I/O         | C++23 `<filesystem>` / `QFile`    | 目录遍历、分块读写、哈希计算                                 |
 | 定时器           | `QTimer`                          | 心跳包定时广播与在线节点超时剔除                             |
 | 系统集成         | `QSystemTrayIcon`                 | 后台驻留、系统通知气泡                                       |
 
-### 6.3 UI 控件命名强制规范
+### 6.3 QML 与 C++ 集成约束
 
-> **[强制规范] `tw_` 前缀命名约定**
->
-> 所有在 Qt Designer 中创建并由对象树管理的 UI 控件对象，命名时**必须**以 `tw_` 为前缀。
-> 此规范旨在实现视图层（View）与逻辑层（Logic）的命名空间隔离，杜绝控件对象与普通业务变量在代码中产生混淆。
->
-> **示例**（合规命名）：
-> - `tw_BtnSend` — 发送按钮
-> - `tw_ProgressBar_Transfer` — 文件传输进度条
-> - `tw_ListPeers` — 局域网在线节点列表
-> - `tw_ChatDisplay` — 聊天记录展示区
-> - `tw_EditInput` — 消息输入框
+- QML 文件名使用 PascalCase，组件 `id` 使用小写开头，不添加 `tw_` 前缀。
+- C++ 类型通过 `QML_ELEMENT` 与 `qt_add_qml_module()` 注册，不使用 `setContextProperty` 或手工 `qmlRegisterType`。
+- QML 不直接调用文件、网络和数据库 API，只向 Controller 汇报用户意图并绑定 C++ 状态。
+- AppController 统一组装核心服务；Storage 层不依赖 QML 或 UI。
+- 后台 Worker 使用 `moveToThread`，通过 Queued Connection 回传状态。
 
 ---
 
@@ -278,21 +289,15 @@ graph TD
 
 | 类型码（十六进制） | 常量名称                | 说明                         | 载荷格式       |
 | :----------------- | :---------------------- | :--------------------------- | :------------- |
-| `0x0001`           | `TYPE_LOGIN_REQ`        | 客户端登录请求               | JSON           |
-| `0x0002`           | `TYPE_LOGIN_RSP`        | 服务端登录响应               | JSON           |
-| `0x0010`           | `TYPE_HEARTBEAT`        | 心跳保活包                   | 空（Length=0） |
-| `0x0011`           | `TYPE_ONLINE_STATUS`    | 节点在线状态推送             | JSON           |
-| `0x0020`           | `TYPE_MSG_SEND`         | C/S 单聊消息发送             | JSON           |
-| `0x0021`           | `TYPE_MSG_RECV`         | C/S 消息下发（推送）         | JSON           |
-| `0x0022`           | `TYPE_MSG_ACK`          | 消息已送达确认               | JSON           |
-| `0x0030`           | `TYPE_OFFLINE_PULL_REQ` | 请求拉取离线消息             | JSON           |
-| `0x0031`           | `TYPE_OFFLINE_PULL_RSP` | 离线消息批量下发             | JSON           |
-| `0x0100`           | `TYPE_P2P_HELLO`        | UDP 节点发现广播包           | JSON           |
-| `0x0101`           | `TYPE_P2P_META`         | P2P 文件/目录元数据帧        | JSON           |
-| `0x0102`           | `TYPE_P2P_META_ACK`     | 接收端对文件元数据的鉴权响应 | JSON           |
-| `0x0103`           | `TYPE_P2P_DATA_CHUNK`   | P2P 文件数据分块帧           | 二进制         |
-| `0x0104`           | `TYPE_P2P_DATA_ACK`     | 分块接收确认                 | JSON           |
-| `0x0105`           | `TYPE_P2P_VERIFY`       | 传输完成哈希校验报告         | JSON           |
+| `0x0001`           | `kTypeHello`            | UDP 设备上线与心跳           | JSON           |
+| `0x0101`           | `kTypeTransferReq`      | P2P 文件元数据请求           | JSON           |
+| `0x0102`           | `kTypeTransferRsp`      | 接收端接受或拒绝             | JSON           |
+| `0x0201`           | `kTypeDataChunk`        | 文件数据分块                 | 混合二进制     |
+| `0x0301`           | `kTypeChunkAck`         | 单文件校验确认               | JSON           |
+| `0x0302`           | `kTypeTransferDone`     | 全部文件发送完成             | JSON           |
+| `0x0401`           | `kTypeCancel`           | 取消传输会话                 | JSON           |
+
+V2.0 登录、记录同步与 IM Type 从 `0x1000` 起分配。协议升级还应增加版本、能力、会话 token、错误码和帧长度上限；这些字段优先在现有 TLV 上扩展，不以更换 HTTP 或文本协议为前提。
 
 ---
 
@@ -374,6 +379,8 @@ while (!file.atEnd()) {
 ---
 
 ## 9. 开发路线图与团队分工
+
+> 本章是立项阶段的原始路线图，保留用于追溯设计变化。其中 Qt Designer、`tw_` 控件、`LocalDbManager` 单例和“先做登录”等安排不再作为当前实施依据；当前开发顺序以《鸽邮(GridYard)——软件开发阶段计划》v1.1 为准。
 
 ### 9.1 成员角色定义
 
@@ -543,18 +550,38 @@ GridYard/
     └── protocol.h            # Type 码定义（V1.0 + V2.0 扩展码）
 ```
 
-#### 10.3.2 PostgreSQL 数据库设计（helloword 库）
+#### 10.3.2 PostgreSQL 数据库设计（gridyard 库）
 
-数据库名称指定为 `helloword`，初始 Schema 包含以下核心表：
+数据库名称使用 `gridyard`，通过 migration 管理 Schema。账号、会话和传输记录漫游优先于 IM 表落地：
 
 ```sql
 -- 用户账户表
 CREATE TABLE users (
     user_id     SERIAL PRIMARY KEY,
     username    VARCHAR(64) UNIQUE NOT NULL,
-    pwd_hash    CHAR(64) NOT NULL,          -- SHA-256 哈希
+    password_hash TEXT NOT NULL,            -- Argon2id/bcrypt 编码结果
     device_name VARCHAR(128),
     last_seen   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE auth_sessions (
+    session_id  UUID PRIMARY KEY,
+    user_id     INT NOT NULL REFERENCES users(user_id),
+    token_hash  TEXT NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    revoked_at  TIMESTAMPTZ
+);
+
+CREATE TABLE transfer_records (
+    record_id    UUID PRIMARY KEY,
+    user_id      INT NOT NULL REFERENCES users(user_id),
+    direction    SMALLINT NOT NULL,
+    display_name TEXT NOT NULL,
+    total_bytes  BIGINT NOT NULL,
+    status       SMALLINT NOT NULL,
+    peer_name    TEXT,
+    occurred_at  TIMESTAMPTZ NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 离线消息表（信箱模型）
@@ -588,22 +615,24 @@ CREATE TABLE lobby_messages (
 
 ### 10.4 客户端新增模块（平滑接入）
 
-客户端仅需新增以下模块，已有代码无需改动：
+客户端保留 P2P 核心，通过现有应用层边界增量接入以下模块：
 
 | 新增模块              | 职责                                                                          |
 | :-------------------- | :---------------------------------------------------------------------------- |
 | `ServerLink`          | 维护与 GridYard-Server 的 TCP 长连接，处理登录、心跳、断线重连逻辑              |
 | `ImManager`           | 封装单聊消息的发送（`TYPE_MSG_SEND`）与接收（`TYPE_MSG_RECV`）               |
 | `LobbyManager`        | 封装聊天大厅的消息订阅与发布                                                  |
-| `RoamingSyncManager`  | 登录后向服务端拉取离线消息（`TYPE_OFFLINE_PULL_REQ`），写入本地 SQLite        |
-| `LocalDbManager`      | 在 V1.0 会话历史的基础上扩展 IM 聊天记录的 CRUD 接口                         |
+| `TransferRecordSyncManager` | 登录后同步必要传输元数据，使用 UUID 和游标保证幂等                    |
+| `RoamingSyncManager`  | 启动 IM 阶段后拉取离线消息并写入本地 SQLite                                  |
+| `TransferHistoryRepository` | 管理本地传输历史与同步状态                                             |
+| `MessageRepository`   | 启动 IM 阶段后管理本地聊天记录                                                |
 
 新增 UI 界面（杜若贤负责）：
 
 | 新增界面              | 说明                                                                          |
 | :-------------------- | :---------------------------------------------------------------------------- |
 | 登录/注册对话框       | 账号密码登录，首次使用时注册                                                  |
-| 单聊会话界面          | 基于 `QTextBrowser` 的气泡式消息展示，区分发件方与收件方                      |
+| 单聊会话界面          | 使用 QML ListView/Delegate 渲染气泡消息，区分发件方与收件方                   |
 | 局域网聊天大厅        | 所有在线用户均可见的公共频道，类似 IRC 聊天室                                 |
 
 ---
@@ -630,4 +659,4 @@ V2.0 新增 Type 码从 `0x1000` 起分配，不与 V1.0 的 `0x0001` ~ `0x0401`
 
 ---
 
-*本文档由"鸽邮 (GridYard)"项目团队初稿整理，随开发进展持续更新。*
+*本文档由"鸽邮 (GridYard)"项目团队整理，版本 v1.1，随开发进展持续更新。*

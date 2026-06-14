@@ -5,11 +5,11 @@
 | 字段       | 内容                                 |
 | :--------- | :----------------------------------- |
 | 文档编号   | GY-SPEC-001                          |
-| 文档版本   | v2.0                                 |
+| 文档版本   | v2.1                                 |
 | 创建日期   | 2026-04-23                           |
 | 项目负责人 | 冯春霖                               |
 | 核心成员   | 高扬 / 杜若贤 / 冯春霖              |
-| 文档状态   | 草稿 (Draft)                         |
+| 文档状态   | 当前设计基线                         |
 | 开发平台   | Manjaro Linux                        |
 | 语言标准   | C++23 / Qt 框架（传统头文件机制）    |
 | 构建系统   | CMake                                |
@@ -22,6 +22,7 @@
 | :---- | :--------- | :----- | :--------------------------------------------------- |
 | v1.0  | 2026-04-23 | 冯春霖 | 初版发布，基于完整功能集的全量架构设计               |
 | v2.0  | 2026-04-23 | 高扬   | 采用敏捷策略拆分为 V1.0/V2.0 双期；新增 V2.0 演进规划 |
+| v2.1  | 2026-06-15 | GridYard Team | 补充 LocalSend 调研结论、本地历史、登录与记录漫游边界 |
 
 ---
 
@@ -66,6 +67,12 @@
 | 飞鸽传书 / IP Messenger  | 纯 P2P，无需服务端，极致轻量     | 无账号体系，不支持离线漫游，换机记录丢失         | C/S 架构接管关系链与离线数据，记录跨设备可追溯       |
 | QQ / 微信                | UI 成熟，用户粘性高              | 强依赖外网，文件传输受带宽限速，消耗校园流量     | 直接在内网 TCP 层传输，带宽不受公网瓶颈约束         |
 | LocalSend / 互传         | 跨平台免配置，局域网发现设备     | 纯文件快递功能，零社交属性，无即时通讯能力       | 将高并发文件 I/O 与低延迟文本通信融合于同一终端     |
+
+### 1.4 LocalSend 调研后的设计取舍
+
+GridYard V1.0 的产品定位继续对标 LocalSend：无需账号即可发现附近设备并直传文件。LocalSend 的优势不在于 HTTP 本身，而在于协议对跨平台、兼容性和不可靠局域网环境的完整考虑。
+
+后续重点借鉴协议版本与能力声明、主动发现回应、会话和文件 token、部分接受、请求限流、发现兜底以及可选 PIN/TLS。当前不切换为 LocalSend REST/HTTP 协议；现有 TLV 协议已经稳定支持文件夹、逐文件 ACK、SHA-256 和大文件背压，整体改写会增加回归风险。如确有互操作需求，再新增独立兼容适配层。
 
 ---
 
@@ -134,6 +141,7 @@ V1.0 定位为**纯去中心化 P2P 工具**，不含任何中央服务端、不
 | F-402 | 拖拽发起传输     | 支持将本地文件或文件夹直接拖拽至目标设备条目上，以此快捷发起传输请求                             | 中     |
 | F-403 | 传输进度可视化   | 传输进行中实时展示进度条、已传输字节、当前速度（MB/s）及预估剩余时间；界面全程保持响应不卡顿     | 高     |
 | F-404 | 传输历史记录     | 维护本次运行期间的传输记录，展示文件名、大小、耗时、状态（成功/失败/已取消）及对端设备名         | 低     |
+| F-405 | 本地历史持久化   | 使用 SQLite 保存传输元数据，应用重启后仍可查询；默认不保存文件内容或敏感绝对路径                 | 高     |
 
 ### 3.5 模块五：基础配置
 
@@ -141,6 +149,7 @@ V1.0 定位为**纯去中心化 P2P 工具**，不含任何中央服务端、不
 | :---- | :----------- | :--------------------------------------------------------------------------------- | :----- |
 | F-501 | 配置持久化   | 设备名、接收路径等配置修改须持久化写入本地配置文件，重启后自动加载生效             | 高     |
 | F-502 | 系统托盘常驻 | 关闭主窗口时应用不退出而是最小化至系统托盘，维持广播与监听；收到传输请求时弹出气泡 | 中     |
+| F-503 | 隐私与保留策略 | 用户可配置历史保留天数、清空本地历史，并决定未来是否允许账号同步传输记录             | 中     |
 
 ---
 
@@ -154,6 +163,8 @@ V1.0 定位为**纯去中心化 P2P 工具**，不含任何中央服务端、不
 | NF-201 | 数据可靠性   | 所有落盘文件须执行 SHA-256 校验；TCP 连接意外断开时双端均能优雅清理资源，不崩溃       |
 | NF-202 | 网络适应性   | 适应 DHCP 动态 IP 环境；多网卡（有线 + WiFi 并存）场景下广播地址筛选须正确无误       |
 | NF-301 | 架构解耦性   | P2P 网络层、业务逻辑层、UI 视图层须保持清晰的代码物理边界，不得产生跨层依赖          |
+| NF-302 | 协议防护     | 所有网络入口必须限制帧大小、字段长度、文件数量和请求频率；未知能力应安全降级          |
+| NF-303 | 数据隐私     | 本地及漫游记录默认只保存必要元数据；服务端不得保存 P2P 文件内容，敏感路径不得上传      |
 
 ---
 
@@ -172,8 +183,8 @@ V1.0 采用**纯去中心化 P2P 架构**，局域网内所有运行"鸽邮"的�
   │                                                      │
   │   节点 A（鸽邮客户端）      节点 B（鸽邮客户端）       │
   │  ┌─────────────────┐      ┌─────────────────┐       │
-  │  │  Qt UI 层        │      │  Qt UI 层        │       │
-  │  │  (tw_ 控件)      │      │  (tw_ 控件)      │       │
+  │  │  Qt Quick/QML    │      │  Qt Quick/QML    │       │
+  │  │  表现层          │      │  表现层          │       │
   │  ├─────────────────┤      ├─────────────────┤       │
   │  │  业务逻辑层      │      │  业务逻辑层      │       │
   │  │  SessionMgr      │      │  SessionMgr      │       │
@@ -197,18 +208,21 @@ V1.0 采用**纯去中心化 P2P 架构**，局域网内所有运行"鸽邮"的�
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Qt UI 层（View）                   │
-│  MainWindow / SettingsDialog / AcceptDialog          │
-│  所有 Designer 控件以 tw_ 前缀命名                    │
+│                Qt Quick/QML 表现层（View）            │
+│  Main / SettingsDialog / AcceptDialog                │
+│  只绑定状态并向 AppController 汇报用户意图            │
 ├─────────────────────────────────────────────────────┤
-│                  业务逻辑层（Logic）                  │
-│  TransferSessionManager  DirSerializer               │
-│  ConfigManager           FileUtils                   │
+│             应用与业务逻辑层（Application）           │
+│  AppController           TransferSessionManager      │
+│  ConfigManager           DirSerializer               │
 ├─────────────────────────────────────────────────────┤
 │                    网络层（Network）                   │
 │  DiscoveryService    P2pServer                       │
 │  FileSenderWorker    FileReceiverWorker               │
 │  FrameCodec                                          │
+├─────────────────────────────────────────────────────┤
+│                    数据层（Storage）                   │
+│  TransferHistoryRepository / SQLite                  │
 └─────────────────────────────────────────────────────┘
          ▲ Qt Signal/Slot (Queued Connection)
          │ 跨层通信全部通过信号/槽，禁止直接调用
@@ -247,7 +261,7 @@ V1.0 采用**纯去中心化 P2P 架构**，局域网内所有运行"鸽邮"的�
 
 | 层次           | 选型                               | 职责说明                                                     |
 | :------------- | :--------------------------------- | :----------------------------------------------------------- |
-| 图形界面框架   | Qt Widgets / Qt Designer           | 构建全部客户端 UI，提供事件循环与信号/槽机制                 |
+| 图形界面框架   | Qt Quick / QML / Quick Controls 2  | 构建客户端 UI，通过属性绑定与信号连接应用逻辑层              |
 | 多线程         | `QThread` + Worker Object 模式     | 将所有阻塞 I/O 操作隔离至独立后台线程，保证主线程响应        |
 | 设备发现       | `QUdpSocket` + `QNetworkInterface` | 局域网广播发现在线节点                                       |
 | 数据传输       | `QTcpServer` + `QTcpSocket`        | P2P 文件直传长连接通道                                       |
@@ -286,32 +300,17 @@ V1.0 采用**纯去中心化 P2P 架构**，局域网内所有运行"鸽邮"的�
 | 成员变量         | `m_` 前缀 + camelCase | `m_socket`, `m_heartbeatTimer`               |
 | 局部变量         | camelCase             | `totalBytes`, `chunkSize`                    |
 | 常量 / 枚举值    | `k` 前缀 + PascalCase | `kChunkSize`, `kDiscoveryPort`               |
-| Qt Designer 控件 | `tw_` 前缀（强制）    | `tw_BtnSend`, `tw_ProgressBar_Transfer`      |
+| QML 文件 / `id` | PascalCase / camelCase | `TransferPage.qml`, `transferProgress`       |
 | 信号函数         | camelCase 动词        | `progressChanged(int)`, `nodeDiscovered()`   |
 | 槽函数           | `on` 前缀 + camelCase | `onReadyRead()`, `onTransferFinished()`      |
 
-#### 6.3.2 UI 控件命名强制规范
+#### 6.3.2 QML 与 C++ 集成规范
 
-> **[强制规范] `tw_` 前缀命名约定**
->
-> 所有在 Qt Designer 中创建并由对象树（Object Tree）管理的 UI 控件对象，
-> 命名时**必须**以 `tw_` 为前缀。此规范用于在代码层面区分视图层（View）控件
-> 对象与业务逻辑层的普通 C++ 变量，防止混淆，并便于代码审查时快速识别 UI 耦合点。
->
-> **合规示例：**
->
-> ```cpp
-> // Qt Designer 生成的 UI 头文件中的控件指针（合规）
-> QPushButton    *tw_BtnSend;
-> QProgressBar   *tw_ProgressBar_Transfer;
-> QListWidget    *tw_ListPeers;
-> QTextBrowser   *tw_ChatDisplay;
-> QLineEdit      *tw_EditInput;
->
-> // 业务逻辑代码中的普通变量（无前缀，不得使用 tw_）
-> qint64 totalBytes = file.size();
-> QString deviceName = m_config->deviceName();
-> ```
+- QML 文件使用 PascalCase，组件 `id` 使用小写开头，不添加 Widgets 的 `tw_` 前缀。
+- C++ 类型通过 `QML_ELEMENT` 和 `qt_add_qml_module()` 注册。
+- QML 不直接访问网络、文件系统或数据库，只调用 Controller 暴露的意图接口。
+- AppController 负责依赖组装；业务服务和 Storage 不依赖 QML。
+- Worker 使用 `moveToThread`，通过 Queued Connection 回传状态。
 
 #### 6.3.3 关键编码原则
 
@@ -527,6 +526,18 @@ tw_ProgressBar_Transfer->setValue(percent); // 危险：直接跨线程操作 UI
 }
 ```
 
+### 7.4 协议演进与兼容策略
+
+V1.0 保留现有 8 字节 TLV 帧，不改为 LocalSend REST 或 IPMSG 文本命令字。后续协议升级遵循：
+
+1. UDP Hello 增加 `protocol_version`、`device_type`、`fingerprint` 和 `capabilities`。
+2. 传输请求增加 `session_token`；接收端为获准文件返回独立 `file_token`。
+3. 接收响应支持部分接受文件列表，发送端只传输获准文件。
+4. `FrameCodec` 按 Type 限制最大 Payload，控制帧、数据帧使用不同上限。
+5. 协议错误使用稳定错误码，例如无效请求、需要 PIN、拒绝、会话冲突和请求过多。
+6. 未识别能力安全忽略；不兼容主版本拒绝会话并提示升级。
+7. PIN、TLS 和可信设备配对属于安全增强，不能用 SHA-256 文件校验替代身份认证。
+
 ---
 
 ## 8. V1.0 关键技术攻关方案
@@ -655,6 +666,8 @@ void FrameCodec::feed(const QByteArray &newData) {
 
 ## 9. V1.0 团队开发里程碑
 
+> 本章保留项目早期任务拆分，作为过程记录。其中 Qt Designer、`tw_` 控件等内容已被 QML 实现替代；当前待办、优先级与验收标准以《鸽邮(GridYard)——软件开发阶段计划》v1.1 为准。
+
 ### 9.1 成员角色定义
 
 | 成员   | 技术背景                                           | V1.0 核心职责域                                     |
@@ -769,7 +782,7 @@ V2.0 的演进目标是**在完全不破坏 V1.0 已有 P2P 传输能力的前�
 
 | 原则         | 说明                                                                                         |
 | :----------- | :------------------------------------------------------------------------------------------- |
-| 客户端零重构 | V1.0 中封装的所有网络类、协议类保持不变；仅新增 `ServerLink` 等模块处理 C/S 通信             |
+| P2P 核心不重写 | 保留稳定的发现与文件传输协议；围绕 AppController、Repository 和 `ServerLink` 扩展应用能力 |
 | 服务端职责边界清晰 | 服务端**永远不参与文件传输**；文件数据始终走 P2P TCP 直连通道，服务端仅处理 IM 与鉴权   |
 | 协议向下兼容 | V2.0 新增 Type 码从 `0x1000` 起，不与 V1.0 的 `0x0001~0x0401` 冲突，旧版客户端可忽略未知码 |
 
@@ -837,7 +850,7 @@ GridYard/                              # 项目根目录
 ├── CMakeLists.txt                  # 顶层构建文件，定义 client / server 两个 target
 ├── shared/                         # V1.0 + V2.0 双端共用
 │   └── protocol.h                  # 全部 Type 码定义（V1.0 原码 + V2.0 扩展码）
-├── client/                         # V1.0 已有，V2.0 仅新增模块，不改动已有文件
+├── client/                         # V1.0 已有，V2.0 在稳定边界上增量扩展
 │   ├── network/
 │   │   ├── discovery_service.h/.cpp
 │   │   ├── p2p_server.h/.cpp
@@ -850,8 +863,10 @@ GridYard/                              # 项目根目录
 │   │   ├── dir_serializer.h/.cpp
 │   │   ├── config_manager.h/.cpp
 │   │   └── [V2.0 新增] im_manager.h/.cpp       # IM 消息收发封装
-│   └── ui/
-│       └── [V2.0 新增] login_dialog.ui/.cpp    # 登录/注册对话框
+│   ├── storage/
+│   │   └── transfer_history_repository.h/.cpp  # 本地传输记录
+│   └── qml/
+│       └── [V2.0 新增] LoginDialog.qml         # 登录/注册对话框
 └── server/                         # V2.0 新增
     ├── main.cpp                    # 守护进程入口，epoll 事件循环
     ├── client_session.h/.cpp       # 每个 TCP 连接的会话对象
@@ -860,18 +875,40 @@ GridYard/                              # 项目根目录
     └── db_pool.h/.cpp              # libpqxx PostgreSQL 连接池
 ```
 
-#### 10.3.2 PostgreSQL 数据库设计（helloword 库）
+#### 10.3.2 PostgreSQL 数据库设计（gridyard 库）
 
-数据库名称指定为 `helloword`，初始 Schema 包含以下核心表：
+数据库名称使用 `gridyard`，先通过 migration 建立账号、会话与记录漫游所需的核心表；IM 表在启动对应子阶段时再增加：
 
 ```sql
 -- 用户账户表
 CREATE TABLE users (
     user_id     SERIAL PRIMARY KEY,
     username    VARCHAR(64) UNIQUE NOT NULL,
-    pwd_hash    CHAR(64) NOT NULL,              -- SHA-256 哈希，明文密码不落库
+    password_hash TEXT NOT NULL,                -- Argon2id/bcrypt 编码结果
     device_name VARCHAR(128),
     last_seen   TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 登录会话表
+CREATE TABLE auth_sessions (
+    session_id  UUID PRIMARY KEY,
+    user_id     INT NOT NULL REFERENCES users(user_id),
+    token_hash  TEXT NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    revoked_at  TIMESTAMPTZ
+);
+
+-- 传输记录漫游表，只保存必要元数据
+CREATE TABLE transfer_records (
+    record_id    UUID PRIMARY KEY,
+    user_id      INT NOT NULL REFERENCES users(user_id),
+    direction    SMALLINT NOT NULL,
+    display_name TEXT NOT NULL,
+    total_bytes  BIGINT NOT NULL,
+    status       SMALLINT NOT NULL,
+    peer_name    TEXT,
+    occurred_at  TIMESTAMPTZ NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 离线消息表（信箱模型）
@@ -909,14 +946,15 @@ CREATE TABLE lobby_messages (
 | `ImManager`          | 封装单聊消息的发送（`kTypeMsgSend`）与接收（`kTypeMsgRecv`）               |
 | `LobbyManager`       | 封装聊天大厅消息的订阅（接收广播）与发布（`kTypeLobbyBroadcast`）          |
 | `RoamingSyncManager` | 登录后向服务端拉取离线消息（`kTypeOfflinePullReq`），写入本地 SQLite 缓存  |
-| `LocalDbManager`     | 在 V1.0 会话历史基础上扩展 IM 聊天记录的完整 CRUD 接口                    |
+| `TransferHistoryRepository` | 管理本地传输历史，并为记录漫游提供稳定数据边界                    |
+| `MessageRepository` | 在启动 IM 阶段后管理本地聊天记录                                            |
 
 新增 UI 界面（杜若贤负责）：
 
 | 新增界面         | 说明                                                                   |
 | :--------------- | :--------------------------------------------------------------------- |
 | 登录/注册对话框  | 账号密码输入，首次使用时可原地注册                                     |
-| 单聊会话界面     | 基于 `QTextBrowser` 的气泡式消息展示，区分发件方与收件方              |
+| 单聊会话界面     | 使用 QML ListView/Delegate 渲染气泡消息，区分发件方与收件方           |
 | 局域网聊天大厅   | 全部在线用户可见的公共频道，类似 IRC 聊天室                            |
 
 ### 10.5 V2.0 协议扩展码（向下兼容，不与 V1.0 冲突）
@@ -937,6 +975,27 @@ CREATE TABLE lobby_messages (
 | `0x1040` | `kTypeLobbyMsgSend`      | 客户端向服务端发送大厅消息       |
 | `0x1041` | `kTypeLobbyBroadcast`    | 服务端广播大厅消息至所有在线客户端 |
 
+### 10.6 数据库、登录与记录漫游边界
+
+数据库能力分两步建设，避免把本地历史和账号漫游强耦合。
+
+**V1.0 本地 SQLite：**
+
+- 不要求登录即可使用。
+- 保存全局记录 ID、方向、文件显示名、总大小、状态、对端设备信息、开始/结束时间和错误信息。
+- 默认不保存文件内容，不向数据库写入敏感源路径。
+- 数据访问位于独立 Storage/Repository 层，QML 只通过 Controller 查询。
+
+**V2.0 登录与记录漫游：**
+
+- 登录建立稳定 `user_id`，用于跨设备同步和权限控制；P2P 文件直传仍可匿名使用。
+- 记录漫游只同步必要元数据，不上传文件内容，默认关闭并由用户显式开启。
+- 每条记录使用客户端生成的全局 UUID 作为幂等键，服务端按用户归属校验并去重。
+- 登录、注册、记录同步和 IM 必须运行在 TLS 或等价安全通道上。
+- 密码不得直接使用 SHA-256 存储，应使用 Argon2id、bcrypt 等密码哈希并保存随机盐。
+
+建议 V2.0 实施顺序为：账号与会话鉴权 -> 传输记录元数据漫游 -> 在线单聊 -> 离线消息漫游。
+
 ---
 
-*本文档由"鸽邮 (GridYard)"项目团队整理，版本 v2.0。随开发进展持续修订更新。*
+*本文档由"鸽邮 (GridYard)"项目团队整理，版本 v2.1。随开发进展持续修订更新。*
