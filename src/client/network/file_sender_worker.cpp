@@ -299,6 +299,7 @@ void FileSenderWorker::sendTransferRequest()
     json["root_name"] = _rootName;
     json["total_files"] = _fileList.size();
     json["total_bytes"] = _totalBytes;
+    json["protocol_version"] = gy::protocol::kProtocolVersion;
 
     QJsonArray files;
     for (int i = 0; i < _fileList.size(); ++i) {

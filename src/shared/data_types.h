@@ -33,6 +33,7 @@ class PeerInfo {
     Q_PROPERTY(quint16  tcpPort    MEMBER tcpPort)
     Q_PROPERTY(bool     isOnline   MEMBER isOnline)
     Q_PROPERTY(QString  lastSeen   READ lastSeenStr)
+    Q_PROPERTY(quint16  protocolVersion MEMBER protocolVersion)
 
 public:
     QString  deviceId;      // UUID，首次启动生成
@@ -40,6 +41,7 @@ public:
     QString  ipAddress;
     quint16  tcpPort = 0;
     bool     isOnline = false;
+    quint16  protocolVersion = 0;  // 对端协议版本
     QDateTime lastSeen;     // 最后心跳时间
 
     QString lastSeenStr() const { return lastSeen.toString("HH:mm:ss"); }

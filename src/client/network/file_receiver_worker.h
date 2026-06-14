@@ -35,6 +35,7 @@
 
 #include "dir_serializer.h"
 
+#include <QCryptographicHash>
 #include <QFile>
 #include <QObject>
 #include <QStringList>
@@ -144,4 +145,7 @@ private:
     QString _receivePath;
     QString _destinationRoot;
     QString _singleFilePath;
+
+    // 增量 SHA-256 计算
+    QCryptographicHash *_hash = nullptr;
 };

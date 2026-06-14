@@ -209,6 +209,7 @@ QByteArray DiscoveryService::buildHelloPayload() const
     json["device_name"] = _config->deviceName();
     json["app_version"] = QCoreApplication::applicationVersion();
     json["tcp_port"]    = _config->tcpPort();
+    json["version"]     = gy::protocol::kProtocolVersion;
 
     return QJsonDocument(json).toJson(QJsonDocument::Compact);
 }
@@ -219,6 +220,7 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
     const QString deviceId   = json["device_id"].toString();
     const QString deviceName = json["device_name"].toString();
     const quint16 tcpPort    = static_cast<quint16>(json["tcp_port"].toInt());
+    const quint16 version    = static_cast<quint16>(json["version"].toInt());
 
     // 过滤无效数据
     if (deviceId.isEmpty()) {
@@ -232,10 +234,18 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
         return;
     }
 
+    // 协议版本兼容性检查（只记录警告，不拒绝连接）
+    if (version > 0 && version != gy::protocol::kProtocolVersion) {
+        qWarning() << "DiscoveryService: 设备" << deviceId
+                   << "协议版本不匹配，本地:" << gy::protocol::kProtocolVersion
+                   << "对端:" << version;
+    }
+
     qDebug() << "DiscoveryService: 收到设备广播，deviceId:" << deviceId
              << "name:" << deviceName
              << "ip:" << sender.toString()
-             << "tcpPort:" << tcpPort;
+             << "tcpPort:" << tcpPort
+             << "version:" << version;
 
     // 构建 PeerInfo
     PeerInfo info;
@@ -244,6 +254,7 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
     info.ipAddress  = sender.toString();
     info.tcpPort    = tcpPort;
     info.isOnline   = true;
+    info.protocolVersion = version;
     info.lastSeen   = QDateTime::currentDateTimeUtc();
 
     updatePeer(deviceId, info);
