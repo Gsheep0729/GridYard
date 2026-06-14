@@ -1,11 +1,13 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.12.1
+* @date    2026-06-14
 * @author  GridYard Team
 * @brief   FileReceiverWorker 实现
 *
 * Change Log:
+* [v4.12.1] FengChunlin   2026-06-14
+* * 校验数据块、修正文件夹累计进度，并等待最终完成确认
 * [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹接收保留顶层目录，校验路径并避免覆盖
 * [v4.8.3] FengChunlin   2026-06-13
@@ -319,6 +321,8 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
         _fileName = _fileList[0].relativePath;
         _fileSize = _fileList[0].sizeBytes;
     }
+    _bytesReceived = 0;
+    _totalBytesReceived = 0;
     _displayName = _isDirectory ? _rootName : _fileName;
 
     _waitingForUserConfirm = true;
@@ -365,6 +369,23 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     // 提取文件数据
     QByteArray chunkData = payload.mid(20);
 
+    if (fileIndex != static_cast<quint32>(_currentFileIndex)
+        || chunkOffset != static_cast<quint64>(_bytesReceived)
+        || chunkSize != static_cast<quint32>(chunkData.size())
+        || _bytesReceived + chunkData.size() > _fileSize) {
+        const QString errorMsg = tr("收到无效的文件数据块");
+        qWarning() << "[FileReceiver]" << errorMsg
+                   << "文件索引:" << fileIndex
+                   << "偏移:" << chunkOffset
+                   << "声明长度:" << chunkSize
+                   << "实际长度:" << chunkData.size();
+        sendChunkAck(false, errorMsg);
+        cleanup();
+        emit transferFinished(false, errorMsg);
+        _socket->disconnectFromHost();
+        return;
+    }
+
     // 写入文件
     if (!_file.seek(chunkOffset)) {
         qWarning() << "[FileReceiver] 文件 seek 失败，偏移量:" << chunkOffset;
@@ -380,14 +401,17 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     }
 
     _bytesReceived += chunkData.size();
+    _totalBytesReceived += chunkData.size();
 
     // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
     static int chunkCount = 0;
     if (++chunkCount % 4 == 0 || isLastChunk == 1) {
-        const qint64 percent = _fileSize > 0 ? (_bytesReceived * 100 / _fileSize) : 100;
-        qDebug() << "[FileReceiver] 接收进度:" << _bytesReceived << "/" << _fileSize
+        const qint64 percent = _totalBytes > 0
+            ? (_totalBytesReceived * 100 / _totalBytes)
+            : 100;
+        qDebug() << "[FileReceiver] 接收进度:" << _totalBytesReceived << "/" << _totalBytes
                  << "(" << percent << "%)";
-        emit progressChanged(_bytesReceived, _fileSize);
+        emit progressChanged(_totalBytesReceived, _totalBytes);
     }
 
     // 检查是否是最后一个块
@@ -415,6 +439,8 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         sendChunkAck(verified, errorMsg);
 
         if (!verified) {
+            QFile::remove(_file.fileName());
+            _timeoutTimer->stop();
             _transferActive = false;
             emit transferFinished(false, errorMsg);
             return;
@@ -439,21 +465,21 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
 
             qDebug() << "[FileReceiver] 开始接收下一个文件:" << _fileName;
         } else {
-            // 所有文件接收完成
-            qDebug() << "[FileReceiver] 所有文件接收完成";
-            _transferActive = false;
-            emit transferFinished(true, "");
+            // 保持连接直到收到 TransferDone，确保最后一个 ACK 已写入网络。
+            qDebug() << "[FileReceiver] 所有文件接收完成，等待传输完成确认";
+            _timeoutTimer->start(kTimeoutMs);
         }
     }
 }
 
 void FileReceiverWorker::handleTransferDone()
 {
-    if (!_transferActive || !_fileList.isEmpty()) {
+    if (!_transferActive || _currentFileIndex < _fileList.size()) {
         return;
     }
 
-    qDebug() << "[FileReceiver] 空文件夹接收完成:" << _displayName;
+    qDebug() << "[FileReceiver] 收到传输完成确认:" << _displayName;
+    _timeoutTimer->stop();
     _transferActive = false;
     emit transferFinished(true, "");
 }

@@ -1,13 +1,15 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 4.11.0
-* @date    2026-06-05
+* @version 4.12.1
+* @date    2026-06-14
 * @author  GridYard Team
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.12.1] FengChunlin   2026-06-14
+* * 增加多文件夹、零字节文件和大型文件端到端传输回归测试
 * [v4.11.0] GY   2026-06-13
 * * 新增文件夹根目录与空文件夹端到端传输测试
 * [v1.0] GY   2026-06-05
@@ -47,6 +49,7 @@ private slots:
     void testDirectoryTransfer();
     void testDirectoryTransferEndToEnd();
     void testEmptyDirectoryTransferEndToEnd();
+    void testLargeFileTransferEndToEnd();
     void testAutoAcceptAndSave();
     void testCancelTransfer();
     void testLargeFileTransfer();
@@ -224,6 +227,8 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
     const QString sourcePath = _sendDir->path() + "/folder_e2e";
     QVERIFY(QDir().mkpath(sourcePath + "/nested/empty"));
     createTestFile(sourcePath + "/nested/content.txt", "folder transfer content");
+    createTestFile(sourcePath + "/nested/second.txt", "second file content");
+    createTestFile(sourcePath + "/nested/zz_empty.txt", QByteArray());
 
     _config->setReceivePath(_recvDir->path());
     _config->setTcpPort(++_testPort);
@@ -260,7 +265,10 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
     QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 10000);
     QVERIFY(receiverSuccess);
     QVERIFY(waitForTransfer(senderSpy));
+    QVERIFY(senderSpy.first().at(0).toBool());
     QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/content.txt"));
+    QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/second.txt"));
+    QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/zz_empty.txt"));
     QVERIFY(QDir(_recvDir->path() + "/folder_e2e/nested/empty").exists());
 
     stopSenderThread(sender, senderThread);
@@ -306,9 +314,65 @@ void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
     QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 10000);
     QVERIFY(receiverSuccess);
     QVERIFY(waitForTransfer(senderSpy));
+    QVERIFY(senderSpy.first().at(0).toBool());
     QVERIFY(QDir(_recvDir->path() + "/empty_folder_e2e").exists());
 
     stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testLargeFileTransferEndToEnd()
+{
+    const QString sendPath = _sendDir->path() + "/large_e2e.bin";
+    QFile sourceFile(sendPath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    QVERIFY(sourceFile.resize(40 * 1024 * 1024));
+    sourceFile.close();
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool receiverFinished = false;
+    bool receiverSuccess = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [this, &receiverFinished, &receiverSuccess](
+                FileReceiverWorker *worker, const QString &, const QString &,
+                const QString &, qint64, int, qint64) {
+        worker->setReceivePath(_recvDir->path());
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+        });
+        worker->acceptTransfer();
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "large-sender-id"),
+                              Q_ARG(QString, "LargeSender"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 30000);
+    const bool senderFinished = waitForTransfer(senderSpy, 30000);
+    const bool senderSuccess = senderFinished
+        && senderSpy.first().at(0).toBool();
+    const qint64 receivedSize = QFileInfo(_recvDir->path() + "/large_e2e.bin").size();
+    const qint64 sourceSize = QFileInfo(sendPath).size();
+
+    stopSenderThread(sender, senderThread);
+
+    QVERIFY(receiverSuccess);
+    QVERIFY(senderFinished);
+    QVERIFY(senderSuccess);
+    QCOMPARE(receivedSize, sourceSize);
 }
 
 void TestFileTransfer::testAutoAcceptAndSave()
@@ -343,6 +407,7 @@ void TestFileTransfer::testAutoAcceptAndSave()
 
     QVERIFY(waitForTransfer(completedSpy));
     QVERIFY(waitForTransfer(senderSpy));
+    QVERIFY(senderSpy.first().at(0).toBool());
     QCOMPARE(requestSpy.count(), 0);
     QVERIFY(QFile::exists(_recvDir->path() + "/auto_accept.txt"));
 
