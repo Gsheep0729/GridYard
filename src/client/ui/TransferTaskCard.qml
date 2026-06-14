@@ -118,6 +118,12 @@ Frame {
                 }
             }
 
+            // 文件/文件夹图标
+            Label {
+                text: isDirectory ? "📁" : "📄"
+                font.pixelSize: 16
+            }
+
             // 文件名
             Label {
                 text: taskName
