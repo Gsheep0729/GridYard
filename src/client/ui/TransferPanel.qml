@@ -60,6 +60,7 @@ Frame {
                 required property string createdAt
                 required property string peerDeviceName
                 property bool isDirectory: false
+                property var fileList: []
 
                 width: listView.width
                 height: taskCard.height
@@ -74,6 +75,7 @@ Frame {
                         ? sessionDelegate.filePath.split("/").pop()
                         : sessionDelegate.fileName
                     isDirectory: sessionDelegate.isDirectory
+                    fileList: sessionDelegate.fileList
                     status: sessionDelegate.status
                     progress: sessionDelegate.progress
                     bytesTransferred: sessionDelegate.bytesTransferred
