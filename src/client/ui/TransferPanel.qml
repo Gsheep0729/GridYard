@@ -1,6 +1,6 @@
 /**
  * @file    TransferPanel.qml
- * @version 4.14.0
+ * @version 4.14.1
  * @date    2026-06-15
  * @author  GridYard Team
  * @brief   传输面板
@@ -9,6 +9,8 @@
  * 绑定 TransferSessionManager.sessions。
  *
  * Change Log:
+ * [v4.14.1] GY   2026-06-15
+ * * 优化清空记录对话框布局和字体大小
  * [v4.14.0] GY   2026-06-15
  * * 增加清空传输记录及删除已接收本地文件选项
  * [v4.13.3] GY   2026-06-15
@@ -61,11 +63,14 @@ Frame {
             Item { Layout.fillWidth: true }
 
             ToolButton {
-                text: qsTr("清空记录 ▼")
+                icon.name: "edit-clear-all-symbolic"
+                text: qsTr("清空记录")
+                display: AbstractButton.TextBesideIcon
                 onClicked: clearMenu.open()
 
                 Menu {
                     id: clearMenu
+                    y: parent.height
 
                     MenuItem {
                         text: qsTr("清空已结束记录")
@@ -149,11 +154,78 @@ Frame {
         title: qsTr("清空记录并删除本地文件")
         modal: true
         anchors.centerIn: Overlay.overlay
-        standardButtons: Dialog.Yes | Dialog.No
+        width: Math.min(400, parent.width - 24)
+        padding: 12
 
-        Label {
-            text: qsTr("确定清空所有已结束记录，并删除其中已接收成功的本地文件和文件夹吗？发送源文件不会被删除。")
-            wrapMode: Text.WordWrap
+        background: Rectangle {
+            color: "#FFFFFF"
+            radius: 8
+            border.color: "#D1D5DB"
+            border.width: 1
+        }
+
+        header: Label {
+            text: clearDeleteConfirmDialog.title
+            font.pixelSize: 14
+            font.bold: true
+            color: "#111827"
+            padding: 12
+            bottomPadding: 0
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("确定清空已结束记录并删除已接收的本地文件吗？")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 12
+                color: "#374151"
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("发送方源文件不受影响，此操作不可撤销。")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 11
+                color: "#6B7280"
+            }
+        }
+
+        footer: DialogButtonBox {
+            background: Rectangle { color: "transparent" }
+            alignment: Qt.AlignRight
+            topPadding: 4
+            bottomPadding: 8
+            rightPadding: 12
+
+            Button {
+                text: qsTr("取消")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                flat: true
+            }
+
+            Button {
+                id: confirmClearButton
+                text: qsTr("确认删除")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+
+                contentItem: Label {
+                    text: confirmClearButton.text
+                    font: confirmClearButton.font
+                    color: "white"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    implicitWidth: 72
+                    implicitHeight: 28
+                    color: confirmClearButton.down ? "#B91C1C" : (confirmClearButton.hovered ? "#DC2626" : "#EF4444")
+                    radius: 4
+                }
+            }
         }
 
         onAccepted: AppController.transfer.clearFinishedSessions(true)
