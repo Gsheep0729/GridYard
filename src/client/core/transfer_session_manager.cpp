@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 4.13.3
+* @version 4.14.0
 * @date    2026-06-15
 * @author  GridYard Team
 * @brief   TransferSessionManager 实现
 *
 * Change Log:
+* [v4.14.0] GY   2026-06-15
+* * 支持清理传输记录并删除已接收的本地文件
 * [v4.13.3] GY   2026-06-15
 * * 仅在可见进度变化时通知会话列表，减少文件夹传输任务闪烁
 * [v4.13.2] GY   2026-06-15
@@ -43,6 +45,8 @@
 Q_DECLARE_METATYPE(FileReceiverWorker*)
 
 #include <QDebug>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QSet>
 #include <QThread>
@@ -50,6 +54,12 @@ Q_DECLARE_METATYPE(FileReceiverWorker*)
 #include <QDateTime>
 
 namespace {
+
+bool isFinishedStatus(const QString &status)
+{
+    return status == "completed" || status == "failed"
+           || status == "rejected" || status == "cancelled";
+}
 
 QVariantList buildRootPreview(const QStringList &paths)
 {
@@ -148,6 +158,8 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session["totalBytes"] = 0;
     session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
     session["fileList"]  = QVariantList{};
+    session["localPath"] = "";
+    session["canDeleteLocalFile"] = false;
 
     // 如果是文件夹，获取文件列表
     if (QFileInfo{filePath}.isDir()) {
@@ -312,11 +324,10 @@ void TransferSessionManager::removeSession(const QString &sessionId)
 {
     for (int i = 0; i < _sessions.size(); ++i) {
         if (_sessions[i]["sessionId"].toString() == sessionId) {
-            QString status = _sessions[i]["status"].toString();
+            const QString status = _sessions[i]["status"].toString();
 
             // 只允许移除已完成、失败、取消的会话
-            if (status == "completed" || status == "failed" ||
-                status == "rejected" || status == "cancelled") {
+            if (isFinishedStatus(status)) {
                 _sessions.removeAt(i);
                 emit sessionsChanged();
                 qDebug() << "TransferSessionManager: 移除会话" << sessionId;
@@ -326,6 +337,82 @@ void TransferSessionManager::removeSession(const QString &sessionId)
             break;
         }
     }
+}
+
+void TransferSessionManager::removeSessionAndDeleteFile(const QString &sessionId)
+{
+    for (int i = 0; i < _sessions.size(); ++i) {
+        if (_sessions[i]["sessionId"].toString() != sessionId) {
+            continue;
+        }
+
+        if (!deleteReceivedFile(_sessions[i])) {
+            return;
+        }
+
+        _sessions.removeAt(i);
+        emit sessionsChanged();
+        emit messageOccurred(tr("已删除本地文件并移除传输记录"));
+        return;
+    }
+}
+
+void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles)
+{
+    int removedCount = 0;
+    int deletedCount = 0;
+
+    // 倒序移除，避免删除元素后改变后续索引
+    for (int i = _sessions.size() - 1; i >= 0; --i) {
+        if (!isFinishedStatus(_sessions[i]["status"].toString())) {
+            continue;
+        }
+
+        if (deleteReceivedFiles && _sessions[i]["canDeleteLocalFile"].toBool()) {
+            if (!deleteReceivedFile(_sessions[i])) {
+                continue;
+            }
+            ++deletedCount;
+        }
+
+        _sessions.removeAt(i);
+        ++removedCount;
+    }
+
+    if (removedCount > 0) {
+        emit sessionsChanged();
+        emit messageOccurred(deleteReceivedFiles
+                             ? tr("已清理 %1 条记录并删除 %2 个本地项目")
+                                   .arg(removedCount).arg(deletedCount)
+                             : tr("已清理 %1 条传输记录").arg(removedCount));
+    }
+}
+
+bool TransferSessionManager::deleteReceivedFile(const QVariantMap &session)
+{
+    if (!session["canDeleteLocalFile"].toBool()
+        || session["type"].toString() != "receive"
+        || session["status"].toString() != "completed") {
+        emit errorOccurred(tr("该记录没有可删除的已接收文件"));
+        return false;
+    }
+
+    const QString localPath = QDir::cleanPath(session["localPath"].toString());
+    const QFileInfo info{localPath};
+    if (!info.isAbsolute() || localPath == QDir::rootPath() || !info.exists()) {
+        emit errorOccurred(tr("本地保存路径无效或文件不存在，未移除记录"));
+        return false;
+    }
+
+    // 符号链接按文件删除，避免递归进入链接目标
+    const bool removed = info.isDir() && !info.isSymLink()
+                         ? QDir{localPath}.removeRecursively()
+                         : QFile::remove(localPath);
+    if (!removed) {
+        emit errorOccurred(tr("无法删除本地文件：%1").arg(localPath));
+        return false;
+    }
+    return true;
 }
 
 void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worker,
@@ -371,6 +458,8 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["worker"]    = QVariant::fromValue(worker);
     session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
     session["fileList"]  = QVariantList{};
+    session["localPath"] = "";
+    session["canDeleteLocalFile"] = false;
 
     // 如果是文件夹，获取文件列表
     if (worker->isDirectory()) {
@@ -422,6 +511,10 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                 _sessions[i]["status"] = success ? "completed" : "failed";
                 _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
                 _sessions[i]["errorMsg"] = errorMsg;
+                if (success) {
+                    _sessions[i]["localPath"] = worker->savedPath();
+                    _sessions[i]["canDeleteLocalFile"] = !worker->savedPath().isEmpty();
+                }
                 emit sessionsChanged();
 
                 if (success) {

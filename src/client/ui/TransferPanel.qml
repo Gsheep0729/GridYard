@@ -1,6 +1,6 @@
 /**
  * @file    TransferPanel.qml
- * @version 4.13.3
+ * @version 4.14.0
  * @date    2026-06-15
  * @author  GridYard Team
  * @brief   传输面板
@@ -9,6 +9,8 @@
  * 绑定 TransferSessionManager.sessions。
  *
  * Change Log:
+ * [v4.14.0] GY   2026-06-15
+ * * 增加清空传输记录及删除已接收本地文件选项
  * [v4.13.3] GY   2026-06-15
  * * 按会话保存文件夹根目录预览的展开状态
  * [v4.13.1] DuRuoxian   2026-06-15
@@ -46,12 +48,36 @@ Frame {
         spacing: 0
 
         // 标题栏
-        Label {
-            text: qsTr("传输任务")
-            font.pixelSize: 16
-            font.bold: true
+        RowLayout {
             Layout.fillWidth: true
             Layout.margins: 12
+
+            Label {
+                text: qsTr("传输任务")
+                font.pixelSize: 16
+                font.bold: true
+            }
+
+            Item { Layout.fillWidth: true }
+
+            ToolButton {
+                text: qsTr("清空记录 ▼")
+                onClicked: clearMenu.open()
+
+                Menu {
+                    id: clearMenu
+
+                    MenuItem {
+                        text: qsTr("清空已结束记录")
+                        onTriggered: AppController.transfer.clearFinishedSessions(false)
+                    }
+
+                    MenuItem {
+                        text: qsTr("清空记录并删除已接收文件")
+                        onTriggered: clearDeleteConfirmDialog.open()
+                    }
+                }
+            }
         }
 
         // 任务列表
@@ -79,6 +105,7 @@ Frame {
                 required property string peerDeviceName
                 required property bool isDirectory
                 required property var fileList
+                required property bool canDeleteLocalFile
 
                 width: listView.width
                 height: taskCard.height
@@ -92,6 +119,7 @@ Frame {
                     taskName: sessionDelegate.fileName
                     isDirectory: sessionDelegate.isDirectory
                     fileList: sessionDelegate.fileList
+                    canDeleteLocalFile: sessionDelegate.canDeleteLocalFile
                     status: sessionDelegate.status
                     progress: sessionDelegate.progress
                     bytesTransferred: sessionDelegate.bytesTransferred
@@ -114,5 +142,20 @@ Frame {
                 visible: listView.count === 0
             }
         }
+    }
+
+    Dialog {
+        id: clearDeleteConfirmDialog
+        title: qsTr("清空记录并删除本地文件")
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Yes | Dialog.No
+
+        Label {
+            text: qsTr("确定清空所有已结束记录，并删除其中已接收成功的本地文件和文件夹吗？发送源文件不会被删除。")
+            wrapMode: Text.WordWrap
+        }
+
+        onAccepted: AppController.transfer.clearFinishedSessions(true)
     }
 }

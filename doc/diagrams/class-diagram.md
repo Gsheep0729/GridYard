@@ -1,4 +1,4 @@
-# GridYard 分层类图（v4.13.3 当前架构）
+# GridYard 分层类图（v4.14.0 当前架构）
 
 当前客户端以表现层、应用逻辑层、领域层和数据管理层为目标。为避免所有类挤在一张图中，本文件按职责拆成多张类图。
 
@@ -62,6 +62,8 @@ classDiagram
         +rejectReceiveSession(sessionId)
         +cancelSession(sessionId)
         +removeSession(sessionId)
+        +removeSessionAndDeleteFile(sessionId)
+        +clearFinishedSessions(deleteReceivedFiles)
         +receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName, fileSize, totalFiles, totalBytes, isDirectory, fileList) signal
     }
 
@@ -198,6 +200,8 @@ classDiagram
         +rejectReceiveSession(sessionId)
         +cancelSession(sessionId)
         +removeSession(sessionId)
+        +removeSessionAndDeleteFile(sessionId)
+        +clearFinishedSessions(deleteReceivedFiles)
         -onTransferRequestReceived(worker, senderDeviceId, senderName, fileName, fileSize, totalFiles, totalBytes)
         +sessionsChanged() signal
         +transferCompleted(sessionId, fileName, filePath) signal
@@ -217,6 +221,8 @@ classDiagram
         +createdAt : QString
         +isDirectory : bool
         +fileList : QVariantList
+        +localPath : QString
+        +canDeleteLocalFile : bool
     }
 
     class P2pServer {
@@ -261,6 +267,7 @@ classDiagram
         +acceptTransfer()
         +rejectTransfer(reason)
         +setReceivePath(path)
+        +savedPath() QString
         -handleTransferRequest(payload)
         -handleDataChunk(payload)
         +transferRequestReceived(senderDeviceId, senderName, fileName, fileSize, totalFiles, totalBytes) signal
@@ -341,6 +348,7 @@ classDiagram
         +ipAddress : string
         +isOnline : bool
         +filteredCount : int
+        +finishedCount : int
         +expandedSessions : var
         +isSessionExpanded(sessionId) bool
         +setSessionExpanded(sessionId, expanded)
@@ -363,6 +371,7 @@ classDiagram
         +isDirectory : bool
         +fileList : var
         +expanded : bool
+        +canDeleteLocalFile : bool
         +expansionRequested(expanded) signal
     }
 

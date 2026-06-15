@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 4.13.2
+* @version 4.14.0
 * @date    2026-06-15
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -9,6 +9,8 @@
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
+* [v4.14.0] GY   2026-06-15
+* * 支持清理传输记录并删除已接收的本地文件
 * [v4.13.2] GY   2026-06-15
 * * 接收确认信号增加文件夹标记和根目录预览
 * [v4.11.0] GY   2026-06-13
@@ -60,6 +62,9 @@ public:
     Q_INVOKABLE void rejectReceiveSession(const QString &sessionId);
     Q_INVOKABLE void cancelSession(const QString &sessionId);
     Q_INVOKABLE void removeSession(const QString &sessionId);
+    // 删除本地文件只允许接收成功记录，避免误删发送源文件
+    Q_INVOKABLE void removeSessionAndDeleteFile(const QString &sessionId);
+    Q_INVOKABLE void clearFinishedSessions(bool deleteReceivedFiles = false);
 
 signals:
     void sessionsChanged();
@@ -98,6 +103,9 @@ public:
     TransferSessionManager &operator=(const TransferSessionManager &) = delete;
 
 private:
+    // 删除失败时保留记录，便于用户重新处理
+    bool deleteReceivedFile(const QVariantMap &session);
+
     ConfigManager    *_config    = nullptr;
     DiscoveryService *_discovery = nullptr;
     P2pServer        *_p2pServer = nullptr;
