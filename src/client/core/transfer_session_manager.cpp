@@ -114,6 +114,16 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session["totalBytes"] = 0;
     session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
+    // 如果是文件夹，获取文件列表
+    if (QFileInfo{filePath}.isDir()) {
+        auto fileList = gy::DirSerializer::serialize(filePath);
+        QVariantList files;
+        for (const auto &item : fileList) {
+            files.append(item.relativePath);
+        }
+        session["fileList"] = files;
+    }
+
     _sessions.append(session);
     emit sessionsChanged();
 
@@ -316,6 +326,12 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["bytesTransferred"] = 0;
     session["worker"]    = QVariant::fromValue(worker);
     session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+    // 如果是文件夹，获取文件列表
+    if (worker->isDirectory()) {
+        QVariantList files;
+        session["fileList"] = files;
+    }
 
     _sessions.append(session);
     emit sessionsChanged();

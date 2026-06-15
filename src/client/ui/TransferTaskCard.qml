@@ -33,8 +33,12 @@ Frame {
     required property int    bytesTransferred
     required property int    totalBytes
     property bool   isDirectory: false
+    property var    fileList: []
     property string createdAt: ""
     property string peerDeviceName: ""
+
+    // 展开状态
+    property bool expanded: false
 
     // 状态颜色
     readonly property color kRunningColor: "#2196F3"
@@ -131,6 +135,17 @@ Frame {
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
+            }
+
+            // 展开/收起按钮（仅文件夹显示）
+            Button {
+                text: expanded ? "▼" : "▶"
+                flat: true
+                visible: isDirectory && fileList.length > 0
+                onClicked: expanded = !expanded
+                width: 24
+                height: 24
+                padding: 0
             }
 
             // 状态标签
@@ -247,6 +262,25 @@ Frame {
                 flat: true
                 visible: status !== "transferring"
                 onClicked: AppController.transfer.removeSession(sessionId)
+            }
+        }
+
+        // 文件列表（展开时显示）
+        ListView {
+            Layout.fillWidth: true
+            Layout.preferredHeight: expanded ? Math.min(contentHeight, 150) : 0
+            clip: true
+            visible: expanded && isDirectory
+
+            model: fileList
+
+            delegate: Label {
+                required property string modelData
+                text: "  " + modelData
+                font.pixelSize: 11
+                color: "#666666"
+                elide: Text.ElideRight
+                width: ListView.view.width
             }
         }
 
