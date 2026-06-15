@@ -1,7 +1,7 @@
 /**
 * @file    Main.qml
-* @version 4.12.0
-* @date    2026-06-14
+* @version 4.13.2
+* @date    2026-06-15
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
@@ -10,6 +10,8 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v4.13.2] DuRuoxian   2026-06-15
+* * 接收确认弹窗接入文件夹标记和根目录预览
 * [v4.12.0] DuRuoxian   2026-06-14
 * * 增加成功和错误提示进入过渡
 * [v4.10.0] DuRuoxian   2026-06-13
@@ -250,7 +252,8 @@ ApplicationWindow {
     Connections {
         target: AppController.transfer
         function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
-                                          fileSize, totalFiles, totalBytes) {
+                                          fileSize, totalFiles, totalBytes,
+                                          isDirectory, fileList) {
             const peers = AppController.discovery.peers
             for (let i = 0; i < peers.length; i++) {
                 if (peers[i].deviceId === senderDeviceId) {
@@ -265,6 +268,8 @@ ApplicationWindow {
             acceptDialog.fileSize = fileSize
             acceptDialog.totalFiles = totalFiles
             acceptDialog.totalBytes = totalBytes
+            acceptDialog.isDirectory = isDirectory
+            acceptDialog.fileList = fileList
             acceptDialog.open()
         }
         function onTransferCompleted(sessionId, fileName, filePath) {

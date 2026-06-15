@@ -1,13 +1,17 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 4.12.1
-* @date    2026-06-14
+* @version 4.13.2
+* @date    2026-06-15
 * @author  GridYard Team
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.13.2] FengChunlin   2026-06-15
+* * 验证接收确认的文件夹名、总大小和根目录预览
+* [v4.13.1] FengChunlin   2026-06-15
+* * 验证文件夹接收请求显示名和相对路径列表
 * [v4.12.1] FengChunlin   2026-06-14
 * * 增加多文件夹、零字节文件和大型文件端到端传输回归测试
 * [v4.11.0] GY   2026-06-13
@@ -51,6 +55,7 @@ private slots:
     void testEmptyDirectoryTransferEndToEnd();
     void testLargeFileTransferEndToEnd();
     void testAutoAcceptAndSave();
+    void testReceiveFolderPreview();
     void testCancelTransfer();
     void testConnectionLost();
     void testTransferTimeout();
@@ -239,10 +244,15 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
 
     bool receiverFinished = false;
     bool receiverSuccess = false;
+    QString receiverDisplayName;
+    QStringList receiverFilePaths;
     connect(&server, &P2pServer::transferRequestReceived, this,
-            [this, &receiverFinished, &receiverSuccess](
+            [this, &receiverFinished, &receiverSuccess,
+             &receiverDisplayName, &receiverFilePaths](
                 FileReceiverWorker *worker, const QString &, const QString &,
                 const QString &, qint64, int, qint64) {
+        receiverDisplayName = worker->fileName();
+        receiverFilePaths = worker->filePaths();
         worker->setReceivePath(_recvDir->path());
         connect(worker, &FileReceiverWorker::transferFinished, this,
                 [&receiverFinished, &receiverSuccess](bool success, const QString &) {
@@ -272,6 +282,9 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
     QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/second.txt"));
     QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/zz_empty.txt"));
     QVERIFY(QDir(_recvDir->path() + "/folder_e2e/nested/empty").exists());
+    QCOMPARE(receiverDisplayName, QString("folder_e2e"));
+    QVERIFY(receiverFilePaths.contains("nested/content.txt"));
+    QVERIFY(receiverFilePaths.contains("nested/empty/"));
 
     stopSenderThread(sender, senderThread);
 }
@@ -415,6 +428,54 @@ void TestFileTransfer::testAutoAcceptAndSave()
 
     stopSenderThread(sender, senderThread);
     _config->setAutoAcceptFiles(false);
+}
+
+void TestFileTransfer::testReceiveFolderPreview()
+{
+    const QString sourcePath = _sendDir->path() + "/preview_folder";
+    QVERIFY(QDir().mkpath(sourcePath + "/nested"));
+    createTestFile(sourcePath + "/root.txt", "root");
+    createTestFile(sourcePath + "/nested/child.png", "child");
+
+    _config->setAutoAcceptFiles(false);
+    _config->setTcpPort(++_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    QSignalSpy requestSpy(&manager, &TransferSessionManager::receiveRequestReceived);
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sourcePath),
+                              Q_ARG(QString, "preview-sender-id"),
+                              Q_ARG(QString, "PreviewSender"));
+
+    QVERIFY(waitForTransfer(requestSpy));
+    const QList<QVariant> request = requestSpy.first();
+    QCOMPARE(request.size(), 9);
+    QCOMPARE(request.at(3).toString(), QString("preview_folder"));
+    QCOMPARE(request.at(5).toInt(), 2);
+    QCOMPARE(request.at(6).toLongLong(), qint64(9));
+    QVERIFY(request.at(7).toBool());
+
+    const QVariantList preview = request.at(8).toList();
+    QCOMPARE(preview.size(), 2);
+    QVERIFY(preview.contains(QString("root.txt")));
+    QVERIFY(preview.contains(QString("nested/")));
+
+    manager.rejectReceiveSession(request.at(0).toString());
+    QVERIFY(waitForTransfer(senderSpy));
+    stopSenderThread(sender, senderThread);
 }
 
 void TestFileTransfer::testCancelTransfer()

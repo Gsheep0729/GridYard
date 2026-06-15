@@ -39,7 +39,19 @@ qt_add_qml_module(appGridYard
         ui/TransferPanel.qml
         ui/TransferTaskCard.qml
         ui/DeviceSessionView.qml
+        ui/FileTypeIcon.qml
         utils/FormatUtils.js
+
+    RESOURCES
+        icons/folder.svg
+        icons/file-generic.svg
+        icons/file-image.svg
+        icons/file-video.svg
+        icons/file-audio.svg
+        icons/file-archive.svg
+        icons/file-code.svg
+        icons/file-document.svg
+        icons/file-executable.svg
 )
 
 target_compile_features(appGridYard PRIVATE cxx_std_23)

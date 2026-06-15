@@ -1,7 +1,7 @@
 /**
  * @file    TransferPanel.qml
- * @version 4.10.1
- * @date    2026-06-13
+ * @version 4.13.3
+ * @date    2026-06-15
  * @author  GridYard Team
  * @brief   传输面板
  *
@@ -9,11 +9,17 @@
  * 绑定 TransferSessionManager.sessions。
  *
  * Change Log:
+ * [v4.13.3] GY   2026-06-15
+ * * 按会话保存文件夹根目录预览的展开状态
+ * [v4.13.1] DuRuoxian   2026-06-15
+ * * 传递 isDirectory 和 fileList 属性到任务卡片
  * [v4.10.1] DuRuoxian   2026-06-13
  * * 修复会话字段绑定
  * [v0.2.0] DuRuoxian   2026-06-02
  * * Stage 3：初始版本
  */
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
@@ -22,6 +28,18 @@ import cqnu.gridyard.client 1.0
 
 Frame {
     id: transferPanel
+
+    property var expandedSessions: ({})
+
+    function isSessionExpanded(sessionId: string): bool {
+        return expandedSessions[sessionId] === true
+    }
+
+    function setSessionExpanded(sessionId: string, expanded: bool): void {
+        const next = Object.assign({}, expandedSessions)
+        next[sessionId] = expanded
+        expandedSessions = next
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -59,8 +77,8 @@ Frame {
                 required property var totalBytes
                 required property string createdAt
                 required property string peerDeviceName
-                property bool isDirectory: false
-                property var fileList: []
+                required property bool isDirectory
+                required property var fileList
 
                 width: listView.width
                 height: taskCard.height
@@ -71,9 +89,7 @@ Frame {
                     width: sessionDelegate.width
                     sessionId: sessionDelegate.sessionId
                     taskType: sessionDelegate.type
-                    taskName: sessionDelegate.type === "send"
-                        ? sessionDelegate.filePath.split("/").pop()
-                        : sessionDelegate.fileName
+                    taskName: sessionDelegate.fileName
                     isDirectory: sessionDelegate.isDirectory
                     fileList: sessionDelegate.fileList
                     status: sessionDelegate.status
@@ -82,6 +98,10 @@ Frame {
                     totalBytes: sessionDelegate.totalBytes
                     createdAt: sessionDelegate.createdAt
                     peerDeviceName: sessionDelegate.peerDeviceName
+                    expanded: transferPanel.isSessionExpanded(sessionDelegate.sessionId)
+                    onExpansionRequested: function(expanded) {
+                        transferPanel.setSessionExpanded(sessionDelegate.sessionId, expanded)
+                    }
                 }
             }
 

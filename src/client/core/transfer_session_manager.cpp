@@ -1,11 +1,17 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.13.3
+* @date    2026-06-15
 * @author  GridYard Team
 * @brief   TransferSessionManager 实现
 *
 * Change Log:
+* [v4.13.3] GY   2026-06-15
+* * 仅在可见进度变化时通知会话列表，减少文件夹传输任务闪烁
+* [v4.13.2] GY   2026-06-15
+* * 统一生成文件夹根目录预览并传递给接收确认弹窗
+* [v4.13.1] GY   2026-06-15
+* * 添加 isDirectory 和 fileList 字段到会话
 * [v4.11.0] GY   2026-06-13
 * * 支持按配置自动接受并保存接收文件
 * [v4.10.1] GY   2026-06-13
@@ -38,9 +44,37 @@ Q_DECLARE_METATYPE(FileReceiverWorker*)
 
 #include <QDebug>
 #include <QFileInfo>
+#include <QSet>
 #include <QThread>
 #include <QUuid>
 #include <QDateTime>
+
+namespace {
+
+QVariantList buildRootPreview(const QStringList &paths)
+{
+    QVariantList result;
+    QSet<QString> seen;
+
+    for (const QString &path : paths) {
+        const QString cleanPath = path.endsWith('/') ? path.chopped(1) : path;
+        const QStringList parts = cleanPath.split('/', Qt::SkipEmptyParts);
+        if (parts.isEmpty()) {
+            continue;
+        }
+
+        const bool isRootDirectory = parts.size() > 1 || path.endsWith('/');
+        const QString rootEntry = parts.first() + (isRootDirectory ? "/" : "");
+        if (!seen.contains(rootEntry)) {
+            seen.insert(rootEntry);
+            result.append(rootEntry);
+        }
+    }
+
+    return result;
+}
+
+}
 
 TransferSessionManager::TransferSessionManager(QObject *parent)
     : QObject{parent}
@@ -113,15 +147,16 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session["bytesTransferred"] = 0;
     session["totalBytes"] = 0;
     session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    session["fileList"]  = QVariantList{};
 
     // 如果是文件夹，获取文件列表
     if (QFileInfo{filePath}.isDir()) {
         auto fileList = gy::DirSerializer::serialize(filePath);
-        QVariantList files;
+        QStringList paths;
         for (const auto &item : fileList) {
-            files.append(item.relativePath);
+            paths.append(item.relativePath);
         }
-        session["fileList"] = files;
+        session["fileList"] = buildRootPreview(paths);
     }
 
     _sessions.append(session);
@@ -149,11 +184,20 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
         // 更新会话进度
         for (int i = 0; i < _sessions.size(); ++i) {
             if (_sessions[i]["sessionId"].toString() == sessionId) {
+                const QString previousStatus = _sessions[i]["status"].toString();
+                const int previousProgress = _sessions[i]["progress"].toInt();
+                const qint64 previousTotalBytes = _sessions[i]["totalBytes"].toLongLong();
+                const int progress = totalBytes > 0 ? (bytesSent * 100 / totalBytes) : 0;
+
                 _sessions[i]["status"] = "transferring";
-                _sessions[i]["progress"] = totalBytes > 0 ? (bytesSent * 100 / totalBytes) : 0;
+                _sessions[i]["progress"] = progress;
                 _sessions[i]["bytesTransferred"] = bytesSent;
                 _sessions[i]["totalBytes"] = totalBytes;
-                emit sessionsChanged();
+                if (previousStatus != "transferring"
+                    || previousProgress != progress
+                    || previousTotalBytes != totalBytes) {
+                    emit sessionsChanged();
+                }
                 break;
             }
         }
@@ -326,11 +370,11 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["bytesTransferred"] = 0;
     session["worker"]    = QVariant::fromValue(worker);
     session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    session["fileList"]  = QVariantList{};
 
     // 如果是文件夹，获取文件列表
     if (worker->isDirectory()) {
-        QVariantList files;
-        session["fileList"] = files;
+        session["fileList"] = buildRootPreview(worker->filePaths());
     }
 
     _sessions.append(session);
@@ -343,11 +387,20 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
             this, [this, sessionId](qint64 bytesReceived, qint64 totalBytes) {
         for (int i = 0; i < _sessions.size(); ++i) {
             if (_sessions[i]["sessionId"].toString() == sessionId) {
+                const QString previousStatus = _sessions[i]["status"].toString();
+                const int previousProgress = _sessions[i]["progress"].toInt();
+                const qint64 previousTotalBytes = _sessions[i]["totalBytes"].toLongLong();
+                const int progress = totalBytes > 0 ? (bytesReceived * 100 / totalBytes) : 0;
+
                 _sessions[i]["status"] = "transferring";
-                _sessions[i]["progress"] = totalBytes > 0 ? (bytesReceived * 100 / totalBytes) : 0;
+                _sessions[i]["progress"] = progress;
                 _sessions[i]["bytesTransferred"] = bytesReceived;
                 _sessions[i]["totalBytes"] = totalBytes;
-                emit sessionsChanged();
+                if (previousStatus != "transferring"
+                    || previousProgress != progress
+                    || previousTotalBytes != totalBytes) {
+                    emit sessionsChanged();
+                }
                 break;
             }
         }
@@ -394,8 +447,10 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
         emit messageOccurred(tr("已自动接受 \"%1\"，正在保存").arg(fileName));
     } else {
         // 通知 QML 弹窗确认
+        const QVariantList previewFiles = _sessions.last()["fileList"].toList();
         emit receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
-                                    fileSize, totalFiles, totalBytes);
+                                    fileSize, totalFiles, totalBytes,
+                                    worker->isDirectory(), previewFiles);
     }
 
     qDebug() << "TransferSessionManager: 收到接收请求" << sessionId

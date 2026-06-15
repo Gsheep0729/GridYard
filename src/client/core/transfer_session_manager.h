@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_manager.h
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.13.2
+* @date    2026-06-15
 * @author  GridYard Team
 * @brief   传输会话管理器
 *
@@ -9,6 +9,8 @@
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
+* [v4.13.2] GY   2026-06-15
+* * 接收确认信号增加文件夹标记和根目录预览
 * [v4.11.0] GY   2026-06-13
 * * 支持按配置自动接受并保存接收文件
 * [v4.10.0] GY   2026-06-13
@@ -68,7 +70,9 @@ signals:
                                 const QString &fileName,
                                 qint64 fileSize,
                                 int totalFiles,
-                                qint64 totalBytes);
+                                qint64 totalBytes,
+                                bool isDirectory,
+                                const QVariantList &fileList);
     // 传输完成通知（接收方用于提示打开文件夹）
     void transferCompleted(const QString &sessionId,
                            const QString &fileName,
