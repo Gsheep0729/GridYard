@@ -1,13 +1,15 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.14.1
- * @date    2026-06-15
+ * @version 4.14.2
+ * @date    2026-06-16
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v4.14.2] GY   2026-06-16
+ * * 优化删除本地文件确认样式，完成的文件夹任务增加内容下拉行
  * [v4.14.0] GY   2026-06-15
  * * 移除记录操作增加删除已接收本地文件选项
  * [v4.13.3] GY   2026-06-15
@@ -60,6 +62,9 @@ Frame {
     readonly property color kFailedBgColor: "#FFEBEE"
     readonly property int kColorDuration: 160
     readonly property int kProgressDuration: 180
+    readonly property bool canShowFolderPreview: isDirectory && fileList.length > 0
+    readonly property bool isFinished: status === "completed" || status === "failed"
+                                       || status === "rejected" || status === "cancelled"
 
     Layout.fillWidth: true
     implicitHeight: contentColumn.implicitHeight + 24
@@ -161,7 +166,7 @@ Frame {
             Button {
                 icon.name: taskCard.expanded ? "go-down" : "go-next"
                 flat: true
-                visible: taskCard.isDirectory && taskCard.fileList.length > 0
+                visible: taskCard.canShowFolderPreview && !taskCard.isFinished
                 onClicked: taskCard.expansionRequested(!taskCard.expanded)
                 Layout.preferredWidth: 24
                 Layout.preferredHeight: 24
@@ -273,13 +278,12 @@ Frame {
         // 完成/失败状态的操作按钮
         RowLayout {
             Layout.fillWidth: true
-            visible: taskCard.status === "completed" || taskCard.status === "failed"
-                     || taskCard.status === "rejected" || taskCard.status === "cancelled"
+            visible: taskCard.isFinished
 
             Item { Layout.fillWidth: true }
 
             RowLayout {
-                spacing: 0
+                spacing: 4
 
                 Button {
                     text: qsTr("移除记录")
@@ -298,14 +302,68 @@ Frame {
                     Menu {
                         id: removeMenu
                         y: parent.height
+                        implicitWidth: 176
 
                         MenuItem {
-                            text: qsTr("移除记录并删除本地文件")
+                            id: deleteLocalFileMenuItem
+                            text: qsTr("删除本地文件")
                             enabled: taskCard.canDeleteLocalFile
                             onTriggered: deleteConfirmDialog.open()
+
+                            contentItem: Label {
+                                text: deleteLocalFileMenuItem.text
+                                font.pixelSize: 12
+                                color: deleteLocalFileMenuItem.enabled ? "#1F2937" : "#9CA3AF"
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 30
+            visible: taskCard.canShowFolderPreview && taskCard.isFinished
+            color: taskCard.expanded ? "#FFFFFF" : "transparent"
+            radius: 6
+            border.color: taskCard.expanded ? "#D8DEE8" : "#00000000"
+            border.width: 1
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 6
+
+                Label {
+                    text: taskCard.expanded ? "⌄" : "›"
+                    font.pixelSize: 14
+                    color: "#5F6B7A"
+                    Layout.preferredWidth: 12
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                Label {
+                    text: qsTr("文件夹内容")
+                    font.pixelSize: 12
+                    font.bold: true
+                    color: "#374151"
+                }
+
+                Label {
+                    text: qsTr("%1 项").arg(taskCard.fileList.length)
+                    font.pixelSize: 11
+                    color: "#6B7280"
+                }
+
+                Item { Layout.fillWidth: true }
+            }
+
+            TapHandler {
+                onTapped: taskCard.expansionRequested(!taskCard.expanded)
             }
         }
 
@@ -347,30 +405,29 @@ Frame {
         title: qsTr("删除确认")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(440, parent.width - 24)
-        padding: 20
+        width: Math.min(360, parent.width - 24)
+        padding: 12
         standardButtons: Dialog.No
 
         background: Rectangle {
             color: "#FFFFFF"
-            radius: 12
-            border.color: "#E5E7EB"
+            radius: 8
+            border.color: "#D1D5DB"
             border.width: 1
-            layer.enabled: true
         }
 
         header: Label {
             text: deleteConfirmDialog.title
-            font.pixelSize: 18
+            font.pixelSize: 14
             font.bold: true
             color: "#111827"
-            padding: 20
+            padding: 12
             bottomPadding: 0
         }
 
         ColumnLayout {
             width: parent.width
-            spacing: 16
+            spacing: 8
 
             Label {
                 Layout.fillWidth: true
@@ -378,34 +435,34 @@ Frame {
                       ? qsTr("确定移除该传输记录，并删除已接收的本地文件夹吗？")
                       : qsTr("确定移除该传输记录，并删除已接收的本地文件吗？")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 14
-                lineHeight: 1.4
-                color: "#4B5563"
+                font.pixelSize: 12
+                lineHeight: 1.25
+                color: "#374151"
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: fileInfoRow.implicitHeight + 20
+                implicitHeight: fileInfoRow.implicitHeight + 16
                 color: "#F9FAFB"
-                radius: 8
+                radius: 6
                 border.color: "#F3F4F6"
 
                 RowLayout {
                     id: fileInfoRow
                     anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 10
+                    anchors.margins: 10
+                    spacing: 8
 
                     FileTypeIcon {
                         fileName: taskCard.taskName
                         isDirectory: taskCard.isDirectory
-                        Layout.preferredWidth: 24
-                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
                     }
 
                     Label {
                         text: taskCard.taskName
-                        font.pixelSize: 14
+                        font.pixelSize: 12
                         font.bold: true
                         color: "#1F2937"
                         elide: Text.ElideMiddle
@@ -417,14 +474,22 @@ Frame {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
+
                 Label {
-                    text: "⚠️"
-                    font.pixelSize: 14
+                    text: "!"
+                    font.pixelSize: 11
+                    font.bold: true
+                    color: "#EF4444"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    Layout.preferredWidth: 16
                 }
+
                 Label {
                     Layout.fillWidth: true
                     text: qsTr("此操作将永久删除本地文件，无法撤销。")
-                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 11
                     color: "#EF4444"
                     font.bold: true
                 }
@@ -434,9 +499,9 @@ Frame {
         footer: DialogButtonBox {
             background: Rectangle { color: "transparent" }
             alignment: Qt.AlignRight
-            topPadding: 0
-            bottomPadding: 20
-            rightPadding: 20
+            topPadding: 4
+            bottomPadding: 8
+            rightPadding: 12
 
             Button {
                 text: qsTr("取消")
@@ -458,10 +523,10 @@ Frame {
                 }
 
                 background: Rectangle {
-                    implicitWidth: 100
-                    implicitHeight: 36
+                    implicitWidth: 76
+                    implicitHeight: 28
                     color: confirmDeleteButton.down ? "#B91C1C" : (confirmDeleteButton.hovered ? "#DC2626" : "#EF4444")
-                    radius: 6
+                    radius: 4
                 }
             }
         }
