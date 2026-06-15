@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.13.3
+ * @version 4.14.0
  * @date    2026-06-15
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -8,6 +8,8 @@
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v4.14.0] GY   2026-06-15
+ * * 移除记录操作增加删除已接收本地文件选项
  * [v4.13.3] GY   2026-06-15
  * * 移除进度更新时重复触发的入场动画，由外部持久化文件夹展开状态
  * [v4.13.2] DuRuoxian   2026-06-15
@@ -40,6 +42,7 @@ Frame {
     required property var    totalBytes
     required property bool   isDirectory
     required property var    fileList
+    required property bool   canDeleteLocalFile
     property string createdAt: ""
     property string peerDeviceName: ""
 
@@ -64,7 +67,7 @@ Frame {
     opacity: 1
 
     // 状态映射
-    function statusText() {
+    function statusText(): string {
         switch (status) {
         case "connecting":      return qsTr("连接中...")
         case "waiting_confirm": return qsTr("等待确认")
@@ -77,7 +80,7 @@ Frame {
         }
     }
 
-    function statusColor() {
+    function statusColor(): color {
         switch (status) {
         case "connecting":
         case "waiting_confirm": return kWaitingColor
@@ -90,7 +93,7 @@ Frame {
         }
     }
 
-    function backgroundColor() {
+    function backgroundColor(): color {
         if (status === "failed" || status === "rejected" || status === "cancelled") {
             return kFailedBgColor
         }
@@ -281,6 +284,26 @@ Frame {
                 visible: taskCard.status !== "transferring"
                 onClicked: AppController.transfer.removeSession(taskCard.sessionId)
             }
+
+            ToolButton {
+                text: "▼"
+                flat: true
+                visible: taskCard.status !== "transferring"
+                enabled: taskCard.canDeleteLocalFile
+                ToolTip.visible: hovered
+                ToolTip.text: enabled ? qsTr("更多移除选项") : qsTr("发送记录或未完成接收记录不能删除本地文件")
+                onClicked: removeMenu.open()
+
+                Menu {
+                    id: removeMenu
+
+                    MenuItem {
+                        text: qsTr("移除记录并删除本地文件")
+                        enabled: taskCard.canDeleteLocalFile
+                        onTriggered: deleteConfirmDialog.open()
+                    }
+                }
+            }
         }
 
         // 文件列表（展开时显示）
@@ -314,6 +337,24 @@ Frame {
                 }
             }
         }
+    }
+
+    Dialog {
+        id: deleteConfirmDialog
+        title: qsTr("删除本地文件")
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Yes | Dialog.No
+
+        // 本地文件删除不可恢复，执行前保留一次明确确认
+        Label {
+            text: taskCard.isDirectory
+                  ? qsTr("确定移除记录并删除已接收的文件夹“%1”吗？").arg(taskCard.taskName)
+                  : qsTr("确定移除记录并删除已接收的文件“%1”吗？").arg(taskCard.taskName)
+            wrapMode: Text.WordWrap
+        }
+
+        onAccepted: AppController.transfer.removeSessionAndDeleteFile(taskCard.sessionId)
     }
 
 }

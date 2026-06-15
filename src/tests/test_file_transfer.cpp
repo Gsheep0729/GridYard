@@ -1,6 +1,6 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 4.13.2
+* @version 4.14.0
 * @date    2026-06-15
 * @author  GridYard Team
 * @brief   文件传输完整流程测试
@@ -8,6 +8,8 @@
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.14.0] GY   2026-06-15
+* * 验证移除接收记录时删除实际保存文件且不影响发送源文件
 * [v4.13.2] FengChunlin   2026-06-15
 * * 验证接收确认的文件夹名、总大小和根目录预览
 * [v4.13.1] FengChunlin   2026-06-15
@@ -424,9 +426,50 @@ void TestFileTransfer::testAutoAcceptAndSave()
     QVERIFY(waitForTransfer(senderSpy));
     QVERIFY(senderSpy.first().at(0).toBool());
     QCOMPARE(requestSpy.count(), 0);
-    QVERIFY(QFile::exists(_recvDir->path() + "/auto_accept.txt"));
+    const QString receivedPath = _recvDir->path() + "/auto_accept.txt";
+    QVERIFY(QFile::exists(receivedPath));
+
+    const QVariantList sessions = manager.sessions();
+    QCOMPARE(sessions.size(), 1);
+    const QVariantMap receivedSession = sessions.first().toMap();
+    QCOMPARE(receivedSession["localPath"].toString(), receivedPath);
+    QVERIFY(receivedSession["canDeleteLocalFile"].toBool());
+
+    manager.removeSessionAndDeleteFile(receivedSession["sessionId"].toString());
+    QVERIFY(manager.sessions().isEmpty());
+    QVERIFY(!QFile::exists(receivedPath));
+    QVERIFY(QFile::exists(sendPath));
 
     stopSenderThread(sender, senderThread);
+
+    const QString clearSendPath = _sendDir->path() + "/auto_clear.txt";
+    createTestFile(clearSendPath, "clear finished sessions");
+    completedSpy.clear();
+
+    FileSenderWorker clearSender;
+    QSignalSpy clearSenderSpy(&clearSender, &FileSenderWorker::transferFinished);
+    QThread clearSenderThread;
+    clearSender.moveToThread(&clearSenderThread);
+    clearSenderThread.start();
+    QMetaObject::invokeMethod(&clearSender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, clearSendPath),
+                              Q_ARG(QString, "auto-sender-id"),
+                              Q_ARG(QString, "AutoSender"));
+
+    QVERIFY(waitForTransfer(completedSpy));
+    QVERIFY(waitForTransfer(clearSenderSpy));
+    QVERIFY(clearSenderSpy.first().at(0).toBool());
+
+    const QString clearReceivedPath = _recvDir->path() + "/auto_clear.txt";
+    QVERIFY(QFile::exists(clearReceivedPath));
+    manager.clearFinishedSessions(true);
+    QVERIFY(manager.sessions().isEmpty());
+    QVERIFY(!QFile::exists(clearReceivedPath));
+    QVERIFY(QFile::exists(clearSendPath));
+
+    stopSenderThread(clearSender, clearSenderThread);
     _config->setAutoAcceptFiles(false);
 }
 

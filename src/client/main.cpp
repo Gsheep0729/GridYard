@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 4.13.3
+* @version 4.14.0
 * @date    2026-06-15
 * @author  GridYard Team
 * @brief   GridYard 客户端程序入口
@@ -17,6 +17,8 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v4.14.0] GY   2026-06-15
+* * 版本号更新到 v4.14.0
 * [v4.13.3] GY   2026-06-15
 * * 版本号更新到 v4.13.3
 * [v4.13.2] DuRuoxian   2026-06-15
@@ -75,7 +77,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("4.13.3");
+    QGuiApplication::setApplicationVersion("4.14.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析
