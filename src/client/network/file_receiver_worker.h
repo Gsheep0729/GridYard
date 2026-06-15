@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.h
-* @version 4.12.1
-* @date    2026-06-14
+* @version 4.13.1
+* @date    2026-06-15
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
@@ -13,6 +13,8 @@
 * 5. 接收完成后发送 kTypeChunkAck
 *
 * Change Log:
+* [v4.13.1] FengChunlin   2026-06-15
+* * 添加目录标记与接收文件夹相对路径查询
 * [v4.12.1] FengChunlin   2026-06-14
 * * 校验数据块、修正文件夹累计进度，并等待最终完成确认
 * [v4.11.0] FengChunlin   2026-06-13
@@ -61,6 +63,7 @@ public:
     QString fileName()     const { return _displayName; }
     qint64  fileSize()     const { return _fileSize; }
     bool    isDirectory()  const { return _isDirectory; }
+    QStringList filePaths() const;
 
     // 设置接收路径（由 TransferSessionManager 调用）
     void setReceivePath(const QString &path) { _receivePath = path; }

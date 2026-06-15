@@ -1,13 +1,19 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.12.0
- * @date    2026-06-14
+ * @version 4.13.3
+ * @date    2026-06-15
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v4.13.3] GY   2026-06-15
+ * * 移除进度更新时重复触发的入场动画，由外部持久化文件夹展开状态
+ * [v4.13.2] DuRuoxian   2026-06-15
+ * * 文件夹下拉栏改为根目录预览
+ * [v4.13.1] DuRuoxian   2026-06-15
+ * * 修复文件夹显示问题，添加图标区分和展开功能
  * [v4.12.0] DuRuoxian   2026-06-14
  * * 使用共享格式化工具，增加进度、状态和进入过渡
  * [v4.10.0] DuRuoxian   2026-06-13
@@ -30,29 +36,31 @@ Frame {
     required property string taskName
     required property string status
     required property int    progress
-    required property int    bytesTransferred
-    required property int    totalBytes
-    property bool   isDirectory: false
-    property var    fileList: []
+    required property var    bytesTransferred
+    required property var    totalBytes
+    required property bool   isDirectory
+    required property var    fileList
     property string createdAt: ""
     property string peerDeviceName: ""
 
     // 展开状态
     property bool expanded: false
+    signal expansionRequested(bool expanded)
 
     // 状态颜色
     readonly property color kRunningColor: "#2196F3"
     readonly property color kSuccessColor: "#4CAF50"
     readonly property color kFailedColor:  "#F44336"
     readonly property color kWaitingColor: "#FF9800"
-    readonly property color kSendBgColor:  "#E3F2FD"
-    readonly property color kRecvBgColor:  "#F3E5F5"
+    readonly property color kFileBgColor:   "#EAF4FF"
+    readonly property color kFolderBgColor: "#FFF6DD"
+    readonly property color kFailedBgColor: "#FFEBEE"
     readonly property int kColorDuration: 160
-    readonly property int kEnterDuration: 200
     readonly property int kProgressDuration: 180
 
     Layout.fillWidth: true
-    height: 120
+    implicitHeight: contentColumn.implicitHeight + 24
+    height: implicitHeight
     opacity: 1
 
     // 状态映射
@@ -82,9 +90,16 @@ Frame {
         }
     }
 
+    function backgroundColor() {
+        if (status === "failed" || status === "rejected" || status === "cancelled") {
+            return kFailedBgColor
+        }
+        return isDirectory ? kFolderBgColor : kFileBgColor
+    }
+
     background: Rectangle {
         radius: 8
-        color: taskCard.taskType === "send" ? taskCard.kSendBgColor : taskCard.kRecvBgColor
+        color: taskCard.backgroundColor()
         border.color: taskCard.statusColor()
         border.width: 1
 
@@ -97,6 +112,7 @@ Frame {
     }
 
     ColumnLayout {
+        id: contentColumn
         anchors.fill: parent
         anchors.margins: 12
         spacing: 6
@@ -108,29 +124,30 @@ Frame {
 
             // 方向标识（更清晰）
             Rectangle {
-                width: 24
-                height: 24
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
                 radius: 12
-                color: taskType === "send" ? "#2196F3" : "#9C27B0"
+                color: taskCard.taskType === "send" ? "#2196F3" : "#9C27B0"
 
                 Label {
                     anchors.centerIn: parent
-                    text: taskType === "send" ? "↑" : "↓"
+                    text: taskCard.taskType === "send" ? "↑" : "↓"
                     color: "#FFFFFF"
                     font.pixelSize: 14
                     font.bold: true
                 }
             }
 
-            // 文件/文件夹图标
-            Label {
-                text: isDirectory ? "📁" : "📄"
-                font.pixelSize: 16
+            FileTypeIcon {
+                fileName: taskCard.taskName
+                isDirectory: taskCard.isDirectory
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
             }
 
             // 文件名
             Label {
-                text: taskName
+                text: taskCard.taskName
                 font.pixelSize: 14
                 font.bold: true
                 elide: Text.ElideRight
@@ -139,19 +156,19 @@ Frame {
 
             // 展开/收起按钮（仅文件夹显示）
             Button {
-                text: expanded ? "▼" : "▶"
+                icon.name: taskCard.expanded ? "go-down" : "go-next"
                 flat: true
-                visible: isDirectory && fileList.length > 0
-                onClicked: expanded = !expanded
-                width: 24
-                height: 24
+                visible: taskCard.isDirectory && taskCard.fileList.length > 0
+                onClicked: taskCard.expansionRequested(!taskCard.expanded)
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
                 padding: 0
             }
 
             // 状态标签
             Rectangle {
-                width: statusLabel.implicitWidth + 12
-                height: statusLabel.implicitHeight + 6
+                Layout.preferredWidth: statusLabel.implicitWidth + 12
+                Layout.preferredHeight: statusLabel.implicitHeight + 6
                 radius: 4
                 color: taskCard.statusColor()
 
@@ -165,7 +182,7 @@ Frame {
                 Label {
                     id: statusLabel
                     anchors.centerIn: parent
-                    text: statusText()
+                    text: taskCard.statusText()
                     font.pixelSize: 11
                     color: "#FFFFFF"
                 }
@@ -178,9 +195,9 @@ Frame {
             spacing: 12
 
             Label {
-                text: taskType === "send"
-                      ? qsTr("发送给 %1").arg(peerDeviceName || qsTr("未知设备"))
-                      : qsTr("来自 %1").arg(peerDeviceName || qsTr("未知设备"))
+                text: taskCard.taskType === "send"
+                      ? qsTr("发送给 %1").arg(taskCard.peerDeviceName || qsTr("未知设备"))
+                      : qsTr("来自 %1").arg(taskCard.peerDeviceName || qsTr("未知设备"))
                 font.pixelSize: 12
                 color: "#666666"
             }
@@ -191,14 +208,14 @@ Frame {
                 text: FormatUtils.formatTime(taskCard.createdAt)
                 font.pixelSize: 12
                 color: "#888888"
-                visible: createdAt.length > 0
+                visible: taskCard.createdAt.length > 0
             }
 
             Label {
                 text: FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
                 color: "#666666"
-                visible: totalBytes > 0
+                visible: taskCard.totalBytes > 0
             }
         }
 
@@ -206,9 +223,9 @@ Frame {
         ProgressBar {
             from: 0
             to: 100
-            value: progress
+            value: taskCard.progress
             Layout.fillWidth: true
-            visible: status === "transferring" || status === "completed"
+            visible: taskCard.status === "transferring" || taskCard.status === "completed"
 
             Behavior on value {
                 SmoothedAnimation {
@@ -220,85 +237,83 @@ Frame {
         // 第四行：传输信息 + 操作按钮
         RowLayout {
             Layout.fillWidth: true
-            visible: status === "transferring" || status === "waiting_confirm"
+            visible: taskCard.status === "transferring" || taskCard.status === "waiting_confirm"
 
             Label {
                 text: FormatUtils.formatBytes(taskCard.bytesTransferred)
                       + " / " + FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
                 color: "#666"
-                visible: status === "transferring"
+                visible: taskCard.status === "transferring"
             }
 
             Item { Layout.fillWidth: true }
 
             // 进度百分比
             Label {
-                text: progress + "%"
+                text: taskCard.progress + "%"
                 font.pixelSize: 12
                 font.bold: true
-                color: kRunningColor
-                visible: status === "transferring"
+                color: taskCard.kRunningColor
+                visible: taskCard.status === "transferring"
             }
 
             // 取消按钮
             Button {
                 text: qsTr("取消")
                 flat: true
-                visible: status === "transferring" || status === "waiting_confirm"
-                onClicked: AppController.transfer.cancelSession(sessionId)
+                visible: taskCard.status === "transferring" || taskCard.status === "waiting_confirm"
+                onClicked: AppController.transfer.cancelSession(taskCard.sessionId)
             }
         }
 
         // 完成/失败状态的操作按钮
         RowLayout {
             Layout.fillWidth: true
-            visible: status === "completed" || status === "failed" || status === "rejected" || status === "cancelled"
+            visible: taskCard.status === "completed" || taskCard.status === "failed"
+                     || taskCard.status === "rejected" || taskCard.status === "cancelled"
 
             Item { Layout.fillWidth: true }
 
             Button {
                 text: qsTr("移除记录")
                 flat: true
-                visible: status !== "transferring"
-                onClicked: AppController.transfer.removeSession(sessionId)
+                visible: taskCard.status !== "transferring"
+                onClicked: AppController.transfer.removeSession(taskCard.sessionId)
             }
         }
 
         // 文件列表（展开时显示）
         ListView {
             Layout.fillWidth: true
-            Layout.preferredHeight: expanded ? Math.min(contentHeight, 150) : 0
+            Layout.preferredHeight: taskCard.expanded ? Math.min(contentHeight, 150) : 0
             clip: true
-            visible: expanded && isDirectory
+            visible: taskCard.expanded && taskCard.isDirectory
 
-            model: fileList
+            model: taskCard.fileList
 
-            delegate: Label {
+            delegate: RowLayout {
+                id: fileRow
                 required property string modelData
-                text: "  " + modelData
-                font.pixelSize: 11
-                color: "#666666"
-                elide: Text.ElideRight
                 width: ListView.view.width
+                spacing: 6
+
+                FileTypeIcon {
+                    fileName: fileRow.modelData
+                    isDirectory: fileRow.modelData.endsWith("/")
+                    Layout.preferredWidth: 18
+                    Layout.preferredHeight: 18
+                }
+
+                Label {
+                    text: fileRow.modelData
+                    font.pixelSize: 11
+                    color: "#666666"
+                    elide: Text.ElideMiddle
+                    Layout.fillWidth: true
+                }
             }
         }
-
-        // 底部填充，确保按钮不被遮挡
-        Item {
-            Layout.fillHeight: true
-        }
     }
 
-    NumberAnimation {
-        id: enterAnimation
-        target: taskCard
-        property: "opacity"
-        from: 0
-        to: 1
-        duration: taskCard.kEnterDuration
-        easing.type: Easing.OutCubic
-    }
-
-    Component.onCompleted: enterAnimation.restart()
 }

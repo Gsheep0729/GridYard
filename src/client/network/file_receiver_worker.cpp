@@ -1,11 +1,13 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 4.12.1
-* @date    2026-06-14
+* @version 4.13.1
+* @date    2026-06-15
 * @author  GridYard Team
 * @brief   FileReceiverWorker 实现
 *
 * Change Log:
+* [v4.13.1] FengChunlin   2026-06-15
+* * 向会话层提供接收文件夹相对路径列表
 * [v4.12.1] FengChunlin   2026-06-14
 * * 校验数据块、修正文件夹累计进度，并等待最终完成确认
 * [v4.11.0] FengChunlin   2026-06-13
@@ -78,6 +80,17 @@ QString uniqueTargetPath(const QString &path, bool directory)
     }
 }
 
+}
+
+QStringList FileReceiverWorker::filePaths() const
+{
+    QStringList paths;
+    paths.reserve(_fileList.size() + _emptyDirectories.size());
+    for (const auto &item : _fileList) {
+        paths.append(item.relativePath);
+    }
+    paths.append(_emptyDirectories);
+    return paths;
 }
 
 FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)

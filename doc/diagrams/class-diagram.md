@@ -1,4 +1,4 @@
-# GridYard 分层类图（v4.12.0 当前架构）
+# GridYard 分层类图（v4.13.3 当前架构）
 
 当前客户端以表现层、应用逻辑层、领域层和数据管理层为目标。为避免所有类挤在一张图中，本文件按职责拆成多张类图。
 
@@ -62,7 +62,7 @@ classDiagram
         +rejectReceiveSession(sessionId)
         +cancelSession(sessionId)
         +removeSession(sessionId)
-        +receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName, fileSize, totalFiles, totalBytes) signal
+        +receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName, fileSize, totalFiles, totalBytes, isDirectory, fileList) signal
     }
 
     class MainQml {
@@ -215,6 +215,8 @@ classDiagram
         +bytesTransferred : qint64
         +totalBytes : qint64
         +createdAt : QString
+        +isDirectory : bool
+        +fileList : QVariantList
     }
 
     class P2pServer {
@@ -339,6 +341,9 @@ classDiagram
         +ipAddress : string
         +isOnline : bool
         +filteredCount : int
+        +expandedSessions : var
+        +isSessionExpanded(sessionId) bool
+        +setSessionExpanded(sessionId, expanded)
         +sendFileRequested() signal
         +sendFolderRequested() signal
         +fileDropped(filePath) signal
@@ -351,10 +356,21 @@ classDiagram
         +taskName : string
         +status : string
         +progress : int
-        +bytesTransferred : int
-        +totalBytes : int
+        +bytesTransferred : var
+        +totalBytes : var
         +createdAt : string
         +peerDeviceName : string
+        +isDirectory : bool
+        +fileList : var
+        +expanded : bool
+        +expansionRequested(expanded) signal
+    }
+
+    class FileTypeIcon {
+        <<QML Image>>
+        +fileName : string
+        +isDirectory : bool
+        +iconSource : url
     }
 
     class FormatUtils {
@@ -378,9 +394,11 @@ classDiagram
         +sessionId : string
         +senderName : string
         +fileName : string
-        +fileSize : int
+        +fileSize : var
         +totalFiles : int
-        +totalBytes : int
+        +totalBytes : var
+        +isDirectory : bool
+        +fileList : var
     }
 
     class AppController {
@@ -403,6 +421,7 @@ classDiagram
     MainQml *-- AcceptDialog
     PeerListView *-- DeviceCard
     DeviceSessionView *-- TransferTaskCard
+    TransferTaskCard *-- FileTypeIcon
     TransferTaskCard --> FormatUtils : 格式化大小和时间
     AcceptDialog --> FormatUtils : 格式化文件大小
     PeerListView --> AppController : 绑定 discovery.peers
@@ -411,7 +430,7 @@ classDiagram
     SettingsDialog --> ConfigManager : 读取并保存配置
 ```
 
-主窗口只保存当前选中设备的信息。左侧 `PeerListView` 负责选择设备，右侧 `DeviceSessionView` 根据稳定的 `deviceId` 筛选会话记录。`FormatUtils` 只提供无状态展示格式化，动画继续由 QML 声明。
+主窗口只保存当前选中设备的信息。左侧 `PeerListView` 负责选择设备，右侧 `DeviceSessionView` 根据稳定的 `deviceId` 筛选会话记录。`FileTypeIcon` 根据文件名和目录标记选择项目内置 SVG，`FormatUtils` 只提供无状态展示格式化，动画继续由 QML 声明。
 
 ## 5. 数据管理层现状
 
