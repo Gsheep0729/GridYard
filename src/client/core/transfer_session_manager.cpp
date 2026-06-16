@@ -1,11 +1,14 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 4.14.0
-* @date    2026-06-15
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   TransferSessionManager 实现
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * transferFinished 信号适配 ErrorCode 参数
+* * 会话模型新增 errorCode 字段
 * [v4.14.0] GY   2026-06-15
 * * 支持清理传输记录并删除已接收的本地文件
 * [v4.13.3] GY   2026-06-15
@@ -216,13 +219,14 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     });
 
     connect(worker, &FileSenderWorker::transferFinished,
-            this, [this, sessionId, thread, worker](bool success, const QString &errorMsg) {
+            this, [this, sessionId, thread, worker](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         // 更新会话状态
         for (int i = 0; i < _sessions.size(); ++i) {
             if (_sessions[i]["sessionId"].toString() == sessionId) {
                 _sessions[i]["status"] = success ? "completed" : "failed";
                 _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
                 _sessions[i]["errorMsg"] = errorMsg;
+                _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
                 emit sessionsChanged();
 
                 // 通知用户传输结果
@@ -263,7 +267,10 @@ void TransferSessionManager::acceptReceiveSession(const QString &sessionId)
 
             FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
             if (worker) {
-                worker->acceptTransfer();
+                // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+                QMetaObject::invokeMethod(worker, [worker]() {
+                    worker->acceptTransfer();
+                }, Qt::QueuedConnection);
                 _sessions[i]["status"] = "transferring";
                 emit sessionsChanged();
             }
@@ -280,7 +287,10 @@ void TransferSessionManager::rejectReceiveSession(const QString &sessionId)
 
             FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
             if (worker) {
-                worker->rejectTransfer();
+                // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+                QMetaObject::invokeMethod(worker, [worker]() {
+                    worker->rejectTransfer();
+                }, Qt::QueuedConnection);
                 _sessions[i]["status"] = "rejected";
                 emit sessionsChanged();
             }
@@ -306,7 +316,10 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
                 // 接收方：拒绝传输（会触发对方超时或连接断开）
                 FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
                 if (worker) {
-                    worker->rejectTransfer(tr("用户取消"));
+                    // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+                    QMetaObject::invokeMethod(worker, [worker]() {
+                        worker->rejectTransfer(tr("用户取消"));
+                    }, Qt::QueuedConnection);
                 }
             }
 
@@ -434,9 +447,11 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     // 创建接收会话
     QString sessionId = worker->sessionId();
 
-    // 设置接收路径
+    // 设置接收路径（使用 QMetaObject::invokeMethod 在 worker 的线程中调用）
     if (_config) {
-        worker->setReceivePath(_config->receivePath());
+        QMetaObject::invokeMethod(worker, [worker, config = _config]() {
+            worker->setReceivePath(config->receivePath());
+        }, Qt::QueuedConnection);
         qDebug() << "[TransferSession] 接收路径:" << _config->receivePath();
     }
 
@@ -497,7 +512,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
 
     // 连接接收完成信号
     connect(worker, &FileReceiverWorker::transferFinished,
-            this, [this, sessionId, worker](bool success, const QString &errorMsg) {
+            this, [this, sessionId, worker](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         qDebug() << "[TransferSession] 接收传输完成，成功:" << success << "错误:" << errorMsg;
 
         for (int i = 0; i < _sessions.size(); ++i) {
@@ -511,6 +526,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                 _sessions[i]["status"] = success ? "completed" : "failed";
                 _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
                 _sessions[i]["errorMsg"] = errorMsg;
+                _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
                 if (success) {
                     _sessions[i]["localPath"] = worker->savedPath();
                     _sessions[i]["canDeleteLocalFile"] = !worker->savedPath().isEmpty();

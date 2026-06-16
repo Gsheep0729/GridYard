@@ -1,13 +1,18 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 4.14.0
-* @date    2026-06-15
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 适配 transferFinished 信号添加 ErrorCode 参数
+* * 适配接收侧后台化线程模型
+* * testConnectionLost 改用系统分配端口，减少端口复用导致的失败
+* * testConnectionLost 等待接收线程退出后再结束用例
 * [v4.14.0] GY   2026-06-15
 * * 验证移除接收记录时删除实际保存文件且不影响发送源文件
 * [v4.13.2] FengChunlin   2026-06-15
@@ -161,9 +166,13 @@ void TestFileTransfer::testSingleFileTransfer()
                                         const QString &senderDeviceId,
                                         const QString &senderName,
                                         const QString &, qint64, int, qint64) {
+        qDebug() << "[Test] 收到传输请求信号，senderDeviceId:" << senderDeviceId;
         receivedSenderDeviceId = senderDeviceId;
         receivedSenderName = senderName;
-        worker->rejectTransfer("测试完成");
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker]() {
+            worker->rejectTransfer("测试完成");
+        }, Qt::QueuedConnection);
     });
 
     // 创建发送 Worker
@@ -255,13 +264,16 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
                 const QString &, qint64, int, qint64) {
         receiverDisplayName = worker->fileName();
         receiverFilePaths = worker->filePaths();
-        worker->setReceivePath(_recvDir->path());
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
-        worker->acceptTransfer();
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
     });
 
     FileSenderWorker sender;
@@ -307,13 +319,16 @@ void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
             [this, &receiverFinished, &receiverSuccess](
                 FileReceiverWorker *worker, const QString &, const QString &,
                 const QString &, qint64, int, qint64) {
-        worker->setReceivePath(_recvDir->path());
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
-        worker->acceptTransfer();
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
     });
 
     FileSenderWorker sender;
@@ -356,13 +371,16 @@ void TestFileTransfer::testLargeFileTransferEndToEnd()
             [this, &receiverFinished, &receiverSuccess](
                 FileReceiverWorker *worker, const QString &, const QString &,
                 const QString &, qint64, int, qint64) {
-        worker->setReceivePath(_recvDir->path());
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
-        worker->acceptTransfer();
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
     });
 
     FileSenderWorker sender;
@@ -541,13 +559,16 @@ void TestFileTransfer::testCancelTransfer()
             [this, &receiverFinished, &receiverSuccess](
                 FileReceiverWorker *worker, const QString &, const QString &,
                 const QString &, qint64, int, qint64) {
-        worker->setReceivePath(_recvDir->path());
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
-        worker->acceptTransfer();
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
     });
 
     FileSenderWorker sender;
@@ -584,29 +605,48 @@ void TestFileTransfer::testConnectionLost()
     sourceFile.close();
 
     _config->setReceivePath(_recvDir->path());
-    _config->setTcpPort(++_testPort);
 
     // 使用原始 QTcpServer 模拟连接断开
     QTcpServer server;
-    QVERIFY(server.listen(QHostAddress::AnyIPv4, _testPort));
+    QVERIFY(server.listen(QHostAddress::AnyIPv4, 0));
+    const quint16 serverPort = server.serverPort();
+    QVERIFY(serverPort != 0);
 
     bool receiverFinished = false;
     bool receiverSuccess = true;
-    connect(&server, &QTcpServer::newConnection, this, [this, &server, &receiverFinished, &receiverSuccess]() {
+    bool receiverThreadFinished = false;
+    connect(&server, &QTcpServer::newConnection, this,
+            [this, &server, &receiverFinished, &receiverSuccess, &receiverThreadFinished]() {
         QTcpSocket *socket = server.nextPendingConnection();
         if (!socket) return;
 
-        auto *worker = new FileReceiverWorker(socket, this);
-        worker->setReceivePath(_recvDir->path());
+        // 创建后台线程处理接收
+        auto *thread = new QThread{this};
+        auto *worker = new FileReceiverWorker{socket};
+        worker->moveToThread(thread);
+
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess, thread](bool success, gy::protocol::ErrorCode, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
+            thread->quit();
         });
+        connect(thread, &QThread::started, worker, &FileReceiverWorker::initialize);
         connect(worker, &FileReceiverWorker::transferRequestReceived, this,
-                [worker](const QString &, const QString &, const QString &, qint64, int, qint64) {
-            worker->acceptTransfer();
+                [worker, this]() {
+            QMetaObject::invokeMethod(worker, [worker, this]() {
+                worker->setReceivePath(_recvDir->path());
+                worker->acceptTransfer();
+            }, Qt::QueuedConnection);
         });
+        connect(thread, &QThread::finished, this, [&receiverThreadFinished]() {
+            receiverThreadFinished = true;
+        });
+        connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+        connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+
+        thread->start();
+
         // 传输开始后断开连接
         QTimer::singleShot(100, socket, &QTcpSocket::disconnectFromHost);
     });
@@ -619,7 +659,7 @@ void TestFileTransfer::testConnectionLost()
 
     QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
                               Q_ARG(QString, "127.0.0.1"),
-                              Q_ARG(quint16, _testPort),
+                              Q_ARG(quint16, serverPort),
                               Q_ARG(QString, sendPath),
                               Q_ARG(QString, "connlost-sender-id"),
                               Q_ARG(QString, "ConnLostSender"));
@@ -627,6 +667,9 @@ void TestFileTransfer::testConnectionLost()
     // 验证发送端收到连接断开错误
     QVERIFY(waitForTransfer(senderSpy, 10000));
     QVERIFY(!senderSpy.first().at(0).toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 5000);
+    QVERIFY(!receiverSuccess);
+    QTRY_VERIFY_WITH_TIMEOUT(receiverThreadFinished, 5000);
 
     stopSenderThread(sender, senderThread);
 }

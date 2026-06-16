@@ -1,11 +1,16 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 4.14.0
-* @date    2026-06-15
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   FileReceiverWorker 实现
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 新增 initialize() 方法，在后台线程中创建 QTimer 和连接信号
+* * transferFinished 信号添加 ErrorCode 参数
+* * rejectTransfer() 发射 transferFinished 信号
+* * socket 父对象设为 this，随 worker 一起 moveToThread
 * [v4.14.0] GY   2026-06-15
 * * 提供接收完成后的实际保存路径
 * [v4.13.1] FengChunlin   2026-06-15
@@ -34,6 +39,7 @@
 #include "protocol.h"
 
 #include <QCryptographicHash>
+#include <QThread>
 #include <QDataStream>
 #include <QDir>
 #include <QFileInfo>
@@ -103,12 +109,21 @@ QString FileReceiverWorker::savedPath() const
 FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
     : QObject{parent}
     , _socket{socket}
-    , _codec{new FrameCodec{this}}
-    , _timeoutTimer{new QTimer{this}}
     , _hash{new QCryptographicHash{QCryptographicHash::Sha256}}
 {
-    // socket 父对象设为 nullptr，避免自动删除
-    _socket->setParent(nullptr);
+    // socket 父对象设为 this，当 worker 被 moveToThread 时 socket 也会被移动
+    _socket->setParent(this);
+
+    // QTimer 和 FrameCodec 在 initialize() 中创建，确保在正确的线程中
+}
+
+void FileReceiverWorker::initialize()
+{
+    qDebug() << "[FileReceiver] 初始化（线程:" << QThread::currentThreadId() << ")";
+
+    // 在当前线程中创建 FrameCodec 和 QTimer
+    _codec = new FrameCodec{this};
+    _timeoutTimer = new QTimer{this};
 
     // 连接 socket 信号
     connect(_socket, &QTcpSocket::readyRead,
@@ -124,6 +139,8 @@ FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
     _timeoutTimer->setSingleShot(true);
     connect(_timeoutTimer, &QTimer::timeout,
             this,          &FileReceiverWorker::onTimeout);
+
+    qDebug() << "[FileReceiver] 初始化完成";
 }
 
 FileReceiverWorker::~FileReceiverWorker()
@@ -147,10 +164,10 @@ void FileReceiverWorker::acceptTransfer()
     _waitingForUserConfirm = false;
     _transferActive = true;
 
-    const auto failPreparation = [this](const QString &errorMsg) {
+    const auto failPreparation = [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         sendTransferResponse(false, errorMsg);
         cleanup();
-        emit transferFinished(false, errorMsg);
+        emit transferFinished(false, errorCode, errorMsg);
         _socket->disconnectFromHost();
     };
 
@@ -159,20 +176,20 @@ void FileReceiverWorker::acceptTransfer()
         _receivePath = QDir::homePath() + "/GridYard/document";
     }
     if (!QDir().mkpath(_receivePath)) {
-        failPreparation(tr("无法创建接收目录"));
+        failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建接收目录"));
         return;
     }
 
     if (_isDirectory) {
         _destinationRoot = uniqueTargetPath(_receivePath + "/" + _rootName, true);
         if (!QDir().mkpath(_destinationRoot)) {
-            failPreparation(tr("无法创建接收目录"));
+            failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建接收目录"));
             return;
         }
 
         for (const QString &relativePath : _emptyDirectories) {
             if (!QDir().mkpath(_destinationRoot + "/" + QDir::cleanPath(relativePath))) {
-                failPreparation(tr("无法创建目录: %1").arg(relativePath));
+                failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建目录: %1").arg(relativePath));
                 return;
             }
         }
@@ -182,7 +199,7 @@ void FileReceiverWorker::acceptTransfer()
     }
 
     if (!_fileList.isEmpty() && !openCurrentFile()) {
-        failPreparation(tr("无法创建文件: %1").arg(_file.errorString()));
+        failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建文件: %1").arg(_file.errorString()));
         return;
     }
 
@@ -207,6 +224,9 @@ void FileReceiverWorker::rejectTransfer(const QString &reason)
     // 发送拒绝响应
     sendTransferResponse(false, reason.isEmpty() ? tr("用户拒绝") : reason);
 
+    // 发射传输完成信号（被拒绝）
+    emit transferFinished(false, gy::protocol::ErrorCode::UserRejected, reason);
+
     // 关闭连接
     _socket->disconnectFromHost();
 }
@@ -226,7 +246,7 @@ void FileReceiverWorker::onDisconnected()
 {
     if (_transferActive) {
         cleanup();
-        emit transferFinished(false, tr("连接断开"));
+        emit transferFinished(false, gy::protocol::ErrorCode::ConnectionLost, tr("连接断开"));
     }
 }
 
@@ -235,7 +255,7 @@ void FileReceiverWorker::onTimeout()
     if (_transferActive) {
         qWarning() << "FileReceiverWorker: 传输超时";
         cleanup();
-        emit transferFinished(false, tr("传输超时"));
+        emit transferFinished(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
     }
 }
 
@@ -299,11 +319,28 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     _totalFiles = json["total_files"].toInt();
     _totalBytes = json["total_bytes"].toVariant().toLongLong();
 
-    // 协议版本检查（只记录警告，不拒绝连接）
+    // 协议版本检查：主版本不一致拒绝会话，次版本差异安全降级
     quint16 senderVersion = static_cast<quint16>(json["protocol_version"].toInt());
-    if (senderVersion > 0 && senderVersion != gy::protocol::kProtocolVersion) {
-        qWarning() << "[FileReceiver] 发送方协议版本不匹配，本地:"
-                   << gy::protocol::kProtocolVersion << "对端:" << senderVersion;
+    if (senderVersion > 0) {
+        quint8 localMajor = gy::protocol::majorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMajor = gy::protocol::majorVersion(senderVersion);
+        quint8 localMinor = gy::protocol::minorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMinor = gy::protocol::minorVersion(senderVersion);
+
+        if (senderMajor != localMajor) {
+            // 主版本不一致，拒绝会话
+            qWarning() << "[FileReceiver] 发送方主版本不匹配，本地:"
+                       << localMajor << "对端:" << senderMajor;
+            sendTransferResponse(false, tr("协议版本不兼容，请升级到最新版本"));
+            _socket->disconnectFromHost();
+            return;
+        }
+
+        if (senderMinor != localMinor) {
+            // 次版本差异，安全降级（记录警告但继续）
+            qWarning() << "[FileReceiver] 发送方次版本不同，本地:"
+                       << localMinor << "对端:" << senderMinor << "，安全降级处理";
+        }
     }
 
     if (_rootName.isEmpty() || QFileInfo{_rootName}.fileName() != _rootName) {
@@ -413,7 +450,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
                    << "实际长度:" << chunkData.size();
         sendChunkAck(false, errorMsg);
         cleanup();
-        emit transferFinished(false, errorMsg);
+        emit transferFinished(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg);
         _socket->disconnectFromHost();
         return;
     }
@@ -428,7 +465,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     if (written != chunkData.size()) {
         qWarning() << "[FileReceiver] 写入文件失败，可能是磁盘空间不足";
         cleanup();
-        emit transferFinished(false, tr("写入文件失败，可能是磁盘空间不足"));
+        emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("写入文件失败，可能是磁盘空间不足"));
         return;
     }
 
@@ -478,7 +515,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
             QFile::remove(_file.fileName());
             _timeoutTimer->stop();
             _transferActive = false;
-            emit transferFinished(false, errorMsg);
+            emit transferFinished(false, gy::protocol::ErrorCode::Sha256Mismatch, errorMsg);
             return;
         }
 
@@ -495,7 +532,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
 
             if (!openCurrentFile()) {
                 _transferActive = false;
-                emit transferFinished(false, tr("无法创建文件: %1").arg(_file.errorString()));
+                emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建文件: %1").arg(_file.errorString()));
                 return;
             }
 
@@ -517,7 +554,7 @@ void FileReceiverWorker::handleTransferDone()
     qDebug() << "[FileReceiver] 收到传输完成确认:" << _displayName;
     _timeoutTimer->stop();
     _transferActive = false;
-    emit transferFinished(true, "");
+    emit transferFinished(true, gy::protocol::ErrorCode::Success, "");
 }
 
 bool FileReceiverWorker::openCurrentFile()
@@ -556,7 +593,7 @@ void FileReceiverWorker::handleCancel(const QByteArray &payload)
 
     _transferActive = false;
 
-    emit transferFinished(false, tr("传输被取消: %1").arg(reason));
+    emit transferFinished(false, gy::protocol::ErrorCode::UserCancelled, tr("传输被取消: %1").arg(reason));
 
     // 关闭连接
     _socket->disconnectFromHost();

@@ -1,12 +1,16 @@
 /**
 * @file    test_frame_codec.cpp
-* @date    2026-06-02
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   FrameCodec 单元测试
 *
-* 测试用例：单帧 / 粘包 / 半包 / 空 payload / 超大 payload
+* 测试用例：单帧 / 粘包 / 半包 / 空 payload / 超大 payload / 协议版本 / 分级 Payload 上限
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 适配协议版本常量变化（kProtocolVersion 改为 0x0100）
+* * 新增版本号提取函数和分级 Payload 上限测试
 * [v0.1] GY   2026-06-02
 * * Stage 1：初始版本
 */
@@ -167,11 +171,23 @@ void TestFrameCodec::testOversizedFrame()
 
 void TestFrameCodec::testProtocolVersion()
 {
-    // 验证协议版本常量
-    QCOMPARE(gy::protocol::kProtocolVersion, quint16(1));
+    // 验证协议版本常量（高8位主版本，低8位次版本）
+    QCOMPARE(gy::protocol::kProtocolVersion, quint16(0x0100));
+    QCOMPARE(gy::protocol::kProtocolMajorVersion, quint8(1));
+    QCOMPARE(gy::protocol::kProtocolMinorVersion, quint8(0));
+
+    // 验证版本号提取函数
+    QCOMPARE(gy::protocol::majorVersion(quint16(0x0102)), quint8(1));
+    QCOMPARE(gy::protocol::minorVersion(quint16(0x0102)), quint8(2));
 
     // 验证最大帧载荷常量
     QCOMPARE(gy::protocol::kMaxPayloadBytes, quint32(256 * 1024 * 1024));
+    QCOMPARE(gy::protocol::kMaxControlPayloadBytes, quint32(1 * 1024 * 1024));
+    QCOMPARE(gy::protocol::kMaxDataPayloadBytes, quint32(256 * 1024 * 1024));
+
+    // 验证按 Type 分级的 Payload 上限
+    QCOMPARE(gy::protocol::maxPayloadForType(gy::protocol::kTypeDataChunk), quint32(256 * 1024 * 1024));
+    QCOMPARE(gy::protocol::maxPayloadForType(gy::protocol::kTypeTransferReq), quint32(1 * 1024 * 1024));
 
     // 验证错误码枚举值
     QCOMPARE(static_cast<quint16>(gy::protocol::ErrorCode::Success), quint16(0));

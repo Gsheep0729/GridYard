@@ -1,11 +1,14 @@
 /**
 * @file    frame_codec.cpp
-* @version 4.13.0
-* @date    2026-06-15
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   FrameCodec 实现
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 按 Type 分级检查 Payload 大小（控制帧 1MB，DataChunk 256MB）
+* * errorOccurred 信号添加 ErrorCode 参数
 * [v4.13.0] GY   2026-06-15
 * * 添加帧载荷长度检查，超限时发射 errorOccurred 信号
 * [v0.1.0] GY   2026-06-02
@@ -27,10 +30,11 @@ FrameCodec::FrameCodec(QObject *parent)
 
 QByteArray FrameCodec::encode(quint32 type, const QByteArray &payload)
 {
-    // 检查载荷长度是否超限
-    if (static_cast<quint32>(payload.size()) > gy::protocol::kMaxPayloadBytes) {
+    // 按 Type 分级检查载荷长度
+    const quint32 maxPayload = gy::protocol::maxPayloadForType(type);
+    if (static_cast<quint32>(payload.size()) > maxPayload) {
         qWarning() << "FrameCodec::encode: payload size" << payload.size()
-                   << "exceeds maximum" << gy::protocol::kMaxPayloadBytes;
+                   << "exceeds maximum" << maxPayload << "for type" << Qt::hex << type;
         return {};
     }
 
@@ -67,13 +71,16 @@ void FrameCodec::feed(const QByteArray &data)
             stream >> _pendingType;
             stream >> _pendingLength;
 
-            // 检查帧载荷长度是否超限
-            if (_pendingLength > gy::protocol::kMaxPayloadBytes) {
+            // 按 Type 分级检查帧载荷长度
+            const quint32 maxPayload = gy::protocol::maxPayloadForType(_pendingType);
+            if (_pendingLength > maxPayload) {
                 qWarning() << "FrameCodec::feed: payload length" << _pendingLength
-                           << "exceeds maximum" << gy::protocol::kMaxPayloadBytes;
-                emit errorOccurred(tr("帧载荷长度 %1 超出限制 %2")
+                           << "exceeds maximum" << maxPayload << "for type" << Qt::hex << _pendingType;
+                emit errorOccurred(gy::protocol::ErrorCode::FrameTooLarge,
+                                   tr("帧载荷长度 %1 超出限制 %2（类型 0x%3）")
                                        .arg(_pendingLength)
-                                       .arg(gy::protocol::kMaxPayloadBytes));
+                                       .arg(maxPayload)
+                                       .arg(_pendingType, 0, 16));
                 // 清空缓冲区，重置状态
                 _buffer.clear();
                 _state = State::WaitingHeader;

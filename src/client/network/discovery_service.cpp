@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.cpp
-* @version 4.10.0
-* @date    2026-06-13
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   DiscoveryService 实现
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 协议版本不兼容处理：主版本不一致标记不兼容，次版本差异安全降级
 * [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
 * [v0.3.0] FengChunlin   2026-06-03
@@ -234,11 +236,27 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
         return;
     }
 
-    // 协议版本兼容性检查（只记录警告，不拒绝连接）
-    if (version > 0 && version != gy::protocol::kProtocolVersion) {
-        qWarning() << "DiscoveryService: 设备" << deviceId
-                   << "协议版本不匹配，本地:" << gy::protocol::kProtocolVersion
-                   << "对端:" << version;
+    // 协议版本兼容性检查：主版本不一致标记不兼容，次版本差异安全降级
+    if (version > 0) {
+        quint8 localMajor = gy::protocol::majorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMajor = gy::protocol::majorVersion(version);
+        quint8 localMinor = gy::protocol::minorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMinor = gy::protocol::minorVersion(version);
+
+        if (senderMajor != localMajor) {
+            // 主版本不一致，不加入在线列表
+            qWarning() << "DiscoveryService: 设备" << deviceId
+                       << "主版本不兼容，本地:" << localMajor << "对端:" << senderMajor
+                       << "，忽略该设备";
+            return;
+        }
+
+        if (senderMinor != localMinor) {
+            // 次版本差异，安全降级（记录警告但继续）
+            qWarning() << "DiscoveryService: 设备" << deviceId
+                       << "次版本不同，本地:" << localMinor << "对端:" << senderMinor
+                       << "，安全降级处理";
+        }
     }
 
     qDebug() << "DiscoveryService: 收到设备广播，deviceId:" << deviceId

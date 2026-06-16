@@ -1,14 +1,18 @@
 /**
 * @file    p2p_server.h
-* @version 4.10.0
-* @date    2026-06-13
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器
 *
 * 监听 TCP 端口，接受来自其他设备的文件传输请求。
-* 为每个入站连接创建 FrameCodec 和 FileReceiverWorker。
+* 为每个入站连接创建独立的 QThread 和 FileReceiverWorker，
+* 实现接收侧后台化，写盘与 SHA-256 校验在后台线程执行。
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 为每个连接创建独立的 QThread，实现接收侧后台化
+* * worker + socket 移到后台线程，写盘与 SHA-256 不阻塞 UI
 * [v4.3.4] FengChunlin   2026-06-04
 * * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
 * [v0.2.0] FengChunlin   2026-06-02
@@ -20,6 +24,7 @@
 #include <QObject>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QThread>
 
 class ConfigManager;
 class FrameCodec;
@@ -30,7 +35,7 @@ class P2pServer : public QObject {
 
 public:
     explicit P2pServer(ConfigManager *config, QObject *parent = nullptr);
-    virtual ~P2pServer() override = default;
+    virtual ~P2pServer() override;
 
     P2pServer(const P2pServer &)            = delete;
     P2pServer &operator=(const P2pServer &) = delete;
@@ -59,4 +64,5 @@ private slots:
 private:
     ConfigManager *_config = nullptr;
     QTcpServer    *_server = nullptr;
+    QList<QThread*> _threads;  // 后台线程列表，用于析构时清理
 };

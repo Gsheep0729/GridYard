@@ -1,18 +1,24 @@
 /**
 * @file    file_receiver_worker.h
-* @version 4.14.0
-* @date    2026-06-15
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
 * 由 P2pServer 为每个入站连接创建，负责：
-* 1. 接收 kTypeTransferReq 握手请求
-* 2. 发射信号通知 UI 弹窗确认
-* 3. 等待用户确认后发送 kTypeTransferRsp
-* 4. 接收 kTypeDataChunk 并写入文件
-* 5. 接收完成后发送 kTypeChunkAck
+* 1. 在后台线程中初始化（initialize() 创建 QTimer 和连接信号）
+* 2. 接收 kTypeTransferReq 握手请求
+* 3. 发射信号通知 UI 弹窗确认
+* 4. 等待用户确认后发送 kTypeTransferRsp
+* 5. 接收 kTypeDataChunk 并写入文件
+* 6. 接收完成后发送 kTypeChunkAck
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 新增 initialize() 方法，在后台线程中创建 QTimer 和连接信号
+* * transferFinished 信号添加 ErrorCode 参数
+* * rejectTransfer() 发射 transferFinished 信号
+* * socket 父对象设为 this，随 worker 一起 moveToThread
 * [v4.14.0] GY   2026-06-15
 * * 提供接收完成后的实际保存路径
 * [v4.13.1] FengChunlin   2026-06-15
@@ -38,6 +44,7 @@
 #pragma once
 
 #include "dir_serializer.h"
+#include "protocol.h"
 
 #include <QCryptographicHash>
 #include <QFile>
@@ -73,6 +80,8 @@ public:
     void setReceivePath(const QString &path) { _receivePath = path; }
 
 public slots:
+    // 初始化（在后台线程中调用，创建 QTimer 并连接 socket 信号）
+    void initialize();
     // 用户接受传输
     void acceptTransfer();
     // 用户拒绝传输
@@ -89,7 +98,7 @@ signals:
     // 传输进度更新
     void progressChanged(qint64 bytesReceived, qint64 totalBytes);
     // 传输完成
-    void transferFinished(bool success, const QString &errorMsg);
+    void transferFinished(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
 
 private slots:
     // 接收数据
