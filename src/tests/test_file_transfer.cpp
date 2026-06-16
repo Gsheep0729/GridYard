@@ -8,6 +8,11 @@
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.15.1] FengChunlin   2026-06-17
+* * 新增 testProtocolVersionMismatch：主版本不兼容时接收端拒绝并断开
+* * 新增 testMalformedTransferRequest：无效 JSON、缺字段、数量不一致均被拒绝
+* * 新增 testInvalidFilePath：../ 路径、绝对路径、负数大小均被拒绝
+* * 补充 #include "frame_codec.h"
 * [v4.15.0] GY   2026-06-17
 * * 适配 transferFinished 信号添加 ErrorCode 参数
 * * 适配接收侧后台化线程模型
@@ -40,6 +45,7 @@
 
 #include "file_sender_worker.h"
 #include "file_receiver_worker.h"
+#include "frame_codec.h"
 #include "p2p_server.h"
 #include "config_manager.h"
 #include "discovery_service.h"
@@ -70,6 +76,9 @@ private slots:
     void testSha256Verification();
     void testZeroByteFileTransfer();
     void testSpecialCharFileName();
+    void testProtocolVersionMismatch();
+    void testMalformedTransferRequest();
+    void testInvalidFilePath();
 
 private:
     void createTestFile(const QString &path, const QByteArray &content);
@@ -754,6 +763,267 @@ void TestFileTransfer::testSpecialCharFileName()
     // 测试序列化
     auto items = DirSerializer::serialize(_sendDir->path());
     QVERIFY(items.size() >= specialNames.size());
+}
+
+void TestFileTransfer::testProtocolVersionMismatch()
+{
+    // 构造一个主版本号不同的 TransferReq，发送到接收端，应被拒绝
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool rejected = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&rejected](FileReceiverWorker *, const QString &, const QString &,
+                        const QString &, qint64, int, qint64) {
+        // 不应该收到请求（应被版本检查拒绝）
+        rejected = true;
+    });
+
+    // 手动连接到接收端并发送错误版本的帧
+    QTcpSocket socket;
+    socket.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(socket.waitForConnected(5000));
+
+    // 构造主版本号为 99 的 TransferReq
+    QJsonObject json;
+    json["session_id"] = "test-mismatch";
+    json["sender_device_id"] = "bad-sender";
+    json["sender_name"] = "BadSender";
+    json["is_directory"] = false;
+    json["root_name"] = "test.txt";
+    json["total_files"] = 0;
+    json["total_bytes"] = 0;
+    json["protocol_version"] = static_cast<int>(99 << 8);  // 主版本 99
+    json["files"] = QJsonArray();
+
+    QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+    socket.write(frame);
+    socket.flush();
+
+    // 等待一小段时间，验证没有收到请求（被版本拒绝）
+    QTest::qWait(500);
+    QVERIFY(!rejected);
+
+    // 验证连接被关闭（接收端断开）
+    if (socket.state() != QAbstractSocket::UnconnectedState) {
+        socket.waitForDisconnected(2000);
+    }
+    QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+}
+
+void TestFileTransfer::testMalformedTransferRequest()
+{
+    // 发送畸形 JSON 到接收端，应被拒绝且不崩溃
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool rejected = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&rejected](FileReceiverWorker *, const QString &, const QString &,
+                        const QString &, qint64, int, qint64) {
+        rejected = true;
+    });
+
+    // 测试 1：发送无效 JSON
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QByteArray badJson = "{invalid json!!!";
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, badJson);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 2：发送缺少必需字段的 JSON
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject json;
+        json["session_id"] = "test-missing";
+        // 缺少 sender_device_id, sender_name, total_files, files 等
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 3：发送 total_files 与 files 数组不一致
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject json;
+        json["session_id"] = "test-mismatch-count";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 2;  // 声称 2 个文件
+        json["total_bytes"] = 0;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray();  // 实际 0 个
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 验证从未收到请求
+    QVERIFY(!rejected);
+}
+
+void TestFileTransfer::testInvalidFilePath()
+{
+    // 发送包含危险路径的 TransferReq，应被拒绝
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool rejected = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&rejected](FileReceiverWorker *, const QString &, const QString &,
+                        const QString &, qint64, int, qint64) {
+        rejected = true;
+    });
+
+    // 测试 1：../ 路径
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject fileObj;
+        fileObj["file_index"] = 0;
+        fileObj["relative_path"] = "../etc/passwd";
+        fileObj["size_bytes"] = 100;
+        fileObj["sha256"] = "abc";
+
+        QJsonObject json;
+        json["session_id"] = "test-bad-path";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 1;
+        json["total_bytes"] = 100;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray{fileObj};
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 2：绝对路径
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject fileObj;
+        fileObj["file_index"] = 0;
+        fileObj["relative_path"] = "/etc/passwd";
+        fileObj["size_bytes"] = 100;
+        fileObj["sha256"] = "abc";
+
+        QJsonObject json;
+        json["session_id"] = "test-abs-path";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 1;
+        json["total_bytes"] = 100;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray{fileObj};
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 3：负数大小
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject fileObj;
+        fileObj["file_index"] = 0;
+        fileObj["relative_path"] = "test.txt";
+        fileObj["size_bytes"] = -1;
+        fileObj["sha256"] = "abc";
+
+        QJsonObject json;
+        json["session_id"] = "test-neg-size";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 1;
+        json["total_bytes"] = -1;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray{fileObj};
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 验证从未收到请求
+    QVERIFY(!rejected);
 }
 
 QTEST_MAIN(TestFileTransfer)
