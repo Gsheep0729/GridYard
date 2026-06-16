@@ -5,7 +5,7 @@
 
 qt_add_executable(appGridYard WIN32)
 
-set_source_files_properties(utils/FormatUtils.js PROPERTIES
+set_source_files_properties(utils/FormatUtils.js utils/Style.js PROPERTIES
     QT_QML_SKIP_QMLDIR_ENTRY TRUE
 )
 
@@ -41,6 +41,7 @@ qt_add_qml_module(appGridYard
         ui/DeviceSessionView.qml
         ui/FileTypeIcon.qml
         utils/FormatUtils.js
+        utils/Style.js
 
     RESOURCES
         icons/folder.svg
