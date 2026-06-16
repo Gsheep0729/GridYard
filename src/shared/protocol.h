@@ -1,7 +1,7 @@
 /**
 * @file    protocol.h
-* @version 4.13.0
-* @date    2026-06-15
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   GridYard 应用层通信协议（TLV 帧 + Type 码）
 *
@@ -11,6 +11,10 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 添加按 Type 分级的 Payload 上限（控制帧 1MB，DataChunk 256MB）
+* * 添加协议版本主/次版本号常量和提取函数
+* * 添加 maxPayloadForType() 函数
 * [v4.13.0] GY   2026-06-15
 * * 添加协议版本常量 kProtocolVersion
 * * 添加最大帧载荷长度常量 kMaxPayloadBytes（256MB）
@@ -33,8 +37,19 @@ inline constexpr quint32 kHeaderBytes = 8;
 // 最大帧载荷长度（256MB，覆盖 8MB chunk + JSON 元数据）
 inline constexpr quint32 kMaxPayloadBytes = 256 * 1024 * 1024;
 
+// 按 Type 分级的 Payload 上限（控制帧不应允许 256MB）
+inline constexpr quint32 kMaxControlPayloadBytes = 1 * 1024 * 1024;   // 1MB：控制帧上限
+inline constexpr quint32 kMaxDataPayloadBytes     = 256 * 1024 * 1024; // 256MB：数据帧上限
+
 // 协议版本（用于 Hello 帧和传输协商）
-inline constexpr quint16 kProtocolVersion = 1;
+// 高 8 位为主版本号，低 8 位为次版本号
+inline constexpr quint16 kProtocolVersion = 0x0100;  // v1.0
+inline constexpr quint8  kProtocolMajorVersion = 1;   // 主版本号
+inline constexpr quint8  kProtocolMinorVersion = 0;   // 次版本号
+
+// 从完整版本号提取主/次版本号
+inline constexpr quint8 majorVersion(quint16 version) { return static_cast<quint8>(version >> 8); }
+inline constexpr quint8 minorVersion(quint16 version) { return static_cast<quint8>(version & 0xFF); }
 
 // 默认网络端口
 inline constexpr quint16 kDefaultDiscoveryPort = 45678;   // UDP 设备发现
@@ -48,6 +63,13 @@ inline constexpr quint32 kTypeDataChunk    = 0x0201;   // TCP：文件数据分�
 inline constexpr quint32 kTypeChunkAck     = 0x0301;   // TCP：单文件完成确认与校验
 inline constexpr quint32 kTypeTransferDone = 0x0302;   // TCP：全部文件发送完毕
 inline constexpr quint32 kTypeCancel       = 0x0401;   // TCP：取消本次传输
+
+// 获取指定 Type 的最大 Payload 长度
+inline constexpr quint32 maxPayloadForType(quint32 type)
+{
+    // 只有 kTypeDataChunk 允许大 payload，其他帧限制为 1MB
+    return (type == kTypeDataChunk) ? kMaxDataPayloadBytes : kMaxControlPayloadBytes;
+}
 
 // ---- 错误码 ---------------------------------------------------------------
 enum class ErrorCode : quint16 {

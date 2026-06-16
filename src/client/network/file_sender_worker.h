@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.h
-* @version 4.12.1
-* @date    2026-06-14
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
@@ -12,6 +12,8 @@
 * 4. 以 8MB 分块发送文件数据
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * transferFinished 信号添加 ErrorCode 参数
 * [v4.12.1] FengChunlin   2026-06-14
 * * 修复多文件重复读取并为大型文件发送增加背压
 * [v4.11.0] FengChunlin   2026-06-13
@@ -33,6 +35,7 @@
 #pragma once
 
 #include "dir_serializer.h"
+#include "protocol.h"
 
 #include <QFile>
 #include <QObject>
@@ -68,7 +71,7 @@ signals:
     // 传输进度更新
     void progressChanged(qint64 bytesSent, qint64 totalBytes);
     // 传输完成
-    void transferFinished(bool success, const QString &errorMsg);
+    void transferFinished(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
     // 请求被接受
     void requestAccepted();
     // 请求被拒绝

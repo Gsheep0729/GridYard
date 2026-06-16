@@ -1,7 +1,7 @@
 /**
 * @file    frame_codec.h
-* @version 4.13.0
-* @date    2026-06-15
+* @version 4.15.0
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   TLV 帧编解码器（含粘包/半包状态机）
 *
@@ -11,6 +11,9 @@
 * TCP 收发链路所有模块统一使用本类，禁止自行拼字节。
 *
 * Change Log:
+* [v4.15.0] GY   2026-06-17
+* * 按 Type 分级检查 Payload 大小（控制帧 1MB，DataChunk 256MB）
+* * errorOccurred 信号添加 ErrorCode 参数
 * [v4.13.0] GY   2026-06-15
 * * 添加 errorOccurred 信号，帧长超限时发射
 * [v0.1.0] GY   2026-06-02
@@ -20,6 +23,8 @@
 */
 
 #pragma once
+
+#include "protocol.h"
 
 #include <QByteArray>
 #include <QObject>
@@ -44,7 +49,7 @@ signals:
     // 一个完整 TLV 帧就绪：type 是帧头 Type 字段，payload 是载荷
     void frameReady(quint32 type, const QByteArray &payload);
     // 协议错误（帧长超限、格式错误等）
-    void errorOccurred(const QString &errorMsg);
+    void errorOccurred(gy::protocol::ErrorCode errorCode, const QString &errorMsg);
 
 private:
     // 状态机状态
