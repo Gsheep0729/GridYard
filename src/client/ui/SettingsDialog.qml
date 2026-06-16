@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 4.15.2
+ * @version 4.16.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v4.16.0] DuRuoxian   2026-06-18
+ * * 使用 Style.js 统一样式常量
  * [v4.15.2] DuRuoxian   2026-06-17
  * * 优化设置弹窗页眉、分组卡片和底部保存状态
  * [v4.12.0] DuRuoxian   2026-06-14
@@ -26,6 +28,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
+import "../utils/Style.js" as Style
 
 Dialog {
     id: settingsDialog
@@ -51,7 +54,7 @@ Dialog {
                                     || _tempReceivePath !== ConfigManager.receivePath
                                     || _tempAutoAcceptFiles !== ConfigManager.autoAcceptFiles
                                     || _tempTcpPort !== ConfigManager.tcpPort
-    readonly property int kColorDuration: 160
+    readonly property int kColorDuration: Style.Motion.base
     readonly property int kEnterDuration: 200
 
     enter: Transition {
@@ -73,33 +76,33 @@ Dialog {
     }
 
     background: Rectangle {
-        color: "#F5F7FA"
-        radius: 10
-        border.color: "#D8DEE6"
+        color: Style.Color.pageBg
+        radius: Style.Radius.md
+        border.color: Style.Color.border
     }
 
     header: Rectangle {
         implicitHeight: 100
-        color: "#FFFFFF"
-        radius: 10
+        color: Style.Color.surface
+        radius: Style.Radius.md
 
         RowLayout {
             anchors.fill: parent
             anchors.margins: 24
-            spacing: 16
+            spacing: Style.Space.lg
 
             Rectangle {
                 Layout.preferredWidth: 56
                 Layout.preferredHeight: 56
                 radius: 28
-                color: "#3B82F6"
+                color: Style.Color.primary
 
                 Label {
                     anchors.centerIn: parent
                     text: settingsDialog._tempDeviceName.trim().length > 0
                           ? settingsDialog._tempDeviceName.trim().charAt(0).toUpperCase()
                           : "?"
-                    color: "#FFFFFF"
+                    color: Style.Color.surface
                     font.pixelSize: 24
                     font.bold: true
                 }
@@ -107,18 +110,18 @@ Dialog {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 4
+                spacing: Style.Space.xs
 
                 Label {
                     text: qsTr("偏好设置")
                     font.pixelSize: 20
                     font.bold: true
-                    color: "#111827"
+                    color: Style.Color.textMain
                 }
 
                 Label {
                     text: qsTr("%1 · %2").arg(ConfigManager.localIp).arg(ConfigManager.deviceId)
-                    color: "#6B7280"
+                    color: Style.Color.textMuted
                     font.pixelSize: 12
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
@@ -130,7 +133,7 @@ Dialog {
             anchors.bottom: parent.bottom
             width: parent.width
             height: 1
-            color: "#E5E7EB"
+            color: Style.Color.border
         }
     }
 
@@ -141,36 +144,36 @@ Dialog {
 
         ColumnLayout {
             width: scrollView.availableWidth
-            spacing: 16
-            Layout.margins: 16
+            spacing: Style.Space.lg
+            Layout.margins: Style.Space.lg
 
-            Item { Layout.preferredHeight: 8 }
+            Item { Layout.preferredHeight: Style.Space.sm }
 
             // 设备信息卡片
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: deviceSection.implicitHeight + 32
-                color: "#FFFFFF"
-                radius: 12
-                border.color: "#E5E7EB"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
                 border.width: 1
 
                 ColumnLayout {
                     id: deviceSection
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.md
 
                     Label {
                         text: qsTr("设备身份")
                         font.pixelSize: 15
                         font.bold: true
-                        color: "#111827"
+                        color: Style.Color.textMain
                     }
 
                     Label {
                         text: qsTr("设置一个易于识别的名称，以便在局域网中发现。")
-                        color: "#6B7280"
+                        color: Style.Color.textMuted
                         font.pixelSize: 13
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
@@ -188,7 +191,7 @@ Dialog {
                     Label {
                         visible: settingsDialog._tempDeviceName.trim().length === 0
                         text: qsTr("设备名称不能为空")
-                        color: "#EF4444"
+                        color: Style.Color.error
                         font.pixelSize: 11
                         font.bold: true
                     }
@@ -199,33 +202,33 @@ Dialog {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: receiveSection.implicitHeight + 32
-                color: "#FFFFFF"
-                radius: 12
-                border.color: "#E5E7EB"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
                 border.width: 1
 
                 ColumnLayout {
                     id: receiveSection
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.md
 
                     Label {
                         text: qsTr("存储与接收")
                         font.pixelSize: 15
                         font.bold: true
-                        color: "#111827"
+                        color: Style.Color.textMain
                     }
 
                     Label {
                         text: qsTr("配置文件保存路径及自动化接收行为。")
-                        color: "#6B7280"
+                        color: Style.Color.textMuted
                         font.pixelSize: 13
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: Style.Space.sm
 
                         TextField {
                             id: receivePathField
@@ -245,28 +248,28 @@ Dialog {
                     Rectangle {
                         Layout.fillWidth: true
                         height: 1
-                        color: "#F3F4F6"
+                        color: Style.Color.borderSoft
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 16
+                        spacing: Style.Space.lg
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 4
+                            spacing: Style.Space.xs
 
                             Label {
                                 text: qsTr("自动接受文件")
                                 font.bold: true
                                 font.pixelSize: 14
-                                color: "#374151"
+                                color: Style.Color.textSecondary
                             }
 
                             Label {
                                 Layout.fillWidth: true
                                 text: qsTr("跳过确认弹窗，直接保存文件。")
-                                color: "#9CA3AF"
+                                color: Style.Color.textWeak
                                 font.pixelSize: 12
                                 wrapMode: Text.Wrap
                             }
@@ -284,31 +287,31 @@ Dialog {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: networkSection.implicitHeight + 32
-                color: "#FFFFFF"
-                radius: 12
-                border.color: "#E5E7EB"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
                 border.width: 1
 
                 RowLayout {
                     id: networkSection
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Style.Space.lg
                     spacing: 24
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 4
+                        spacing: Style.Space.xs
 
                         Label {
                             text: qsTr("传输服务")
                             font.pixelSize: 15
                             font.bold: true
-                            color: "#111827"
+                            color: Style.Color.textMain
                         }
 
                         Label {
                             text: qsTr("TCP 端口用于局域网设备间的数据通信。")
-                            color: "#6B7280"
+                            color: Style.Color.textMuted
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
@@ -326,33 +329,33 @@ Dialog {
                 }
             }
 
-            Item { Layout.preferredHeight: 8 }
+            Item { Layout.preferredHeight: Style.Space.sm }
         }
     }
 
     footer: Rectangle {
         implicitHeight: 72
-        color: "#FFFFFF"
-        radius: 10
+        color: Style.Color.surface
+        radius: Style.Radius.md
 
         Rectangle {
             anchors.top: parent.top
             width: parent.width
             height: 1
-            color: "#E5E7EB"
+            color: Style.Color.border
         }
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 20
-            spacing: 12
+            anchors.margins: Style.Space.xl
+            spacing: Style.Space.md
 
             Label {
                 Layout.fillWidth: true
                 text: settingsDialog._isDirty
                       ? qsTr("修改尚未应用")
                       : qsTr("设置已是最新")
-                color: settingsDialog._isDirty ? "#F59E0B" : "#9CA3AF"
+                color: settingsDialog._isDirty ? Style.Color.warning : Style.Color.textWeak
                 font.pixelSize: 13
                 font.bold: settingsDialog._isDirty
 

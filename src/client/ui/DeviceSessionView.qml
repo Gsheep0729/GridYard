@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 4.15.2
+ * @version 4.16.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   当前设备的文件传输会话页
@@ -8,6 +8,8 @@
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
  *
  * Change Log:
+ * [v4.16.0] DuRuoxian   2026-06-18
+ * * 使用 Style.js 统一样式常量，为 Stage 5 会话页铺路
  * [v4.15.2] DuRuoxian   2026-06-17
  * * 优化会话页头部、传输空状态和底部发送栏视觉层级
  * [v4.14.0] GY   2026-06-15
@@ -30,6 +32,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
+import "../utils/Style.js" as Style
 
 Frame {
     id: deviceSessionView
@@ -87,29 +90,29 @@ Frame {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 72
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#E5E7EB"
+            color: Style.Color.surface
+            radius: Style.Radius.sm
+            border.color: Style.Color.border
             border.width: 1
 
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 14
-                spacing: 12
+                spacing: Style.Space.md
 
                 Rectangle {
                     Layout.alignment: Qt.AlignVCenter
                     Layout.preferredWidth: 42
                     Layout.preferredHeight: 42
                     radius: 21
-                    color: deviceSessionView.isOnline ? "#3B82F6" : "#9CA3AF"
+                    color: deviceSessionView.isOnline ? Style.Color.primary : Style.Color.textWeak
 
                     Label {
                         anchors.centerIn: parent
                         text: deviceSessionView.deviceName.length > 0
                               ? deviceSessionView.deviceName.charAt(0).toUpperCase()
                               : "?"
-                        color: "#FFFFFF"
+                        color: Style.Color.surface
                         font.pixelSize: 18
                         font.bold: true
                     }
@@ -123,21 +126,21 @@ Frame {
                         text: deviceSessionView.deviceName
                         font.pixelSize: 16
                         font.bold: true
-                        color: "#111827"
+                        color: Style.Color.textMain
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
 
                     Label {
                         text: deviceSessionView.ipAddress
-                        color: "#6B7280"
+                        color: Style.Color.textMuted
                         font.pixelSize: 12
                     }
                 }
 
                 Label {
                     text: deviceSessionView.isOnline ? qsTr("在线") : qsTr("离线")
-                    color: deviceSessionView.isOnline ? "#10B981" : "#9CA3AF"
+                    color: deviceSessionView.isOnline ? Style.Color.success : Style.Color.textWeak
                     font.pixelSize: 12
                     font.bold: true
                 }
@@ -221,11 +224,11 @@ Frame {
             ColumnLayout {
                 anchors.centerIn: parent
                 visible: deviceSessionView.filteredCount === 0
-                spacing: 12
+                spacing: Style.Space.md
 
                 Label {
                     text: qsTr("暂无传输")
-                    color: "#9CA3AF"
+                    color: Style.Color.textWeak
                     font.pixelSize: 32
                     Layout.alignment: Qt.AlignHCenter
                     opacity: 0.3
@@ -233,7 +236,7 @@ Frame {
 
                 Label {
                     text: qsTr("还没有传输记录\n从下方选择文件，或直接拖放到这里")
-                    color: "#6B7280"
+                    color: Style.Color.textMuted
                     horizontalAlignment: Text.AlignHCenter
                     lineHeight: 1.4
                     font.pixelSize: 13
@@ -263,23 +266,23 @@ Frame {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 72
-            Layout.topMargin: 8
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#E5E7EB"
+            Layout.topMargin: Style.Space.sm
+            color: Style.Color.surface
+            radius: Style.Radius.sm
+            border.color: Style.Color.border
             border.width: 1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 12
-                spacing: 10
+                anchors.margins: Style.Space.md
+                spacing: Style.Space.md
 
                 Label {
                     Layout.fillWidth: true
                     text: deviceSessionView.isOnline
                           ? qsTr("选择文件或文件夹发送，也可以拖放到记录区")
                           : qsTr("设备当前离线，暂时无法发送")
-                    color: "#6B7280"
+                    color: Style.Color.textMuted
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
                 }

@@ -1,6 +1,6 @@
 /**
  * @file    AcceptDialog.qml
- * @version 4.15.2
+ * @version 4.16.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   接收确认弹窗
@@ -9,6 +9,8 @@
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
+ * [v4.16.0] DuRuoxian   2026-06-18
+ * * 使用 Style.js 统一样式常量
  * [v4.15.2] DuRuoxian   2026-06-17
  * * 重构接收确认弹窗视觉层级，突出文件信息和接受操作
  * [v4.13.2] DuRuoxian   2026-06-15
@@ -26,6 +28,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "../utils/FormatUtils.js" as FormatUtils
+import "../utils/Style.js" as Style
 
 Dialog {
     id: acceptDialog
@@ -46,7 +49,7 @@ Dialog {
     property var    fileList: []
 
     contentItem: ColumnLayout {
-        spacing: 16
+        spacing: Style.Space.lg
 
         // 发送方提示
         Label {
@@ -55,34 +58,34 @@ Dialog {
             font.bold: true
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#111827"
+            color: Style.Color.textMain
         }
 
         // 文件信息卡片
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: fileInfoLayout.implicitHeight + 24
-            color: "#F9FAFB"
-            radius: 8
-            border.color: "#E5E7EB"
+            color: Style.Color.surfaceSoft
+            radius: Style.Radius.sm
+            border.color: Style.Color.border
             border.width: 1
 
             ColumnLayout {
                 id: fileInfoLayout
                 anchors.fill: parent
-                anchors.margins: 12
-                spacing: 8
+                anchors.margins: Style.Space.md
+                spacing: Style.Space.sm
 
                 RowLayout {
                     Label {
                         text: acceptDialog.isDirectory ? qsTr("文件夹名：") : qsTr("文件名：")
                         font.bold: true
-                        color: "#4B5563"
+                        color: Style.Color.textSecondary
                         font.pixelSize: 13
                     }
                     Label {
                         text: acceptDialog.fileName
-                        color: "#111827"
+                        color: Style.Color.textMain
                         font.pixelSize: 13
                         font.bold: true
                         elide: Text.ElideMiddle
@@ -95,12 +98,12 @@ Dialog {
                     Label {
                         text: qsTr("大小：")
                         font.bold: true
-                        color: "#4B5563"
+                        color: Style.Color.textSecondary
                         font.pixelSize: 13
                     }
                     Label {
                         text: FormatUtils.formatBytes(acceptDialog.fileSize)
-                        color: "#111827"
+                        color: Style.Color.textMain
                         font.pixelSize: 13
                     }
                 }
@@ -110,12 +113,12 @@ Dialog {
                     Label {
                         text: qsTr("总文件数：")
                         font.bold: true
-                        color: "#4B5563"
+                        color: Style.Color.textSecondary
                         font.pixelSize: 13
                     }
                     Label {
                         text: acceptDialog.totalFiles
-                        color: "#111827"
+                        color: Style.Color.textMain
                         font.pixelSize: 13
                     }
                 }
@@ -125,12 +128,12 @@ Dialog {
                     Label {
                         text: qsTr("总大小：")
                         font.bold: true
-                        color: "#4B5563"
+                        color: Style.Color.textSecondary
                         font.pixelSize: 13
                     }
                     Label {
                         text: FormatUtils.formatBytes(acceptDialog.totalBytes)
-                        color: "#111827"
+                        color: Style.Color.textMain
                         font.pixelSize: 13
                     }
                 }
@@ -139,9 +142,9 @@ Dialog {
                     visible: acceptDialog.isDirectory
                     text: qsTr("文件夹内容：")
                     font.bold: true
-                    color: "#4B5563"
+                    color: Style.Color.textSecondary
                     font.pixelSize: 13
-                    Layout.topMargin: 4
+                    Layout.topMargin: Style.Space.xs
                 }
 
                 ListView {
@@ -150,14 +153,14 @@ Dialog {
                                             ? Math.min(contentHeight, 180) : 0
                     visible: acceptDialog.isDirectory
                     clip: true
-                    spacing: 4
+                    spacing: Style.Space.xs
                     model: acceptDialog.fileList
 
                     delegate: RowLayout {
                         id: previewRow
                         required property string modelData
                         width: ListView.view.width
-                        spacing: 6
+                        spacing: Style.Space.xs
 
                         FileTypeIcon {
                             fileName: previewRow.modelData
@@ -170,7 +173,7 @@ Dialog {
                             text: previewRow.modelData
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true
-                            color: "#6B7280"
+                            color: Style.Color.textMuted
                             font.pixelSize: 12
                         }
                     }
@@ -184,7 +187,7 @@ Dialog {
                   ? qsTr("是否接受此文件夹？")
                   : qsTr("是否接受此文件？")
             font.pixelSize: 14
-            color: "#374151"
+            color: Style.Color.textSecondary
             Layout.alignment: Qt.AlignHCenter
         }
     }

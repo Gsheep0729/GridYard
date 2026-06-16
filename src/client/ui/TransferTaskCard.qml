@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.15.2
+ * @version 4.16.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -8,6 +8,8 @@
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v4.16.0] DuRuoxian   2026-06-18
+ * * 使用 Style.js 统一样式常量，为 Stage 5 会话页铺路
  * [v4.15.2] DuRuoxian   2026-06-17
  * * 优化任务卡片配色、方向标识和长文件名展示
  * [v4.14.2] GY   2026-06-16
@@ -33,6 +35,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "../utils/FormatUtils.js" as FormatUtils
+import "../utils/Style.js" as Style
 
 Frame {
     id: taskCard
@@ -55,15 +58,15 @@ Frame {
     signal expansionRequested(bool expanded)
 
     // 状态颜色
-    readonly property color kRunningColor: "#3B82F6"
-    readonly property color kSuccessColor: "#10B981"
-    readonly property color kFailedColor:  "#EF4444"
-    readonly property color kWaitingColor: "#F59E0B"
-    readonly property color kFileBgColor:   "#FFFFFF"
-    readonly property color kFolderBgColor: "#F8FAFC"
-    readonly property color kFailedBgColor: "#FEF2F2"
-    readonly property int kColorDuration: 160
-    readonly property int kProgressDuration: 180
+    readonly property color kRunningColor: Style.Color.primary
+    readonly property color kSuccessColor: Style.Color.success
+    readonly property color kFailedColor:  Style.Color.error
+    readonly property color kWaitingColor: Style.Color.warning
+    readonly property color kFileBgColor:   Style.Color.surface
+    readonly property color kFolderBgColor: Style.Color.surfaceSoft
+    readonly property color kFailedBgColor: Style.Color.errorSoft
+    readonly property int kColorDuration: Style.Motion.base
+    readonly property int kProgressDuration: Style.Motion.slow
     readonly property bool canShowFolderPreview: isDirectory && fileList.length > 0
     readonly property bool isFinished: status === "completed" || status === "failed"
                                        || status === "rejected" || status === "cancelled"
@@ -108,9 +111,9 @@ Frame {
     }
 
     background: Rectangle {
-        radius: 8
+        radius: Style.Radius.sm
         color: taskCard.backgroundColor()
-        border.color: taskCard.isFinished ? "#E5E7EB" : taskCard.statusColor()
+        border.color: taskCard.isFinished ? Style.Color.border : taskCard.statusColor()
         border.width: 1
 
         Behavior on border.color {
@@ -124,18 +127,18 @@ Frame {
     ColumnLayout {
         id: contentColumn
         anchors.fill: parent
-        anchors.margins: 10
-        spacing: 6
+        anchors.margins: Style.Space.md
+        spacing: Style.Space.xs
 
         // 第一行：方向标识 + 文件名 + 状态
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Style.Space.sm
 
             // 方向标识（精简）
             Label {
                 text: taskCard.taskType === "send" ? "↑" : "↓"
-                color: taskCard.taskType === "send" ? "#3B82F6" : "#8B5CF6"
+                color: taskCard.taskType === "send" ? Style.Color.primary : "#8B5CF6"
                 font.pixelSize: 16
                 font.bold: true
                 Layout.alignment: Qt.AlignVCenter
@@ -153,7 +156,7 @@ Frame {
                 text: taskCard.taskName
                 font.pixelSize: 14
                 font.bold: true
-                color: "#111827"
+                color: Style.Color.textMain
                 elide: Text.ElideMiddle
                 Layout.fillWidth: true
             }
@@ -173,7 +176,7 @@ Frame {
             Rectangle {
                 Layout.preferredWidth: statusLabel.implicitWidth + 12
                 Layout.preferredHeight: statusLabel.implicitHeight + 4
-                radius: 4
+                radius: Style.Radius.xs
                 color: taskCard.statusColor()
 
                 Behavior on color {
@@ -188,7 +191,7 @@ Frame {
                     anchors.centerIn: parent
                     text: taskCard.statusText()
                     font.pixelSize: 11
-                    color: "#FFFFFF"
+                    color: Style.Color.surface
                     font.bold: true
                 }
             }
@@ -197,14 +200,14 @@ Frame {
         // 第二行：时间 + 文件大小
         RowLayout {
             Layout.fillWidth: true
-            spacing: 12
+            spacing: Style.Space.md
 
             Label {
                 text: taskCard.taskType === "send"
                       ? qsTr("发送给 %1").arg(taskCard.peerDeviceName || qsTr("未知设备"))
                       : qsTr("来自 %1").arg(taskCard.peerDeviceName || qsTr("未知设备"))
                 font.pixelSize: 12
-                color: "#6B7280"
+                color: Style.Color.textMuted
                 elide: Text.ElideRight
             }
 
@@ -213,14 +216,14 @@ Frame {
             Label {
                 text: FormatUtils.formatTime(taskCard.createdAt)
                 font.pixelSize: 12
-                color: "#9CA3AF"
+                color: Style.Color.textWeak
                 visible: taskCard.createdAt.length > 0
             }
 
             Label {
                 text: FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
-                color: "#6B7280"
+                color: Style.Color.textMuted
                 visible: taskCard.totalBytes > 0
             }
         }
@@ -249,7 +252,7 @@ Frame {
                 text: FormatUtils.formatBytes(taskCard.bytesTransferred)
                       + " / " + FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
-                color: "#666"
+                color: Style.Color.textSecondary
                 visible: taskCard.status === "transferring"
             }
 
@@ -311,7 +314,7 @@ Frame {
                             contentItem: Label {
                                 text: deleteLocalFileMenuItem.text
                                 font.pixelSize: 12
-                                color: deleteLocalFileMenuItem.enabled ? "#1F2937" : "#9CA3AF"
+                                color: deleteLocalFileMenuItem.enabled ? Style.Color.textMain : Style.Color.textWeak
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -325,21 +328,21 @@ Frame {
             Layout.fillWidth: true
             implicitHeight: 30
             visible: taskCard.canShowFolderPreview && taskCard.isFinished
-            color: taskCard.expanded ? "#FFFFFF" : "transparent"
-            radius: 6
-            border.color: taskCard.expanded ? "#D8DEE8" : "#00000000"
+            color: taskCard.expanded ? Style.Color.surface : "transparent"
+            radius: Style.Radius.sm
+            border.color: taskCard.expanded ? Style.Color.border : "#00000000"
             border.width: 1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 6
+                anchors.leftMargin: Style.Space.sm
+                anchors.rightMargin: Style.Space.sm
+                spacing: Style.Space.xs
 
                 Label {
                     text: taskCard.expanded ? "⌄" : "›"
                     font.pixelSize: 14
-                    color: "#5F6B7A"
+                    color: Style.Color.textSecondary
                     Layout.preferredWidth: 12
                     horizontalAlignment: Text.AlignHCenter
                 }
@@ -348,13 +351,13 @@ Frame {
                     text: qsTr("文件夹内容")
                     font.pixelSize: 12
                     font.bold: true
-                    color: "#374151"
+                    color: Style.Color.textSecondary
                 }
 
                 Label {
                     text: qsTr("%1 项").arg(taskCard.fileList.length)
                     font.pixelSize: 11
-                    color: "#6B7280"
+                    color: Style.Color.textMuted
                 }
 
                 Item { Layout.fillWidth: true }
@@ -390,7 +393,7 @@ Frame {
                 Label {
                     text: fileRow.modelData
                     font.pixelSize: 11
-                    color: "#666666"
+                    color: Style.Color.textMuted
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
                 }
@@ -408,9 +411,9 @@ Frame {
         standardButtons: Dialog.No
 
         background: Rectangle {
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#D1D5DB"
+            color: Style.Color.surface
+            radius: Style.Radius.sm
+            border.color: Style.Color.border
             border.width: 1
         }
 
@@ -418,7 +421,7 @@ Frame {
             text: deleteConfirmDialog.title
             font.pixelSize: 14
             font.bold: true
-            color: "#111827"
+            color: Style.Color.textMain
             padding: 12
             bottomPadding: 0
         }
@@ -435,21 +438,21 @@ Frame {
                 wrapMode: Text.WordWrap
                 font.pixelSize: 12
                 lineHeight: 1.25
-                color: "#374151"
+                color: Style.Color.textSecondary
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: fileInfoRow.implicitHeight + 16
-                color: "#F9FAFB"
-                radius: 6
-                border.color: "#F3F4F6"
+                color: Style.Color.surfaceSoft
+                radius: Style.Radius.sm
+                border.color: Style.Color.borderSoft
 
                 RowLayout {
                     id: fileInfoRow
                     anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 8
+                    anchors.margins: Style.Space.md
+                    spacing: Style.Space.sm
 
                     FileTypeIcon {
                         fileName: taskCard.taskName
@@ -462,7 +465,7 @@ Frame {
                         text: taskCard.taskName
                         font.pixelSize: 12
                         font.bold: true
-                        color: "#1F2937"
+                        color: Style.Color.textMain
                         elide: Text.ElideMiddle
                         Layout.fillWidth: true
                     }
@@ -471,13 +474,13 @@ Frame {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: Style.Space.sm
 
                 Label {
                     text: "!"
                     font.pixelSize: 11
                     font.bold: true
-                    color: "#EF4444"
+                    color: Style.Color.error
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     Layout.preferredWidth: 16
@@ -488,7 +491,7 @@ Frame {
                     text: qsTr("此操作将永久删除本地文件，无法撤销。")
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
-                    color: "#EF4444"
+                    color: Style.Color.error
                     font.bold: true
                 }
             }
@@ -515,7 +518,7 @@ Frame {
                 contentItem: Label {
                     text: confirmDeleteButton.text
                     font: confirmDeleteButton.font
-                    color: "white"
+                    color: Style.Color.surface
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -523,8 +526,8 @@ Frame {
                 background: Rectangle {
                     implicitWidth: 76
                     implicitHeight: 28
-                    color: confirmDeleteButton.down ? "#B91C1C" : (confirmDeleteButton.hovered ? "#DC2626" : "#EF4444")
-                    radius: 4
+                    color: confirmDeleteButton.down ? "#B91C1C" : (confirmDeleteButton.hovered ? "#DC2626" : Style.Color.error)
+                    radius: Style.Radius.xs
                 }
             }
         }
