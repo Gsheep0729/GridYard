@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.14.0
+ * @version 4.14.1
  * @date    2026-06-15
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -278,29 +278,32 @@ Frame {
 
             Item { Layout.fillWidth: true }
 
-            Button {
-                text: qsTr("移除记录")
-                flat: true
-                visible: taskCard.status !== "transferring"
-                onClicked: AppController.transfer.removeSession(taskCard.sessionId)
-            }
+            RowLayout {
+                spacing: 0
 
-            ToolButton {
-                text: "▼"
-                flat: true
-                visible: taskCard.status !== "transferring"
-                enabled: taskCard.canDeleteLocalFile
-                ToolTip.visible: hovered
-                ToolTip.text: enabled ? qsTr("更多移除选项") : qsTr("发送记录或未完成接收记录不能删除本地文件")
-                onClicked: removeMenu.open()
+                Button {
+                    text: qsTr("移除记录")
+                    flat: true
+                    onClicked: AppController.transfer.removeSession(taskCard.sessionId)
+                }
 
-                Menu {
-                    id: removeMenu
+                ToolButton {
+                    icon.name: "view-more-symbolic"
+                    display: AbstractButton.IconOnly
+                    padding: 4
+                    ToolTip.visible: hovered
+                    ToolTip.text: enabled ? qsTr("更多移除选项") : qsTr("发送记录或未完成接收记录不能删除本地文件")
+                    onClicked: removeMenu.open()
 
-                    MenuItem {
-                        text: qsTr("移除记录并删除本地文件")
-                        enabled: taskCard.canDeleteLocalFile
-                        onTriggered: deleteConfirmDialog.open()
+                    Menu {
+                        id: removeMenu
+                        y: parent.height
+
+                        MenuItem {
+                            text: qsTr("移除记录并删除本地文件")
+                            enabled: taskCard.canDeleteLocalFile
+                            onTriggered: deleteConfirmDialog.open()
+                        }
                     }
                 }
             }
@@ -341,17 +344,126 @@ Frame {
 
     Dialog {
         id: deleteConfirmDialog
-        title: qsTr("删除本地文件")
+        title: qsTr("删除确认")
         modal: true
         anchors.centerIn: Overlay.overlay
-        standardButtons: Dialog.Yes | Dialog.No
+        width: Math.min(440, parent.width - 24)
+        padding: 20
+        standardButtons: Dialog.No
 
-        // 本地文件删除不可恢复，执行前保留一次明确确认
-        Label {
-            text: taskCard.isDirectory
-                  ? qsTr("确定移除记录并删除已接收的文件夹“%1”吗？").arg(taskCard.taskName)
-                  : qsTr("确定移除记录并删除已接收的文件“%1”吗？").arg(taskCard.taskName)
-            wrapMode: Text.WordWrap
+        background: Rectangle {
+            color: "#FFFFFF"
+            radius: 12
+            border.color: "#E5E7EB"
+            border.width: 1
+            layer.enabled: true
+        }
+
+        header: Label {
+            text: deleteConfirmDialog.title
+            font.pixelSize: 18
+            font.bold: true
+            color: "#111827"
+            padding: 20
+            bottomPadding: 0
+        }
+
+        ColumnLayout {
+            width: parent.width
+            spacing: 16
+
+            Label {
+                Layout.fillWidth: true
+                text: taskCard.isDirectory
+                      ? qsTr("确定移除该传输记录，并删除已接收的本地文件夹吗？")
+                      : qsTr("确定移除该传输记录，并删除已接收的本地文件吗？")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 14
+                lineHeight: 1.4
+                color: "#4B5563"
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: fileInfoRow.implicitHeight + 20
+                color: "#F9FAFB"
+                radius: 8
+                border.color: "#F3F4F6"
+
+                RowLayout {
+                    id: fileInfoRow
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 10
+
+                    FileTypeIcon {
+                        fileName: taskCard.taskName
+                        isDirectory: taskCard.isDirectory
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                    }
+
+                    Label {
+                        text: taskCard.taskName
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: "#1F2937"
+                        elide: Text.ElideMiddle
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Label {
+                    text: "⚠️"
+                    font.pixelSize: 14
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("此操作将永久删除本地文件，无法撤销。")
+                    font.pixelSize: 12
+                    color: "#EF4444"
+                    font.bold: true
+                }
+            }
+        }
+
+        footer: DialogButtonBox {
+            background: Rectangle { color: "transparent" }
+            alignment: Qt.AlignRight
+            topPadding: 0
+            bottomPadding: 20
+            rightPadding: 20
+
+            Button {
+                text: qsTr("取消")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                flat: true
+            }
+
+            Button {
+                id: confirmDeleteButton
+                text: qsTr("确认删除")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+
+                contentItem: Label {
+                    text: confirmDeleteButton.text
+                    font: confirmDeleteButton.font
+                    color: "white"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    implicitWidth: 100
+                    implicitHeight: 36
+                    color: confirmDeleteButton.down ? "#B91C1C" : (confirmDeleteButton.hovered ? "#DC2626" : "#EF4444")
+                    radius: 6
+                }
+            }
         }
 
         onAccepted: AppController.transfer.removeSessionAndDeleteFile(taskCard.sessionId)
