@@ -12,6 +12,10 @@
 * 4. 以 8MB 分块发送文件数据
 *
 * Change Log:
+* [v4.15.1] FengChunlin   2026-06-17
+* * 连接 FrameCodec::errorOccurred 信号，协议错误时清理并结束会话
+* * 进度节流 static 变量改为成员变量 _sendChunkCount
+* * TransferRsp/ChunkAck 响应优先读取 error_code 字段
 * [v4.15.0] GY   2026-06-17
 * * transferFinished 信号添加 ErrorCode 参数
 * [v4.12.1] FengChunlin   2026-06-14
@@ -126,4 +130,5 @@ private:
     QList<gy::FileItem> _fileList;
     int          _currentFileIndex = 0;
     qint64       _currentFileBytesSent = 0;
+    int          _sendChunkCount = 0;
 };

@@ -6,6 +6,11 @@
 * @brief   FileSenderWorker 实现
 *
 * Change Log:
+* [v4.15.1] FengChunlin   2026-06-17
+* * 连接 FrameCodec::errorOccurred，协议错误时 cleanup + disconnect + emit transferFinished
+* * sendNextChunk 进度节流 static 改为成员 _sendChunkCount，startTransfer 时重置
+* * kTypeTransferRsp 分支优先读 error_code，非默认值直接作为 errorCode 传递
+* * kTypeChunkAck 分支优先读 error_code，失败时按响应携带的错误码传递
 * [v4.15.0] GY   2026-06-17
 * * transferFinished 信号添加 ErrorCode 参数
 * [v4.12.1] FengChunlin   2026-06-14
@@ -58,6 +63,13 @@ FileSenderWorker::FileSenderWorker(QObject *parent)
             this,    &FileSenderWorker::onBytesWritten);
     connect(_codec,  &FrameCodec::frameReady,
             this,    &FileSenderWorker::onFrameReady);
+    connect(_codec,  &FrameCodec::errorOccurred,
+            this,    [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
+        qWarning() << "[FileSender] 协议错误:" << errorMsg;
+        cleanup();
+        _socket->disconnectFromHost();
+        emit transferFinished(false, errorCode, errorMsg);
+    });
 
     // 超时定时器
     _timeoutTimer->setSingleShot(true);
@@ -111,6 +123,7 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _bytesSent = 0;
     _currentFileIndex = 0;
     _currentFileBytesSent = 0;
+    _sendChunkCount = 0;
     _transferActive = false;
     _waitingForFileAck = false;
     _sendScheduled = false;
@@ -207,11 +220,13 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         QJsonObject json = doc.object();
 
         bool accepted = json["accepted"].toBool();
+        int errorCodeInt = json["error_code"].toInt(static_cast<int>(gy::protocol::ErrorCode::Success));
+        auto errorCode = static_cast<gy::protocol::ErrorCode>(errorCodeInt);
         QString reason = json["reason"].toString();
 
         qDebug() << "[FileSender] 收到传输响应:" << (accepted ? "接受" : "拒绝");
         if (!accepted) {
-            qDebug() << "[FileSender] 拒绝原因:" << reason;
+            qDebug() << "[FileSender] 拒绝原因:" << reason << "错误码:" << errorCodeInt;
         }
 
         if (accepted) {
@@ -228,7 +243,11 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         } else {
             cleanup();
             emit requestRejected(reason);
-            emit transferFinished(false, gy::protocol::ErrorCode::UserRejected, tr("请求被拒绝: %1").arg(reason));
+            // 若响应携带了非默认错误码则优先使用，否则按 UserRejected 处理
+            if (errorCode == gy::protocol::ErrorCode::Success) {
+                errorCode = gy::protocol::ErrorCode::UserRejected;
+            }
+            emit transferFinished(false, errorCode, tr("请求被拒绝: %1").arg(reason));
         }
         break;
     }
@@ -238,6 +257,9 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 
         bool verified = json["verified"].toBool();
         int fileIndex = json["file_index"].toInt();
+        int errorCodeInt = json["error_code"].toInt(static_cast<int>(gy::protocol::ErrorCode::Success));
+        auto errorCode = static_cast<gy::protocol::ErrorCode>(errorCodeInt);
+        QString errorMsg = json["error_msg"].toString();
 
         qDebug() << "[FileSender] 收到块确认，文件索引:" << fileIndex
                  << "校验结果:" << (verified ? "通过" : "失败");
@@ -249,10 +271,13 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         }
 
         if (!verified) {
-            QString errorMsg = json["error_msg"].toString();
             qWarning() << "[FileSender] 文件校验失败:" << errorMsg;
             cleanup();
-            emit transferFinished(false, gy::protocol::ErrorCode::Sha256Mismatch, tr("文件 %1 校验失败: %2")
+            // 优先使用响应携带的错误码
+            if (errorCode == gy::protocol::ErrorCode::Success) {
+                errorCode = gy::protocol::ErrorCode::Sha256Mismatch;
+            }
+            emit transferFinished(false, errorCode, tr("文件 %1 校验失败: %2")
                                           .arg(fileIndex).arg(errorMsg));
             return;
         }
@@ -382,8 +407,7 @@ void FileSenderWorker::sendNextChunk()
     _currentFileBytesSent += chunkData.size();
 
     // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
-    static int chunkCount = 0;
-    if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+    if (++_sendChunkCount % 4 == 0 || isLastChunk == 1) {
         const qint64 percent = _totalBytes > 0 ? (_bytesSent * 100 / _totalBytes) : 100;
         qDebug() << "[FileSender] 传输进度:" << _bytesSent << "/" << _totalBytes
                  << "(" << percent << "%)";

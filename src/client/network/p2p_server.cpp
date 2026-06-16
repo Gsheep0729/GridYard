@@ -6,6 +6,8 @@
 * @brief   P2pServer 实现
 *
 * Change Log:
+* [v4.15.1] FengChunlin   2026-06-17
+* * 删除 _threads.append 调用，修正析构注释
 * [v4.15.0] GY   2026-06-17
 * * 为每个连接创建独立的 QThread，实现接收侧后台化
 * * worker + socket 移到后台线程，写盘与 SHA-256 不阻塞 UI
@@ -40,15 +42,13 @@ P2pServer::~P2pServer()
         _server->close();
     }
 
-    // 注意：线程是 this 的子对象，Qt 会在 ~QObject() 中按逆序删除它们
-    // 但我们需要先停止线程，避免 "QThread: Destroyed while thread is still running" 错误
-    // 使用 children() 获取所有子对象，过滤出 QThread 并停止它们
+    // 遍历子对象，停止仍在运行的 QThread，避免析构时警告
     const auto kids = children();
     for (QObject *child : kids) {
         if (auto *thread = qobject_cast<QThread*>(child)) {
             if (thread->isRunning()) {
                 thread->quit();
-                thread->wait(1000);  // 最多等待 1 秒
+                thread->wait(1000);
             }
         }
     }
@@ -104,9 +104,6 @@ void P2pServer::onNewConnection()
         auto *thread = new QThread{this};
         auto *worker = new FileReceiverWorker{socket};
         worker->moveToThread(thread);
-
-        // 将线程添加到列表中，用于析构时清理
-        _threads.append(thread);
 
         qDebug() << "[P2pServer] 创建 FileReceiverWorker 处理连接（后台线程）";
 

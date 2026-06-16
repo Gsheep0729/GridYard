@@ -6,6 +6,12 @@
 * @brief   FileReceiverWorker 实现
 *
 * Change Log:
+* [v4.15.1] FengChunlin   2026-06-17
+* * 连接 FrameCodec::errorOccurred，协议错误时 cleanup + disconnect + emit transferFinished
+* * handleDataChunk 进度节流 static 改为成员 _receiveChunkCount，acceptTransfer 时重置
+* * sendTransferResponse/sendChunkAck 写入 error_code 字段，调用处传入具体 ErrorCode
+* * handleTransferRequest 加强 JSON 校验：解析错误、缺字段、类型错误、负数大小、
+*   total_files 不一致、total_bytes 不一致均拒绝并返回稳定 ErrorCode
 * [v4.15.0] GY   2026-06-17
 * * 新增 initialize() 方法，在后台线程中创建 QTimer 和连接信号
 * * transferFinished 信号添加 ErrorCode 参数
@@ -134,6 +140,13 @@ void FileReceiverWorker::initialize()
     // 连接 codec 信号
     connect(_codec,  &FrameCodec::frameReady,
             this,    &FileReceiverWorker::onFrameReady);
+    connect(_codec,  &FrameCodec::errorOccurred,
+            this,    [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
+        qWarning() << "[FileReceiver] 协议错误:" << errorMsg;
+        cleanup();
+        _socket->disconnectFromHost();
+        emit transferFinished(false, errorCode, errorMsg);
+    });
 
     // 超时定时器
     _timeoutTimer->setSingleShot(true);
@@ -163,9 +176,10 @@ void FileReceiverWorker::acceptTransfer()
 
     _waitingForUserConfirm = false;
     _transferActive = true;
+    _receiveChunkCount = 0;
 
     const auto failPreparation = [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
-        sendTransferResponse(false, errorMsg);
+        sendTransferResponse(false, errorCode, errorMsg);
         cleanup();
         emit transferFinished(false, errorCode, errorMsg);
         _socket->disconnectFromHost();
@@ -204,7 +218,7 @@ void FileReceiverWorker::acceptTransfer()
     }
 
     qDebug() << "[FileReceiver] 发送接受响应";
-    sendTransferResponse(true);
+    sendTransferResponse(true, gy::protocol::ErrorCode::Success);
 
     // 启动超时定时器
     _timeoutTimer->start(kTimeoutMs);
@@ -222,7 +236,7 @@ void FileReceiverWorker::rejectTransfer(const QString &reason)
     _waitingForUserConfirm = false;
 
     // 发送拒绝响应
-    sendTransferResponse(false, reason.isEmpty() ? tr("用户拒绝") : reason);
+    sendTransferResponse(false, gy::protocol::ErrorCode::UserRejected, reason.isEmpty() ? tr("用户拒绝") : reason);
 
     // 发射传输完成信号（被拒绝）
     emit transferFinished(false, gy::protocol::ErrorCode::UserRejected, reason);
@@ -308,16 +322,57 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     qDebug() << "[FileReceiver] 解析传输请求";
 
     // 解析握手请求
-    QJsonDocument doc = QJsonDocument::fromJson(payload);
-    QJsonObject json = doc.object();
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning() << "[FileReceiver] 传输请求 JSON 解析失败:" << parseError.errorString();
+        sendTransferResponse(false, gy::protocol::ErrorCode::InvalidPayload, tr("传输请求格式错误"));
+        _socket->disconnectFromHost();
+        return;
+    }
 
-    _sessionId  = json["session_id"].toString();
-    _senderDeviceId = json["sender_device_id"].toString();
-    _senderName = json["sender_name"].toString();
+    const QJsonObject json = doc.object();
+
+    // 检查必需字段存在性和类型
+    const auto requireString = [&json, this](const QString &key) -> QString {
+        const QJsonValue val = json.value(key);
+        if (!val.isString() || val.toString().isEmpty()) {
+            return {};
+        }
+        return val.toString();
+    };
+
+    _sessionId      = requireString("session_id");
+    _senderDeviceId = requireString("sender_device_id");
+    _senderName     = requireString("sender_name");
+
+    if (_sessionId.isEmpty() || _senderDeviceId.isEmpty() || _senderName.isEmpty()) {
+        qWarning() << "[FileReceiver] 缺少必需字段（session_id/sender_device_id/sender_name）";
+        sendTransferResponse(false, gy::protocol::ErrorCode::InvalidPayload, tr("缺少必需字段"));
+        _socket->disconnectFromHost();
+        return;
+    }
+
+    if (!json.contains("total_files") || !json["total_files"].isDouble()) {
+        sendTransferResponse(false, gy::protocol::ErrorCode::InvalidPayload, tr("缺少或无效的 total_files 字段"));
+        _socket->disconnectFromHost();
+        return;
+    }
+    if (!json.contains("total_bytes") || !json["total_bytes"].isDouble()) {
+        sendTransferResponse(false, gy::protocol::ErrorCode::InvalidPayload, tr("缺少或无效的 total_bytes 字段"));
+        _socket->disconnectFromHost();
+        return;
+    }
+    if (!json.contains("files") || !json["files"].isArray()) {
+        sendTransferResponse(false, gy::protocol::ErrorCode::InvalidPayload, tr("缺少或无效的 files 字段"));
+        _socket->disconnectFromHost();
+        return;
+    }
+
     _isDirectory = json["is_directory"].toBool(false);
-    _rootName = json["root_name"].toString();
-    _totalFiles = json["total_files"].toInt();
-    _totalBytes = json["total_bytes"].toVariant().toLongLong();
+    _rootName    = json["root_name"].toString();
+    _totalFiles  = json["total_files"].toInt();
+    _totalBytes  = json["total_bytes"].toVariant().toLongLong();
 
     // 协议版本检查：主版本不一致拒绝会话，次版本差异安全降级
     quint16 senderVersion = static_cast<quint16>(json["protocol_version"].toInt());
@@ -331,7 +386,7 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
             // 主版本不一致，拒绝会话
             qWarning() << "[FileReceiver] 发送方主版本不匹配，本地:"
                        << localMajor << "对端:" << senderMajor;
-            sendTransferResponse(false, tr("协议版本不兼容，请升级到最新版本"));
+            sendTransferResponse(false, gy::protocol::ErrorCode::ProtocolMismatch, tr("协议版本不兼容，请升级到最新版本"));
             _socket->disconnectFromHost();
             return;
         }
@@ -344,7 +399,7 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     }
 
     if (_rootName.isEmpty() || QFileInfo{_rootName}.fileName() != _rootName) {
-        sendTransferResponse(false, tr("无效的文件名称"));
+        sendTransferResponse(false, gy::protocol::ErrorCode::InvalidFileName, tr("无效的文件名称"));
         _socket->disconnectFromHost();
         return;
     }
@@ -352,17 +407,25 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     // 解析文件列表
     _fileList.clear();
     QJsonArray files = json["files"].toArray();
+    qint64 computedTotalBytes = 0;
     for (const auto &fileVal : files) {
         QJsonObject fileObj = fileVal.toObject();
         gy::FileItem item;
         item.relativePath = fileObj["relative_path"].toString();
         item.sizeBytes    = fileObj["size_bytes"].toVariant().toLongLong();
         item.sha256       = fileObj["sha256"].toString();
-        if (!isSafeRelativePath(item.relativePath)) {
-            sendTransferResponse(false, tr("无效的文件路径"));
+        if (item.sizeBytes < 0) {
+            qWarning() << "[FileReceiver] 文件大小为负数:" << item.relativePath << item.sizeBytes;
+            sendTransferResponse(false, gy::protocol::ErrorCode::InvalidPayload, tr("文件大小不能为负数"));
             _socket->disconnectFromHost();
             return;
         }
+        if (!isSafeRelativePath(item.relativePath)) {
+            sendTransferResponse(false, gy::protocol::ErrorCode::InvalidFilePath, tr("无效的文件路径"));
+            _socket->disconnectFromHost();
+            return;
+        }
+        computedTotalBytes += item.sizeBytes;
         _fileList.append(item);
     }
 
@@ -371,7 +434,7 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     for (const QJsonValue &directory : directories) {
         const QString relativePath = directory.toString();
         if (!isSafeRelativePath(relativePath)) {
-            sendTransferResponse(false, tr("无效的目录路径"));
+            sendTransferResponse(false, gy::protocol::ErrorCode::InvalidFilePath, tr("无效的目录路径"));
             _socket->disconnectFromHost();
             return;
         }
@@ -379,7 +442,15 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     }
 
     if (_totalFiles != _fileList.size()) {
-        sendTransferResponse(false, tr("文件列表数量不一致"));
+        sendTransferResponse(false, gy::protocol::ErrorCode::FileListMismatch, tr("文件列表数量不一致"));
+        _socket->disconnectFromHost();
+        return;
+    }
+
+    // 校验 total_bytes 是否等于文件列表大小之和
+    if (_totalBytes != computedTotalBytes) {
+        qWarning() << "[FileReceiver] total_bytes 不一致，声明:" << _totalBytes << "实际:" << computedTotalBytes;
+        sendTransferResponse(false, gy::protocol::ErrorCode::InvalidPayload, tr("总字节数与文件列表不一致"));
         _socket->disconnectFromHost();
         return;
     }
@@ -448,7 +519,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
                    << "偏移:" << chunkOffset
                    << "声明长度:" << chunkSize
                    << "实际长度:" << chunkData.size();
-        sendChunkAck(false, errorMsg);
+        sendChunkAck(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg);
         cleanup();
         emit transferFinished(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg);
         _socket->disconnectFromHost();
@@ -476,8 +547,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     _totalBytesReceived += chunkData.size();
 
     // 减少信号发射频率：每 4 个 chunk 发射一次（约 32MB）
-    static int chunkCount = 0;
-    if (++chunkCount % 4 == 0 || isLastChunk == 1) {
+    if (++_receiveChunkCount % 4 == 0 || isLastChunk == 1) {
         const qint64 percent = _totalBytes > 0
             ? (_totalBytesReceived * 100 / _totalBytes)
             : 100;
@@ -509,7 +579,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         }
 
         // 发送块确认
-        sendChunkAck(verified, errorMsg);
+        sendChunkAck(verified, verified ? gy::protocol::ErrorCode::Success : gy::protocol::ErrorCode::Sha256Mismatch, errorMsg);
 
         if (!verified) {
             QFile::remove(_file.fileName());
@@ -599,11 +669,12 @@ void FileReceiverWorker::handleCancel(const QByteArray &payload)
     _socket->disconnectFromHost();
 }
 
-void FileReceiverWorker::sendTransferResponse(bool accepted, const QString &reason)
+void FileReceiverWorker::sendTransferResponse(bool accepted, gy::protocol::ErrorCode errorCode, const QString &reason)
 {
     QJsonObject json;
     json["session_id"] = _sessionId;
     json["accepted"]   = accepted;
+    json["error_code"] = static_cast<int>(errorCode);
     json["reason"]     = reason;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
@@ -611,12 +682,13 @@ void FileReceiverWorker::sendTransferResponse(bool accepted, const QString &reas
     _socket->write(frame);
 }
 
-void FileReceiverWorker::sendChunkAck(bool verified, const QString &errorMsg)
+void FileReceiverWorker::sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode, const QString &errorMsg)
 {
     QJsonObject json;
     json["session_id"] = _sessionId;
     json["file_index"] = _currentFileIndex;
     json["verified"]   = verified;
+    json["error_code"] = static_cast<int>(errorCode);
     json["error_msg"]  = errorMsg;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);

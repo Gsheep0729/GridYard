@@ -14,6 +14,10 @@
 * 6. 接收完成后发送 kTypeChunkAck
 *
 * Change Log:
+* [v4.15.1] FengChunlin   2026-06-17
+* * 连接 FrameCodec::errorOccurred 信号，协议错误时清理并结束会话
+* * 进度节流 static 变量改为成员变量 _receiveChunkCount
+* * sendTransferResponse/sendChunkAck 签名添加 ErrorCode 参数
 * [v4.15.0] GY   2026-06-17
 * * 新增 initialize() 方法，在后台线程中创建 QTimer 和连接信号
 * * transferFinished 信号添加 ErrorCode 参数
@@ -122,9 +126,9 @@ private:
     // 打开当前文件
     bool openCurrentFile();
     // 发送握手响应
-    void sendTransferResponse(bool accepted, const QString &reason = "");
+    void sendTransferResponse(bool accepted, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &reason = "");
     // 发送块确认
-    void sendChunkAck(bool verified, const QString &errorMsg = "");
+    void sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &errorMsg = "");
     // 清理资源
     void cleanup();
 
@@ -165,4 +169,5 @@ private:
 
     // 增量 SHA-256 计算
     QCryptographicHash *_hash = nullptr;
+    int     _receiveChunkCount = 0;
 };

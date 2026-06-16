@@ -10,6 +10,8 @@
 * 实现接收侧后台化，写盘与 SHA-256 校验在后台线程执行。
 *
 * Change Log:
+* [v4.15.1] FengChunlin   2026-06-17
+* * 删除未使用的 _threads 成员，析构改用 children() 遍历
 * [v4.15.0] GY   2026-06-17
 * * 为每个连接创建独立的 QThread，实现接收侧后台化
 * * worker + socket 移到后台线程，写盘与 SHA-256 不阻塞 UI
@@ -64,5 +66,4 @@ private slots:
 private:
     ConfigManager *_config = nullptr;
     QTcpServer    *_server = nullptr;
-    QList<QThread*> _threads;  // 后台线程列表，用于析构时清理
 };
