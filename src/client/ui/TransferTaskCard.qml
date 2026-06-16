@@ -1,13 +1,15 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.14.2
- * @date    2026-06-16
+ * @version 4.15.2
+ * @date    2026-06-17
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v4.15.2] DuRuoxian   2026-06-17
+ * * 优化任务卡片配色、方向标识和长文件名展示
  * [v4.14.2] GY   2026-06-16
  * * 优化删除本地文件确认样式，完成的文件夹任务增加内容下拉行
  * [v4.14.0] GY   2026-06-15
@@ -53,13 +55,13 @@ Frame {
     signal expansionRequested(bool expanded)
 
     // 状态颜色
-    readonly property color kRunningColor: "#2196F3"
-    readonly property color kSuccessColor: "#4CAF50"
-    readonly property color kFailedColor:  "#F44336"
-    readonly property color kWaitingColor: "#FF9800"
-    readonly property color kFileBgColor:   "#EAF4FF"
-    readonly property color kFolderBgColor: "#FFF6DD"
-    readonly property color kFailedBgColor: "#FFEBEE"
+    readonly property color kRunningColor: "#3B82F6"
+    readonly property color kSuccessColor: "#10B981"
+    readonly property color kFailedColor:  "#EF4444"
+    readonly property color kWaitingColor: "#F59E0B"
+    readonly property color kFileBgColor:   "#FFFFFF"
+    readonly property color kFolderBgColor: "#F8FAFC"
+    readonly property color kFailedBgColor: "#FEF2F2"
     readonly property int kColorDuration: 160
     readonly property int kProgressDuration: 180
     readonly property bool canShowFolderPreview: isDirectory && fileList.length > 0
@@ -67,7 +69,7 @@ Frame {
                                        || status === "rejected" || status === "cancelled"
 
     Layout.fillWidth: true
-    implicitHeight: contentColumn.implicitHeight + 24
+    implicitHeight: contentColumn.implicitHeight + 20
     height: implicitHeight
     opacity: 1
 
@@ -94,7 +96,7 @@ Frame {
         case "failed":
         case "rejected":
         case "cancelled":       return kFailedColor
-        default:                return "#999"
+        default:                return "#9CA3AF"
         }
     }
 
@@ -108,7 +110,7 @@ Frame {
     background: Rectangle {
         radius: 8
         color: taskCard.backgroundColor()
-        border.color: taskCard.statusColor()
+        border.color: taskCard.isFinished ? "#E5E7EB" : taskCard.statusColor()
         border.width: 1
 
         Behavior on border.color {
@@ -122,7 +124,7 @@ Frame {
     ColumnLayout {
         id: contentColumn
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: 10
         spacing: 6
 
         // 第一行：方向标识 + 文件名 + 状态
@@ -130,27 +132,20 @@ Frame {
             Layout.fillWidth: true
             spacing: 8
 
-            // 方向标识（更清晰）
-            Rectangle {
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                radius: 12
-                color: taskCard.taskType === "send" ? "#2196F3" : "#9C27B0"
-
-                Label {
-                    anchors.centerIn: parent
-                    text: taskCard.taskType === "send" ? "↑" : "↓"
-                    color: "#FFFFFF"
-                    font.pixelSize: 14
-                    font.bold: true
-                }
+            // 方向标识（精简）
+            Label {
+                text: taskCard.taskType === "send" ? "↑" : "↓"
+                color: taskCard.taskType === "send" ? "#3B82F6" : "#8B5CF6"
+                font.pixelSize: 16
+                font.bold: true
+                Layout.alignment: Qt.AlignVCenter
             }
 
             FileTypeIcon {
                 fileName: taskCard.taskName
                 isDirectory: taskCard.isDirectory
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
             }
 
             // 文件名
@@ -158,7 +153,8 @@ Frame {
                 text: taskCard.taskName
                 font.pixelSize: 14
                 font.bold: true
-                elide: Text.ElideRight
+                color: "#111827"
+                elide: Text.ElideMiddle
                 Layout.fillWidth: true
             }
 
@@ -176,7 +172,7 @@ Frame {
             // 状态标签
             Rectangle {
                 Layout.preferredWidth: statusLabel.implicitWidth + 12
-                Layout.preferredHeight: statusLabel.implicitHeight + 6
+                Layout.preferredHeight: statusLabel.implicitHeight + 4
                 radius: 4
                 color: taskCard.statusColor()
 
@@ -193,6 +189,7 @@ Frame {
                     text: taskCard.statusText()
                     font.pixelSize: 11
                     color: "#FFFFFF"
+                    font.bold: true
                 }
             }
         }
@@ -207,7 +204,8 @@ Frame {
                       ? qsTr("发送给 %1").arg(taskCard.peerDeviceName || qsTr("未知设备"))
                       : qsTr("来自 %1").arg(taskCard.peerDeviceName || qsTr("未知设备"))
                 font.pixelSize: 12
-                color: "#666666"
+                color: "#6B7280"
+                elide: Text.ElideRight
             }
 
             Item { Layout.fillWidth: true }
@@ -215,14 +213,14 @@ Frame {
             Label {
                 text: FormatUtils.formatTime(taskCard.createdAt)
                 font.pixelSize: 12
-                color: "#888888"
+                color: "#9CA3AF"
                 visible: taskCard.createdAt.length > 0
             }
 
             Label {
                 text: FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
-                color: "#666666"
+                color: "#6B7280"
                 visible: taskCard.totalBytes > 0
             }
         }

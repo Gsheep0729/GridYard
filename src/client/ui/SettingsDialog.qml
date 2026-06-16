@@ -1,7 +1,7 @@
 /**
  * @file    SettingsDialog.qml
- * @version 4.12.0
- * @date    2026-06-14
+ * @version 4.15.2
+ * @date    2026-06-17
  * @author  GridYard Team
  * @brief   设置对话框
  *
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v4.15.2] DuRuoxian   2026-06-17
+ * * 优化设置弹窗页眉、分组卡片和底部保存状态
  * [v4.12.0] DuRuoxian   2026-06-14
  * * 增加设置状态和对话框进入过渡
  * [v4.11.0] GY   2026-06-13
@@ -77,40 +79,41 @@ Dialog {
     }
 
     header: Rectangle {
-        implicitHeight: 96
+        implicitHeight: 100
         color: "#FFFFFF"
         radius: 10
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 20
-            spacing: 14
+            anchors.margins: 24
+            spacing: 16
 
             Rectangle {
-                Layout.preferredWidth: 52
-                Layout.preferredHeight: 52
-                radius: 26
-                color: "#4A90D9"
+                Layout.preferredWidth: 56
+                Layout.preferredHeight: 56
+                radius: 28
+                color: "#3B82F6"
 
                 Label {
                     anchors.centerIn: parent
                     text: settingsDialog._tempDeviceName.trim().length > 0
-                          ? settingsDialog._tempDeviceName.trim().charAt(0)
+                          ? settingsDialog._tempDeviceName.trim().charAt(0).toUpperCase()
                           : "?"
                     color: "#FFFFFF"
-                    font.pixelSize: 22
+                    font.pixelSize: 24
                     font.bold: true
                 }
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 3
+                spacing: 4
 
                 Label {
-                    text: qsTr("本机设置")
+                    text: qsTr("偏好设置")
                     font.pixelSize: 20
                     font.bold: true
+                    color: "#111827"
                 }
 
                 Label {
@@ -122,6 +125,13 @@ Dialog {
                 }
             }
         }
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: "#E5E7EB"
+        }
     }
 
     contentItem: ScrollView {
@@ -131,37 +141,37 @@ Dialog {
 
         ColumnLayout {
             width: scrollView.availableWidth
-            spacing: 12
+            spacing: 16
+            Layout.margins: 16
 
-            Item {
-                Layout.preferredHeight: 4
-            }
+            Item { Layout.preferredHeight: 8 }
 
+            // 设备信息卡片
             Rectangle {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
                 implicitHeight: deviceSection.implicitHeight + 32
                 color: "#FFFFFF"
-                radius: 8
-                border.color: "#E4E8EE"
+                radius: 12
+                border.color: "#E5E7EB"
+                border.width: 1
 
                 ColumnLayout {
                     id: deviceSection
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 8
+                    spacing: 12
 
                     Label {
-                        text: qsTr("设备信息")
+                        text: qsTr("设备身份")
                         font.pixelSize: 15
                         font.bold: true
+                        color: "#111827"
                     }
 
                     Label {
-                        text: qsTr("其他设备会通过这个名称识别你，修改后会实时同步。")
+                        text: qsTr("设置一个易于识别的名称，以便在局域网中发现。")
                         color: "#6B7280"
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
                     }
@@ -178,37 +188,39 @@ Dialog {
                     Label {
                         visible: settingsDialog._tempDeviceName.trim().length === 0
                         text: qsTr("设备名称不能为空")
-                        color: "#C62828"
+                        color: "#EF4444"
                         font.pixelSize: 11
+                        font.bold: true
                     }
                 }
             }
 
+            // 文件接收卡片
             Rectangle {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
                 implicitHeight: receiveSection.implicitHeight + 32
                 color: "#FFFFFF"
-                radius: 8
-                border.color: "#E4E8EE"
+                radius: 12
+                border.color: "#E5E7EB"
+                border.width: 1
 
                 ColumnLayout {
                     id: receiveSection
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 10
+                    spacing: 12
 
                     Label {
-                        text: qsTr("文件接收")
+                        text: qsTr("存储与接收")
                         font.pixelSize: 15
                         font.bold: true
+                        color: "#111827"
                     }
 
                     Label {
-                        text: qsTr("接收完成的文件会保存到以下目录。")
+                        text: qsTr("配置文件保存路径及自动化接收行为。")
                         color: "#6B7280"
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                     }
 
                     RowLayout {
@@ -221,12 +233,19 @@ Dialog {
                             text: settingsDialog._tempReceivePath
                             readOnly: true
                             selectByMouse: true
+                            font.pixelSize: 13
                         }
 
                         Button {
-                            text: qsTr("选择目录")
+                            text: qsTr("更改目录")
                             onClicked: folderDialog.open()
                         }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: "#F3F4F6"
                     }
 
                     RowLayout {
@@ -235,17 +254,19 @@ Dialog {
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 3
+                            spacing: 4
 
                             Label {
-                                text: qsTr("自动接收并保存")
+                                text: qsTr("自动接受文件")
                                 font.bold: true
+                                font.pixelSize: 14
+                                color: "#374151"
                             }
 
                             Label {
                                 Layout.fillWidth: true
-                                text: qsTr("开启后跳过接收确认，文件将直接保存到上述目录。")
-                                color: "#6B7280"
+                                text: qsTr("跳过确认弹窗，直接保存文件。")
+                                color: "#9CA3AF"
                                 font.pixelSize: 12
                                 wrapMode: Text.Wrap
                             }
@@ -259,36 +280,36 @@ Dialog {
                 }
             }
 
+            // 网络设置卡片
             Rectangle {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.bottomMargin: 4
                 implicitHeight: networkSection.implicitHeight + 32
                 color: "#FFFFFF"
-                radius: 8
-                border.color: "#E4E8EE"
+                radius: 12
+                border.color: "#E5E7EB"
+                border.width: 1
 
                 RowLayout {
                     id: networkSection
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 16
+                    spacing: 24
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 5
+                        spacing: 4
 
                         Label {
-                            text: qsTr("网络连接")
+                            text: qsTr("传输服务")
                             font.pixelSize: 15
                             font.bold: true
+                            color: "#111827"
                         }
 
                         Label {
-                            text: qsTr("TCP 端口用于局域网设备建立文件传输连接。")
+                            text: qsTr("TCP 端口用于局域网设备间的数据通信。")
                             color: "#6B7280"
-                            font.pixelSize: 12
+                            font.pixelSize: 13
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -304,26 +325,36 @@ Dialog {
                     }
                 }
             }
+
+            Item { Layout.preferredHeight: 8 }
         }
     }
 
     footer: Rectangle {
-        implicitHeight: 68
+        implicitHeight: 72
         color: "#FFFFFF"
         radius: 10
 
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: "#E5E7EB"
+        }
+
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 10
+            anchors.margins: 20
+            spacing: 12
 
             Label {
                 Layout.fillWidth: true
                 text: settingsDialog._isDirty
-                      ? qsTr("有尚未保存的修改")
-                      : qsTr("所有设置均已保存")
-                color: settingsDialog._isDirty ? "#B26A00" : "#6B7280"
-                font.pixelSize: 12
+                      ? qsTr("修改尚未应用")
+                      : qsTr("设置已是最新")
+                color: settingsDialog._isDirty ? "#F59E0B" : "#9CA3AF"
+                font.pixelSize: 13
+                font.bold: settingsDialog._isDirty
 
                 Behavior on color {
                     ColorAnimation {
@@ -336,10 +367,11 @@ Dialog {
             Button {
                 text: qsTr("取消")
                 onClicked: settingsDialog.reject()
+                flat: true
             }
 
             Button {
-                text: qsTr("保存设置")
+                text: qsTr("保存更改")
                 enabled: settingsDialog._isDirty && settingsDialog._isValid
                 highlighted: true
                 onClicked: {

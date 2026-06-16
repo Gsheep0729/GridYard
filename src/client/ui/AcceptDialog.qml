@@ -1,7 +1,7 @@
 /**
  * @file    AcceptDialog.qml
- * @version 4.13.2
- * @date    2026-06-15
+ * @version 4.15.2
+ * @date    2026-06-17
  * @author  GridYard Team
  * @brief   接收确认弹窗
  *
@@ -9,6 +9,8 @@
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
+ * [v4.15.2] DuRuoxian   2026-06-17
+ * * 重构接收确认弹窗视觉层级，突出文件信息和接受操作
  * [v4.13.2] DuRuoxian   2026-06-15
  * * 文件夹确认信息改为文件夹名、总大小和目录预览
  * [v4.12.0] DuRuoxian   2026-06-14
@@ -46,57 +48,99 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 16
 
-        // 发送方信息
-        GroupBox {
-            title: qsTr("发送方")
+        // 发送方提示
+        Label {
+            text: qsTr("来自 ") + acceptDialog.senderName + qsTr(" 的传输请求")
+            font.pixelSize: 16
+            font.bold: true
             Layout.fillWidth: true
-
-            Label {
-                text: acceptDialog.senderName
-                font.pixelSize: 14
-                font.bold: true
-            }
+            wrapMode: Text.Wrap
+            color: "#111827"
         }
 
-        // 文件信息
-        GroupBox {
-            title: qsTr("文件信息")
+        // 文件信息卡片
+        Rectangle {
             Layout.fillWidth: true
+            implicitHeight: fileInfoLayout.implicitHeight + 24
+            color: "#F9FAFB"
+            radius: 8
+            border.color: "#E5E7EB"
+            border.width: 1
 
             ColumnLayout {
+                id: fileInfoLayout
                 anchors.fill: parent
+                anchors.margins: 12
                 spacing: 8
 
                 RowLayout {
                     Label {
                         text: acceptDialog.isDirectory ? qsTr("文件夹名：") : qsTr("文件名：")
                         font.bold: true
+                        color: "#4B5563"
+                        font.pixelSize: 13
                     }
-                    Label { text: acceptDialog.fileName }
+                    Label {
+                        text: acceptDialog.fileName
+                        color: "#111827"
+                        font.pixelSize: 13
+                        font.bold: true
+                        elide: Text.ElideMiddle
+                        Layout.fillWidth: true
+                    }
                 }
 
                 RowLayout {
                     visible: !acceptDialog.isDirectory
-                    Label { text: qsTr("大小："); font.bold: true }
-                    Label { text: FormatUtils.formatBytes(acceptDialog.fileSize) }
+                    Label {
+                        text: qsTr("大小：")
+                        font.bold: true
+                        color: "#4B5563"
+                        font.pixelSize: 13
+                    }
+                    Label {
+                        text: FormatUtils.formatBytes(acceptDialog.fileSize)
+                        color: "#111827"
+                        font.pixelSize: 13
+                    }
                 }
 
                 RowLayout {
                     visible: acceptDialog.isDirectory
-                    Label { text: qsTr("总文件数："); font.bold: true }
-                    Label { text: acceptDialog.totalFiles }
+                    Label {
+                        text: qsTr("总文件数：")
+                        font.bold: true
+                        color: "#4B5563"
+                        font.pixelSize: 13
+                    }
+                    Label {
+                        text: acceptDialog.totalFiles
+                        color: "#111827"
+                        font.pixelSize: 13
+                    }
                 }
 
                 RowLayout {
                     visible: acceptDialog.isDirectory
-                    Label { text: qsTr("总大小："); font.bold: true }
-                    Label { text: FormatUtils.formatBytes(acceptDialog.totalBytes) }
+                    Label {
+                        text: qsTr("总大小：")
+                        font.bold: true
+                        color: "#4B5563"
+                        font.pixelSize: 13
+                    }
+                    Label {
+                        text: FormatUtils.formatBytes(acceptDialog.totalBytes)
+                        color: "#111827"
+                        font.pixelSize: 13
+                    }
                 }
 
                 Label {
                     visible: acceptDialog.isDirectory
                     text: qsTr("文件夹内容：")
                     font.bold: true
+                    color: "#4B5563"
+                    font.pixelSize: 13
                     Layout.topMargin: 4
                 }
 
@@ -118,15 +162,15 @@ Dialog {
                         FileTypeIcon {
                             fileName: previewRow.modelData
                             isDirectory: previewRow.modelData.endsWith("/")
-                            Layout.preferredWidth: 18
-                            Layout.preferredHeight: 18
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
                         }
 
                         Label {
                             text: previewRow.modelData
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true
-                            color: "#555555"
+                            color: "#6B7280"
                             font.pixelSize: 12
                         }
                     }
@@ -140,12 +184,31 @@ Dialog {
                   ? qsTr("是否接受此文件夹？")
                   : qsTr("是否接受此文件？")
             font.pixelSize: 14
+            color: "#374151"
             Layout.alignment: Qt.AlignHCenter
         }
     }
 
-    // 底部按钮
-    standardButtons: Dialog.Yes | Dialog.No
+    footer: DialogButtonBox {
+        background: Rectangle { color: "transparent" }
+        alignment: Qt.AlignRight
+        topPadding: 4
+        bottomPadding: 16
+        rightPadding: 16
+
+        Button {
+            text: qsTr("拒绝")
+            DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            flat: true
+        }
+
+        Button {
+            id: acceptButton
+            text: qsTr("接受")
+            DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            highlighted: true
+        }
+    }
 
     onAccepted: {
         // 用户接受

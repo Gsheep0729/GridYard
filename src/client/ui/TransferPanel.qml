@@ -1,7 +1,7 @@
 /**
  * @file    TransferPanel.qml
- * @version 4.14.1
- * @date    2026-06-15
+ * @version 4.15.2
+ * @date    2026-06-17
  * @author  GridYard Team
  * @brief   传输面板
  *
@@ -9,6 +9,8 @@
  * 绑定 TransferSessionManager.sessions。
  *
  * Change Log:
+ * [v4.15.2] DuRuoxian   2026-06-17
+ * * 统一清空记录确认弹窗样式和操作按钮层级
  * [v4.14.1] GY   2026-06-15
  * * 优化清空记录对话框布局和字体大小
  * [v4.14.0] GY   2026-06-15
@@ -151,36 +153,36 @@ Frame {
 
     Dialog {
         id: clearDeleteConfirmDialog
-        title: qsTr("清空记录并删除本地文件")
+        title: qsTr("清空记录")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(400, parent.width - 24)
-        padding: 12
+        width: Math.min(400, parent.width - 32)
+        padding: 16
 
         background: Rectangle {
             color: "#FFFFFF"
-            radius: 8
-            border.color: "#D1D5DB"
+            radius: 12
+            border.color: "#E5E7EB"
             border.width: 1
         }
 
         header: Label {
             text: clearDeleteConfirmDialog.title
-            font.pixelSize: 14
+            font.pixelSize: 16
             font.bold: true
             color: "#111827"
-            padding: 12
+            padding: 16
             bottomPadding: 0
         }
 
         contentItem: ColumnLayout {
-            spacing: 8
+            spacing: 12
 
             Label {
                 Layout.fillWidth: true
                 text: qsTr("确定清空已结束记录并删除已接收的本地文件吗？")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: 14
                 color: "#374151"
             }
 
@@ -188,8 +190,9 @@ Frame {
                 Layout.fillWidth: true
                 text: qsTr("发送方源文件不受影响，此操作不可撤销。")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 11
+                font.pixelSize: 12
                 color: "#6B7280"
+                font.italic: true
             }
         }
 
@@ -197,8 +200,8 @@ Frame {
             background: Rectangle { color: "transparent" }
             alignment: Qt.AlignRight
             topPadding: 4
-            bottomPadding: 8
-            rightPadding: 12
+            bottomPadding: 16
+            rightPadding: 16
 
             Button {
                 text: qsTr("取消")
@@ -207,24 +210,9 @@ Frame {
             }
 
             Button {
-                id: confirmClearButton
                 text: qsTr("确认删除")
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-
-                contentItem: Label {
-                    text: confirmClearButton.text
-                    font: confirmClearButton.font
-                    color: "white"
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-
-                background: Rectangle {
-                    implicitWidth: 72
-                    implicitHeight: 28
-                    color: confirmClearButton.down ? "#B91C1C" : (confirmClearButton.hovered ? "#DC2626" : "#EF4444")
-                    radius: 4
-                }
+                highlighted: true
             }
         }
 
