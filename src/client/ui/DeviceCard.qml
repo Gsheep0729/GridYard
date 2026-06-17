@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 4.12.0
- * @date    2026-06-14
+ * @version 4.15.2
+ * @date    2026-06-17
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -12,6 +12,8 @@
  * 支持拖拽文件到卡片触发传输。
  *
  * Change Log:
+ * [v4.15.2] DuRuoxian   2026-06-17
+ * * 优化设备卡片在线色、选中态边界和拖放高亮
  * [v4.12.0] DuRuoxian   2026-06-14
  * * 增加悬停、选中、拖放和在线状态过渡
  * [v4.9.0] DuRuoxian   2026-06-13
@@ -37,9 +39,10 @@ ItemDelegate {
     required property bool   isSelected
 
     readonly property int   kCardHeight: 72
-    readonly property color kOnlineColor:  "#3DDC84"
-    readonly property color kOfflineColor: "#999999"
-    readonly property color kDropHighlight: "#E3F2FD"
+    readonly property color kOnlineColor:  "#10B981"
+    readonly property color kOfflineColor: "#9CA3AF"
+    readonly property color kSelectedColor: "#3B82F6"
+    readonly property color kDropHighlight: "#DBEAFE"
     readonly property int kColorDuration: 150
     readonly property int kStatusDuration: 180
 
@@ -51,11 +54,11 @@ ItemDelegate {
     // 卡片背景样式（拖拽高亮）
     background: Rectangle {
         color: dropArea.containsDrag ? deviceCard.kDropHighlight
-             : deviceCard.isSelected ? "#E8F2FC"
-             : deviceCard.hovered   ? "#F2F2F2"
+             : deviceCard.isSelected ? "#EFF6FF"
+             : deviceCard.hovered   ? "#F9FAFB"
              :                           "#FFFFFF"
         border.color: dropArea.containsDrag || deviceCard.isSelected
-                      ? "#2196F3" : "#E0E0E0"
+                      ? deviceCard.kSelectedColor : "#E5E7EB"
         border.width: dropArea.containsDrag || deviceCard.isSelected ? 2 : 1
         radius: 8
 
@@ -71,6 +74,17 @@ ItemDelegate {
                 duration: deviceCard.kColorDuration
                 easing.type: Easing.OutCubic
             }
+        }
+
+        // 选中态侧边指示条
+        Rectangle {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: 4
+            height: parent.height - 24
+            radius: 2
+            color: deviceCard.kSelectedColor
+            visible: deviceCard.isSelected && !dropArea.containsDrag
         }
     }
 

@@ -1,7 +1,7 @@
 /**
 * @file    Main.qml
-* @version 4.13.2
-* @date    2026-06-15
+* @version 4.15.2
+* @date    2026-06-17
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
@@ -10,6 +10,8 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v4.15.2] DuRuoxian   2026-06-17
+* * 优化主窗口工具栏、设备列表容器和未选中设备占位状态
 * [v4.13.2] DuRuoxian   2026-06-15
 * * 接收确认弹窗接入文件夹标记和根目录预览
 * [v4.12.0] DuRuoxian   2026-06-14
@@ -107,21 +109,62 @@ ApplicationWindow {
 
     // 工具栏
     header: ToolBar {
+        background: Rectangle {
+            color: "#FFFFFF"
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#E5E7EB"
+            }
+        }
+
         RowLayout {
             anchors.fill: parent
+            spacing: 0
 
             Label {
                 text: mainWindow.title
-                font.pixelSize: 14
+                font.pixelSize: 15
                 font.bold: true
-                Layout.leftMargin: 12
+                color: "#111827"
+                Layout.leftMargin: 20
             }
 
             Item { Layout.fillWidth: true }
 
             ToolButton {
+                id: settingsButton
                 text: qsTr("设置")
+                font.pixelSize: 13
+                font.bold: true
                 onClicked: settingsDialog.open()
+                Layout.rightMargin: 12
+
+                contentItem: Label {
+                    text: settingsButton.text
+                    font: settingsButton.font
+                    // 文本颜色平滑过渡
+                    color: settingsButton.down ? "#2563EB" : (settingsButton.hovered ? "#3B82F6" : "#4B5563")
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+
+                    Behavior on color {
+                        ColorAnimation { duration: 200; easing.type: Easing.OutCubic }
+                    }
+                }
+
+                background: Rectangle {
+                    implicitWidth: 64
+                    implicitHeight: 32
+                    // 使用同色透明值作为起点，避免悬停背景过渡跳变
+                    color: settingsButton.down ? "#E5E7EB" : (settingsButton.hovered ? "#F3F4F6" : "#00F3F4F6")
+                    radius: 6
+
+                    Behavior on color {
+                        ColorAnimation { duration: 200; easing.type: Easing.OutCubic }
+                    }
+                }
             }
         }
     }
@@ -134,15 +177,22 @@ ApplicationWindow {
     // 左右分栏布局
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 8
-        spacing: 8
+        anchors.margins: 12
+        spacing: 12
 
         // 左侧：设备列表
         PeerListView {
             id: peerListView
-            Layout.preferredWidth: 280
+            Layout.preferredWidth: 300
             Layout.fillHeight: true
             selectedDeviceId: mainWindow._targetDeviceId
+
+            background: Rectangle {
+                color: "#FFFFFF"
+                radius: 12
+                border.color: "#E5E7EB"
+                border.width: 1
+            }
 
             onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
                 console.log("选中设备:", deviceId)
@@ -167,23 +217,38 @@ ApplicationWindow {
             Layout.fillHeight: true
             currentIndex: mainWindow._targetDeviceId.length > 0 ? 1 : 0
 
-            Frame {
+            Rectangle {
+                color: "#F9FAFB"
+                radius: 12
+                border.color: "#E5E7EB"
+                border.width: 1
+
                 ColumnLayout {
                     anchors.centerIn: parent
-                    spacing: 12
+                    spacing: 16
 
                     Label {
                         Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("选择一台在线设备")
-                        font.pixelSize: 20
+                        text: "GridYard"
+                        color: "#9CA3AF"
+                        font.pixelSize: 48
                         font.bold: true
+                        opacity: 0.15
                     }
 
                     Label {
                         Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("点击左侧设备进入传输会话，也可以直接拖放文件到设备卡片")
-                        color: "#777777"
-                        font.pixelSize: 13
+                        text: qsTr("选择一台在线设备开始传输")
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: "#374151"
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr("点击左侧设备进入会话，或直接拖放文件到设备卡片")
+                        color: "#6B7280"
+                        font.pixelSize: 14
                     }
                 }
             }
@@ -193,6 +258,10 @@ ApplicationWindow {
                 deviceName: mainWindow._targetDeviceName
                 ipAddress: mainWindow._targetIpAddress
                 isOnline: mainWindow._targetIsOnline
+
+                background: Rectangle {
+                    color: "transparent"
+                }
 
                 onSendFileRequested: fileDialog.open()
                 onSendFolderRequested: folderDialog.open()
