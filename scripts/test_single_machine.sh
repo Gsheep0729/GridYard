@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # 配置
-BUILD_DIR="build/client"
+BUILD_DIR="build-ninja/client"
 APP_NAME="appGridYard"
 BASE_PORT=35100
 CONFIG_DIR="/tmp/gridyard_test"
@@ -32,7 +32,7 @@ trap cleanup EXIT
 # 检查构建
 if [ ! -f "$BUILD_DIR/$APP_NAME" ]; then
     echo -e "${RED}错误：找不到可执行文件 $BUILD_DIR/$APP_NAME${NC}"
-    echo "请先运行: cmake --build build -j"
+    echo "请先运行: cmake --build build-ninja -j"
     exit 1
 fi
 

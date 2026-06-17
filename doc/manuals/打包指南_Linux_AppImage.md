@@ -44,7 +44,7 @@ sudo apt install qt6-base-dev qt6-declarative-dev qt6-quickcontrols2-dev libqt6s
 ```bash
 cd src
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+cmake --build build-ninja -j
 ```
 
 ### 3.2 准备 AppDir 结构
@@ -57,7 +57,7 @@ mkdir -p dist/AppDir/usr/share/applications
 mkdir -p dist/AppDir/usr/share/icons/hicolor/256x256/apps
 
 # 复制可执行文件
-cp src/build/client/appGridYard dist/AppDir/usr/bin/
+cp build-ninja/client/appGridYard dist/AppDir/usr/bin/
 
 # 复制图标（需 256x256 PNG）
 cp doc/CQNU.png dist/AppDir/usr/share/icons/hicolor/256x256/apps/gridyard.png
@@ -214,7 +214,7 @@ APPIMAGE="$PROJECT_ROOT/GridYard-x86_64.AppImage"
 # 1. 构建
 echo ">>> 构建项目..."
 cd "$PROJECT_ROOT/src"
-cmake --build build -j
+cmake --build build-ninja -j
 
 # 2. 准备 AppDir
 echo ">>> 准备 AppDir..."

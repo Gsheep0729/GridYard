@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 配置
-BUILD_DIR="build/client"
+BUILD_DIR="build-ninja/client"
 APP_NAME="appGridYard"
 BASE_PORT=35100
 TEST_DIR="/tmp/gridyard_auto_test"
@@ -55,7 +55,7 @@ check_build() {
     echo -e "${BLUE}=== 检查构建 ===${NC}"
     if [ ! -f "$BUILD_DIR/$APP_NAME" ]; then
         echo -e "${RED}错误：找不到可执行文件${NC}"
-        echo "请先运行: cmake --build build -j"
+        echo "请先运行: cmake --build build-ninja -j"
         exit 1
     fi
     print_result "构建文件存在" "pass"
@@ -201,8 +201,8 @@ test_unit_tests() {
     )
 
     for test in "${tests[@]}"; do
-        if [ -f "build/tests/$test" ]; then
-            if ./build/tests/$test > /dev/null 2>&1; then
+        if [ -f "build-ninja/tests/$test" ]; then
+            if ./build-ninja/tests/$test > /dev/null 2>&1; then
                 print_result "$test" "pass"
             else
                 print_result "$test" "fail"
