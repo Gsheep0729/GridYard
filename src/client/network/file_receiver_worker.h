@@ -1,19 +1,18 @@
 /**
 * @file    file_receiver_worker.h
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
-* 由 P2pServer 为每个入站连接创建，负责：
-* 1. 在后台线程中初始化（initialize() 创建 QTimer 和连接信号）
-* 2. 接收 kTypeTransferReq 握手请求
-* 3. 发射信号通知 UI 弹窗确认
-* 4. 等待用户确认后发送 kTypeTransferRsp
-* 5. 接收 kTypeDataChunk 并写入文件
-* 6. 接收完成后发送 kTypeChunkAck
+* 由 P2pServer 为每个入站连接创建，运行在独立后台线程中。
+* 负责接收传输请求、通知 UI 弹窗确认、接收文件数据并写入磁盘、
+* SHA-256 校验、发送确认帧等完整接收流程。
+* 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 新增 fillReceiveSession()、rootPreviewPaths() 委托方法
 * [v4.15.1] FengChunlin   2026-06-17
 * * 连接 FrameCodec::errorOccurred 信号，协议错误时清理并结束会话
 * * 进度节流 static 变量改为成员变量 _receiveChunkCount
@@ -79,6 +78,11 @@ public:
     QStringList filePaths() const;
     // 返回同名避让后实际写入的文件或文件夹路径
     QString savedPath() const;
+
+    // 语义化方法：填充接收会话信息（委托模式）
+    void fillReceiveSession(QVariantMap &session) const;
+    // 语义化方法：获取根目录预览（用于 UI 显示）
+    QStringList rootPreviewPaths() const;
 
     // 设置接收路径（由 TransferSessionManager 调用）
     void setReceivePath(const QString &path) { _receivePath = path; }

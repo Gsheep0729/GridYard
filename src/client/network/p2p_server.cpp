@@ -1,9 +1,13 @@
 /**
 * @file    p2p_server.cpp
-* @version 4.15.0
+* @version 4.15.1
 * @date    2026-06-17
 * @author  GridYard Team
-* @brief   P2pServer 实现
+* @brief   P2P 文件传输服务器实现
+*
+* 监听 TCP 端口，接受入站连接并为每个连接创建独立的 QThread
+* 和 FileReceiverWorker。实现接收侧后台化，写盘与 SHA-256 校验
+* 在后台线程执行，不阻塞 UI 主线程。
 *
 * Change Log:
 * [v4.15.1] FengChunlin   2026-06-17
@@ -25,6 +29,7 @@
 
 #include <QDebug>
 
+// 构造函数，创建 TCP 服务器并连接新连接信号
 P2pServer::P2pServer(ConfigManager *config, QObject *parent)
     : QObject{parent}
     , _config{config}
@@ -35,6 +40,7 @@ P2pServer::P2pServer(ConfigManager *config, QObject *parent)
             this,    &P2pServer::onNewConnection);
 }
 
+// 析构函数，停止监听并等待所有后台线程退出
 P2pServer::~P2pServer()
 {
     // 停止服务器监听
@@ -54,6 +60,7 @@ P2pServer::~P2pServer()
     }
 }
 
+// 启动 TCP 服务器，监听配置的端口
 bool P2pServer::start()
 {
     const quint16 port = _config->tcpPort();
@@ -68,6 +75,7 @@ bool P2pServer::start()
     }
 }
 
+// 停止 TCP 服务器监听
 void P2pServer::stop()
 {
     if (_server->isListening()) {
@@ -76,11 +84,13 @@ void P2pServer::stop()
     }
 }
 
+// 查询服务器是否正在监听
 bool P2pServer::isListening() const
 {
     return _server->isListening();
 }
 
+// 处理新入站连接，为每个连接创建独立后台线程和 FileReceiverWorker
 void P2pServer::onNewConnection()
 {
     qDebug() << "[P2pServer] 检测到新连接";

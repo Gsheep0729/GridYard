@@ -1,9 +1,12 @@
 /**
 * @file    logger.cpp
-* @version 4.10.0
+* @version 4.7.0
 * @date    2026-06-13
 * @author  GridYard Team
-* @brief   Logger 实现
+* @brief   运行日志工具实现
+*
+* 使用 qInstallMessageHandler 拦截 Qt 日志输出，同时写入控制台和文件。
+* 日志文件按日期自动命名，支持跨天自动切换。线程安全（QMutex）。
 *
 * Change Log:
 * [v4.7.0] GY   2026-06-05
@@ -18,12 +21,15 @@
 #include <QStandardPaths>
 #include <cstdio>
 
+// 静态实例指针
 Logger *Logger::_instance = nullptr;
 
+// 构造函数
 Logger::Logger(QObject *parent)
     : QObject(parent) {
 }
 
+// 析构函数：关闭日志文件
 Logger::~Logger() {
     QMutexLocker locker(&_mutex);
     if (_logFile.isOpen()) {
@@ -32,6 +38,7 @@ Logger::~Logger() {
     }
 }
 
+// 获取单例实例
 Logger *Logger::instance() {
     if (!_instance) {
         _instance = new Logger;
@@ -39,6 +46,7 @@ Logger *Logger::instance() {
     return _instance;
 }
 
+// 初始化日志系统，安装消息处理器
 void Logger::init(const QString &logDir) {
     QMutexLocker locker(&_mutex);
 
@@ -67,11 +75,13 @@ void Logger::init(const QString &logDir) {
     qInstallMessageHandler(messageHandler);
 }
 
+// 获取当前日志文件路径
 QString Logger::logFilePath() const {
     QMutexLocker locker(&_mutex);
     return _logFile.fileName();
 }
 
+// 打开当天的日志文件（按日期自动命名）
 void Logger::openLogFile() {
     if (_logFile.isOpen()) {
         _stream.flush();
@@ -88,6 +98,7 @@ void Logger::openLogFile() {
     _stream.setDevice(&_logFile);
 }
 
+// 格式化日志级别字符串
 QString Logger::levelString(QtMsgType type) {
     switch (type) {
     case QtDebugMsg:    return "DEBUG";
@@ -99,6 +110,7 @@ QString Logger::levelString(QtMsgType type) {
     }
 }
 
+// Qt 消息处理回调（拦截所有 qDebug/qWarning/qCritical 输出）
 void Logger::messageHandler(QtMsgType type,
                             const QMessageLogContext &ctx,
                             const QString &msg) {
@@ -131,6 +143,7 @@ void Logger::messageHandler(QtMsgType type,
     logger->writeLog(type, formatted);
 }
 
+// 写入日志（同时输出到控制台和文件，线程安全）
 void Logger::writeLog(QtMsgType type, const QString &formatted) {
     QMutexLocker locker(&_mutex);
 

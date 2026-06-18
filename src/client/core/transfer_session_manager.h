@@ -5,7 +5,8 @@
 * @author  GridYard Team
 * @brief   传输会话管理器
 *
-* 管理所有进行中的传输会话，提供 Q_INVOKABLE 方法供 QML 调用。
+* 管理所有进行中的传输会话（发送和接收），维护会话状态和进度。
+* 提供 Q_INVOKABLE 方法供 QML 调用（创建、接受、拒绝、取消、移除会话）。
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:

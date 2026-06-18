@@ -1,15 +1,13 @@
 /**
 * @file    file_sender_worker.h
-* @version 4.15.0
+* @version 4.15.1
 * @date    2026-06-17
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
-* 运行在独立线程中，负责：
-* 1. 建立 TCP 连接到接收端
-* 2. 发送 kTypeTransferReq 握手请求
-* 3. 等待 kTypeTransferRsp 响应
-* 4. 以 8MB 分块发送文件数据
+* 运行在独立后台线程中，负责建立 TCP 连接、发送传输握手请求、
+* 等待响应、以 8MB 分块发送文件数据、处理确认帧等完整发送流程。
+* 支持多文件/目录传输、SHA-256 校验、取消操作和超时检测。
 *
 * Change Log:
 * [v4.15.1] FengChunlin   2026-06-17
