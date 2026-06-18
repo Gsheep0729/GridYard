@@ -9,7 +9,7 @@
  *
  * Change Log:
  * [v4.16.0] DuRuoxian   2026-06-18
- * * 使用 Style.js 统一样式常量，为 Stage 5 会话页铺路
+ * * 使用 Style.js 统一样式常量，调整底部发送栏为 Stage 5 预留文本输入区域
  * [v4.15.2] DuRuoxian   2026-06-17
  * * 优化会话页头部、传输空状态和底部发送栏视觉层级
  * [v4.14.0] GY   2026-06-15
@@ -227,18 +227,17 @@ Frame {
                 spacing: Style.Space.md
 
                 Label {
-                    text: qsTr("暂无传输")
+                    text: qsTr("还没有会话内容")
                     color: Style.Color.textWeak
-                    font.pixelSize: 32
+                    font.pixelSize: 20
+                    font.bold: true
                     Layout.alignment: Qt.AlignHCenter
-                    opacity: 0.3
                 }
 
                 Label {
-                    text: qsTr("还没有传输记录\n从下方选择文件，或直接拖放到这里")
+                    text: qsTr("发送文件，或稍后在这里查看聊天消息")
                     color: Style.Color.textMuted
                     horizontalAlignment: Text.AlignHCenter
-                    lineHeight: 1.4
                     font.pixelSize: 13
                 }
             }
@@ -275,29 +274,44 @@ Frame {
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: Style.Space.md
-                spacing: Style.Space.md
+                spacing: Style.Space.sm
 
+                // 文件操作按钮组
+                RowLayout {
+                    spacing: Style.Space.xs
+
+                    Button {
+                        text: qsTr("发送文件")
+                        enabled: deviceSessionView.isOnline
+                        highlighted: true
+                        onClicked: deviceSessionView.sendFileRequested()
+                    }
+
+                    Button {
+                        text: qsTr("发送文件夹")
+                        enabled: deviceSessionView.isOnline
+                        onClicked: deviceSessionView.sendFolderRequested()
+                    }
+                }
+
+                // 分隔线
+                Rectangle {
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: 24
+                    color: Style.Color.borderSoft
+                    visible: deviceSessionView.isOnline
+                }
+
+                // 文本输入占位区域（Stage 5 预留）
                 Label {
                     Layout.fillWidth: true
                     text: deviceSessionView.isOnline
-                          ? qsTr("选择文件或文件夹发送，也可以拖放到记录区")
+                          ? qsTr("拖放文件到记录区，或稍后在这里发送消息")
                           : qsTr("设备当前离线，暂时无法发送")
-                    color: Style.Color.textMuted
+                    color: Style.Color.textWeak
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
-                }
-
-                Button {
-                    text: qsTr("发送文件夹")
-                    enabled: deviceSessionView.isOnline
-                    onClicked: deviceSessionView.sendFolderRequested()
-                }
-
-                Button {
-                    text: qsTr("发送文件")
-                    enabled: deviceSessionView.isOnline
-                    highlighted: true
-                    onClicked: deviceSessionView.sendFileRequested()
+                    elide: Text.ElideRight
                 }
             }
         }
