@@ -7,7 +7,7 @@
 *
 * 标题通过 AppController.applicationName/Version 绑定，
 * 关窗触发 AppController.quit()。
-* 左侧显示在线设备列表，右侧显示设备会话页。
+* 左侧工具栏，中间设备列表，右侧设备会话页。
 *
 * Change Log:
 * [v4.16.0] DuRuoxian   2026-06-18
@@ -40,8 +40,8 @@ import "utils/Style.js" as Style
 ApplicationWindow {
     id: mainWindow
 
-    width:   960
-    height:  640
+    width:   980
+    height:  709
     visible: true
     title:   "%1 v%2".arg(AppController.applicationName)
                      .arg(AppController.applicationVersion)
@@ -111,91 +111,274 @@ ApplicationWindow {
         }
     }
 
-    // 工具栏
-    header: ToolBar {
-        background: Rectangle {
-            color: Style.Color.surface
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 1
-                color: Style.Color.border
-            }
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            spacing: 0
-
-            Label {
-                text: mainWindow.title
-                font.pixelSize: 15
-                font.bold: true
-                color: Style.Color.textMain
-                Layout.leftMargin: Style.Space.xl
-            }
-
-            Item { Layout.fillWidth: true }
-
-            ToolButton {
-                id: settingsButton
-                text: qsTr("设置")
-                font.pixelSize: 13
-                font.bold: true
-                onClicked: settingsDialog.open()
-                Layout.rightMargin: 12
-
-                contentItem: Label {
-                    text: settingsButton.text
-                    font: settingsButton.font
-                    color: settingsButton.down ? Style.Color.primaryPressed
-                                               : (settingsButton.hovered ? Style.Color.primary : Style.Color.textSecondary)
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-
-                    Behavior on color {
-                        ColorAnimation { duration: Style.Motion.base; easing.type: Easing.OutCubic }
-                    }
-                }
-
-                background: Rectangle {
-                    implicitWidth: 64
-                    implicitHeight: 32
-                    color: settingsButton.down ? Style.Color.border
-                                               : (settingsButton.hovered ? Style.Color.surfaceSoft : Style.Color.transparent)
-                    radius: Style.Radius.sm
-
-                    Behavior on color {
-                        ColorAnimation { duration: Style.Motion.base; easing.type: Easing.OutCubic }
-                    }
-                }
-            }
-        }
-    }
-
     // 设置对话框
     SettingsDialog {
         id: settingsDialog
     }
 
-    // 左右分栏布局
+    // 本机信息弹出窗口
+    Popup {
+        id: deviceInfoPopup
+        x: 70
+        y: 10
+        width: 260
+        height: 120
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: Style.Color.surface
+            radius: Style.Radius.lg
+            border.color: Style.Color.borderSoft
+            border.width: 1
+        }
+
+        contentItem: RowLayout {
+            anchors.fill: parent
+            anchors.margins: Style.Space.md
+            spacing: Style.Space.md
+
+            Rectangle {
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: 40
+                Layout.preferredHeight: 40
+                radius: 20
+                color: Style.Color.primary
+
+                Label {
+                    anchors.centerIn: parent
+                    text: "我"
+                    color: "#FFFFFF"
+                    font.pixelSize: 14
+                    font.bold: true
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+
+                TextField {
+                    Layout.fillWidth: true
+                    text: ConfigManager.deviceName
+                    placeholderText: qsTr("输入设备名称")
+                    font.pixelSize: 14
+                    font.bold: true
+                    background: Rectangle {
+                        color: activeFocus ? Style.Color.surfaceSoft : Style.Color.transparent
+                        border.color: activeFocus ? Style.Color.primary : Style.Color.transparent
+                        border.width: 1
+                        radius: Style.Radius.xs
+                    }
+                    padding: 2
+                    selectByMouse: true
+
+                    onEditingFinished: {
+                        let trimmed = text.trim()
+                        if (trimmed.length > 0 && trimmed !== ConfigManager.deviceName) {
+                            ConfigManager.deviceName = trimmed
+                        }
+                        focus = false
+                    }
+
+                    Connections {
+                        target: ConfigManager
+                        function onDeviceNameChanged() {
+                            if (!activeFocus) {
+                                text = ConfigManager.deviceName
+                            }
+                            AppController.discovery.refresh()
+                        }
+                    }
+                }
+
+                Label {
+                    text: ConfigManager.localIp.length > 0
+                          ? ConfigManager.localIp
+                          : qsTr("未获取到 IP")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 12
+                }
+
+                Label {
+                    text: "%1 v%2".arg(AppController.applicationName)
+                                   .arg(AppController.applicationVersion)
+                    color: Style.Color.textWeak
+                    font.pixelSize: 11
+                }
+            }
+
+            Button {
+                Layout.alignment: Qt.AlignVCenter
+                icon.name: "view-refresh"
+                icon.width: 20
+                icon.height: 20
+                flat: true
+                ToolTip.text: qsTr("刷新")
+                ToolTip.visible: hovered
+                onClicked: AppController.discovery.refresh()
+            }
+        }
+    }
+
+    // 菜单弹出窗口
+    Popup {
+        id: menuPopup
+        x: 70
+        y: mainWindow.height - height - 10
+        width: 160
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: Style.Color.surface
+            radius: Style.Radius.md
+            border.color: Style.Color.borderSoft
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 4
+            spacing: 2
+
+            ItemDelegate {
+                id: settingsItem
+                Layout.fillWidth: true
+                text: qsTr("设置")
+
+                contentItem: Label {
+                    text: settingsItem.text
+                    font.pixelSize: 13
+                    color: settingsItem.hovered ? Style.Color.primary : Style.Color.textMain
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: Style.Space.sm
+                }
+
+                background: Rectangle {
+                    color: settingsItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                    radius: Style.Radius.sm
+                    Behavior on color {
+                        ColorAnimation { duration: Style.Motion.base }
+                    }
+                }
+
+                onClicked: {
+                    menuPopup.close()
+                    settingsDialog.open()
+                }
+            }
+        }
+    }
+
+    // 三栏布局
     RowLayout {
         anchors.fill: parent
-        anchors.margins: Style.Space.md
-        spacing: Style.Space.md
+        spacing: 0
 
-        // 左侧：设备列表
+        // 左侧：工具栏
+        ToolBar {
+            Layout.preferredWidth: 62
+            Layout.fillHeight: true
+
+            background: Rectangle {
+                color: Style.Color.surfaceLeft
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: Style.Space.md
+
+                // 本机头像
+                Rectangle {
+                    id: avatarButton
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Style.Space.lg
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
+                    color: Style.Color.primary
+                    opacity: hovered ? 0.85 : 1.0
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: "我"
+                        color: "#FFFFFF"
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: deviceInfoPopup.open()
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: Style.Motion.base }
+                    }
+                }
+                Item { Layout.fillHeight: true }
+
+                // 菜单按钮（底部）
+                Button {
+                    id: menuButton
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.bottomMargin: Style.Space.lg
+                    flat: true
+
+                    // 手动跟踪是否按下
+                    property bool _pressed: false
+
+                    contentItem: ColumnLayout {
+                        anchors.centerIn: parent
+                        spacing: 3
+                        Repeater {
+                            model: 3
+                            Rectangle {
+                                Layout.alignment: Qt.AlignHCenter
+                                width: 16
+                                height: 2
+                                radius: 1
+                                color: (menuButton._pressed || menuButton.down)
+                                       ? Style.Color.menubarClicked
+                                       : (menuButton.hovered
+                                           ? Style.Color.menubarSelect
+                                           : Style.Color.textSecondary)
+
+                                Behavior on color {
+                                    ColorAnimation { duration: Style.Motion.base }
+                                }
+                            }
+                        }
+                    }
+
+                    background: Rectangle {
+                        implicitWidth: 41
+                        implicitHeight: 41
+                        color: (menuButton._pressed || menuButton.down)
+                               ? Style.Color.select
+                               : (menuButton.hovered
+                                   ? Style.Color.surfaceSoft
+                                   : Style.Color.transparent)
+
+                        Behavior on color {
+                            ColorAnimation { duration: Style.Motion.base }
+                        }
+                    }
+
+                    onPressedChanged: menuButton._pressed = pressed
+                    onClicked: menuPopup.open()
+                }
+            }
+        }
+
+        // 中间：设备列表
         PeerListView {
             id: peerListView
-            Layout.preferredWidth: 300
+            Layout.preferredWidth: 210
             Layout.fillHeight: true
             selectedDeviceId: mainWindow._targetDeviceId
 
             background: Rectangle {
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.borderSoft
-                border.width: 1
+                color: Style.Color.surfaceMid
             }
 
             onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
@@ -216,65 +399,66 @@ ApplicationWindow {
             }
         }
 
-        StackLayout {
+        // 右侧：会话页
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: mainWindow._targetDeviceId.length > 0 ? 1 : 0
+            color: Style.Color.surfaceLeft
 
-            Rectangle {
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.borderSoft
-                border.width: 1
+            StackLayout {
+                anchors.fill: parent
+                currentIndex: mainWindow._targetDeviceId.length > 0 ? 1 : 0
 
-                ColumnLayout {
-                    anchors.centerIn: parent
-                    spacing: Style.Space.lg
-                    width: Math.min(parent.width - 80, 420)
-
-                    Label {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "GridYard"
-                        color: Style.Color.primary
-                        font.pixelSize: 48
-                        font.bold: true
-                        opacity: 0.16
-                    }
-
-                    Label {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("选择一台设备开始会话")
-                        font.pixelSize: 20
-                        font.bold: true
-                        color: Style.Color.textMain
-                    }
-
-                    Label {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("发送文件，之后也会在这里查看聊天消息")
-                        color: Style.Color.textMuted
-                        font.pixelSize: 14
-                        wrapMode: Text.Wrap
-                        horizontalAlignment: Text.AlignHCenter
-                        Layout.fillWidth: true
-                    }
-                }
-            }
-
-            DeviceSessionView {
-                deviceId: mainWindow._targetDeviceId
-                deviceName: mainWindow._targetDeviceName
-                ipAddress: mainWindow._targetIpAddress
-                isOnline: mainWindow._targetIsOnline
-
-                background: Rectangle {
+                Rectangle {
                     color: "transparent"
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        width: Math.min(parent.width - 80, 420)
+
+                        Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "GridYard"
+                            color: Style.Color.primary
+                            font.pixelSize: 48
+                            font.bold: true
+                            opacity: 0.16
+                        }
+
+                        Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: qsTr("选择一台设备开始会话")
+                            font.pixelSize: 20
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+
+                        Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: qsTr("发送文件，之后也会在这里查看聊天消息")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 14
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
+                            Layout.fillWidth: true
+                        }
+                    }
                 }
 
-                onSendFileRequested: fileDialog.open()
-                onSendFolderRequested: folderDialog.open()
-                onFileDropped: function(filePath) {
-                    AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
+                DeviceSessionView {
+                    deviceId: mainWindow._targetDeviceId
+                    deviceName: mainWindow._targetDeviceName
+                    ipAddress: mainWindow._targetIpAddress
+                    isOnline: mainWindow._targetIsOnline
+
+                    background: Rectangle {
+                        color: "transparent"
+                    }
+
+                    onSendFileRequested: fileDialog.open()
+                    onSendFolderRequested: folderDialog.open()
+                    onFileDropped: function(filePath) {
+                        AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
+                    }
                 }
             }
         }
@@ -405,7 +589,6 @@ ApplicationWindow {
             padding: 12
         }
 
-        // 3 秒后自动关闭
         Timer {
             interval: 3000
             running: errorPopup.visible
@@ -447,7 +630,6 @@ ApplicationWindow {
             padding: 12
         }
 
-        // 3 秒后自动关闭
         Timer {
             interval: 3000
             running: successPopup.visible
