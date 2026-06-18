@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_manager.h
-* @version 4.14.0
-* @date    2026-06-15
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   传输会话管理器
 *
@@ -10,6 +10,8 @@
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 接收请求和完成结果改为跨线程值传递，删除 Worker 状态读取函数
 * [v4.14.0] GY   2026-06-15
 * * 支持清理传输记录并删除已接收的本地文件
 * [v4.13.2] GY   2026-06-15
@@ -36,6 +38,7 @@
 
 #include <QObject>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 #include "file_receiver_worker.h"
@@ -90,13 +93,7 @@ signals:
 
 private slots:
     // 处理新的传输请求
-    void onTransferRequestReceived(FileReceiverWorker *worker,
-                                   const QString &senderDeviceId,
-                                   const QString &senderName,
-                                   const QString &fileName,
-                                   qint64 fileSize,
-                                   int totalFiles,
-                                   qint64 totalBytes);
+    void onTransferRequestReceived(FileReceiverWorker *worker, const QVariantMap &request);
 
 public:
     explicit TransferSessionManager(QObject *parent = nullptr);
@@ -107,9 +104,9 @@ private:
     // 删除失败时保留记录，便于用户重新处理
     bool deleteReceivedFile(const QVariantMap &session);
 
-    ConfigManager    *_config    = nullptr;
-    DiscoveryService *_discovery = nullptr;
-    P2pServer        *_p2pServer = nullptr;
+    ConfigManager    *_config    = nullptr; // 本机配置和接收路径来源
+    DiscoveryService *_discovery = nullptr; // 在线设备与发送端点查询服务
+    P2pServer        *_p2pServer = nullptr; // 入站传输请求来源
 
     // 会话列表
     QList<QVariantMap> _sessions;
