@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 4.15.2
- * @date    2026-06-17
+ * @version 4.16.0
+ * @date    2026-06-18
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -12,6 +12,8 @@
  * 支持拖拽文件到卡片触发传输。
  *
  * Change Log:
+ * [v4.16.0] DuRuoxian   2026-06-18
+ * * 调整设备卡片为会话列表项，为在线聊天列表铺路
  * [v4.15.2] DuRuoxian   2026-06-17
  * * 优化设备卡片在线色、选中态边界和拖放高亮
  * [v4.12.0] DuRuoxian   2026-06-14
@@ -28,6 +30,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
+import "../utils/Style.js" as Style
 
 ItemDelegate {
     id: deviceCard
@@ -38,13 +41,13 @@ ItemDelegate {
     required property bool   isOnline
     required property bool   isSelected
 
-    readonly property int   kCardHeight: 72
-    readonly property color kOnlineColor:  "#10B981"
-    readonly property color kOfflineColor: "#9CA3AF"
-    readonly property color kSelectedColor: "#3B82F6"
-    readonly property color kDropHighlight: "#DBEAFE"
-    readonly property int kColorDuration: 150
-    readonly property int kStatusDuration: 180
+    readonly property int   kCardHeight: 76
+    readonly property color kOnlineColor:  Style.Color.success
+    readonly property color kOfflineColor: Style.Color.textWeak
+    readonly property color kSelectedColor: Style.Color.primary
+    readonly property color kDropHighlight: Style.Color.primarySoft
+    readonly property int kColorDuration: Style.Motion.base
+    readonly property int kStatusDuration: Style.Motion.slow
 
     signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal fileDropped(string deviceId, string filePath)
@@ -54,13 +57,13 @@ ItemDelegate {
     // 卡片背景样式（拖拽高亮）
     background: Rectangle {
         color: dropArea.containsDrag ? deviceCard.kDropHighlight
-             : deviceCard.isSelected ? "#EFF6FF"
-             : deviceCard.hovered   ? "#F9FAFB"
-             :                           "#FFFFFF"
+             : deviceCard.isSelected ? Style.Color.primarySoft
+             : deviceCard.hovered   ? Style.Color.surfaceSoft
+             :                           Style.Color.surface
         border.color: dropArea.containsDrag || deviceCard.isSelected
-                      ? deviceCard.kSelectedColor : "#E5E7EB"
+                      ? deviceCard.kSelectedColor : Style.Color.transparent
         border.width: dropArea.containsDrag || deviceCard.isSelected ? 2 : 1
-        radius: 8
+        radius: Style.Radius.sm
 
         Behavior on color {
             ColorAnimation {
@@ -116,19 +119,18 @@ ItemDelegate {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 12
+        anchors.margins: Style.Space.md
+        spacing: Style.Space.md
 
-        // 在线状态指示灯
+        // 设备头像
         Rectangle {
-            id: statusDot
             Layout.alignment: Qt.AlignVCenter
-            width: 12
-            height: 12
-            radius: 6
-            color: deviceCard.isOnline ? deviceCard.kOnlineColor
-                                          : deviceCard.kOfflineColor
-            opacity: deviceCard.isOnline ? 1 : 0.55
+            Layout.preferredWidth: 42
+            Layout.preferredHeight: 42
+            radius: 21
+            color: deviceCard.isSelected ? Style.Color.primary : Style.Color.surfaceSoft
+            border.color: deviceCard.isSelected ? Style.Color.primary : Style.Color.borderSoft
+            border.width: 1
 
             Behavior on color {
                 ColorAnimation {
@@ -137,11 +139,14 @@ ItemDelegate {
                 }
             }
 
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: deviceCard.kStatusDuration
-                    easing.type: Easing.OutCubic
-                }
+            Label {
+                anchors.centerIn: parent
+                text: deviceCard.deviceName.length > 0
+                      ? deviceCard.deviceName.charAt(0).toUpperCase()
+                      : "?"
+                color: deviceCard.isSelected ? Style.Color.surface : Style.Color.textSecondary
+                font.pixelSize: 16
+                font.bold: true
             }
         }
 
@@ -154,22 +159,44 @@ ItemDelegate {
                 text: deviceCard.deviceName
                 font.pixelSize: 14
                 font.bold: true
+                color: Style.Color.textMain
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
             Label {
                 text: deviceCard.ipAddress
-                color: "#666666"
+                color: Style.Color.textMuted
                 font.pixelSize: 12
+                elide: Text.ElideRight
+                Layout.fillWidth: true
             }
         }
 
-        // 在线状态文字
-        Label {
-            text: deviceCard.isOnline ? qsTr("在线") : qsTr("离线")
-            color: deviceCard.isOnline ? deviceCard.kOnlineColor
-                                          : deviceCard.kOfflineColor
-            font.pixelSize: 12
+        ColumnLayout {
+            Layout.alignment: Qt.AlignVCenter
+            spacing: Style.Space.xs
+
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 8
+                Layout.preferredHeight: 8
+                radius: 4
+                color: deviceCard.isOnline ? deviceCard.kOnlineColor : deviceCard.kOfflineColor
+                opacity: deviceCard.isOnline ? 1 : 0.55
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: deviceCard.kStatusDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            Label {
+                text: deviceCard.isOnline ? qsTr("在线") : qsTr("离线")
+                color: deviceCard.isOnline ? deviceCard.kOnlineColor : deviceCard.kOfflineColor
+                font.pixelSize: 11
+            }
         }
     }
 }

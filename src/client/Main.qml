@@ -1,7 +1,7 @@
 /**
 * @file    Main.qml
-* @version 4.15.2
-* @date    2026-06-17
+* @version 4.16.0
+* @date    2026-06-18
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
@@ -10,6 +10,8 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v4.16.0] DuRuoxian   2026-06-18
+* * 统一主窗口样式常量，调整为现代设备会话工作台
 * [v4.15.2] DuRuoxian   2026-06-17
 * * 优化主窗口工具栏、设备列表容器和未选中设备占位状态
 * [v4.13.2] DuRuoxian   2026-06-15
@@ -33,6 +35,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
+import "utils/Style.js" as Style
 
 ApplicationWindow {
     id: mainWindow
@@ -42,6 +45,7 @@ ApplicationWindow {
     visible: true
     title:   "%1 v%2".arg(AppController.applicationName)
                      .arg(AppController.applicationVersion)
+    color: Style.Color.pageBg
 
     onClosing: AppController.quit()
 
@@ -110,12 +114,12 @@ ApplicationWindow {
     // 工具栏
     header: ToolBar {
         background: Rectangle {
-            color: "#FFFFFF"
+            color: Style.Color.surface
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#E5E7EB"
+                color: Style.Color.border
             }
         }
 
@@ -127,8 +131,8 @@ ApplicationWindow {
                 text: mainWindow.title
                 font.pixelSize: 15
                 font.bold: true
-                color: "#111827"
-                Layout.leftMargin: 20
+                color: Style.Color.textMain
+                Layout.leftMargin: Style.Space.xl
             }
 
             Item { Layout.fillWidth: true }
@@ -144,25 +148,25 @@ ApplicationWindow {
                 contentItem: Label {
                     text: settingsButton.text
                     font: settingsButton.font
-                    // 文本颜色平滑过渡
-                    color: settingsButton.down ? "#2563EB" : (settingsButton.hovered ? "#3B82F6" : "#4B5563")
+                    color: settingsButton.down ? Style.Color.primaryPressed
+                                               : (settingsButton.hovered ? Style.Color.primary : Style.Color.textSecondary)
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
 
                     Behavior on color {
-                        ColorAnimation { duration: 200; easing.type: Easing.OutCubic }
+                        ColorAnimation { duration: Style.Motion.base; easing.type: Easing.OutCubic }
                     }
                 }
 
                 background: Rectangle {
                     implicitWidth: 64
                     implicitHeight: 32
-                    // 使用同色透明值作为起点，避免悬停背景过渡跳变
-                    color: settingsButton.down ? "#E5E7EB" : (settingsButton.hovered ? "#F3F4F6" : "#00F3F4F6")
-                    radius: 6
+                    color: settingsButton.down ? Style.Color.border
+                                               : (settingsButton.hovered ? Style.Color.surfaceSoft : Style.Color.transparent)
+                    radius: Style.Radius.sm
 
                     Behavior on color {
-                        ColorAnimation { duration: 200; easing.type: Easing.OutCubic }
+                        ColorAnimation { duration: Style.Motion.base; easing.type: Easing.OutCubic }
                     }
                 }
             }
@@ -177,8 +181,8 @@ ApplicationWindow {
     // 左右分栏布局
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 12
+        anchors.margins: Style.Space.md
+        spacing: Style.Space.md
 
         // 左侧：设备列表
         PeerListView {
@@ -188,9 +192,9 @@ ApplicationWindow {
             selectedDeviceId: mainWindow._targetDeviceId
 
             background: Rectangle {
-                color: "#FFFFFF"
-                radius: 12
-                border.color: "#E5E7EB"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.borderSoft
                 border.width: 1
             }
 
@@ -218,37 +222,41 @@ ApplicationWindow {
             currentIndex: mainWindow._targetDeviceId.length > 0 ? 1 : 0
 
             Rectangle {
-                color: "#F9FAFB"
-                radius: 12
-                border.color: "#E5E7EB"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.borderSoft
                 border.width: 1
 
                 ColumnLayout {
                     anchors.centerIn: parent
-                    spacing: 16
+                    spacing: Style.Space.lg
+                    width: Math.min(parent.width - 80, 420)
 
                     Label {
                         Layout.alignment: Qt.AlignHCenter
                         text: "GridYard"
-                        color: "#9CA3AF"
+                        color: Style.Color.primary
                         font.pixelSize: 48
                         font.bold: true
-                        opacity: 0.15
+                        opacity: 0.16
                     }
 
                     Label {
                         Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("选择一台在线设备开始传输")
+                        text: qsTr("选择一台设备开始会话")
                         font.pixelSize: 20
                         font.bold: true
-                        color: "#374151"
+                        color: Style.Color.textMain
                     }
 
                     Label {
                         Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("点击左侧设备进入会话，或直接拖放文件到设备卡片")
-                        color: "#6B7280"
+                        text: qsTr("发送文件，之后也会在这里查看聊天消息")
+                        color: Style.Color.textMuted
                         font.pixelSize: 14
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
                     }
                 }
             }
@@ -383,8 +391,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            color: "#F44336"
-            radius: 8
+            color: Style.Color.error
+            radius: Style.Radius.sm
         }
 
         contentItem: Label {
@@ -425,8 +433,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            color: "#4CAF50"
-            radius: 8
+            color: Style.Color.success
+            radius: Style.Radius.sm
         }
 
         contentItem: Label {
