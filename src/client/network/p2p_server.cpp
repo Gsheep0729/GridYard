@@ -1,7 +1,7 @@
 /**
 * @file    p2p_server.cpp
-* @version 4.15.1
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
 *
@@ -10,6 +10,8 @@
 * 在后台线程执行，不阻塞 UI 主线程。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 使用请求快照转发接收信息，删除未使用的 isListening() 访问器
 * [v4.15.1] FengChunlin   2026-06-17
 * * 删除 _threads.append 调用，修正析构注释
 * [v4.15.0] GY   2026-06-17
@@ -84,12 +86,6 @@ void P2pServer::stop()
     }
 }
 
-// 查询服务器是否正在监听
-bool P2pServer::isListening() const
-{
-    return _server->isListening();
-}
-
 // 处理新入站连接，为每个连接创建独立后台线程和 FileReceiverWorker
 void P2pServer::onNewConnection()
 {
@@ -122,20 +118,15 @@ void P2pServer::onNewConnection()
 
         // 转发传输请求信号（worker 在后台线程，信号通过 Queued Connection 跨线程）
         connect(worker, &FileReceiverWorker::transferRequestReceived,
-                this, [this, worker](const QString &senderDeviceId,
-                                     const QString &senderName,
-                                     const QString &fileName,
-                                     qint64 fileSize,
-                                     int totalFiles,
-                                     qint64 totalBytes) {
+                this, [this, worker](const QVariantMap &request) {
             qDebug() << "[P2pServer] 转发传输请求信号到 TransferSessionManager";
-            emit transferRequestReceived(worker, senderDeviceId, senderName, fileName,
-                                         fileSize, totalFiles, totalBytes);
+            emit transferRequestReceived(worker, request);
         });
 
         // 传输完成时清理线程和 worker
         connect(worker, &FileReceiverWorker::transferFinished,
-                this, [worker, thread](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
+                this, [worker, thread](bool success, gy::protocol::ErrorCode errorCode,
+                                       const QString &errorMsg, const QString &) {
             qDebug() << "[P2pServer] 传输完成"
                      << "成功:" << success
                      << "错误码:" << static_cast<quint16>(errorCode)

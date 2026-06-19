@@ -92,10 +92,10 @@ private:
     // 全局实例指针（用于单例模式）
     static QPointer<ConfigManager> s_instance;
 
-    QString _deviceId;
-    QString _deviceName;
-    QString _localIp;
-    QString _receivePath;
-    bool    _autoAcceptFiles = false;
-    quint16 _tcpPort = 0;
+    QString _deviceId;                // 持久化的本机设备 UUID
+    QString _deviceName;              // 用户设置的本机显示名称
+    QString _localIp;                 // 当前选取的本机 IPv4 地址
+    QString _receivePath;             // 接收文件的本地保存目录
+    bool    _autoAcceptFiles = false; // 是否跳过接收确认直接保存
+    quint16 _tcpPort = 0;             // TCP P2P 服务监听端口
 };

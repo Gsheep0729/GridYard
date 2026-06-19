@@ -11,7 +11,7 @@
 *
 * Change Log:
 * [v4.16.1] GY   2026-06-21
-* * 新增 fillReceiveSession()、rootPreviewPaths() 实现
+* * 通过接收请求快照和完成结果传递状态，删除 Worker 状态读取函数
 * [v4.15.1] FengChunlin   2026-06-17
 * * 连接 FrameCodec::errorOccurred，协议错误时 cleanup + disconnect + emit transferFinished
 * * handleDataChunk 进度节流 static 改为成员 _receiveChunkCount，acceptTransfer 时重置
@@ -104,24 +104,6 @@ QString uniqueTargetPath(const QString &path, bool directory)
 
 }
 
-// 获取接收文件的相对路径列表（含空目录）
-QStringList FileReceiverWorker::filePaths() const
-{
-    QStringList paths;
-    paths.reserve(_fileList.size() + _emptyDirectories.size());
-    for (const auto &item : _fileList) {
-        paths.append(item.relativePath);
-    }
-    paths.append(_emptyDirectories);
-    return paths;
-}
-
-// 获取文件实际保存路径（目录时返回根目录，单文件时返回文件路径）
-QString FileReceiverWorker::savedPath() const
-{
-    return _isDirectory ? _destinationRoot : _singleFilePath;
-}
-
 // 构造函数，绑定 socket 并创建 SHA-256 哈希计算器
 FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
     : QObject{parent}
@@ -157,7 +139,7 @@ void FileReceiverWorker::initialize()
         qWarning() << "[FileReceiver] 协议错误:" << errorMsg;
         cleanup();
         _socket->disconnectFromHost();
-        emit transferFinished(false, errorCode, errorMsg);
+        emit transferFinished(false, errorCode, errorMsg, {});
     });
 
     // 超时定时器
@@ -195,7 +177,7 @@ void FileReceiverWorker::acceptTransfer()
     const auto failPreparation = [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         sendTransferResponse(false, errorCode, errorMsg);
         cleanup();
-        emit transferFinished(false, errorCode, errorMsg);
+        emit transferFinished(false, errorCode, errorMsg, {});
         _socket->disconnectFromHost();
     };
 
@@ -254,7 +236,7 @@ void FileReceiverWorker::rejectTransfer(const QString &reason)
     sendTransferResponse(false, gy::protocol::ErrorCode::UserRejected, reason.isEmpty() ? tr("用户拒绝") : reason);
 
     // 发射传输完成信号（被拒绝）
-    emit transferFinished(false, gy::protocol::ErrorCode::UserRejected, reason);
+    emit transferFinished(false, gy::protocol::ErrorCode::UserRejected, reason, {});
 
     // 关闭连接
     _socket->disconnectFromHost();
@@ -277,7 +259,7 @@ void FileReceiverWorker::onDisconnected()
 {
     if (_transferActive) {
         cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::ConnectionLost, tr("连接断开"));
+        emit transferFinished(false, gy::protocol::ErrorCode::ConnectionLost, tr("连接断开"), {});
     }
 }
 
@@ -287,7 +269,7 @@ void FileReceiverWorker::onTimeout()
     if (_transferActive) {
         qWarning() << "FileReceiverWorker: 传输超时";
         cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
+        emit transferFinished(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"), {});
     }
 }
 
@@ -497,8 +479,7 @@ void FileReceiverWorker::handleTransferRequest(const QByteArray &payload)
     qDebug() << "  显示名称:" << _displayName;
 
     // 通知 UI 弹窗确认
-    emit transferRequestReceived(_senderDeviceId, _senderName, _displayName, _fileSize,
-                                 _totalFiles, _totalBytes);
+    emit transferRequestReceived(receiveRequestSnapshot());
 
     qDebug() << "[FileReceiver] 已通知 UI 弹窗确认";
 }
@@ -543,7 +524,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
                    << "实际长度:" << chunkData.size();
         sendChunkAck(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg);
         cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg);
+        emit transferFinished(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg, {});
         _socket->disconnectFromHost();
         return;
     }
@@ -558,7 +539,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
     if (written != chunkData.size()) {
         qWarning() << "[FileReceiver] 写入文件失败，可能是磁盘空间不足";
         cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("写入文件失败，可能是磁盘空间不足"));
+        emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("写入文件失败，可能是磁盘空间不足"), {});
         return;
     }
 
@@ -607,7 +588,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
             QFile::remove(_file.fileName());
             _timeoutTimer->stop();
             _transferActive = false;
-            emit transferFinished(false, gy::protocol::ErrorCode::Sha256Mismatch, errorMsg);
+            emit transferFinished(false, gy::protocol::ErrorCode::Sha256Mismatch, errorMsg, {});
             return;
         }
 
@@ -624,7 +605,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
 
             if (!openCurrentFile()) {
                 _transferActive = false;
-                emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建文件: %1").arg(_file.errorString()));
+                emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建文件: %1").arg(_file.errorString()), {});
                 return;
             }
 
@@ -647,7 +628,8 @@ void FileReceiverWorker::handleTransferDone()
     qDebug() << "[FileReceiver] 收到传输完成确认:" << _displayName;
     _timeoutTimer->stop();
     _transferActive = false;
-    emit transferFinished(true, gy::protocol::ErrorCode::Success, "");
+    emit transferFinished(true, gy::protocol::ErrorCode::Success, "",
+                          _isDirectory ? _destinationRoot : _singleFilePath);
 }
 
 // 打开当前待接收的文件，目录模式下自动创建父目录
@@ -688,7 +670,7 @@ void FileReceiverWorker::handleCancel(const QByteArray &payload)
 
     _transferActive = false;
 
-    emit transferFinished(false, gy::protocol::ErrorCode::UserCancelled, tr("传输被取消: %1").arg(reason));
+    emit transferFinished(false, gy::protocol::ErrorCode::UserCancelled, tr("传输被取消: %1").arg(reason), {});
 
     // 关闭连接
     _socket->disconnectFromHost();
@@ -723,9 +705,10 @@ void FileReceiverWorker::sendChunkAck(bool verified, gy::protocol::ErrorCode err
     _socket->write(frame);
 }
 
-// 填充接收会话信息到 QVariantMap，供 QML 展示传输记录
-void FileReceiverWorker::fillReceiveSession(QVariantMap &session) const
+// 构建接收请求快照，供主线程创建会话和展示确认弹窗
+QVariantMap FileReceiverWorker::receiveRequestSnapshot() const
 {
+    QVariantMap session;
     session["sessionId"]    = _sessionId;
     session["senderDeviceId"] = _senderDeviceId;
     session["senderName"]   = _senderName;
@@ -734,6 +717,15 @@ void FileReceiverWorker::fillReceiveSession(QVariantMap &session) const
     session["totalFiles"]   = _totalFiles;
     session["totalBytes"]   = _totalBytes;
     session["isDirectory"]  = _isDirectory;
+    QVariantList sourcePaths;
+    sourcePaths.reserve(_fileList.size() + _emptyDirectories.size());
+    for (const auto &item : _fileList) {
+        sourcePaths.append(item.relativePath);
+    }
+    for (const QString &directory : _emptyDirectories) {
+        sourcePaths.append(directory);
+    }
+    session["sourcePaths"] = sourcePaths;
     // 如果是目录，填充根目录预览（只显示顶层文件和目录）
     if (_isDirectory) {
         QVariantList preview;
@@ -754,14 +746,5 @@ void FileReceiverWorker::fillReceiveSession(QVariantMap &session) const
     } else {
         session["fileList"] = QVariantList{};
     }
-}
-
-// 获取文件夹根目录预览路径列表（所有文件的相对路径）
-QStringList FileReceiverWorker::rootPreviewPaths() const
-{
-    QStringList paths;
-    for (const auto &item : _fileList) {
-        paths.append(item.relativePath);
-    }
-    return paths;
+    return session;
 }
