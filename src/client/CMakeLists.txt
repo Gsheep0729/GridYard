@@ -53,6 +53,7 @@ qt_add_qml_module(appGridYard
         icons/file-code.svg
         icons/file-document.svg
         icons/file-executable.svg
+        icons/gridyard.png
 )
 
 target_compile_features(appGridYard PRIVATE cxx_std_23)
