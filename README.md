@@ -74,10 +74,10 @@ cd src
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
 # 增量构建
-cmake --build build -j
+cmake --build build-ninja -j
 
 # 运行客户端
-./build/client/appGridYard
+./build-ninja/client/appGridYard
 ```
 
 ### 4. 运行测试
@@ -96,8 +96,8 @@ ctest --test-dir build --output-on-failure
 ./scripts/test_loopback.sh
 
 # 方式 2：手动启动两个实例
-./build/client/appGridYard --port 35100 --name "接收端" &
-./build/client/appGridYard --port 35101 --name "发送端" &
+./build-ninja/client/appGridYard --port 35100 --name "接收端" &
+./build-ninja/client/appGridYard --port 35101 --name "发送端" &
 ```
 
 **命令行参数**：

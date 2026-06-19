@@ -95,7 +95,7 @@ cd src
    ```bash
    cd src
    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-   cmake --build build -j
+   cmake --build build-ninja -j
    ```
 
 2. **端口未被占用**：
@@ -149,7 +149,7 @@ cd src
 **解决**：
 ```bash
 cd src
-cmake --build build -j
+cmake --build build-ninja -j
 ```
 
 ### Q2: 端口已被占用
@@ -198,8 +198,8 @@ GridYard 应用支持以下命令行参数：
 **示例**：
 ```bash
 # 启动两个实例，使用不同端口和名称
-./build/client/appGridYard --port 35100 --name "接收端" &
-./build/client/appGridYard --port 35101 --name "发送端" &
+./build-ninja/client/appGridYard --port 35100 --name "接收端" &
+./build-ninja/client/appGridYard --port 35101 --name "发送端" &
 ```
 
 ---

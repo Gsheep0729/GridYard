@@ -216,10 +216,10 @@ cd src
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
 # 增量构建
-cmake --build build -j
+cmake --build build-ninja -j
 
 # 运行客户端（可执行文件在 build/client/ 下）
-./build/client/appGridYard
+./build-ninja/client/appGridYard
 
 # 跑全部单测
 ctest --test-dir build --output-on-failure
@@ -227,8 +227,8 @@ ctest --test-dir build --output-on-failure
 
 > **常用别名**（写进各自的 `~/.bashrc` 或 `~/.zshrc`）：
 > ```bash
-> alias gyb='cmake --build build -j'
-> alias gyr='./build/client/appGridYard'
+> alias gyb='cmake --build build-ninja -j'
+> alias gyr='./build-ninja/client/appGridYard'
 > alias gyt='ctest --test-dir build --output-on-failure'
 > ```
 

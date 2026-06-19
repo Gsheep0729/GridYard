@@ -28,8 +28,8 @@
 ```bash
 # 在本目录下
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j
-./build/bin/integration_demo
+cmake --build build-ninja -j
+./build-ninja/bin/integration_demo
 ```
 
 预期看到：

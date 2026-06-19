@@ -3,13 +3,13 @@
 # 启动两个实例：发送端（端口 35101）和接收端（端口 35100）
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/../src/build/client"
+BUILD_DIR="$SCRIPT_DIR/../build-ninja/client"
 APP="$BUILD_DIR/appGridYard"
 
 # 检查可执行文件是否存在
 if [ ! -f "$APP" ]; then
     echo "错误：找不到可执行文件 $APP"
-    echo "请先构建项目：cd src && cmake --build build -j"
+    echo "请先构建项目：cd src && cmake --build build-ninja -j"
     exit 1
 fi
 
