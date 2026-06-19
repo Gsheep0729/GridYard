@@ -64,6 +64,7 @@
 
 namespace {
 
+// 配置 Linux 桌面环境下 Qt 平台主题，使 KDE 使用原生文件选择器
 void configurePlatformTheme()
 {
 #ifdef Q_OS_LINUX
@@ -77,13 +78,14 @@ void configurePlatformTheme()
 
 }
 
+// 程序主函数入口，初始化应用、解析命令行参数并加载 QML 引擎
 int main(int argc, char *argv[]) {
     configurePlatformTheme();
 
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("4.16.0");
+    QGuiApplication::setApplicationVersion("4.16.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数解析

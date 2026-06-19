@@ -1,13 +1,14 @@
 /**
 * @file    p2p_server.h
-* @version 4.15.0
+* @version 4.15.1
 * @date    2026-06-17
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器
 *
-* 监听 TCP 端口，接受来自其他设备的文件传输请求。
+* 监听 TCP 端口（默认 35100），接受来自其他设备的文件传输请求。
 * 为每个入站连接创建独立的 QThread 和 FileReceiverWorker，
-* 实现接收侧后台化，写盘与 SHA-256 校验在后台线程执行。
+* 实现接收侧后台化，写盘与 SHA-256 校验在后台线程执行，
+* 不阻塞 UI 主线程。
 *
 * Change Log:
 * [v4.15.1] FengChunlin   2026-06-17
