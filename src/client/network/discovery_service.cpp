@@ -11,7 +11,7 @@
 *
 * Change Log:
 * [v4.16.1] GY   2026-06-21
-* * 新增语义化查询方法实现；buildHelloPayload 和 handleHelloPacket 使用委托模式
+* * 提供 transferEndpoint() 对端快照查询，避免拆分读取节点字段
 * [v4.15.0] GY   2026-06-17
 * * 协议版本不兼容处理：主版本不一致标记不兼容，次版本差异安全降级
 * [v4.7.1] FengChunlin   2026-06-05
@@ -113,38 +113,17 @@ QVariantList DiscoveryService::peers() const
     return list;
 }
 
-// 根据设备ID获取设备信息，未找到时返回空 PeerInfo
-PeerInfo DiscoveryService::peerInfo(const QString &deviceId) const
-{
-    return _peers.value(deviceId, PeerInfo{});
-}
-
-// 检查指定设备是否在线
-bool DiscoveryService::isPeerOnline(const QString &deviceId) const
+// 查询可用于发送传输的对端快照
+QVariantMap DiscoveryService::transferEndpoint(const QString &deviceId) const
 {
     auto it = _peers.find(deviceId);
-    return it != _peers.end() && it.value().isOnline;
-}
+    if (it == _peers.end() || !it.value().isOnline) {
+        return {};
+    }
 
-// 获取指定设备的 IP 地址
-QString DiscoveryService::peerIpAddress(const QString &deviceId) const
-{
-    auto it = _peers.find(deviceId);
-    return it != _peers.end() ? it.value().ipAddress : QString();
-}
-
-// 获取指定设备的 TCP 端口号
-quint16 DiscoveryService::peerTcpPort(const QString &deviceId) const
-{
-    auto it = _peers.find(deviceId);
-    return it != _peers.end() ? it.value().tcpPort : 0;
-}
-
-// 获取指定设备的名称
-QString DiscoveryService::peerName(const QString &deviceId) const
-{
-    auto it = _peers.find(deviceId);
-    return it != _peers.end() ? it.value().deviceName : QString();
+    const PeerInfo &peer = it.value();
+    return {{"deviceName", peer.deviceName}, {"ipAddress", peer.ipAddress},
+            {"tcpPort", peer.tcpPort}};
 }
 
 // 向所有激活网卡的广播地址发送 Hello 包

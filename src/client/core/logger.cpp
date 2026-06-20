@@ -1,7 +1,7 @@
 /**
 * @file    logger.cpp
-* @version 4.7.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   运行日志工具实现
 *
@@ -9,6 +9,8 @@
 * 日志文件按日期自动命名，支持跨天自动切换。线程安全（QMutex）。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 删除未使用的 logFilePath() 访问器
 * [v4.7.0] GY   2026-06-05
 * * 初始版本：文件输出 + 控制台输出 + 线程安全
 */
@@ -73,12 +75,6 @@ void Logger::init(const QString &logDir) {
     openLogFile();
 
     qInstallMessageHandler(messageHandler);
-}
-
-// 获取当前日志文件路径
-QString Logger::logFilePath() const {
-    QMutexLocker locker(&_mutex);
-    return _logFile.fileName();
 }
 
 // 打开当天的日志文件（按日期自动命名）

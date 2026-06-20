@@ -1,12 +1,15 @@
 /**
 * @file    test_discovery.cpp
-* @date    2026-06-05
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   DiscoveryService 设备发现测试
 *
 * 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 改为验证不存在设备不会返回发送端点快照
 * [v1.0] GY   2026-06-05
 * * 初始版本
 */
@@ -169,10 +172,8 @@ void TestDiscovery::testMultipleNodes()
 
 void TestDiscovery::testPeerInfo()
 {
-    // 测试 peerInfo() 方法
-    // 使用一个不存在的 deviceId
-    PeerInfo info = _discovery1->peerInfo("non_existent_device");
-    QVERIFY(info.deviceId.isEmpty());
+    // 不存在或离线设备不应提供发送端点
+    QVERIFY(_discovery1->transferEndpoint("non_existent_device").isEmpty());
 }
 
 QTEST_MAIN(TestDiscovery)

@@ -1,13 +1,15 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 改用接收请求快照和完成结果验证文件接收流程
 * [v4.15.1] FengChunlin   2026-06-17
 * * 新增 testProtocolVersionMismatch：主版本不兼容时接收端拒绝并断开
 * * 新增 testMalformedTransferRequest：无效 JSON、缺字段、数量不一致均被拒绝
@@ -172,9 +174,9 @@ void TestFileTransfer::testSingleFileTransfer()
     connect(&server, &P2pServer::transferRequestReceived,
             this, [&receivedSenderDeviceId, &receivedSenderName](
                                         FileReceiverWorker *worker,
-                                        const QString &senderDeviceId,
-                                        const QString &senderName,
-                                        const QString &, qint64, int, qint64) {
+                                        const QVariantMap &request) {
+        const QString senderDeviceId = request["senderDeviceId"].toString();
+        const QString senderName = request["senderName"].toString();
         qDebug() << "[Test] 收到传输请求信号，senderDeviceId:" << senderDeviceId;
         receivedSenderDeviceId = senderDeviceId;
         receivedSenderName = senderName;
@@ -269,12 +271,12 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
     connect(&server, &P2pServer::transferRequestReceived, this,
             [this, &receiverFinished, &receiverSuccess,
              &receiverDisplayName, &receiverFilePaths](
-                FileReceiverWorker *worker, const QString &, const QString &,
-                const QString &, qint64, int, qint64) {
-        receiverDisplayName = worker->fileName();
-        receiverFilePaths = worker->filePaths();
+                FileReceiverWorker *worker, const QVariantMap &request) {
+        receiverDisplayName = request["fileName"].toString();
+        receiverFilePaths = request["sourcePaths"].toStringList();
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
@@ -326,10 +328,10 @@ void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
     bool receiverSuccess = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
             [this, &receiverFinished, &receiverSuccess](
-                FileReceiverWorker *worker, const QString &, const QString &,
-                const QString &, qint64, int, qint64) {
+                FileReceiverWorker *worker, const QVariantMap &) {
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
@@ -378,10 +380,10 @@ void TestFileTransfer::testLargeFileTransferEndToEnd()
     bool receiverSuccess = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
             [this, &receiverFinished, &receiverSuccess](
-                FileReceiverWorker *worker, const QString &, const QString &,
-                const QString &, qint64, int, qint64) {
+                FileReceiverWorker *worker, const QVariantMap &) {
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
@@ -566,10 +568,10 @@ void TestFileTransfer::testCancelTransfer()
     bool receiverSuccess = true;
     connect(&server, &P2pServer::transferRequestReceived, this,
             [this, &receiverFinished, &receiverSuccess](
-                FileReceiverWorker *worker, const QString &, const QString &,
-                const QString &, qint64, int, qint64) {
+                FileReceiverWorker *worker, const QVariantMap &) {
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
@@ -635,14 +637,15 @@ void TestFileTransfer::testConnectionLost()
         worker->moveToThread(thread);
 
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess, thread](bool success, gy::protocol::ErrorCode, const QString &) {
+                [&receiverFinished, &receiverSuccess, thread](bool success, gy::protocol::ErrorCode,
+                                                              const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
             thread->quit();
         });
         connect(thread, &QThread::started, worker, &FileReceiverWorker::initialize);
         connect(worker, &FileReceiverWorker::transferRequestReceived, this,
-                [worker, this]() {
+                [worker, this](const QVariantMap &) {
             QMetaObject::invokeMethod(worker, [worker, this]() {
                 worker->setReceivePath(_recvDir->path());
                 worker->acceptTransfer();
@@ -774,8 +777,7 @@ void TestFileTransfer::testProtocolVersionMismatch()
 
     bool rejected = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
-            [&rejected](FileReceiverWorker *, const QString &, const QString &,
-                        const QString &, qint64, int, qint64) {
+            [&rejected](FileReceiverWorker *, const QVariantMap &) {
         // 不应该收到请求（应被版本检查拒绝）
         rejected = true;
     });
@@ -822,8 +824,7 @@ void TestFileTransfer::testMalformedTransferRequest()
 
     bool rejected = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
-            [&rejected](FileReceiverWorker *, const QString &, const QString &,
-                        const QString &, qint64, int, qint64) {
+            [&rejected](FileReceiverWorker *, const QVariantMap &) {
         rejected = true;
     });
 
@@ -909,8 +910,7 @@ void TestFileTransfer::testInvalidFilePath()
 
     bool rejected = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
-            [&rejected](FileReceiverWorker *, const QString &, const QString &,
-                        const QString &, qint64, int, qint64) {
+            [&rejected](FileReceiverWorker *, const QVariantMap &) {
         rejected = true;
     });
 
