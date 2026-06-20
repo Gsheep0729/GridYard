@@ -14,11 +14,13 @@
 
 const Color = {
     pageBg: "#F5F7FA",
+    surface:"#EDEDED",
     surfaceLeft: "#EDEDED",
     surfaceMid:"#F7F7F7",
     surfaceSoft: "#F9FAFB",
     menubarSelect: "#E1E1E1",
     menubarClicked:"#D5D5D5",
+    menubar:"#7F7F7F",
     false:"#F7F7F7",
     select:"#EAEAEA",
     selected:"#D3D3D3",
