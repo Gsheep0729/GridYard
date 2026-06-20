@@ -1,9 +1,13 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 4.15.0
+* @version 4.15.1
 * @date    2026-06-17
 * @author  GridYard Team
-* @brief   FileSenderWorker 实现
+* @brief   文件发送 Worker 实现
+*
+* 实现完整的文件发送流程：建立 TCP 连接、发送传输请求、等待响应、
+* 以 8MB 分块发送数据、处理确认帧。支持多文件/目录传输、背压控制、
+* 取消操作和超时检测。
 *
 * Change Log:
 * [v4.15.1] FengChunlin   2026-06-17
@@ -45,6 +49,7 @@
 // 超时时间：30 秒
 static constexpr int kTimeoutMs = 30000;
 
+// 构造函数，初始化 TCP socket、FrameCodec 和超时定时器
 FileSenderWorker::FileSenderWorker(QObject *parent)
     : QObject{parent}
     , _socket{new QTcpSocket{this}}
@@ -77,11 +82,13 @@ FileSenderWorker::FileSenderWorker(QObject *parent)
             this,          &FileSenderWorker::onTimeout);
 }
 
+// 析构函数，清理传输资源
 FileSenderWorker::~FileSenderWorker()
 {
     cleanup();
 }
 
+// 发起文件传输：序列化文件列表、建立 TCP 连接、发送传输请求
 void FileSenderWorker::startTransfer(const QString &host, quint16 port,
                                      const QString &path, const QString &senderDeviceId,
                                      const QString &senderName)
@@ -159,6 +166,7 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _timeoutTimer->start(kTimeoutMs);
 }
 
+// 处理 socket 可读数据，喂入 FrameCodec 解码并重置超时
 void FileSenderWorker::onReadyRead()
 {
     _codec->feed(_socket->readAll());
@@ -168,6 +176,7 @@ void FileSenderWorker::onReadyRead()
     }
 }
 
+// 处理连接断开事件，传输活跃时清理资源并通知失败
 void FileSenderWorker::onDisconnected()
 {
     if (_transferActive) {
@@ -176,6 +185,7 @@ void FileSenderWorker::onDisconnected()
     }
 }
 
+// 处理传输超时，清理资源并通知超时失败
 void FileSenderWorker::onTimeout()
 {
     if (_transferActive) {
@@ -185,6 +195,7 @@ void FileSenderWorker::onTimeout()
     }
 }
 
+// 处理数据写入完成回调，写队列有空间时调度发送下一块
 void FileSenderWorker::onBytesWritten(qint64)
 {
     if (!_transferActive) {
@@ -197,6 +208,7 @@ void FileSenderWorker::onBytesWritten(qint64)
     }
 }
 
+// 清理传输资源：停止定时器、关闭文件
 void FileSenderWorker::cleanup()
 {
     // 停止超时定时器
@@ -210,6 +222,7 @@ void FileSenderWorker::cleanup()
     _sendScheduled = false;
 }
 
+// 处理收到的响应帧：传输响应决定是否开始发送，块确认决定是否继续下一文件
 void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 {
     qDebug() << "[FileSender] 收到帧，类型:" << type;
@@ -314,6 +327,7 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
     }
 }
 
+// 构建并发送传输请求帧（文件列表、总大小、协议版本等）
 void FileSenderWorker::sendTransferRequest()
 {
     qDebug() << "[FileSender] 发送传输请求";
@@ -352,6 +366,7 @@ void FileSenderWorker::sendTransferRequest()
     qDebug() << "[FileSender] 传输请求已发送，会话ID:" << _sessionId;
 }
 
+// 读取当前文件的数据并构建 DataChunk 帧发送，带背压控制
 void FileSenderWorker::sendNextChunk()
 {
     _sendScheduled = false;
@@ -423,6 +438,7 @@ void FileSenderWorker::sendNextChunk()
     }
 }
 
+// 调度下一次数据块发送，避免重复调度
 void FileSenderWorker::scheduleNextChunk()
 {
     if (_sendScheduled || !_transferActive || _waitingForFileAck) {
@@ -433,6 +449,7 @@ void FileSenderWorker::scheduleNextChunk()
     QTimer::singleShot(0, this, &FileSenderWorker::sendNextChunk);
 }
 
+// 关闭当前文件并打开下一个待发送的文件
 bool FileSenderWorker::openNextFile()
 {
     if (_file.isOpen()) {
@@ -458,6 +475,7 @@ bool FileSenderWorker::openNextFile()
     return true;
 }
 
+// 发送传输完成帧，通知接收端所有文件已发送完毕
 void FileSenderWorker::sendTransferDone()
 {
     QJsonObject json;
@@ -468,6 +486,7 @@ void FileSenderWorker::sendTransferDone()
     _socket->write(frame);
 }
 
+// 发送取消传输帧并关闭连接
 void FileSenderWorker::sendCancel(const QString &reason)
 {
     QJsonObject json;
@@ -484,6 +503,7 @@ void FileSenderWorker::sendCancel(const QString &reason)
     }
 }
 
+// 用户取消传输，发送取消帧并通知完成信号
 void FileSenderWorker::cancel()
 {
     sendCancel(tr("用户取消"));

@@ -1,14 +1,14 @@
 /**
 * @file    app_controller.h
-* @version 4.10.0
+* @version 4.8.2
 * @date    2026-06-13
 * @author  GridYard Team
-* @brief   GridYard 应用全局控制器（QML 单例）
+* @brief   应用全局控制器（QML 单例）
 *
-* 按【代码规范 §3.5 四层架构】，AppController 是中介者单例。
-* 持有 DiscoveryService 等下层模块，使 QML 通过
-* AppController.discovery.peers 等路径触达。
-* QML 端禁止使用 setContextProperty 暴露 C++ 对象。
+* 按四层架构要求，AppController 是中介者单例，负责组装和持有
+* DiscoveryService、TransferSessionManager、P2pServer 等下层模块。
+* QML 通过 AppController.discovery.peers 等路径触达业务对象，
+* 禁止使用 setContextProperty 暴露 C++ 对象。
 *
 * Change Log:
 * [v4.8.2] GY   2026-06-13
@@ -68,8 +68,8 @@ private:
     AppController(const AppController &)            = delete;
     AppController &operator=(const AppController &) = delete;
 
-    ConfigManager           *_config    = nullptr;
-    DiscoveryService        *_discovery = nullptr;
-    P2pServer               *_p2pServer = nullptr;
-    TransferSessionManager  *_transfer  = nullptr;
+    ConfigManager           *_config    = nullptr;  // 配置管理器（设备名、端口、接收路径）
+    DiscoveryService        *_discovery = nullptr;  // UDP 设备发现服务
+    P2pServer               *_p2pServer = nullptr;  // TCP P2P 文件传输服务器
+    TransferSessionManager  *_transfer  = nullptr;  // 传输会话管理器
 };

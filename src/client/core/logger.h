@@ -1,13 +1,14 @@
 /**
 * @file    logger.h
-* @version 4.10.0
+* @version 4.7.0
 * @date    2026-06-13
 * @author  GridYard Team
-* @brief   运行日志工具，拦截 Qt 日志输出到文件
+* @brief   运行日志工具（拦截 Qt 日志输出到文件）
 *
 * 单例模式，使用 qInstallMessageHandler 拦截所有 qDebug/qWarning/
-* qCritical/qInfo 输出，同时写入控制台和日志文件。日志文件按日期
-* 自动命名（gridyard_yyyyMMdd.log），存放在 ~/GridYard/logs/。
+* qCritical/qInfo 输出，同时写入控制台和日志文件。
+* 日志文件按日期自动命名（gridyard_yyyyMMdd.log），
+* 存放在项目根目录 logs/ 文件夹下。线程安全。
 *
 * Change Log:
 * [v4.7.0] GY   2026-06-05

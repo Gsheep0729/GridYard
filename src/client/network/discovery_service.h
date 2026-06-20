@@ -1,14 +1,17 @@
 /**
 * @file    discovery_service.h
-* @version 4.10.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
-* 通过 UDP 广播实现局域网内设备自动发现。
-* 每 5 秒发送 Hello 包，维护在线节点表，15 秒无心跳自动剔除。
+* 通过 UDP 广播实现局域网内设备自动发现。每 5 秒发送 Hello 包，
+* 维护在线节点表（QHash<QString, PeerInfo>），15 秒无心跳自动剔除。
+* 提供语义化查询方法（isPeerOnline、peerIpAddress 等）供其他模块调用。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 新增 isPeerOnline()、peerIpAddress()、peerTcpPort()、peerName() 语义化查询方法
 * [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
 * [v0.3.0] FengChunlin   2026-06-03
@@ -48,6 +51,12 @@ public:
 
     // 根据 deviceId 获取设备信息
     PeerInfo peerInfo(const QString &deviceId) const;
+
+    // 语义化查询方法（委托模式）
+    bool isPeerOnline(const QString &deviceId) const;
+    QString peerIpAddress(const QString &deviceId) const;
+    quint16 peerTcpPort(const QString &deviceId) const;
+    QString peerName(const QString &deviceId) const;
 
     // 立即发送一次广播并清理离线节点
     Q_INVOKABLE void refresh();
