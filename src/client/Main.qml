@@ -43,7 +43,7 @@ ApplicationWindow {
     id: mainWindow
 
     width:   980
-    height:  709
+    height:  725
     visible: true
     title:   "%1 v%2".arg(AppController.applicationName)
                      .arg(AppController.applicationVersion)
@@ -109,96 +109,84 @@ ApplicationWindow {
 
     // ======== 弹出窗口 ========
 
-    // 本机信息弹出窗口
+    // 本机信息弹出窗口(FCL)
     Popup {
         id: deviceInfoPopup
         x: 70; y: 10
-        width: 282; height: 272
+        width: 282; height: 110
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
+        //弹出的个人主机信息框（FCL）
         background: Rectangle {
-            color: Style.Color.surface
+            color: Style.Color.window
             border.color: Style.Color.borderSoft
             border.width: 1
+            radius: 12
         }
-
-        contentItem: RowLayout {
+        //个人信息框，头像 + 信息列表
+        contentItem: ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Style.Space.md
+   //         anchors.margins: 5
             spacing: Style.Space.md
-
-            Rectangle {
-                anchors.top: parent.top
-                Layout.preferredWidth: 60
-                Layout.preferredHeight: 60
-                radius: 4
-                color: Style.Color.primary
-                Label {
-                    anchors.centerIn: parent
-                    text: "我"
-                    color: "#FFFFFF"
-                    font.pixelSize: 14
-                    font.bold: true
-                }
-            }
-
-            ColumnLayout {
+            RowLayout{
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 2
-                anchors.top: parent.top
-                TextField {
-                    Layout.fillWidth: true
-                    text: ConfigManager.deviceName
-                    background: Rectangle {
-                        color: activeFocus ? Style.Color.surfaceSoft : Style.Color.transparent
-                        border.color: activeFocus ? Style.Color.primary : Style.Color.transparent
-                        border.width: 1
-                        radius: Style.Radius.xs
+                Layout.preferredHeight: 60
+                spacing: 25
+                //左侧头像
+                Rectangle{
+                    Layout.alignment: Qt.AlignCenter
+                    Layout.preferredHeight: 56
+                    Layout.preferredWidth: 56
+                    radius: 4
+                    color: Style.Color.primary
+                    Label{
+                        anchors.centerIn: parent
+                        text: "我"
+                        color: "#FFFFFF"
+                        font.pixelSize: 14
+                        font.bold: true
                     }
-                    padding: 2
-                    selectByMouse: true
-                    onEditingFinished: {
-                        let trimmed = text.trim()
-                        if (trimmed.length > 0 && trimmed !== ConfigManager.deviceName)
-                            ConfigManager.deviceName = trimmed
-                        focus = false
-                    }
-                    Connections {
-                        target: ConfigManager
-                        function onDeviceNameChanged() {
-                            if (!activeFocus) text = ConfigManager.deviceName
-                            AppController.discovery.refresh()
+                }
+                //中间信息列
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignVertical
+                        Layout.fillWidth: true
+                        spacing:2
+                        Label {
+                            Layout.fillWidth: true
+                            text: ConfigManager.deviceName
+                            color: Style.Color.text
+                            font.pixelSize: 14
+                            font.bold: true
+                            elide: Text.ElideRight  // 文字太长时显示省略号
+                        }
+
+                        Label {
+                            Layout.alignment: Qt.AlignTop
+                            text: ConfigManager.localIp.length > 0
+                                  ? ConfigManager.localIp : qsTr("未获取到 IP")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 12
+                        }
+
+                        Label {
+                            text: "%1 v%2".arg(AppController.applicationName)
+                                           .arg(AppController.applicationVersion)
+                            color: Style.Color.textWeak
+                            font.pixelSize: 11
                         }
                     }
-                }
-
-                Label {
-                    text: ConfigManager.localIp.length > 0
-                          ? ConfigManager.localIp : qsTr("未获取到 IP")
-                    color: Style.Color.textMuted
-                    font.pixelSize: 12
-                }
-
-                Label {
-                    text: "%1 v%2".arg(AppController.applicationName)
-                                   .arg(AppController.applicationVersion)
-                    color: Style.Color.textWeak
-                    font.pixelSize: 11
+                    Button {
+                        Layout.alignment: Qt.AlignTop
+                        icon.name: "view-refresh"
+                        icon.width: 20
+                        icon.height: 20
+                        flat: true
+                        ToolTip.text: qsTr("刷新")
+                        ToolTip.visible: hovered
+                        onClicked: AppController.discovery.refresh()
+                    }
                 }
             }
-
-            Button {
-                anchors.top: parent.top
-                icon.name: "view-refresh"
-                icon.width: 20
-                icon.height: 20
-                flat: true
-                ToolTip.text: qsTr("刷新")
-                ToolTip.visible: hovered
-                onClicked: AppController.discovery.refresh()
-            }
-        }
     }
 
     // 菜单弹出窗口
@@ -299,7 +287,7 @@ ApplicationWindow {
             anchors.bottomMargin: 16
             anchors.horizontalCenter: parent.horizontalCenter
             width: 41; height: 41
-            radius: 18
+            radius: 3
 
             property bool _hovered: false
             property bool _pressed: false
@@ -352,7 +340,7 @@ ApplicationWindow {
         }
     }
 
-    // 中间：设备列表（300px）
+    // 中间：设备列表
     PeerListView {
         id: peerList
         anchors.left: sidebar.right
