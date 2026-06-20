@@ -114,14 +114,15 @@ GridYard/
 ├── README.md                              # 本文件
 ├── .gitignore
 ├── doc/                                   # 文档目录
-│   ├── spec/                              # 规格与设计文档
-│   ├── manuals/                           # 开发手册与踩坑心得
-│   ├── plans/                             # 开发计划
 │   ├── diagrams/                          # UML 架构图
-│   └── templates/                         # 代码模板与集成示例
+│   │   ├── rendered/                      # PNG/SVG 格式图
+│   │   └── README.md
+│   └── dev-manual/                        # 开发手册
+│       ├── 规格与设计/                     # 技术规格、架构设计
+│       ├── 开发心得/                       # 团队手册、踩坑记录
+│       └── 测试与部署/                     # 测试流程、打包指南
 ├── scripts/                               # 辅助脚本
-│   ├── for_md.py                          # 代码归档工具
-│   └── test_loopback.sh                   # 本机回环测试脚本
+│   └── for_md.py                          # 代码归档工具
 └── src/                                   # 源代码
     ├── CMakeLists.txt                     # 顶层构建配置
     ├── shared/                            # 共用核心库 gy_shared
@@ -135,19 +136,24 @@ GridYard/
     │   │   ├── app_controller.{h,cpp}     # 全局控制器（QML_SINGLETON）
     │   │   ├── config_manager.{h,cpp}     # 配置管理器
     │   │   ├── transfer_session_manager.* # 传输会话管理
-    │   │   └── dir_serializer.{h,cpp}     # 目录序列化工具（Stage 4）
+    │   │   └── dir_serializer.{h,cpp}     # 目录序列化工具
     │   ├── network/                       # 网络通信层
     │   │   ├── discovery_service.{h,cpp}  # UDP 设备发现
     │   │   ├── p2p_server.{h,cpp}         # TCP 文件传输服务器
     │   │   ├── file_sender_worker.*       # 文件发送 Worker
     │   │   └── file_receiver_worker.*     # 文件接收 Worker
-    │   └── ui/                            # QML 界面组件
-    │       ├── DeviceCard.qml             # 设备卡片
-    │       ├── PeerListView.qml           # 设备列表
-    │       ├── SettingsDialog.qml         # 设置对话框
-    │       ├── AcceptDialog.qml           # 接收确认弹窗
-    │       ├── TransferPanel.qml          # 传输面板
-    │       └── TransferTaskCard.qml       # 传输任务卡片
+    │   ├── ui/                            # QML 界面组件
+    │   │   ├── DeviceCard.qml             # 设备卡片
+    │   │   ├── PeerListView.qml           # 设备列表
+    │   │   ├── DeviceSessionView.qml       # 设备会话页
+    │   │   ├── SettingsDialog.qml         # 设置对话框
+    │   │   ├── AcceptDialog.qml           # 接收确认弹窗
+    │   │   ├── TransferPanel.qml          # 传输面板
+    │   │   ├── TransferTaskCard.qml       # 传输任务卡片
+    │   │   └── FileTypeIcon.qml          # 文件类型图标
+    │   └── utils/                         # QML 工具模块
+    │       ├── Style.js                   # 样式常量
+    │       └── FormatUtils.js             # 格式化工具
     ├── server/                            # V2.0 服务端（占位）
     └── tests/                             # 单元测试
         ├── test_frame_codec.cpp           # FrameCodec 编解码测试
