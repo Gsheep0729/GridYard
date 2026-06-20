@@ -1,19 +1,18 @@
 /**
 * @file    file_receiver_worker.h
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
-* 由 P2pServer 为每个入站连接创建，负责：
-* 1. 在后台线程中初始化（initialize() 创建 QTimer 和连接信号）
-* 2. 接收 kTypeTransferReq 握手请求
-* 3. 发射信号通知 UI 弹窗确认
-* 4. 等待用户确认后发送 kTypeTransferRsp
-* 5. 接收 kTypeDataChunk 并写入文件
-* 6. 接收完成后发送 kTypeChunkAck
+* 由 P2pServer 为每个入站连接创建，运行在独立后台线程中。
+* 负责接收传输请求、通知 UI 弹窗确认、接收文件数据并写入磁盘、
+* SHA-256 校验、发送确认帧等完整接收流程。
+* 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 通过值类型请求快照和完成结果传递接收状态，移除内部状态读取函数
 * [v4.15.1] FengChunlin   2026-06-17
 * * 连接 FrameCodec::errorOccurred 信号，协议错误时清理并结束会话
 * * 进度节流 static 变量改为成员变量 _receiveChunkCount
@@ -56,6 +55,7 @@
 #include <QStringList>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QVariantMap>
 
 class FrameCodec;
 
@@ -68,17 +68,6 @@ public:
 
     FileReceiverWorker(const FileReceiverWorker &)            = delete;
     FileReceiverWorker &operator=(const FileReceiverWorker &) = delete;
-
-    // 获取会话信息
-    QString sessionId()    const { return _sessionId; }
-    QString senderDeviceId() const { return _senderDeviceId; }
-    QString senderName()   const { return _senderName; }
-    QString fileName()     const { return _displayName; }
-    qint64  fileSize()     const { return _fileSize; }
-    bool    isDirectory()  const { return _isDirectory; }
-    QStringList filePaths() const;
-    // 返回同名避让后实际写入的文件或文件夹路径
-    QString savedPath() const;
 
     // 设置接收路径（由 TransferSessionManager 调用）
     void setReceivePath(const QString &path) { _receivePath = path; }
@@ -93,16 +82,12 @@ public slots:
 
 signals:
     // 传输请求到达（需要弹窗确认）
-    void transferRequestReceived(const QString &senderDeviceId,
-                                 const QString &senderName,
-                                 const QString &fileName,
-                                 qint64 fileSize,
-                                 int totalFiles,
-                                 qint64 totalBytes);
+    void transferRequestReceived(const QVariantMap &request);
     // 传输进度更新
     void progressChanged(qint64 bytesReceived, qint64 totalBytes);
     // 传输完成
-    void transferFinished(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
+    void transferFinished(bool success, gy::protocol::ErrorCode errorCode,
+                          const QString &errorMsg, const QString &savedPath);
 
 private slots:
     // 接收数据
@@ -131,43 +116,45 @@ private:
     void sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &errorMsg = "");
     // 清理资源
     void cleanup();
+    // 构建接收请求的不可变快照，跨线程交付给会话管理器
+    QVariantMap receiveRequestSnapshot() const;
 
-    QTcpSocket  *_socket = nullptr;
-    FrameCodec  *_codec  = nullptr;
-    QFile        _file;
-    QTimer      *_timeoutTimer = nullptr;
+    QTcpSocket  *_socket = nullptr;       // 与发送端通信的 TCP 连接
+    FrameCodec  *_codec  = nullptr;       // 解析入站 TLV 帧的编解码器
+    QFile        _file;                    // 当前正在写入的接收文件
+    QTimer      *_timeoutTimer = nullptr; // 等待确认和数据帧的超时计时器
 
     // 会话信息
-    QString _sessionId;
-    QString _senderDeviceId;
-    QString _senderName;
-    QString _displayName;
-    QString _rootName;
-    QStringList _emptyDirectories;
-    int     _totalFiles = 0;
-    qint64  _totalBytes = 0;
+    QString _sessionId;              // 本次传输的唯一标识
+    QString _senderDeviceId;         // 发送端设备标识
+    QString _senderName;             // 发送端显示名称
+    QString _displayName;            // 确认弹窗和会话列表使用的名称
+    QString _rootName;               // 目录传输的根目录名称
+    QStringList _emptyDirectories;   // 需要在接收端创建的空目录
+    int     _totalFiles = 0;         // 请求声明的文件总数
+    qint64  _totalBytes = 0;         // 请求声明的文件总字节数
 
     // 文件列表（含 sha256）
     QList<gy::FileItem> _fileList;
 
     // 当前文件信息
-    int     _currentFileIndex = 0;
-    QString _fileName;
-    qint64  _fileSize = 0;
-    qint64  _bytesReceived = 0;
-    qint64  _totalBytesReceived = 0;
+    int     _currentFileIndex = 0;      // 当前接收文件在列表中的索引
+    QString _fileName;                  // 当前接收文件的相对路径
+    qint64  _fileSize = 0;              // 当前接收文件的总大小
+    qint64  _bytesReceived = 0;         // 当前文件已写入的字节数
+    qint64  _totalBytesReceived = 0;    // 本次任务累计已写入的字节数
 
     // 状态
-    bool _waitingForUserConfirm = false;
-    bool _transferActive = false;
-    bool _isDirectory = false;
+    bool _waitingForUserConfirm = false; // 是否等待用户接受或拒绝
+    bool _transferActive = false;        // 是否处于实际接收数据阶段
+    bool _isDirectory = false;           // 当前任务是否为目录传输
 
     // 接收路径
-    QString _receivePath;
-    QString _destinationRoot;
-    QString _singleFilePath;
+    QString _receivePath;                // 配置的接收文件根目录
+    QString _destinationRoot;            // 目录任务的实际目标根目录
+    QString _singleFilePath;             // 单文件任务的实际目标路径
 
     // 增量 SHA-256 计算
-    QCryptographicHash *_hash = nullptr;
-    int     _receiveChunkCount = 0;
+    QCryptographicHash *_hash = nullptr; // 当前文件的增量 SHA-256 计算器
+    int     _receiveChunkCount = 0;      // 用于进度节流的分块计数
 };

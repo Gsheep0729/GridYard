@@ -1,11 +1,17 @@
 /**
 * @file    config_manager.cpp
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
-* @brief   ConfigManager 实现
+* @brief   应用配置管理器实现
+*
+* 实现配置的读取、写入和持久化。使用 QSettings 存储设备名、
+* 接收路径、TCP 端口等配置项。支持环境变量覆盖（GRIDYARD_CONFIG、
+* GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 新增 isMyDevice()、fillHelloPayload()、fillSenderInfo() 实现
 * [v4.11.0] GY   2026-06-13
 * * 新增自动接收并保存文件配置
 * [v4.8.1] GY   2026-06-08
@@ -23,6 +29,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QHostInfo>
+#include <QJsonObject>
 #include <QNetworkInterface>
 #include <QSettings>
 #include <QUrl>
@@ -31,6 +38,7 @@
 // 静态成员变量定义
 QPointer<ConfigManager> ConfigManager::s_instance;
 
+// 构造函数：从 QSettings 加载配置，支持环境变量覆盖
 ConfigManager::ConfigManager(QObject *parent)
     : QObject{parent}
 {
@@ -66,6 +74,7 @@ ConfigManager::ConfigManager(QObject *parent)
     refreshLocalIp();
 }
 
+// 析构函数：清除静态实例指针
 ConfigManager::~ConfigManager()
 {
     // 清除静态实例指针
@@ -75,6 +84,7 @@ ConfigManager::~ConfigManager()
     }
 }
 
+// QML_SINGLETON 工厂方法，确保全局只有一个实例
 ConfigManager *ConfigManager::create(QQmlEngine *engine, QJSEngine *)
 {
     Q_UNUSED(engine);
@@ -86,36 +96,43 @@ ConfigManager *ConfigManager::create(QQmlEngine *engine, QJSEngine *)
     return s_instance;
 }
 
+// 获取设备 UUID
 QString ConfigManager::deviceId() const
 {
     return _deviceId;
 }
 
+// 获取设备名称
 QString ConfigManager::deviceName() const
 {
     return _deviceName;
 }
 
+// 获取文件接收路径
 QString ConfigManager::receivePath() const
 {
     return _receivePath;
 }
 
+// 获取自动接收文件配置
 bool ConfigManager::autoAcceptFiles() const
 {
     return _autoAcceptFiles;
 }
 
+// 获取 TCP 端口
 quint16 ConfigManager::tcpPort() const
 {
     return _tcpPort;
 }
 
+// 获取本机 IP 地址
 QString ConfigManager::localIp() const
 {
     return _localIp;
 }
 
+// 刷新本机 IP 地址（取第一个非回环 IPv4 地址）
 void ConfigManager::refreshLocalIp()
 {
     const auto addresses = QNetworkInterface::allAddresses();
@@ -136,6 +153,7 @@ void ConfigManager::refreshLocalIp()
     }
 }
 
+// 打开文件夹（使用系统默认文件管理器）
 void ConfigManager::openFolder(const QString &path)
 {
     QDir dir(path);
@@ -144,6 +162,7 @@ void ConfigManager::openFolder(const QString &path)
     }
 }
 
+// 设置设备名称并持久化
 void ConfigManager::setDeviceName(const QString &name)
 {
     // 值未变化时跳过
@@ -164,6 +183,7 @@ void ConfigManager::setDeviceName(const QString &name)
     emit deviceNameChanged();
 }
 
+// 设置文件接收路径并持久化
 void ConfigManager::setReceivePath(const QString &path)
 {
     if (_receivePath == path) return;
@@ -180,6 +200,7 @@ void ConfigManager::setReceivePath(const QString &path)
     emit receivePathChanged();
 }
 
+// 设置自动接收文件开关并持久化
 void ConfigManager::setAutoAcceptFiles(bool enabled)
 {
     if (_autoAcceptFiles == enabled) return;
@@ -193,6 +214,7 @@ void ConfigManager::setAutoAcceptFiles(bool enabled)
     emit autoAcceptFilesChanged();
 }
 
+// 设置 TCP 端口并持久化
 void ConfigManager::setTcpPort(quint16 port)
 {
     if (_tcpPort == port) return;
@@ -206,6 +228,7 @@ void ConfigManager::setTcpPort(quint16 port)
     emit tcpPortChanged();
 }
 
+// 确保设备 ID 存在（首次启动生成 UUID 并持久化）
 void ConfigManager::ensureDeviceId()
 {
     QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
@@ -220,4 +243,25 @@ void ConfigManager::ensureDeviceId()
     } else {
         qDebug() << "ConfigManager: 使用已有的 deviceId:" << _deviceId;
     }
+}
+
+// 判断是否是本机设备 ID
+bool ConfigManager::isMyDevice(const QString &deviceId) const
+{
+    return _deviceId == deviceId;
+}
+
+// 填充 Hello 包数据（设备 ID、名称、端口）
+void ConfigManager::fillHelloPayload(QJsonObject &json) const
+{
+    json["device_id"]   = _deviceId;
+    json["device_name"] = _deviceName;
+    json["tcp_port"]    = _tcpPort;
+}
+
+// 填充发送方信息到会话（设备 ID、名称）
+void ConfigManager::fillSenderInfo(QVariantMap &session) const
+{
+    session["senderDeviceId"] = _deviceId;
+    session["senderName"]     = _deviceName;
 }

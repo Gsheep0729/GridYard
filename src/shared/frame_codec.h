@@ -5,10 +5,10 @@
 * @author  GridYard Team
 * @brief   TLV 帧编解码器（含粘包/半包状态机）
 *
-* encode() 把 type + payload 拼成 8 字节帧头 + 载荷字节流（大端序）。
-* feed() 把 socket 收到的字节流喂进来，内部状态机识别完整帧后通过
-* frameReady 信号交付业务层。状态机实现使粘包与半包都被正确处理。
-* TCP 收发链路所有模块统一使用本类，禁止自行拼字节。
+* encode() 将 type + payload 编码为 8 字节帧头 + 载荷字节流（大端序）。
+* feed() 将 socket 收到的字节流喂入内部状态机，识别完整帧后通过
+* frameReady 信号交付业务层。粘包与半包均被正确处理。
+* TCP 收发链路所有模块统一使用本类，禁止自行拼装字节。
 *
 * Change Log:
 * [v4.15.0] GY   2026-06-17
@@ -52,14 +52,14 @@ signals:
     void errorOccurred(gy::protocol::ErrorCode errorCode, const QString &errorMsg);
 
 private:
-    // 状态机状态
+    // 状态机状态枚举
     enum class State {
         WaitingHeader,   // 等待帧头（8 字节）
         WaitingPayload   // 等待载荷（length 字节）
     };
 
-    State _state = State::WaitingHeader;
-    QByteArray _buffer;
-    quint32 _pendingType = 0;
-    quint32 _pendingLength = 0;
+    State _state = State::WaitingHeader;    // 当前状态机状态
+    QByteArray _buffer;                     // 接收缓冲区，累积 socket 数据
+    quint32 _pendingType = 0;              // 待处理帧的 Type 字段
+    quint32 _pendingLength = 0;            // 待处理帧的载荷长度
 };

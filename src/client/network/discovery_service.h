@@ -1,14 +1,17 @@
 /**
 * @file    discovery_service.h
-* @version 4.10.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
-* 通过 UDP 广播实现局域网内设备自动发现。
-* 每 5 秒发送 Hello 包，维护在线节点表，15 秒无心跳自动剔除。
+* 通过 UDP 广播实现局域网内设备自动发现。每 5 秒发送 Hello 包，
+* 维护在线节点表（QHash<QString, PeerInfo>），15 秒无心跳自动剔除。
+* 提供面向发送场景的对端快照查询供其他模块调用。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 提供 transferEndpoint() 对端快照查询，避免拆分读取节点字段
 * [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
 * [v0.3.0] FengChunlin   2026-06-03
@@ -46,8 +49,8 @@ public:
     // 获取当前在线节点列表（供 QML 绑定）
     QVariantList peers() const;
 
-    // 根据 deviceId 获取设备信息
-    PeerInfo peerInfo(const QString &deviceId) const;
+    // 查询可用于发送传输的对端快照；目标不存在或离线时返回空 map
+    QVariantMap transferEndpoint(const QString &deviceId) const;
 
     // 立即发送一次广播并清理离线节点
     Q_INVOKABLE void refresh();
@@ -78,10 +81,10 @@ private:
     // 通知 QML 列表变化
     void notifyPeersChanged();
 
-    ConfigManager *_config = nullptr;
-    QUdpSocket    *_socket = nullptr;
-    QTimer        *_broadcastTimer = nullptr;
-    QTimer        *_pruneTimer = nullptr;
+    ConfigManager *_config = nullptr;          // 本机身份和网络配置来源
+    QUdpSocket    *_socket = nullptr;          // UDP 广播收发 socket
+    QTimer        *_broadcastTimer = nullptr;  // 周期发送 Hello 广播
+    QTimer        *_pruneTimer = nullptr;      // 周期清理过期节点
 
     // 节点表：deviceId -> PeerInfo
     QHash<QString, PeerInfo> _peers;

@@ -1,12 +1,13 @@
 /**
 * @file    data_types.h
-* @version 4.10.0
+* @version 0.2.0
 * @date    2026-06-13
 * @author  GridYard Team
-* @brief   GridYard 共享数据类型（值类型 / POD）
+* @brief   跨模块共享数据类型定义（值类型 / POD）
 *
-* 含 PeerInfo（局域网在线节点描述）等跨模块流通的数据类型。
-* 全部使用 Q_GADGET 而非 QObject —— 这些类型是"值"，可拷贝可移动；
+* 含 PeerInfo（局域网在线节点描述）、FileEntry（文件元数据）、
+* TransferSession（传输会话状态）等跨模块流通的数据类型。
+* 全部使用 Q_GADGET 而非 QObject——这些类型是"值"，可拷贝可移动；
 * QObject 的身份语义不适合。QML 端通过 Q_PROPERTY MEMBER 反射访问。
 *
 * Change Log:

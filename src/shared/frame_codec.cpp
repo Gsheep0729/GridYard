@@ -3,7 +3,10 @@
 * @version 4.15.0
 * @date    2026-06-17
 * @author  GridYard Team
-* @brief   FrameCodec 实现
+* @brief   TLV 帧编解码器实现
+*
+* 实现 encode() 编码和 feed() 解码状态机。编码时按 Type 分级检查
+* 载荷大小，解码时处理粘包/半包，完整帧通过 frameReady 信号交付。
 *
 * Change Log:
 * [v4.15.0] GY   2026-06-17
@@ -23,11 +26,13 @@
 #include <QDataStream>
 #include <QDebug>
 
+// 构造函数
 FrameCodec::FrameCodec(QObject *parent)
     : QObject{parent}
 {
 }
 
+// 将 type + payload 编码为完整 TLV 帧字节流（含 8 字节帧头）
 QByteArray FrameCodec::encode(quint32 type, const QByteArray &payload)
 {
     // 按 Type 分级检查载荷长度
@@ -53,6 +58,7 @@ QByteArray FrameCodec::encode(quint32 type, const QByteArray &payload)
     return frame;
 }
 
+// 将 socket 收到的新数据喂入解码器；遇到完整帧时 emit frameReady
 void FrameCodec::feed(const QByteArray &data)
 {
     _buffer.append(data);

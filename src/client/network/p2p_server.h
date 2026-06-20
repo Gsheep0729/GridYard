@@ -1,15 +1,18 @@
 /**
 * @file    p2p_server.h
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器
 *
-* 监听 TCP 端口，接受来自其他设备的文件传输请求。
+* 监听 TCP 端口（默认 35100），接受来自其他设备的文件传输请求。
 * 为每个入站连接创建独立的 QThread 和 FileReceiverWorker，
-* 实现接收侧后台化，写盘与 SHA-256 校验在后台线程执行。
+* 实现接收侧后台化，写盘与 SHA-256 校验在后台线程执行，
+* 不阻塞 UI 主线程。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 使用请求快照转发接收信息，删除未使用的 isListening() 访问器
 * [v4.15.1] FengChunlin   2026-06-17
 * * 删除未使用的 _threads 成员，析构改用 children() 遍历
 * [v4.15.0] GY   2026-06-17
@@ -27,6 +30,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
+#include <QVariantMap>
 
 class ConfigManager;
 class FrameCodec;
@@ -46,24 +50,15 @@ public:
     bool start();
     // 停止服务器
     void stop();
-    // 是否正在监听
-    bool isListening() const;
-
 signals:
     // 新的传输请求到达（需要弹窗确认）
-    void transferRequestReceived(FileReceiverWorker *worker,
-                                 const QString &senderDeviceId,
-                                 const QString &senderName,
-                                 const QString &fileName,
-                                 qint64 fileSize,
-                                 int totalFiles,
-                                 qint64 totalBytes);
+    void transferRequestReceived(FileReceiverWorker *worker, const QVariantMap &request);
 
 private slots:
     // 新连接到达
     void onNewConnection();
 
 private:
-    ConfigManager *_config = nullptr;
-    QTcpServer    *_server = nullptr;
+    ConfigManager *_config = nullptr; // TCP 监听端口配置来源
+    QTcpServer    *_server = nullptr; // 接受入站传输连接的服务器
 };
