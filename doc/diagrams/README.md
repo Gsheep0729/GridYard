@@ -2,6 +2,39 @@
 
 本目录包含 GridYard 项目的 UML 和架构图，使用 Mermaid 语法绘制。
 
+## 目录结构
+
+```text
+diagrams/
+├── README.md                              ← 本文件
+│
+├── class-diagram.md                       ← 分层类图（6 张 mermaid）
+├── class-diagram-1.svg                    ← §1 应用逻辑层
+├── class-diagram-2.svg                    ← §2 协议契约与共享值类型
+├── class-diagram-3.svg                    ← §3 文件传输运行时与线程模型
+├── class-diagram-4.svg                    ← §4 QML 表现层组件
+├── class-diagram-5.svg                    ← §5 数据管理层与外部资源
+│
+├── component-diagram.md                   ← 组件图（src/ 目录树 + 四层架构）
+├── component-diagram.svg
+│
+├── sequence-diagram.md                    ← C++↔QML 通信序列图（4 个场景）
+├── sequence-diagram-1.svg                 ← §1 应用启动初始化
+├── sequence-diagram-2.svg                 ← §2 文件发送
+├── sequence-diagram-3.svg                 ← §3 文件接收（后台线程）
+├── sequence-diagram-4.svg                 ← §4 取消与错误处理
+│
+├── data-flow-diagram.md                   ← 数据流图（5 条数据流）
+├── data-flow-diagram-1.svg                ← §1 设备发现流
+├── data-flow-diagram-2.svg                ← §2 文件发送流
+├── data-flow-diagram-3.svg                ← §3 文件接收流
+├── data-flow-diagram-4.svg                ← §4 配置与日志流
+├── data-flow-diagram-5.svg                ← §5 协议错误流
+│
+├── module-dependency.md                   ← 模块依赖关系图（四层 + 具体类依赖）
+└── module-dependency.svg
+```
+
 ## 图表索引
 
 | 文件 | 内容 | 说明 |
