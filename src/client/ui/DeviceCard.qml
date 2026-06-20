@@ -34,7 +34,7 @@ import "../utils/Style.js" as Style
 
 ItemDelegate {
     id: deviceCard
-
+    hoverEnabled: true
     required property string deviceId
     required property string deviceName
     required property string ipAddress
@@ -53,49 +53,15 @@ ItemDelegate {
     signal fileDropped(string deviceId, string filePath)
 
     height: kCardHeight
-
-    // 卡片背景样式（拖拽高亮）
     background: Rectangle {
-        color: dropArea.containsDrag ? deviceCard.kDropHighlight
-             : deviceCard.isSelected ? Style.Color.primarySoft
-             : deviceCard.hovered   ? Style.Color.surfaceSoft
-             :                           Style.Color.surface
-        border.color: dropArea.containsDrag || deviceCard.isSelected
-                      ? deviceCard.kSelectedColor : Style.Color.transparent
-        border.width: dropArea.containsDrag || deviceCard.isSelected ? 2 : 1
         radius: Style.Radius.sm
-
-        Behavior on color {
-            ColorAnimation {
-                duration: deviceCard.kColorDuration
-                easing.type: Easing.OutCubic
-            }
-        }
-
-        Behavior on border.color {
-            ColorAnimation {
-                duration: deviceCard.kColorDuration
-                easing.type: Easing.OutCubic
-            }
-        }
-
-        // 选中态侧边指示条
-        Rectangle {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            width: 4
-            height: parent.height - 24
-            radius: 2
-            color: deviceCard.kSelectedColor
-            visible: deviceCard.isSelected && !dropArea.containsDrag
-        }
+        color: deviceCard.hovered   ? Style.Color.surfaceLeft    // 悬停浅灰
+             : Style.Color.transparent    // 默认透明
     }
-
     onClicked: deviceCard.cardClicked(deviceCard.deviceId,
                                          deviceCard.deviceName,
                                          deviceCard.ipAddress,
                                          deviceCard.isOnline)
-
     // 拖拽接收区域
     DropArea {
         id: dropArea
@@ -125,27 +91,17 @@ ItemDelegate {
         // 设备头像
         Rectangle {
             Layout.alignment: Qt.AlignVCenter
-            Layout.preferredWidth: 42
-            Layout.preferredHeight: 42
-            radius: 21
-            color: deviceCard.isSelected ? Style.Color.primary : Style.Color.surfaceSoft
-            border.color: deviceCard.isSelected ? Style.Color.primary : Style.Color.borderSoft
-            border.width: 1
-
-            Behavior on color {
-                ColorAnimation {
-                    duration: deviceCard.kStatusDuration
-                    easing.type: Easing.OutCubic
-                }
-            }
-
+            Layout.preferredWidth: 36
+            Layout.preferredHeight: 36
+            radius: 4
+            color: Style.Color.primary
             Label {
                 anchors.centerIn: parent
                 text: deviceCard.deviceName.length > 0
                       ? deviceCard.deviceName.charAt(0).toUpperCase()
                       : "?"
                 color: deviceCard.isSelected ? Style.Color.surface : Style.Color.textSecondary
-                font.pixelSize: 16
+                font.pixelSize: 14
                 font.bold: true
             }
         }
