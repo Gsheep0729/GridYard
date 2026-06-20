@@ -14,8 +14,14 @@
 
 const Color = {
     pageBg: "#F5F7FA",
-    surface: "#FFFFFF",
+    surfaceLeft: "#EDEDED",
+    surfaceMid:"#F7F7F7",
     surfaceSoft: "#F9FAFB",
+    menubarSelect: "#E1E1E1",
+    menubarClicked:"#D5D5D5",
+    false:"#F7F7F7",
+    select:"#EAEAEA",
+    selected:"#D3D3D3",
     border: "#E5E7EB",
     borderSoft: "#EEF2F7",
     primary: "#3B82F6",
