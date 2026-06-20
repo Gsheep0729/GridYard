@@ -4,6 +4,8 @@
 add_library(gy_shared STATIC
     protocol.h
     data_types.h
+    chat_message.h
+    chat_message.cpp
     frame_codec.h
     frame_codec.cpp
 )

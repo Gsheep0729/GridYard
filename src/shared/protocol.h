@@ -1,7 +1,7 @@
 /**
 * @file    protocol.h
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.2
+* @date    2026-06-24
 * @author  GridYard Team
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
 *
@@ -11,6 +11,8 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
+* [v4.16.2] GY   2026-06-24
+* * 新增 P2P 在线聊天 Type 码和文本消息协议字段常量
 * [v4.15.0] GY   2026-06-17
 * * 添加按 Type 分级的 Payload 上限（控制帧 1MB，DataChunk 256MB）
 * * 添加协议版本主/次版本号常量和提取函数
@@ -63,6 +65,19 @@ inline constexpr quint32 kTypeDataChunk    = 0x0201;   // TCP：文件数据分�
 inline constexpr quint32 kTypeChunkAck     = 0x0301;   // TCP：单文件完成确认与校验
 inline constexpr quint32 kTypeTransferDone = 0x0302;   // TCP：全部文件发送完毕
 inline constexpr quint32 kTypeCancel       = 0x0401;   // TCP：取消本次传输
+inline constexpr quint32 kTypeChatText     = 0x0501;   // TCP：P2P 在线文本消息
+inline constexpr quint32 kTypeChatAck      = 0x0502;   // TCP：在线文本消息送达回执
+
+// 聊天消息 JSON 字段
+inline constexpr char kChatMessageIdField[]      = "message_id";
+inline constexpr char kChatFromDeviceIdField[]   = "from_device_id";
+inline constexpr char kChatFromNameField[]       = "from_name";
+inline constexpr char kChatContentField[]        = "content";
+inline constexpr char kChatSentAtField[]         = "sent_at";
+
+// 聊天消息业务上限，低于通用控制帧限制，避免单条文本占用过多内存
+inline constexpr qsizetype kMaxChatPayloadBytes = 64 * 1024;
+inline constexpr qsizetype kMaxChatContentChars = 4000;
 
 // 获取指定 Type 的最大 Payload 长度
 inline constexpr quint32 maxPayloadForType(quint32 type)

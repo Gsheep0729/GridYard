@@ -10,6 +10,12 @@ target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)
 target_compile_features(test_frame_codec PRIVATE cxx_std_23)
 add_test(NAME test_frame_codec COMMAND test_frame_codec)
 
+# --- 在线聊天消息测试 ---
+qt_add_executable(test_chat_message test_chat_message.cpp)
+target_link_libraries(test_chat_message PRIVATE gy_shared Qt6::Test)
+target_compile_features(test_chat_message PRIVATE cxx_std_23)
+add_test(NAME test_chat_message COMMAND test_chat_message)
+
 # --- 边缘场景测试 ---
 qt_add_executable(test_edge_cases test_edge_cases.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
