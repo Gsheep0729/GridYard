@@ -19,6 +19,8 @@ qt_add_qml_module(appGridYard
         core/app_controller.cpp
         core/chat_manager.h
         core/chat_manager.cpp
+        core/chat_message_model.h
+        core/chat_message_model.cpp
         core/config_manager.h
         core/config_manager.cpp
         core/dir_serializer.h
@@ -43,6 +45,7 @@ qt_add_qml_module(appGridYard
         ui/TransferPanel.qml
         ui/TransferTaskCard.qml
         ui/DeviceSessionView.qml
+        ui/ChatView.qml
         ui/FileTypeIcon.qml
         utils/FormatUtils.js
         utils/Style.js

@@ -19,6 +19,7 @@ add_test(NAME test_chat_message COMMAND test_chat_message)
 # --- 聊天连接与会话测试 ---
 qt_add_executable(test_chat_manager test_chat_manager.cpp
     ${CLIENT_CORE_DIR}/chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_message_model.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_NET_DIR}/chat_connection.cpp
