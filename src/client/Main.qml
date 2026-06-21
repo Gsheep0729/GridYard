@@ -1,7 +1,7 @@
 /**
 * @file    Main.qml
-* @version 4.16.0
-* @date    2026-06-18
+* @version 4.16.2
+* @date    2026-06-22
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
@@ -10,6 +10,8 @@
 * 左侧工具栏，中间设备列表，右侧设备会话页。
 *
 * Change Log:
+* [v4.16.2] DuRuoxian   2026-06-22
+* * 添加窗口图标设置，解决任务栏图标缺失问题
 * [v4.16.0] DuRuoxian   2026-06-18
 * * 统一主窗口样式常量，调整为现代设备会话工作台
 * [v4.15.2] DuRuoxian   2026-06-17
