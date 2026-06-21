@@ -4,8 +4,8 @@
 
 | 字段       | 内容                                                                  |
 | :--------- | :-------------------------------------------------------------------- |
-| 项目版本   | v4.16.7                                                               |
-| 当前阶段   | **Stage 5 局域网在线聊天**（阶段 E 已完成，准备异常验证）                    |
+| 项目版本   | v4.16.8                                                               |
+| 当前阶段   | **Stage 5 局域网在线聊天**（已完成验收）                                      |
 | 技术栈     | C++23 · Qt 6.11 · QML · CMake 4.2.3 · GCC 16.1                        |
 | 部署平台   | Manjaro Linux（开发、编译、运行三端统一）                              |
 | 团队成员   | 高扬 · 杜若贤 · 冯春霖                                                |
@@ -22,13 +22,13 @@
   页面布局、用户交互、属性绑定和状态展示
         ↓ 用户操作                  ↑ 界面状态
 应用逻辑层
-  AppController（QML 单例）、TransferSessionManager
+  AppController（QML 单例）、TransferSessionManager、ChatManager
   组织设备发现、文件传输和后续在线聊天用例，协调各领域对象
         ↓ 调用                      ↑ 结果与事件
 领域层
-  DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker
+  DiscoveryService、P2pServer、ChatConnection、FileSenderWorker、FileReceiverWorker
   DirSerializer、FrameCodec、protocol.h、data_types.h
-  实现设备发现、传输规则、协议编解码和目录处理
+  实现设备发现、在线聊天、传输规则、协议编解码和目录处理
         ↓ 读写                      ↑ 数据
 数据管理层
   ConfigManager、Logger、QSettings、文件系统和网络连接
@@ -178,7 +178,7 @@ GridYard/
 | Stage 2 | 设备发现 | ✅ 完成 | UDP 广播、设备列表、配置管理 |
 | Stage 3 | 文件传输 | ✅ 完成 | P2P 文件传输、拖拽传输、取消功能 |
 | Stage 4 | 健壮性增强 | ✅ 完成 | 目录传输、SHA-256、协议分级防护、错误码和接收侧后台化 |
-| Stage 5 | 局域网在线聊天 | 🔧 进行中 | 阶段 A/B/C/D/E 已完成：消息协议、首帧分流、连接管理、内存会话、聊天视图和会话页集成；下一步异常验证 |
+| Stage 5 | 局域网在线聊天 | ✅ 完成 | 阶段 A/B/C/D/E/F 已完成：在线文本收发、断线恢复、会话页集成和文件传输回归均已验证 |
 | Stage 6 | 本地数据层 | ⏳ 待开始 | SQLite 聊天记录与传输历史、托盘、体验打磨 |
 | Stage 7 | 服务端与漫游 | ⭐ 加分 | 登录、对话历史与传输记录漫游、离线消息 |
 

@@ -4,7 +4,7 @@ set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
 # set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
 set(CMAKE_CXX_MODULE_STD ON)
 
-project(GridYard VERSION 4.16.7 LANGUAGES CXX)
+project(GridYard VERSION 4.16.8 LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Network QuickControls2)
 qt_standard_project_setup(REQUIRES 6.9)
