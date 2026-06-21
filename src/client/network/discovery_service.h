@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.h
-* @version 4.16.5
-* @date    2026-06-24
+* @version 6.1.0
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
@@ -10,6 +10,8 @@
 * 提供面向发送场景的对端快照查询供其他模块调用。
 *
 * Change Log:
+* [v6.1.0] GY   2026-06-25
+* * 新增 peerUpdated 信号供应用层异步持久化设备目录
 * [v4.16.5] FengChunlin   2026-06-24
 * * 接入 ChatManager 处理入站聊天连接
 * [v4.16.1] GY   2026-06-21
@@ -63,6 +65,8 @@ signals:
     void peersChanged();
     // 新节点发现
     void nodeDiscovered(const QString &deviceId);
+    // 设备首次发现或元数据变化后的完整快照
+    void peerUpdated(const PeerInfo &peer);
     // 节点离线
     void nodeExpired(const QString &deviceId);
 

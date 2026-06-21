@@ -16,6 +16,18 @@ target_include_directories(test_storage_database PRIVATE
 target_compile_features(test_storage_database PRIVATE cxx_std_23)
 add_test(NAME test_storage_database COMMAND test_storage_database)
 
+# --- 设备目录 Proxy 测试 ---
+qt_add_executable(test_storage_device test_storage_device.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_device PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_device PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_device PRIVATE cxx_std_23)
+add_test(NAME test_storage_device COMMAND test_storage_device)
+
 # --- FrameCodec 单测 ---
 qt_add_executable(test_frame_codec test_frame_codec.cpp)
 target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)

@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 4.16.8
+* @version 6.1.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -11,7 +11,9 @@
 * 禁止使用 setContextProperty 暴露 C++ 对象。
 *
 * Change Log:
-* [v4.16.8] GY   2026-06-25
+* [v6.1.0] GY   2026-06-25
+* * 接入设备目录 Proxy，异步投递发现设备快照
+* [v6.0.0] GY   2026-06-25
 * * 集中管理本地历史数据库与数据库任务线程
 * [v4.16.5] FengChunlin   2026-06-24
 * * 组装在线聊天管理器并向 QML 暴露受控入口
@@ -42,6 +44,7 @@ class QJSEngine;
 class ConfigManager;
 class P2pServer;
 class SqliteDatabaseProxy;
+class SqliteDeviceProxy;
 class DatabaseWorker;
 class QThread;
 
@@ -91,6 +94,7 @@ private:
     TransferSessionManager  *_transfer  = nullptr;  // 传输会话管理器
     ChatManager             *_chat      = nullptr;  // 在线聊天连接和内存会话管理器
     std::unique_ptr<SqliteDatabaseProxy> _storage;   // 本地历史数据库代理
+    std::unique_ptr<SqliteDeviceProxy> _deviceRepository; // 设备目录 Repository
     QThread *_storageThread = nullptr;        // 数据库任务专用线程
     DatabaseWorker *_storageWorker = nullptr; // 在专用线程执行存储任务
 };
