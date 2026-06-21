@@ -1,6 +1,6 @@
 /**
 * @file    protocol.h
-* @version 4.16.2
+* @version 4.16.3
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
@@ -11,7 +11,7 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
-* [v4.16.2] GY   2026-06-24
+* [v4.16.3] GY   2026-06-24
 * * 新增 P2P 在线聊天 Type 码和文本消息协议字段常量
 * [v4.15.0] GY   2026-06-17
 * * 添加按 Type 分级的 Payload 上限（控制帧 1MB，DataChunk 256MB）

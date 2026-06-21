@@ -1,17 +1,19 @@
 /**
 * @file    Main.qml
-* @version 4.16.0
-* @date    2026-06-22
+* @version 4.16.3
+* @date    2026-06-24
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
 * 标题通过 AppController.applicationName/Version 绑定，
 * 关窗触发 AppController.quit()。
-* 左侧工具栏，中间设备列表，右侧设备会话页。
+* 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
-* [v4.16.0] DuRuoxian   2026-06-22
-* * 三栏布局改用纯 anchors 定位，移除所有 Layout 属性
+* [v4.16.3] FengChunlin   2026-06-24
+* * 调整主窗口为三栏会话布局，增加本机信息和菜单入口
+* [v4.16.2] DuRuoxian   2026-06-22
+* * 添加窗口图标设置，解决任务栏图标缺失问题
 * [v4.16.0] DuRuoxian   2026-06-18
 * * 统一主窗口样式常量，调整为现代设备会话工作台
 * [v4.15.2] DuRuoxian   2026-06-17

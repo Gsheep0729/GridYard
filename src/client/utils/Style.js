@@ -2,12 +2,14 @@
 
 /**
  * @file    Style.js
- * @version 4.16.0
- * @date    2026-06-18
+ * @version 4.16.3
+ * @date    2026-06-24
  * @author  GridYard Team
  * @brief   QML 界面样式常量
  *
  * Change Log:
+ * [v4.16.3] FengChunlin   2026-06-24
+ * * 补充三栏会话布局使用的颜色常量
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 集中管理颜色、间距、圆角和动画时长，为设备会话页现代化铺路
  */

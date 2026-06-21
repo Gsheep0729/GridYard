@@ -1,6 +1,6 @@
 /**
 * @file    chat_message.h
-* @version 4.16.2
+* @version 4.16.3
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天消息值类型与 JSON 编解码接口
@@ -9,7 +9,7 @@
 * 网络层与后续聊天管理器只通过该接口构造和校验消息，避免协议字段分散。
 *
 * Change Log:
-* [v4.16.2] GY   2026-06-24
+* [v4.16.3] GY   2026-06-24
 * * 新增 Stage 5 在线聊天消息值类型和校验接口
 */
 

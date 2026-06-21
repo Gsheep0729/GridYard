@@ -1,7 +1,7 @@
 /**
  * @file    PeerListView.qml
- * @version 4.16.0
- * @date    2026-06-18
+ * @version 4.16.3
+ * @date    2026-06-24
  * @author  GridYard Team
  * @brief   在线设备列表组件
  *
@@ -9,6 +9,8 @@
  * 支持手动刷新。
  *
  * Change Log:
+ * [v4.16.3] FengChunlin   2026-06-24
+ * * 调整设备搜索、会话列表和空状态展示
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 统一设备列表样式，调整为现代会话列表结构
  * [v4.9.0] DuRuoxian   2026-06-13
