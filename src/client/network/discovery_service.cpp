@@ -12,13 +12,13 @@
 * Change Log:
 * [v4.16.1] GY   2026-06-21
 * * 提供 transferEndpoint() 对端快照查询，避免拆分读取节点字段
-* [v4.15.0] GY   2026-06-17
+* [v4.15.0] FengChunlin   2026-06-16
 * * 协议版本不兼容处理：主版本不一致标记不兼容，次版本差异安全降级
 * [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
-* [v0.3.0] FengChunlin   2026-06-03
+* [v0.3.0] FengChunlin   2026-05-19
 * * 添加 refresh() 方法实现
-* [v0.2.0] FengChunlin   2026-06-02
+* [v0.2.0] FengChunlin   2026-04-27
 * * Stage 2：初始版本
 */
 

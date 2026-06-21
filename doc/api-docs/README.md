@@ -12,8 +12,9 @@
 | 02 | 传输管理模块 | [02-传输管理模块.md](./02-传输管理模块.md) | TransferSessionManager、FileSenderWorker、FileReceiverWorker |
 | 03 | 应用与配置模块 | [03-应用与配置模块.md](./03-应用与配置模块.md) | AppController、ConfigManager、Logger |
 | 04 | 协议与编解码模块 | [04-协议与编解码模块.md](./04-协议与编解码模块.md) | protocol.h、FrameCodec、TLV 帧格式、ErrorCode |
-| 05 | UI 组件模块 | [05-UI组件模块.md](./05-UI组件模块.md) | QML 组件、Style.js、FormatUtils.js |
+| 05 | UI 组件模块 | [05-UI组件模块.md](./05-UI组件模块.md) | QML 组件、Style.js、FormatUtils.js、ChatView |
 | 06 | 全局 UI 设计规范 | [06-全局UI设计规范.md](./06-全局UI设计规范.md) | 配色、圆角、间距、动画、交互、字体规范 |
+| 07 | 在线聊天模块 | [07-在线聊天模块.md](./07-在线聊天模块.md) | ChatManager、ChatConnection、ChatMessageModel、P2P 文本聊天 |
 
 ---
 
@@ -31,11 +32,18 @@ AppController (应用逻辑层)
     │       ├── FileSenderWorker (发送)
     │       ├── FileReceiverWorker (接收)
     │       └── DirSerializer (目录遍历)
+    ├── ChatManager (在线聊天)
+    │       ↓ 使用
+    │       ├── ChatConnection (单条 TCP 连接)
+    │       └── ChatMessageModel (消息列表模型)
     └── P2pServer (TCP 服务器)
-            ↓ 使用
-            └── FrameCodec (TLV 编解码)
-                    ↓ 引用
-                    └── protocol.h (协议常量与错误码)
+            ↓ 按首帧 Type 分流
+            ├── FileReceiverWorker (文件传输)
+            └── ChatConnection (在线聊天)
+                    ↓ 使用
+                    └── FrameCodec (TLV 编解码)
+                            ↓ 引用
+                            └── protocol.h (协议常量与错误码)
 ```
 
 ---
@@ -44,9 +52,9 @@ AppController (应用逻辑层)
 
 | 层级 | 模块 | 文档 |
 |------|------|------|
-| 表现层 | Main.qml、DeviceCard、PeerListView、DeviceSessionView、AcceptDialog、SettingsDialog、TransferTaskCard | 05-UI组件模块 |
-| 应用逻辑层 | AppController、TransferSessionManager | 03-应用与配置模块、02-传输管理模块 |
-| 领域层 | DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker、FrameCodec、protocol.h | 01-设备发现模块、02-传输管理模块、04-协议与编解码模块 |
+| 表现层 | Main.qml、DeviceCard、PeerListView、DeviceSessionView、ChatView、AcceptDialog、SettingsDialog、TransferTaskCard | 05-UI组件模块 |
+| 应用逻辑层 | AppController、TransferSessionManager、ChatManager | 03-应用与配置模块、02-传输管理模块、07-在线聊天模块 |
+| 领域层 | DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker、ChatConnection、FrameCodec、protocol.h | 01-设备发现模块、02-传输管理模块、04-协议与编解码模块、07-在线聊天模块 |
 | 数据管理层 | ConfigManager、Logger | 03-应用与配置模块 |
 
 ---

@@ -1,7 +1,7 @@
 /**
 * @file    frame_codec.h
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   TLV 帧编解码器（含粘包/半包状态机）
 *
@@ -11,14 +11,16 @@
 * TCP 收发链路所有模块统一使用本类，禁止自行拼装字节。
 *
 * Change Log:
-* [v4.15.0] GY   2026-06-17
+* [v4.16.1] GY   2026-06-21
+* * 优化封装性，补充注释
+* [v4.15.0] FengChunlin   2026-06-16
 * * 按 Type 分级检查 Payload 大小（控制帧 1MB，DataChunk 256MB）
 * * errorOccurred 信号添加 ErrorCode 参数
-* [v4.13.0] GY   2026-06-15
+* [v4.13.0] GY   2026-06-14
 * * 添加 errorOccurred 信号，帧长超限时发射
-* [v0.1.0] GY   2026-06-02
+* [v0.1.0] GY   2026-04-20
 * * Stage 1：实现 encode() + 粘包状态机 feed()
-* [v0.0.1] GY   2026-05-24
+* [v0.0.1] GY   2026-04-06
 * * Stage 0 占位：仅类声明与空实现
 */
 

@@ -11,17 +11,15 @@
 * 禁止使用 setContextProperty 暴露 C++ 对象。
 *
 * Change Log:
-* [v4.16.5] GY   2026-06-24
-* * 完成在线聊天管理器组装
-* [v4.16.4] GY   2026-06-24
+* [v4.16.5] FengChunlin   2026-06-24
 * * 组装在线聊天管理器并向 QML 暴露受控入口
-* [v4.8.2] GY   2026-06-13
+* [v4.8.2] GY   2026-06-09
 * * 修复 KDE 原生文件选择器
-* [v4.7.1] GY   2026-06-05
+* [v4.7.1] GY   2026-06-06
 * * 添加日志系统、修复传输功能
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] FengChunlin   2026-04-27
 * * Stage 2：持有 DiscoveryService，暴露 discovery 属性给 QML
-* [v0.1.0] GY   2026-05-24
+* [v0.1.0] FengChunlin   2026-04-14
 * * Stage 0：仅暴露 applicationName / applicationVersion / quit
 */
 

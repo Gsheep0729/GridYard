@@ -9,15 +9,13 @@
 * TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
 *
 * Change Log:
-* [v4.16.5] GY   2026-06-24
-* * 完成在线聊天管理器初始化
-* [v4.16.4] GY   2026-06-24
+* [v4.16.5] FengChunlin   2026-06-24
 * * 创建并初始化在线聊天管理器
-* [v4.7.1] GY   2026-06-05
+* [v4.7.1] GY   2026-06-06
 * * 创建 TransferSessionManager 并初始化
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] FengChunlin   2026-04-27
 * * Stage 2：持有 ConfigManager 和 DiscoveryService
-* [v0.1.0] GY   2026-05-24
+* [v0.1.0] FengChunlin   2026-04-14
 * * Stage 0：实现 applicationName / applicationVersion / quit
 */
 

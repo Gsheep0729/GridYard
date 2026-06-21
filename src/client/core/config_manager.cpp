@@ -12,13 +12,13 @@
 * Change Log:
 * [v4.16.1] GY   2026-06-21
 * * 新增 isMyDevice()、fillHelloPayload()、fillSenderInfo() 实现
-* [v4.11.0] GY   2026-06-13
+* [v4.11.0] FengChunlin   2026-06-13
 * * 新增自动接收并保存文件配置
-* [v4.8.1] GY   2026-06-08
+* [v4.8.1] GY   2026-06-09
 * * 单例模式实现，修复设备名称更新问题
-* [v0.3.0] GY   2026-06-03
+* [v0.3.0] FengChunlin   2026-05-19
 * * 添加 localIp、refreshLocalIp、openFolder
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] GY   2026-04-26
 * * Stage 2：初始版本
 */
 
