@@ -16,6 +16,25 @@ target_link_libraries(test_chat_message PRIVATE gy_shared Qt6::Test)
 target_compile_features(test_chat_message PRIVATE cxx_std_23)
 add_test(NAME test_chat_message COMMAND test_chat_message)
 
+# --- 聊天连接与会话测试 ---
+qt_add_executable(test_chat_manager test_chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_manager.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_NET_DIR}/chat_connection.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+)
+target_link_libraries(test_chat_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_chat_manager PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_chat_manager PRIVATE cxx_std_23)
+add_test(NAME test_chat_manager COMMAND test_chat_manager)
+
 # --- 边缘场景测试 ---
 qt_add_executable(test_edge_cases test_edge_cases.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp

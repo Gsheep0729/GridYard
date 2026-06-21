@@ -99,6 +99,7 @@ private:
     quint16 _testPort = 0;
 };
 
+// 测试套件初始化：创建临时目录、配置管理器和随机端口
 void TestFileTransfer::initTestCase()
 {
     _sendDir = new QTemporaryDir();
@@ -116,6 +117,7 @@ void TestFileTransfer::initTestCase()
     _testPort = 35100 + (QDateTime::currentMSecsSinceEpoch() % 1000);
 }
 
+// 测试套件清理：释放临时目录和配置资源
 void TestFileTransfer::cleanupTestCase()
 {
     delete _config;
@@ -126,6 +128,7 @@ void TestFileTransfer::cleanupTestCase()
     qunsetenv("GRIDYARD_NAME");
 }
 
+// 在指定路径创建包含给定内容的测试文件
 void TestFileTransfer::createTestFile(const QString &path, const QByteArray &content)
 {
     QFile file(path);
@@ -134,6 +137,7 @@ void TestFileTransfer::createTestFile(const QString &path, const QByteArray &con
     file.close();
 }
 
+// 在指定路径创建包含若干文件的测试目录
 void TestFileTransfer::createTestDirectory(const QString &basePath, int fileCount)
 {
     QDir dir(basePath);
@@ -145,6 +149,7 @@ void TestFileTransfer::createTestDirectory(const QString &basePath, int fileCoun
     }
 }
 
+// 等待信号 spy 收到信号或超时
 bool TestFileTransfer::waitForTransfer(QSignalSpy &spy, int timeout)
 {
     if (spy.isEmpty()) {
@@ -153,6 +158,7 @@ bool TestFileTransfer::waitForTransfer(QSignalSpy &spy, int timeout)
     return true;
 }
 
+// 将发送 Worker 移回主线程并安全退出发送线程
 void TestFileTransfer::stopSenderThread(FileSenderWorker &sender, QThread &thread)
 {
     QThread *mainThread = QCoreApplication::instance()->thread();
@@ -163,6 +169,7 @@ void TestFileTransfer::stopSenderThread(FileSenderWorker &sender, QThread &threa
     thread.wait();
 }
 
+// 验证单文件传输流程及发送方设备信息传递
 void TestFileTransfer::testSingleFileTransfer()
 {
     // 创建测试文件
@@ -216,6 +223,7 @@ void TestFileTransfer::testSingleFileTransfer()
     stopSenderThread(sender, senderThread);
 }
 
+// 验证多文件序列化时文件数量和信息完整性
 void TestFileTransfer::testMultiFileTransfer()
 {
     // 创建多个测试文件
@@ -238,6 +246,7 @@ void TestFileTransfer::testMultiFileTransfer()
     }
 }
 
+// 验证目录序列化正确处理子文件数量和信息
 void TestFileTransfer::testDirectoryTransfer()
 {
     // 创建测试目录
@@ -256,6 +265,7 @@ void TestFileTransfer::testDirectoryTransfer()
     }
 }
 
+// 验证含嵌套目录的文件夹端到端传输完整性
 void TestFileTransfer::testDirectoryTransferEndToEnd()
 {
     const QString sourcePath = _sendDir->path() + "/folder_e2e";
@@ -319,6 +329,7 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
     stopSenderThread(sender, senderThread);
 }
 
+// 验证空文件夹端到端传输后目录结构保留
 void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
 {
     const QString sourcePath = _sendDir->path() + "/empty_folder_e2e";

@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.cpp
-* @version 4.7.1
-* @date    2026-06-13
+* @version 4.16.5
+* @date    2026-06-24
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
@@ -9,6 +9,10 @@
 * TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
 *
 * Change Log:
+* [v4.16.5] GY   2026-06-24
+* * 完成在线聊天管理器初始化
+* [v4.16.4] GY   2026-06-24
+* * 创建并初始化在线聊天管理器
 * [v4.7.1] GY   2026-06-05
 * * 创建 TransferSessionManager 并初始化
 * [v0.2.0] GY   2026-06-02
@@ -18,6 +22,7 @@
 */
 
 #include "app_controller.h"
+#include "chat_manager.h"
 #include "config_manager.h"
 #include "discovery_service.h"
 #include "p2p_server.h"
@@ -33,12 +38,16 @@ AppController::AppController(QObject *parent)
     , _discovery{new DiscoveryService{_config, this}}
     , _p2pServer{new P2pServer{_config, this}}
     , _transfer{new TransferSessionManager{this}}
+    , _chat{new ChatManager{this}}
 {
     // 启动 P2P 服务器
     _p2pServer->start();
 
     // 初始化传输会话管理器
     _transfer->init(_config, _discovery, _p2pServer);
+
+    // 初始化聊天管理器
+    _chat->init(_config, _discovery, _p2pServer);
 }
 
 // QML_SINGLETON 工厂方法，引擎调用
@@ -70,6 +79,12 @@ DiscoveryService *AppController::discovery() const
 TransferSessionManager *AppController::transfer() const
 {
     return _transfer;
+}
+
+// 获取在线聊天管理器
+ChatManager *AppController::chat() const
+{
+    return _chat;
 }
 
 // 退出应用

@@ -33,6 +33,7 @@
 #include "data_types.h"
 
 class ConfigManager;
+class TestChatManager;
 
 class DiscoveryService : public QObject {
     Q_OBJECT
@@ -72,6 +73,8 @@ private slots:
     void pruneOfflineNodes();
 
 private:
+    friend class TestChatManager;
+
     // 构建 Hello 包 JSON 内容
     QByteArray buildHelloPayload() const;
     // 处理收到的 Hello 包

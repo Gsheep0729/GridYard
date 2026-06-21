@@ -41,6 +41,7 @@ private slots:
     void testChatFrameLimit();
 };
 
+// 测试单帧编码解码往返
 void TestFrameCodec::testSingleFrame()
 {
     FrameCodec codec;
@@ -61,6 +62,7 @@ void TestFrameCodec::testSingleFrame()
     QCOMPARE(args[1].toByteArray(), payload);
 }
 
+// 测试粘包场景：多个帧一次性喂入
 void TestFrameCodec::testMultipleFrames()
 {
     FrameCodec codec;
@@ -81,6 +83,7 @@ void TestFrameCodec::testMultipleFrames()
     QCOMPARE(spy.count(), 3);
 }
 
+// 测试半包场景：帧分两次喂入
 void TestFrameCodec::testPartialFrame()
 {
     FrameCodec codec;
@@ -103,6 +106,7 @@ void TestFrameCodec::testPartialFrame()
     QCOMPARE(args[1].toByteArray(), payload);
 }
 
+// 测试空 payload 帧的编解码
 void TestFrameCodec::testEmptyPayload()
 {
     FrameCodec codec;
@@ -123,6 +127,7 @@ void TestFrameCodec::testEmptyPayload()
     QCOMPARE(args[1].toByteArray().isEmpty(), true);
 }
 
+// 测试大 payload（1MB）的编解码
 void TestFrameCodec::testLargePayload()
 {
     FrameCodec codec;
@@ -143,6 +148,7 @@ void TestFrameCodec::testLargePayload()
     QCOMPARE(args[1].toByteArray(), payload);
 }
 
+// 测试超过 Payload 上限时编码失败
 void TestFrameCodec::testOversizedPayload()
 {
     // encode() 应拒绝超大 payload，返回空 QByteArray
@@ -154,6 +160,7 @@ void TestFrameCodec::testOversizedPayload()
     QVERIFY(frame.isEmpty());
 }
 
+// 测试收到超大帧时发射错误信号
 void TestFrameCodec::testOversizedFrame()
 {
     // feed() 应拒绝超长帧，发射 errorOccurred 信号
@@ -177,6 +184,7 @@ void TestFrameCodec::testOversizedFrame()
     QCOMPARE(frameSpy.count(), 0);
 }
 
+// 测试 Hello 帧携带协议版本字段
 void TestFrameCodec::testProtocolVersion()
 {
     // 验证协议版本常量（高8位主版本，低8位次版本）
@@ -204,6 +212,7 @@ void TestFrameCodec::testProtocolVersion()
     QCOMPARE(static_cast<quint16>(gy::protocol::ErrorCode::Sha256Mismatch), quint16(4003));
 }
 
+// 测试控制帧 Payload 上限（1MB）
 void TestFrameCodec::testControlFrameLimit()
 {
     // 控制帧（kTypeTransferReq）超 1MB 应被 feed() 拒绝
@@ -233,6 +242,7 @@ void TestFrameCodec::testControlFrameLimit()
     QVERIFY(encoded.isEmpty());
 }
 
+// 测试 DataChunk 帧 Payload 上限（256MB）
 void TestFrameCodec::testDataChunkLimit()
 {
     // DataChunk 超 1MB 但不超 256MB 应被允许
@@ -272,6 +282,7 @@ void TestFrameCodec::testDataChunkLimit()
     QCOMPARE(frameSpy2.count(), 0);
 }
 
+// 测试聊天帧 Payload 上限（64KB）
 void TestFrameCodec::testChatFrameLimit()
 {
     QCOMPARE(gy::protocol::kTypeChatText, quint32(0x0501));
