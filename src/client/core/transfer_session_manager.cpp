@@ -11,7 +11,7 @@
 *
 * Change Log:
 * [v4.16.1] GY   2026-06-21
-* * 使用委托模式：fillSenderInfo() 和 fillReceiveSession() 替代 getter 调用
+* * 接收请求和完成结果改为跨线程值传递，删除 Worker 状态读取函数
 * [v4.15.0] GY   2026-06-17
 * * transferFinished 信号适配 ErrorCode 参数
 * * 会话模型新增 errorCode 字段
@@ -133,19 +133,20 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     qDebug() << "[TransferSession] 目标设备ID:" << deviceId;
     qDebug() << "[TransferSession] 文件路径:" << filePath;
 
-    // 从 DiscoveryService 获取目标设备信息（语义化查询）
-    if (!_discovery->isPeerOnline(deviceId)) {
+    // 获取用于发送的对端快照
+    const QVariantMap endpoint = _discovery->transferEndpoint(deviceId);
+    if (endpoint.isEmpty()) {
         qWarning() << "[TransferSession] 目标设备不存在或已离线:" << deviceId;
         emit errorOccurred(tr("目标设备不存在或已离线"));
         return;
     }
 
-    QString host = _discovery->peerIpAddress(deviceId);
-    quint16 port = _discovery->peerTcpPort(deviceId);
+    const QString host = endpoint["ipAddress"].toString();
+    quint16 port = static_cast<quint16>(endpoint["tcpPort"].toUInt());
     if (port == 0) {
         port = _config->tcpPort();
     }
-    const QString peerName = _discovery->peerName(deviceId);
+    const QString peerName = endpoint["deviceName"].toString();
 
     qDebug() << "[TransferSession] 目标设备信息:";
     qDebug() << "  设备名:" << peerName;
@@ -452,13 +453,15 @@ bool TransferSessionManager::deleteReceivedFile(const QVariantMap &session)
 
 // 处理新的传输请求（创建接收会话，通知 UI 弹窗确认）
 void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worker,
-                                                        const QString &senderDeviceId,
-                                                        const QString &senderName,
-                                                        const QString &fileName,
-                                                        qint64 fileSize,
-                                                        int totalFiles,
-                                                        qint64 totalBytes)
+                                                        const QVariantMap &request)
 {
+    const QString sessionId = request["sessionId"].toString();
+    const QString senderDeviceId = request["senderDeviceId"].toString();
+    const QString senderName = request["senderName"].toString();
+    const QString fileName = request["fileName"].toString();
+    const qint64 fileSize = request["fileSize"].toLongLong();
+    const int totalFiles = request["totalFiles"].toInt();
+    const qint64 totalBytes = request["totalBytes"].toLongLong();
     qDebug() << "[TransferSession] 收到传输请求";
     qDebug() << "[TransferSession] 发送方设备ID:" << senderDeviceId;
     qDebug() << "[TransferSession] 发送方:" << senderName;
@@ -466,9 +469,6 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     qDebug() << "[TransferSession] 文件大小:" << fileSize;
     qDebug() << "[TransferSession] 总文件数:" << totalFiles;
     qDebug() << "[TransferSession] 总大小:" << totalBytes;
-
-    // 创建接收会话
-    QString sessionId = worker->sessionId();
 
     // 设置接收路径（使用 QMetaObject::invokeMethod 在 worker 的线程中调用）
     if (_config) {
@@ -478,7 +478,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
         qDebug() << "[TransferSession] 接收路径:" << _config->receivePath();
     }
 
-    QVariantMap session;
+    QVariantMap session = request;
     session["type"]      = "receive";
     session["deviceId"]  = senderDeviceId;
     session["peerDeviceName"] = senderName;
@@ -491,9 +491,6 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
     session["localPath"] = "";
     session["canDeleteLocalFile"] = false;
-
-    // 委托 worker 填充接收会话信息（Tell, Don't Ask）
-    worker->fillReceiveSession(session);
 
     _sessions.append(session);
     emit sessionsChanged();
@@ -526,7 +523,8 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
 
     // 连接接收完成信号
     connect(worker, &FileReceiverWorker::transferFinished,
-            this, [this, sessionId, worker](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
+            this, [this, sessionId, worker](bool success, gy::protocol::ErrorCode errorCode,
+                                            const QString &errorMsg, const QString &savedPath) {
         qDebug() << "[TransferSession] 接收传输完成，成功:" << success << "错误:" << errorMsg;
 
         for (int i = 0; i < _sessions.size(); ++i) {
@@ -542,8 +540,8 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                 _sessions[i]["errorMsg"] = errorMsg;
                 _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
                 if (success) {
-                    _sessions[i]["localPath"] = worker->savedPath();
-                    _sessions[i]["canDeleteLocalFile"] = !worker->savedPath().isEmpty();
+                    _sessions[i]["localPath"] = savedPath;
+                    _sessions[i]["canDeleteLocalFile"] = !savedPath.isEmpty();
                 }
                 emit sessionsChanged();
 
