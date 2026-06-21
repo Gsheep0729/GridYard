@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.h
-* @version 4.16.1
-* @date    2026-06-21
+* @version 4.16.4
+* @date    2026-06-24
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
@@ -11,6 +11,8 @@
 * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
 *
 * Change Log:
+* [v4.16.4] GY   2026-06-24
+* * 适配首帧路由后保留的 socket 缓冲数据
 * [v4.16.1] GY   2026-06-21
 * * 通过值类型请求快照和完成结果传递接收状态，移除内部状态读取函数
 * [v4.15.1] FengChunlin   2026-06-17

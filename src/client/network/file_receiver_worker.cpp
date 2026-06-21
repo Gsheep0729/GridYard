@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 4.16.1
-* @date    2026-06-21
+* @version 4.16.4
+* @date    2026-06-24
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
 *
@@ -10,6 +10,8 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
+* [v4.16.4] GY   2026-06-24
+* * 初始化后主动处理首帧路由保留的 socket 缓冲数据
 * [v4.16.1] GY   2026-06-21
 * * 通过接收请求快照和完成结果传递状态，删除 Worker 状态读取函数
 * [v4.15.1] FengChunlin   2026-06-17
@@ -146,6 +148,10 @@ void FileReceiverWorker::initialize()
     _timeoutTimer->setSingleShot(true);
     connect(_timeoutTimer, &QTimer::timeout,
             this,          &FileReceiverWorker::onTimeout);
+
+    if (_socket->bytesAvailable() > 0) {
+        onReadyRead();
+    }
 
     qDebug() << "[FileReceiver] 初始化完成";
 }

@@ -1,13 +1,15 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 4.16.1
-* @date    2026-06-21
+* @version 4.16.4
+* @date    2026-06-24
 * @author  GridYard Team
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v4.16.4] GY   2026-06-24
+* * 新增首帧路由的聊天连接和未知 Type 测试
 * [v4.16.1] GY   2026-06-21
 * * 改用接收请求快照和完成结果验证文件接收流程
 * [v4.15.1] FengChunlin   2026-06-17
@@ -47,6 +49,7 @@
 
 #include "file_sender_worker.h"
 #include "file_receiver_worker.h"
+#include "chat_message.h"
 #include "frame_codec.h"
 #include "p2p_server.h"
 #include "config_manager.h"
@@ -81,6 +84,8 @@ private slots:
     void testProtocolVersionMismatch();
     void testMalformedTransferRequest();
     void testInvalidFilePath();
+    void testChatConnectionRouting();
+    void testUnsupportedFirstFrameRejected();
 
 private:
     void createTestFile(const QString &path, const QByteArray &content);
@@ -1024,6 +1029,108 @@ void TestFileTransfer::testInvalidFilePath()
 
     // 验证从未收到请求
     QVERIFY(!rejected);
+}
+
+void TestFileTransfer::testChatConnectionRouting()
+{
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    QTcpSocket *routedSocket = nullptr;
+    QByteArray routedData;
+    bool transferRequestReceived = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&transferRequestReceived](FileReceiverWorker *, const QVariantMap &) {
+        transferRequestReceived = true;
+    });
+    connect(&server, &P2pServer::chatConnectionReceived, this,
+            [this, &routedSocket, &routedData](QTcpSocket *socket) {
+        routedSocket = socket;
+        socket->setParent(this);
+        routedData = socket->readAll();
+    });
+
+    gy::ChatMessage message;
+    message.messageId = "c8f3b2a1-4d5e-6f7a-8b9c-0d1e2f3a4b5c";
+    message.fromDeviceId = "chat-sender-id";
+    message.fromName = "ChatSender";
+    message.content = "首帧路由测试";
+    message.sentAt = QDateTime::currentDateTimeUtc();
+
+    QByteArray payload;
+    QVERIFY(gy::ChatMessageCodec::encode(message, &payload));
+    const QByteArray frame = FrameCodec::encode(gy::protocol::kTypeChatText, payload);
+    QVERIFY(!frame.isEmpty());
+
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(client.waitForConnected(5000));
+
+    QVERIFY(client.write(frame.left(gy::protocol::kHeaderBytes)) > 0);
+    QVERIFY(client.waitForBytesWritten(1000));
+    QTest::qWait(100);
+    QVERIFY(routedSocket == nullptr);
+
+    QVERIFY(client.write(frame.mid(gy::protocol::kHeaderBytes)) > 0);
+    QVERIFY(client.waitForBytesWritten(1000));
+    QTRY_VERIFY_WITH_TIMEOUT(routedSocket != nullptr, 3000);
+    QCOMPARE(routedData, frame);
+    QVERIFY(!transferRequestReceived);
+
+    FrameCodec codec;
+    QSignalSpy frameSpy(&codec, &FrameCodec::frameReady);
+    codec.feed(routedData);
+    QCOMPARE(frameSpy.count(), 1);
+    QCOMPARE(frameSpy.first().at(0).toUInt(), gy::protocol::kTypeChatText);
+    QCOMPARE(frameSpy.first().at(1).toByteArray(), payload);
+
+    client.disconnectFromHost();
+    client.waitForDisconnected(1000);
+}
+
+void TestFileTransfer::testUnsupportedFirstFrameRejected()
+{
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool chatConnectionReceived = false;
+    bool transferRequestReceived = false;
+    connect(&server, &P2pServer::chatConnectionReceived, this,
+            [&chatConnectionReceived](QTcpSocket *socket) {
+        chatConnectionReceived = true;
+        socket->setParent(nullptr);
+        socket->deleteLater();
+    });
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&transferRequestReceived](FileReceiverWorker *, const QVariantMap &) {
+        transferRequestReceived = true;
+    });
+
+    QTcpSocket client;
+    QSignalSpy disconnectedSpy(&client, &QTcpSocket::disconnected);
+    client.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(client.waitForConnected(5000));
+
+    const QByteArray frame = FrameCodec::encode(0x0503, "{}");
+    QVERIFY(client.write(frame) > 0);
+    QVERIFY(client.waitForBytesWritten(1000));
+    QVERIFY(disconnectedSpy.wait(3000));
+    QVERIFY(!chatConnectionReceived);
+    QVERIFY(!transferRequestReceived);
+
+    QTcpSocket invalidChatClient;
+    QSignalSpy invalidChatDisconnectedSpy(&invalidChatClient, &QTcpSocket::disconnected);
+    invalidChatClient.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(invalidChatClient.waitForConnected(5000));
+
+    const QByteArray invalidChatFrame = FrameCodec::encode(gy::protocol::kTypeChatText, "{}");
+    QVERIFY(invalidChatClient.write(invalidChatFrame) > 0);
+    QVERIFY(invalidChatClient.waitForBytesWritten(1000));
+    QVERIFY(invalidChatDisconnectedSpy.wait(3000));
+    QVERIFY(!chatConnectionReceived);
+    QVERIFY(!transferRequestReceived);
 }
 
 QTEST_MAIN(TestFileTransfer)
