@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
-* @version 4.16.5
-* @date    2026-06-24
+* @version 4.16.8
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -11,6 +11,8 @@
 * 禁止使用 setContextProperty 暴露 C++ 对象。
 *
 * Change Log:
+* [v4.16.8] GY   2026-06-25
+* * 集中管理本地历史数据库与数据库任务线程
 * [v4.16.5] FengChunlin   2026-06-24
 * * 组装在线聊天管理器并向 QML 暴露受控入口
 * [v4.8.2] GY   2026-06-09
@@ -27,6 +29,7 @@
 
 #include <QObject>
 #include <QString>
+#include <memory>
 #include <QtQml/qqmlregistration.h>
 
 #include "chat_manager.h"
@@ -38,9 +41,15 @@ class QJSEngine;
 
 class ConfigManager;
 class P2pServer;
+class SqliteDatabaseProxy;
+class DatabaseWorker;
+class QThread;
 
 class AppController : public QObject {
+private:
     Q_OBJECT
+
+public:
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(QString applicationName    READ applicationName    CONSTANT)
@@ -50,6 +59,8 @@ class AppController : public QObject {
     Q_PROPERTY(ChatManager* chat READ chat                         CONSTANT)
 
 public:
+    virtual ~AppController() override;
+
     // QML_SINGLETON 必需的工厂；引擎调用，外界不应直接 new
     static AppController *create(QQmlEngine *engine, QJSEngine *scriptEngine);
 
@@ -79,4 +90,7 @@ private:
     P2pServer               *_p2pServer = nullptr;  // TCP P2P 文件传输服务器
     TransferSessionManager  *_transfer  = nullptr;  // 传输会话管理器
     ChatManager             *_chat      = nullptr;  // 在线聊天连接和内存会话管理器
+    std::unique_ptr<SqliteDatabaseProxy> _storage;   // 本地历史数据库代理
+    QThread *_storageThread = nullptr;        // 数据库任务专用线程
+    DatabaseWorker *_storageWorker = nullptr; // 在专用线程执行存储任务
 };

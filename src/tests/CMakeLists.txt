@@ -4,6 +4,18 @@ find_package(Qt6 REQUIRED COMPONENTS Test Gui)
 set(CLIENT_CORE_DIR ${CMAKE_SOURCE_DIR}/client/core)
 set(CLIENT_NET_DIR ${CMAKE_SOURCE_DIR}/client/network)
 
+# --- SQLite 数据库基础测试 ---
+qt_add_executable(test_storage_database test_storage_database.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_database PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_database PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_database PRIVATE cxx_std_23)
+add_test(NAME test_storage_database COMMAND test_storage_database)
+
 # --- FrameCodec 单测 ---
 qt_add_executable(test_frame_codec test_frame_codec.cpp)
 target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)

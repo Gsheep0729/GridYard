@@ -1,16 +1,18 @@
 /**
 * @file    logger.h
-* @version 4.16.1
-* @date    2026-06-21
+* @version 6.0.0
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   运行日志工具（拦截 Qt 日志输出到文件）
 *
 * 单例模式，使用 qInstallMessageHandler 拦截所有 qDebug/qWarning/
 * qCritical/qInfo 输出，同时写入控制台和日志文件。
 * 日志文件按日期自动命名（gridyard_yyyyMMdd.log），
-* 存放在项目根目录 logs/ 文件夹下。线程安全。
+* 存放在应用数据目录 logs/ 文件夹下。线程安全。
 *
 * Change Log:
+* [v6.0.0] GY   2026-06-25
+* * 日志默认目录迁移到应用数据目录
 * [v4.16.1] GY   2026-06-21
 * * 删除未使用的 logFilePath() 访问器
 * [v4.7.1] GY   2026-06-06
@@ -26,12 +28,13 @@
 #include <QTextStream>
 
 class Logger : public QObject {
+private:
     Q_OBJECT
 
 public:
     static Logger *instance();
 
-    // 初始化日志系统，logDir 为空则使用默认路径
+    // 初始化日志系统，logDir 为空则使用应用数据目录
     void init(const QString &logDir = QString());
 
 private:

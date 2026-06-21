@@ -1,7 +1,7 @@
 /**
 * @file    logger.cpp
-* @version 4.16.1
-* @date    2026-06-21
+* @version 6.0.0
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   运行日志工具实现
 *
@@ -9,6 +9,8 @@
 * 日志文件按日期自动命名，支持跨天自动切换。线程安全（QMutex）。
 *
 * Change Log:
+* [v6.0.0] GY   2026-06-25
+* * 日志默认目录迁移到应用数据目录
 * [v4.16.1] GY   2026-06-21
 * * 删除未使用的 logFilePath() 访问器
 * [v4.7.1] GY   2026-06-06
@@ -16,8 +18,8 @@
 */
 
 #include "logger.h"
+#include "application_paths.h"
 
-#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QStandardPaths>
@@ -53,10 +55,7 @@ void Logger::init(const QString &logDir) {
     QMutexLocker locker(&_mutex);
 
     if (logDir.isEmpty()) {
-        // 默认日志目录：仓库根目录下的 logs 文件夹
-        // 可执行文件路径：src/build/client/appGridYard
-        // 向上 3 级到达仓库根目录 (src/)
-        _logDir = QCoreApplication::applicationDirPath() + "/../../../logs";
+        _logDir = ApplicationPaths::logDir();
     } else {
         _logDir = logDir;
     }
