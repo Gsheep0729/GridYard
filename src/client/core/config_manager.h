@@ -1,14 +1,17 @@
 /**
 * @file    config_manager.h
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
-* 使用 QSettings 管理设备名、接收路径、TCP 端口等配置。
+* 使用 QSettings 管理设备名、接收路径、TCP 端口、自动接收等配置。
 * 首次启动生成 UUID 并持久化，确保设备标识跨会话稳定。
+* 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 新增 isMyDevice()、fillHelloPayload()、fillSenderInfo() 语义化方法
 * [v4.11.0] GY   2026-06-13
 * * 新增自动接收并保存文件配置
 * [v4.8.1] GY   2026-06-08
@@ -59,6 +62,13 @@ public:
 
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
+
+    // 语义化方法：判断是否是本机设备
+    bool isMyDevice(const QString &deviceId) const;
+    // 语义化方法：填充 Hello 包数据（委托模式）
+    void fillHelloPayload(QJsonObject &json) const;
+    // 语义化方法：填充发送方信息到会话
+    void fillSenderInfo(QVariantMap &session) const;
 
 signals:
     void deviceIdChanged();

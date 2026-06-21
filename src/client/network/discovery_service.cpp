@@ -1,11 +1,17 @@
 /**
 * @file    discovery_service.cpp
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
-* @brief   DiscoveryService 实现
+* @brief   局域网设备发现服务实现
+*
+* 实现 UDP 广播发送、接收、节点管理等功能。每 5 秒发送 Hello 包，
+* 接收到其他设备的广播后更新在线节点表。支持协议版本兼容性检查
+* 和多网卡广播。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 新增语义化查询方法实现；buildHelloPayload 和 handleHelloPacket 使用委托模式
 * [v4.15.0] GY   2026-06-17
 * * 协议版本不兼容处理：主版本不一致标记不兼容，次版本差异安全降级
 * [v4.7.1] FengChunlin   2026-06-05
@@ -33,6 +39,7 @@ static constexpr int kNodeTimeoutSec = 15;
 // 清理检查间隔（秒）
 static constexpr int kPruneIntervalSec = 3;
 
+// 构造函数，初始化 UDP socket、广播定时器和清理定时器
 DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     : QObject{parent}
     , _config{config}
@@ -93,6 +100,7 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     QTimer::singleShot(200, this, &DiscoveryService::sendHelloPacket);
 }
 
+// 获取所有在线设备列表，转换为 QVariantList 供 QML 使用
 QVariantList DiscoveryService::peers() const
 {
     QVariantList list;
@@ -105,11 +113,41 @@ QVariantList DiscoveryService::peers() const
     return list;
 }
 
+// 根据设备ID获取设备信息，未找到时返回空 PeerInfo
 PeerInfo DiscoveryService::peerInfo(const QString &deviceId) const
 {
     return _peers.value(deviceId, PeerInfo{});
 }
 
+// 检查指定设备是否在线
+bool DiscoveryService::isPeerOnline(const QString &deviceId) const
+{
+    auto it = _peers.find(deviceId);
+    return it != _peers.end() && it.value().isOnline;
+}
+
+// 获取指定设备的 IP 地址
+QString DiscoveryService::peerIpAddress(const QString &deviceId) const
+{
+    auto it = _peers.find(deviceId);
+    return it != _peers.end() ? it.value().ipAddress : QString();
+}
+
+// 获取指定设备的 TCP 端口号
+quint16 DiscoveryService::peerTcpPort(const QString &deviceId) const
+{
+    auto it = _peers.find(deviceId);
+    return it != _peers.end() ? it.value().tcpPort : 0;
+}
+
+// 获取指定设备的名称
+QString DiscoveryService::peerName(const QString &deviceId) const
+{
+    auto it = _peers.find(deviceId);
+    return it != _peers.end() ? it.value().deviceName : QString();
+}
+
+// 向所有激活网卡的广播地址发送 Hello 包
 void DiscoveryService::sendHelloPacket()
 {
     // 检查 socket 是否已绑定
@@ -157,6 +195,7 @@ void DiscoveryService::sendHelloPacket()
     qDebug() << "DiscoveryService: 广播发送完成，共发送到" << sentCount << "个网卡";
 }
 
+// 处理接收到的 UDP 数据报，解析 JSON 后交给 handleHelloPacket
 void DiscoveryService::onDatagramReceived()
 {
     while (_socket->hasPendingDatagrams()) {
@@ -180,6 +219,7 @@ void DiscoveryService::onDatagramReceived()
     }
 }
 
+// 清理超时未响应的离线节点
 void DiscoveryService::pruneOfflineNodes()
 {
     const QDateTime threshold = QDateTime::currentDateTimeUtc().addSecs(-kNodeTimeoutSec);
@@ -204,18 +244,19 @@ void DiscoveryService::pruneOfflineNodes()
     }
 }
 
+// 构建 Hello 广播的 JSON 负载（设备信息 + 协议版本）
 QByteArray DiscoveryService::buildHelloPayload() const
 {
     QJsonObject json;
-    json["device_id"]   = _config->deviceId();
-    json["device_name"] = _config->deviceName();
+    // 委托 ConfigManager 填充设备信息（Tell, Don't Ask）
+    _config->fillHelloPayload(json);
     json["app_version"] = QCoreApplication::applicationVersion();
-    json["tcp_port"]    = _config->tcpPort();
     json["version"]     = gy::protocol::kProtocolVersion;
 
     return QJsonDocument(json).toJson(QJsonDocument::Compact);
 }
 
+// 解析收到的 Hello 包，进行版本兼容性检查后更新在线设备表
 void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAddress &sender)
 {
     // 提取字段
@@ -230,8 +271,8 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
         return;
     }
 
-    // 本机过滤：忽略自己发出的广播
-    if (deviceId == _config->deviceId()) {
+    // 本机过滤：忽略自己发出的广播（委托 ConfigManager 判断）
+    if (_config->isMyDevice(deviceId)) {
         qDebug() << "DiscoveryService: 忽略自己的广播，deviceId:" << deviceId;
         return;
     }
@@ -278,6 +319,7 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
     updatePeer(deviceId, info);
 }
 
+// 更新或新增在线设备信息，新设备时发射 nodeDiscovered 信号
 void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 {
     const bool isNew = !_peers.contains(deviceId);
@@ -303,11 +345,13 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
     notifyPeersChanged();
 }
 
+// 通知 QML 层设备列表已变化
 void DiscoveryService::notifyPeersChanged()
 {
     emit peersChanged();
 }
 
+// 手动刷新：清空设备列表并重新广播发现
 void DiscoveryService::refresh()
 {
     qDebug() << "DiscoveryService: 手动刷新，清空设备列表并重新发现";

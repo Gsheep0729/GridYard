@@ -1,13 +1,13 @@
 /**
 * @file    dir_serializer.h
-* @version 4.10.0
+* @version 4.1.0
 * @date    2026-06-13
 * @author  GridYard Team
-* @brief   目录序列化工具，递归遍历目录生成文件列表并计算 SHA-256
+* @brief   目录序列化工具（递归遍历 + SHA-256 计算）
 *
 * 提供静态方法将文件/目录路径转换为 FileItem 列表，
 * 每个 FileItem 包含相对路径、文件大小和 SHA-256 哈希值。
-* 用于 Stage 4 多文件/目录传输功能。
+* 用于多文件/目录传输功能，发送前遍历源路径生成文件清单。
 *
 * Change Log:
 * [v4.1.0] FengChunlin   2026-06-04

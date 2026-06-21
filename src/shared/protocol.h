@@ -3,7 +3,7 @@
 * @version 4.15.0
 * @date    2026-06-17
 * @author  GridYard Team
-* @brief   GridYard 应用层通信协议（TLV 帧 + Type 码）
+* @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
 *
 * 全局唯一的协议常量定义入口。所有 Type 码、帧头字段、Payload 字段名
 * 常量都集中在 gy::protocol 命名空间下，避免散落到各模块复制粘贴。
