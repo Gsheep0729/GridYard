@@ -34,63 +34,65 @@ Frame {
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal fileDropped(string deviceId, string filePath)
+    Rectangle{
+        color:Style.Color.select
+        ColumnLayout {
+            anchors.fill: parent
+            // 搜索区域
+            Rectangle{
+                Layout.fillWidth: true
+                Layout.preferredHeight: 70
+                color:Style.Color.select
 
-    ColumnLayout {
-        anchors.fill: parent
-        // 搜索区域
-        Rectangle{
-            Layout.fillWidth: true
-            Layout.preferredHeight: 70
-            color:Style.Color.select
-
-            TextField {
-                height: 30
-                width: 150
-                text: qsTr("搜索")
-                font.pixelSize: 13
-                color: Style.Color.select
-
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Label {
-                height: 30
-                width: 30
-                text: qsTr("%1 台").arg(listView.count)
-                font.pixelSize: 12
-                color: Style.Color.select
-            }
-        }
-
-        // 设备列表
-        ListView {
-            id: listView
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            spacing: Style.Space.xs
-
-            model: AppController.discovery.peers
-
-            delegate: DeviceCard {
-                width: listView.width
-                isSelected: peerListView.selectedDeviceId === deviceId
-                onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
-                    peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)
+                TextField {
+                    height: 30
+                    width: 150
+                    text: qsTr("搜索")
+                    font.pixelSize: 13
+                    color: black
+                    anchors.bottom: parent.bottom
                 }
-                onFileDropped: function(deviceId, filePath) {
-                    peerListView.fileDropped(deviceId, filePath)
+
+                Item { Layout.fillWidth: true }
+
+                Label {
+                    height: 30
+                    width: 30
+                    text: qsTr("%1 台").arg(listView.count)
+                    font.pixelSize: 12
+                    color: Style.Color.select
                 }
             }
 
-            Label {
-                anchors.centerIn: parent
-                text: qsTr("正在搜索设备...")
-                color: Style.Color.textWeak
-                font.pixelSize: 14
-                visible: listView.count === 0
+            // 设备列表
+            ListView {
+                id: listView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: Style.Space.xs
+
+                model: AppController.discovery.peers
+
+                delegate: DeviceCard {
+                    width: listView.width
+                    isSelected: peerListView.selectedDeviceId === deviceId
+                    onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
+                        peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)
+                    }
+                    onFileDropped: function(deviceId, filePath) {
+                        peerListView.fileDropped(deviceId, filePath)
+                    }
+                }
+
+                Label {
+                    anchors.centerIn: parent
+                    text: qsTr("正在搜索设备...")
+                    color: Style.Color.textWeak
+                    font.pixelSize: 14
+                    visible: listView.count === 0
+                }
             }
-        }
-    }
+        }}
+
 }

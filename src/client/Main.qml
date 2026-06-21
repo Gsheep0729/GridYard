@@ -1,7 +1,7 @@
 /**
 * @file    Main.qml
 * @version 4.16.0
-* @date    2026-06-18
+* @date    2026-06-22
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
@@ -10,6 +10,8 @@
 * 左侧工具栏，中间设备列表，右侧设备会话页。
 *
 * Change Log:
+* [v4.16.0] DuRuoxian   2026-06-22
+* * 三栏布局改用纯 anchors 定位，移除所有 Layout 属性
 * [v4.16.0] DuRuoxian   2026-06-18
 * * 统一主窗口样式常量，调整为现代设备会话工作台
 * [v4.15.2] DuRuoxian   2026-06-17
@@ -49,7 +51,6 @@ ApplicationWindow {
 
     onClosing: AppController.quit()
 
-    // 目标设备 ID（点击设备卡片时设置）
     property string _targetDeviceId: ""
     property string _targetDeviceName: ""
     property string _targetIpAddress: ""
@@ -65,9 +66,7 @@ ApplicationWindow {
     }
 
     function refreshSelectedDevice(): void {
-        if (_targetDeviceId.length === 0) {
-            return
-        }
+        if (_targetDeviceId.length === 0) return
         const peers = AppController.discovery.peers
         for (let i = 0; i < peers.length; i++) {
             if (peers[i].deviceId === _targetDeviceId) {
@@ -79,20 +78,18 @@ ApplicationWindow {
         _targetIsOnline = false
     }
 
-    // 文件选择对话框由 Qt 平台主题接入系统原生实现
+    //对话框
+
     FileDialog {
         id: fileDialog
         title: qsTr("选择要发送的文件")
         fileMode: FileDialog.OpenFiles
         nameFilters: [qsTr("所有文件 (*)")]
-
         onAccepted: {
             let urls = fileDialog.selectedFiles
             for (let i = 0; i < urls.length; i++) {
                 let path = urls[i].toString()
-                if (path.startsWith("file://")) {
-                    path = path.substring(7)
-                }
+                if (path.startsWith("file://")) path = path.substring(7)
                 AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
             }
         }
@@ -101,33 +98,26 @@ ApplicationWindow {
     FolderDialog {
         id: folderDialog
         title: qsTr("选择要发送的文件夹")
-
         onAccepted: {
             let path = selectedFolder.toString()
-            if (path.startsWith("file://")) {
-                path = path.substring(7)
-            }
+            if (path.startsWith("file://")) path = path.substring(7)
             AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
         }
     }
 
-    // 设置对话框
-    SettingsDialog {
-        id: settingsDialog
-    }
+    SettingsDialog { id: settingsDialog }
+
+    // ======== 弹出窗口 ========
 
     // 本机信息弹出窗口
     Popup {
         id: deviceInfoPopup
-        x: 70
-        y: 10
-        width: 260
-        height: 120
+        x: 70; y: 10
+        width: 282; height: 272
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         background: Rectangle {
             color: Style.Color.surface
-            radius: Style.Radius.lg
             border.color: Style.Color.borderSoft
             border.width: 1
         }
@@ -138,12 +128,11 @@ ApplicationWindow {
             spacing: Style.Space.md
 
             Rectangle {
-                Layout.alignment: Qt.AlignVCenter
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 40
-                radius: 20
+                anchors.top: parent.top
+                Layout.preferredWidth: 60
+                Layout.preferredHeight: 60
+                radius: 4
                 color: Style.Color.primary
-
                 Label {
                     anchors.centerIn: parent
                     text: "我"
@@ -155,14 +144,12 @@ ApplicationWindow {
 
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 spacing: 2
-
+                anchors.top: parent.top
                 TextField {
                     Layout.fillWidth: true
                     text: ConfigManager.deviceName
-                    placeholderText: qsTr("输入设备名称")
-                    font.pixelSize: 14
-                    font.bold: true
                     background: Rectangle {
                         color: activeFocus ? Style.Color.surfaceSoft : Style.Color.transparent
                         border.color: activeFocus ? Style.Color.primary : Style.Color.transparent
@@ -171,21 +158,16 @@ ApplicationWindow {
                     }
                     padding: 2
                     selectByMouse: true
-
                     onEditingFinished: {
                         let trimmed = text.trim()
-                        if (trimmed.length > 0 && trimmed !== ConfigManager.deviceName) {
+                        if (trimmed.length > 0 && trimmed !== ConfigManager.deviceName)
                             ConfigManager.deviceName = trimmed
-                        }
                         focus = false
                     }
-
                     Connections {
                         target: ConfigManager
                         function onDeviceNameChanged() {
-                            if (!activeFocus) {
-                                text = ConfigManager.deviceName
-                            }
+                            if (!activeFocus) text = ConfigManager.deviceName
                             AppController.discovery.refresh()
                         }
                     }
@@ -193,8 +175,7 @@ ApplicationWindow {
 
                 Label {
                     text: ConfigManager.localIp.length > 0
-                          ? ConfigManager.localIp
-                          : qsTr("未获取到 IP")
+                          ? ConfigManager.localIp : qsTr("未获取到 IP")
                     color: Style.Color.textMuted
                     font.pixelSize: 12
                 }
@@ -208,7 +189,7 @@ ApplicationWindow {
             }
 
             Button {
-                Layout.alignment: Qt.AlignVCenter
+                anchors.top: parent.top
                 icon.name: "view-refresh"
                 icon.width: 20
                 icon.height: 20
@@ -244,7 +225,6 @@ ApplicationWindow {
                 id: settingsItem
                 Layout.fillWidth: true
                 text: qsTr("设置")
-
                 contentItem: Label {
                     text: settingsItem.text
                     font.pixelSize: 13
@@ -252,224 +232,222 @@ ApplicationWindow {
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: Style.Space.sm
                 }
-
                 background: Rectangle {
                     color: settingsItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
                     radius: Style.Radius.sm
-                    Behavior on color {
-                        ColorAnimation { duration: Style.Motion.base }
-                    }
+                    Behavior on color { ColorAnimation { duration: Style.Motion.base } }
                 }
-
-                onClicked: {
-                    menuPopup.close()
-                    settingsDialog.open()
-                }
+                onClicked: { menuPopup.close(); settingsDialog.open() }
             }
         }
     }
 
-    // 三栏布局
-    RowLayout {
-        anchors.fill: parent
-        spacing: 0
+    // ======== 三栏主体(主体) ========
 
-        // 左侧：工具栏
-        ToolBar {
-            Layout.preferredWidth: 62
-            Layout.fillHeight: true
+    // 左侧工具栏（62px）
+    Rectangle {
+        id: sidebar
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 62
+        color: Style.Color.surfaceLeft
 
-            background: Rectangle {
-                color: Style.Color.surfaceLeft
-            }
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: Style.Space.md
-
-                // 本机头像
-                Rectangle {
-                    id: avatarButton
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: Style.Space.lg
-                    Layout.preferredWidth: 36
-                    Layout.preferredHeight: 36
-                    color: Style.Color.primary
-                    opacity: hovered ? 0.85 : 1.0
-
-                    Label {
-                        anchors.centerIn: parent
-                        text: "我"
-                        color: "#FFFFFF"
-                        font.pixelSize: 12
-                        font.bold: true
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: deviceInfoPopup.open()
-                    }
-
-                    Behavior on opacity {
-                        NumberAnimation { duration: Style.Motion.base }
-                    }
-                }
-                Item { Layout.fillHeight: true }
-
-                // 菜单按钮（底部）
-                Button {
-                    id: menuButton
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.bottomMargin: Style.Space.lg
-                    flat: true
-
-                    // 手动跟踪是否按下
-                    property bool _pressed: false
-
-                    contentItem: ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 3
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                Layout.alignment: Qt.AlignHCenter
-                                width: 16
-                                height: 2
-                                radius: 1
-                                color: (menuButton._pressed || menuButton.down)
-                                       ? Style.Color.menubarClicked
-                                       : (menuButton.hovered
-                                           ? Style.Color.menubarSelect
-                                           : Style.Color.textSecondary)
-
-                                Behavior on color {
-                                    ColorAnimation { duration: Style.Motion.base }
-                                }
-                            }
-                        }
-                    }
-
-                    background: Rectangle {
-                        implicitWidth: 41
-                        implicitHeight: 41
-                        color: (menuButton._pressed || menuButton.down)
-                               ? Style.Color.select
-                               : (menuButton.hovered
-                                   ? Style.Color.surfaceSoft
-                                   : Style.Color.transparent)
-
-                        Behavior on color {
-                            ColorAnimation { duration: Style.Motion.base }
-                        }
-                    }
-
-                    onPressedChanged: menuButton._pressed = pressed
-                    onClicked: menuPopup.open()
-                }
-            }
-        }
-
-        // 中间：设备列表
-        PeerListView {
-            id: peerListView
-            Layout.preferredWidth: 210
-            Layout.fillHeight: true
-            selectedDeviceId: mainWindow._targetDeviceId
-
-            background: Rectangle {
-                color: Style.Color.surfaceMid
-            }
-
-            onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
-                console.log("选中设备:", deviceId)
-                mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
-            }
-            onFileDropped: function(deviceId, filePath) {
-                console.log("拖拽文件到设备:", deviceId, filePath)
-                const peers = AppController.discovery.peers
-                for (let i = 0; i < peers.length; i++) {
-                    if (peers[i].deviceId === deviceId) {
-                        mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
-                                                   peers[i].ipAddress, peers[i].isOnline)
-                        break
-                    }
-                }
-                AppController.transfer.createSendSession(deviceId, filePath)
-            }
-        }
-
-        // 右侧：会话页
+        // 本机头像
         Rectangle {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            color: Style.Color.surfaceLeft
+            id: avatarBtn
+            anchors.top: parent.top
+            anchors.topMargin: 16
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 36; height: 36
+            color: Style.Color.primary
 
-            StackLayout {
+            property bool _hovered: false
+
+            Label {
+                anchors.centerIn: parent
+                text: "我"
+                color: "#FFFFFF"
+                font.pixelSize: 12
+                font.bold: true
+            }
+
+            MouseArea {
                 anchors.fill: parent
-                currentIndex: mainWindow._targetDeviceId.length > 0 ? 1 : 0
+                hoverEnabled: true
+                onEntered: avatarBtn._hovered = true
+                onExited: avatarBtn._hovered = false
+                onClicked: deviceInfoPopup.open()
+            }
+        }
+
+        // 设备名
+        Label {
+            anchors.top: avatarBtn.bottom
+            anchors.topMargin: 8
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: ConfigManager.deviceName
+            font.pixelSize: 10
+            color: Style.Color.textSecondary
+            elide: Text.ElideRight
+        }
+
+        // 菜单按钮（底部）
+        Rectangle {
+            id: menuBtn
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 16
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 41; height: 41
+            radius: 18
+
+            property bool _hovered: false
+            property bool _pressed: false
+
+            color: _pressed
+                   ? Style.Color.menubarClicked
+                   : (_hovered ? Style.Color.menubarSelect: Style.Color.surfaceLeft)
+
+            Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+
+            // 三横线
+            Item {
+                anchors.centerIn: parent
+                width: 16; height: 13
 
                 Rectangle {
-                    color: "transparent"
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        width: Math.min(parent.width - 80, 420)
-
-                        Label {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: "GridYard"
-                            color: Style.Color.primary
-                            font.pixelSize: 48
-                            font.bold: true
-                            opacity: 0.16
-                        }
-
-                        Label {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: qsTr("选择一台设备开始会话")
-                            font.pixelSize: 20
-                            font.bold: true
-                            color: Style.Color.textMain
-                        }
-
-                        Label {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: qsTr("发送文件，之后也会在这里查看聊天消息")
-                            color: Style.Color.textMuted
-                            font.pixelSize: 14
-                            wrapMode: Text.Wrap
-                            horizontalAlignment: Text.AlignHCenter
-                            Layout.fillWidth: true
-                        }
-                    }
+                    anchors.top: parent.top
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 16; height: 2
+                    radius: 1
+                    color: Style.Color.menubar
                 }
 
-                DeviceSessionView {
-                    deviceId: mainWindow._targetDeviceId
-                    deviceName: mainWindow._targetDeviceName
-                    ipAddress: mainWindow._targetIpAddress
-                    isOnline: mainWindow._targetIsOnline
-
-                    background: Rectangle {
-                        color: "transparent"
-                    }
-
-                    onSendFileRequested: fileDialog.open()
-                    onSendFolderRequested: folderDialog.open()
-                    onFileDropped: function(filePath) {
-                        AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
-                    }
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 16; height: 2
+                    radius: 1
+                    color: Style.Color.menubar
                 }
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 16; height: 2
+                    radius: 1
+                    color: Style.Color.menubar
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                onEntered: menuBtn._hovered = true
+                onExited: { menuBtn._hovered = false; menuBtn._pressed = false }
+                onPressed: menuBtn._pressed = true
+                onReleased: menuBtn._pressed = false
+                onClicked: menuPopup.open()
             }
         }
     }
 
-    // 接收确认弹窗
-    AcceptDialog {
-        id: acceptDialog
+    // 中间：设备列表（300px）
+    PeerListView {
+        id: peerList
+        anchors.left: sidebar.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 210
+        selectedDeviceId: mainWindow._targetDeviceId
+
+        onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
+            console.log("选中设备:", deviceId)
+            mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
+        }
+        onFileDropped: function(deviceId, filePath) {
+            console.log("拖拽文件到设备:", deviceId, filePath)
+            const peers = AppController.discovery.peers
+            for (let i = 0; i < peers.length; i++) {
+                if (peers[i].deviceId === deviceId) {
+                    mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
+                                               peers[i].ipAddress, peers[i].isOnline)
+                    break
+                }
+            }
+            AppController.transfer.createSendSession(deviceId, filePath)
+        }
     }
 
-    // 传输完成提示弹窗
+    // 右侧：会话页（填充剩余宽度）
+    Rectangle {
+        anchors.left: peerList.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        color: Style.Color.surfaceLeft
+
+        // 未选中设备时的占位
+        Item {
+            anchors.fill: parent
+            visible: mainWindow._targetDeviceId.length === 0
+
+            Column {
+                anchors.centerIn: parent
+                spacing: Style.Space.lg
+                width: Math.min(parent.width - 80, 420)
+
+                Label {
+                    text: "GridYard"
+                    color: Style.Color.primary
+                    font.pixelSize: 48
+                    font.bold: true
+                    opacity: 0.16
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                Label {
+                    text: qsTr("选择一台设备开始会话")
+                    font.pixelSize: 20
+                    font.bold: true
+                    color: Style.Color.textMain
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                Label {
+                    text: qsTr("发送文件，之后也会在这里查看聊天消息")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 14
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    width: parent.width
+                }
+            }
+        }
+
+        // 设备会话页
+        DeviceSessionView {
+            anchors.fill: parent
+            visible: mainWindow._targetDeviceId.length > 0
+            deviceId: mainWindow._targetDeviceId
+            deviceName: mainWindow._targetDeviceName
+            ipAddress: mainWindow._targetIpAddress
+            isOnline: mainWindow._targetIsOnline
+
+            background: Rectangle { color: "transparent" }
+
+            onSendFileRequested: fileDialog.open()
+            onSendFolderRequested: folderDialog.open()
+            onFileDropped: function(filePath) {
+                AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
+            }
+        }
+    }
+
+    // ======== 弹窗（不变） ========
+
+    AcceptDialog { id: acceptDialog }
+
     Dialog {
         id: completeDialog
         title: qsTr("接收完成")
@@ -500,16 +478,10 @@ ApplicationWindow {
             }
         }
 
-        onAccepted: {
-            ConfigManager.openFolder(completeDialog._filePath)
-        }
-
-        onRejected: {
-            completeDialog.close()
-        }
+        onAccepted: ConfigManager.openFolder(completeDialog._filePath)
+        onRejected: completeDialog.close()
     }
 
-    // 连接 TransferSessionManager 信号
     Connections {
         target: AppController.transfer
         function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
@@ -538,24 +510,15 @@ ApplicationWindow {
             completeDialog._filePath = filePath
             completeDialog.open()
         }
-        function onErrorOccurred(message) {
-            errorLabel.text = message
-            errorPopup.open()
-        }
-        function onMessageOccurred(message) {
-            successLabel.text = message
-            successPopup.open()
-        }
+        function onErrorOccurred(message) { errorLabel.text = message; errorPopup.open() }
+        function onMessageOccurred(message) { successLabel.text = message; successPopup.open() }
     }
 
     Connections {
         target: AppController.discovery
-        function onPeersChanged() {
-            mainWindow.refreshSelectedDevice()
-        }
+        function onPeersChanged() { mainWindow.refreshSelectedDevice() }
     }
 
-    // 错误提示弹窗
     Popup {
         id: errorPopup
         anchors.centerIn: parent
@@ -566,18 +529,13 @@ ApplicationWindow {
 
         enter: Transition {
             NumberAnimation {
-                property: "opacity"
-                from: 0
-                to: 1
+                property: "opacity"; from: 0; to: 1
                 duration: mainWindow.kPopupEnterDuration
                 easing.type: Easing.OutCubic
             }
         }
 
-        background: Rectangle {
-            color: Style.Color.error
-            radius: Style.Radius.sm
-        }
+        background: Rectangle { color: Style.Color.error; radius: Style.Radius.sm }
 
         contentItem: Label {
             id: errorLabel
@@ -596,7 +554,6 @@ ApplicationWindow {
         }
     }
 
-    // 成功提示弹窗
     Popup {
         id: successPopup
         anchors.centerIn: parent
@@ -607,18 +564,13 @@ ApplicationWindow {
 
         enter: Transition {
             NumberAnimation {
-                property: "opacity"
-                from: 0
-                to: 1
+                property: "opacity"; from: 0; to: 1
                 duration: mainWindow.kPopupEnterDuration
                 easing.type: Easing.OutCubic
             }
         }
 
-        background: Rectangle {
-            color: Style.Color.success
-            radius: Style.Radius.sm
-        }
+        background: Rectangle { color: Style.Color.success; radius: Style.Radius.sm }
 
         contentItem: Label {
             id: successLabel
