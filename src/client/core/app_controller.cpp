@@ -1,9 +1,12 @@
 /**
 * @file    app_controller.cpp
-* @version 4.10.0
+* @version 4.7.1
 * @date    2026-06-13
 * @author  GridYard Team
-* @brief   AppController 实现
+* @brief   应用全局控制器实现
+*
+* 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、
+* TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
 *
 * Change Log:
 * [v4.7.1] GY   2026-06-05
@@ -23,6 +26,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 
+// 构造函数：创建并组装所有核心模块
 AppController::AppController(QObject *parent)
     : QObject{parent}
     , _config{ConfigManager::create(nullptr, nullptr)}
@@ -37,38 +41,45 @@ AppController::AppController(QObject *parent)
     _transfer->init(_config, _discovery, _p2pServer);
 }
 
+// QML_SINGLETON 工厂方法，引擎调用
 AppController *AppController::create(QQmlEngine *engine, QJSEngine *)
 {
     Q_UNUSED(engine);
     return new AppController{};
 }
 
+// 获取应用名称
 QString AppController::applicationName() const
 {
     return QCoreApplication::applicationName();
 }
 
+// 获取应用版本号
 QString AppController::applicationVersion() const
 {
     return QCoreApplication::applicationVersion();
 }
 
+// 获取设备发现服务（供 QML 绑定设备列表）
 DiscoveryService *AppController::discovery() const
 {
     return _discovery;
 }
 
+// 获取传输会话管理器
 TransferSessionManager *AppController::transfer() const
 {
     return _transfer;
 }
 
+// 退出应用
 void AppController::quit()
 {
     qDebug() << "AppController::quit invoked from QML";
     QCoreApplication::quit();
 }
 
+// 测试 C++↔QML 通信
 void AppController::test()
 {
     qDebug() << "AppController::test() invoked from QML - C++↔QML 通信正常";

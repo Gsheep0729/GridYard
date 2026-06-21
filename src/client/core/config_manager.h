@@ -1,14 +1,17 @@
 /**
 * @file    config_manager.h
-* @version 4.11.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
-* 使用 QSettings 管理设备名、接收路径、TCP 端口等配置。
+* 使用 QSettings 管理设备名、接收路径、TCP 端口、自动接收等配置。
 * 首次启动生成 UUID 并持久化，确保设备标识跨会话稳定。
+* 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 新增 isMyDevice()、fillHelloPayload()、fillSenderInfo() 语义化方法
 * [v4.11.0] GY   2026-06-13
 * * 新增自动接收并保存文件配置
 * [v4.8.1] GY   2026-06-08
@@ -60,6 +63,13 @@ public:
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
 
+    // 语义化方法：判断是否是本机设备
+    bool isMyDevice(const QString &deviceId) const;
+    // 语义化方法：填充 Hello 包数据（委托模式）
+    void fillHelloPayload(QJsonObject &json) const;
+    // 语义化方法：填充发送方信息到会话
+    void fillSenderInfo(QVariantMap &session) const;
+
 signals:
     void deviceIdChanged();
     void deviceNameChanged();
@@ -82,10 +92,10 @@ private:
     // 全局实例指针（用于单例模式）
     static QPointer<ConfigManager> s_instance;
 
-    QString _deviceId;
-    QString _deviceName;
-    QString _localIp;
-    QString _receivePath;
-    bool    _autoAcceptFiles = false;
-    quint16 _tcpPort = 0;
+    QString _deviceId;                // 持久化的本机设备 UUID
+    QString _deviceName;              // 用户设置的本机显示名称
+    QString _localIp;                 // 当前选取的本机 IPv4 地址
+    QString _receivePath;             // 接收文件的本地保存目录
+    bool    _autoAcceptFiles = false; // 是否跳过接收确认直接保存
+    quint16 _tcpPort = 0;             // TCP P2P 服务监听端口
 };

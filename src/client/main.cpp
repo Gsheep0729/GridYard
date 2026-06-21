@@ -1,7 +1,7 @@
 /**
 * @file    main.cpp
-* @version 4.16.0
-* @date    2026-06-18
+* @version 4.16.2
+* @date    2026-06-22
 * @author  GridYard Team
 * @brief   GridYard 客户端程序入口
 *
@@ -17,6 +17,10 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v4.16.2] DuRuoxian   2026-06-22
+* * 添加窗口图标设置，解决任务栏图标缺失问题
+* [v4.16.1] DuRuoxian   2026-06-21
+* * 优化封装性并补充注释，版本同步到 v4.16.1
 * [v4.16.0] DuRuoxian   2026-06-18
 * * 版本号更新到 v4.16.0
 * [v4.15.2] DuRuoxian   2026-06-17
@@ -56,6 +60,7 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 
@@ -64,6 +69,7 @@
 
 namespace {
 
+// 配置 Linux 桌面环境下 Qt 平台主题，使 KDE 使用原生文件选择器
 void configurePlatformTheme()
 {
 #ifdef Q_OS_LINUX
@@ -77,14 +83,16 @@ void configurePlatformTheme()
 
 }
 
+// 程序主函数入口，初始化应用、解析命令行参数并加载 QML 引擎
 int main(int argc, char *argv[]) {
     configurePlatformTheme();
 
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("4.16.0");
+QGuiApplication::setApplicationVersion("4.16.2");
     QGuiApplication::setOrganizationName("CQNU-SED");
+    QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 
     // 命令行参数解析
     QCommandLineParser parser;

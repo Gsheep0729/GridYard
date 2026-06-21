@@ -1,11 +1,17 @@
 /**
 * @file    p2p_server.cpp
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
-* @brief   P2pServer 实现
+* @brief   P2P 文件传输服务器实现
+*
+* 监听 TCP 端口，接受入站连接并为每个连接创建独立的 QThread
+* 和 FileReceiverWorker。实现接收侧后台化，写盘与 SHA-256 校验
+* 在后台线程执行，不阻塞 UI 主线程。
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 使用请求快照转发接收信息，删除未使用的 isListening() 访问器
 * [v4.15.1] FengChunlin   2026-06-17
 * * 删除 _threads.append 调用，修正析构注释
 * [v4.15.0] GY   2026-06-17
@@ -25,6 +31,7 @@
 
 #include <QDebug>
 
+// 构造函数，创建 TCP 服务器并连接新连接信号
 P2pServer::P2pServer(ConfigManager *config, QObject *parent)
     : QObject{parent}
     , _config{config}
@@ -35,6 +42,7 @@ P2pServer::P2pServer(ConfigManager *config, QObject *parent)
             this,    &P2pServer::onNewConnection);
 }
 
+// 析构函数，停止监听并等待所有后台线程退出
 P2pServer::~P2pServer()
 {
     // 停止服务器监听
@@ -54,6 +62,7 @@ P2pServer::~P2pServer()
     }
 }
 
+// 启动 TCP 服务器，监听配置的端口
 bool P2pServer::start()
 {
     const quint16 port = _config->tcpPort();
@@ -68,6 +77,7 @@ bool P2pServer::start()
     }
 }
 
+// 停止 TCP 服务器监听
 void P2pServer::stop()
 {
     if (_server->isListening()) {
@@ -76,11 +86,7 @@ void P2pServer::stop()
     }
 }
 
-bool P2pServer::isListening() const
-{
-    return _server->isListening();
-}
-
+// 处理新入站连接，为每个连接创建独立后台线程和 FileReceiverWorker
 void P2pServer::onNewConnection()
 {
     qDebug() << "[P2pServer] 检测到新连接";
@@ -112,20 +118,15 @@ void P2pServer::onNewConnection()
 
         // 转发传输请求信号（worker 在后台线程，信号通过 Queued Connection 跨线程）
         connect(worker, &FileReceiverWorker::transferRequestReceived,
-                this, [this, worker](const QString &senderDeviceId,
-                                     const QString &senderName,
-                                     const QString &fileName,
-                                     qint64 fileSize,
-                                     int totalFiles,
-                                     qint64 totalBytes) {
+                this, [this, worker](const QVariantMap &request) {
             qDebug() << "[P2pServer] 转发传输请求信号到 TransferSessionManager";
-            emit transferRequestReceived(worker, senderDeviceId, senderName, fileName,
-                                         fileSize, totalFiles, totalBytes);
+            emit transferRequestReceived(worker, request);
         });
 
         // 传输完成时清理线程和 worker
         connect(worker, &FileReceiverWorker::transferFinished,
-                this, [worker, thread](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
+                this, [worker, thread](bool success, gy::protocol::ErrorCode errorCode,
+                                       const QString &errorMsg, const QString &) {
             qDebug() << "[P2pServer] 传输完成"
                      << "成功:" << success
                      << "错误码:" << static_cast<quint16>(errorCode)

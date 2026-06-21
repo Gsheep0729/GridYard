@@ -1,158 +1,140 @@
 # GridYard 架构图
 
-本目录包含 GridYard 项目的 UML 和架构图，使用 Mermaid 语法绘制。
+本目录记录 GridYard 的架构视图。当前基线为 v4.16.0：Stage 0~4 的局域网 P2P 文件传输已完成，Stage 5 仅完成界面前置改造；聊天、本地数据库和服务端尚未实施。
 
 ## 目录结构
 
 ```text
-diagrams/
-├── README.md                              ← 本文件
-│
-├── class-diagram.md                       ← 分层类图（6 张 mermaid）
-├── class-diagram-1.svg                    ← §1 应用逻辑层
-├── class-diagram-2.svg                    ← §2 协议契约与共享值类型
-├── class-diagram-3.svg                    ← §3 文件传输运行时与线程模型
-├── class-diagram-4.svg                    ← §4 QML 表现层组件
-├── class-diagram-5.svg                    ← §5 数据管理层与外部资源
-│
-├── component-diagram.md                   ← 组件图（src/ 目录树 + 四层架构）
-├── component-diagram.svg
-│
-├── sequence-diagram.md                    ← C++↔QML 通信序列图（4 个场景）
-├── sequence-diagram-1.svg                 ← §1 应用启动初始化
-├── sequence-diagram-2.svg                 ← §2 文件发送
-├── sequence-diagram-3.svg                 ← §3 文件接收（后台线程）
-├── sequence-diagram-4.svg                 ← §4 取消与错误处理
-│
-├── data-flow-diagram.md                   ← 数据流图（5 条数据流）
-├── data-flow-diagram-1.svg                ← §1 设备发现流
-├── data-flow-diagram-2.svg                ← §2 文件发送流
-├── data-flow-diagram-3.svg                ← §3 文件接收流
-├── data-flow-diagram-4.svg                ← §4 配置与日志流
-├── data-flow-diagram-5.svg                ← §5 协议错误流
-│
-├── module-dependency.md                   ← 模块依赖关系图（四层 + 具体类依赖）
-└── module-dependency.svg
+doc/diagrams/
+├── README.md                              # 本文件：架构图目录索引
+├── 类图-应用逻辑层与上下层边界.vpp         # Visual Paradigm 工程文件
+└── rendered/                              # 渲染后的架构图（SVG + PNG）
+    ├── 01-类图-应用组装与传输会话管理.svg/png
+    ├── 02-类图-共享协议与传输运行时.svg/png
+    ├── 03-类图-QML表现层与基础设施.svg/png
+    ├── 04-组件图-四层架构与外部资源.svg/png
+    ├── 05-组件图-CMake构建与QML注册边界.svg/png
+    ├── 06-组件图-接收连接资源所有权.svg/png
+    ├── 07-模块依赖图-分层依赖方向.svg/png
+    ├── 08-模块依赖图-具体头文件依赖.svg/png
+    ├── 09-模块依赖图-QML单向数据流.svg/png
+    ├── 10-部署图-双端客户端端口与外部资源.svg/png
+    ├── 11-线程图-线程亲和性与跨线程通信.svg/png
+    ├── 12-协议图-TLV帧结构.svg/png
+    ├── 13-协议图-FrameCodec解码状态机.svg/png
+    ├── 14-协议图-Type码与帧职责.svg/png
+    ├── 15-协议图-关键JSON载荷关系.svg/png
+    ├── 16-协议图-版本兼容决策.svg/png
+    ├── 17-协议图-Payload限制与错误码.svg/png
+    ├── 18-时序图-应用启动与对象组装.svg/png
+    ├── 19-时序图-文件发送.svg/png
+    ├── 20-时序图-文件接收与后台线程.svg/png
+    ├── 21-时序图-取消与协议失败.svg/png
+    ├── 22-数据流图-设备发现.svg/png
+    ├── 23-数据流图-帧校验错误码与清理.svg/png
+    ├── 24-数据流图-文件发送.svg/png
+    ├── 25-数据流图-文件接收.svg/png
+    ├── 26-数据流图-配置日志与错误.svg/png
+    ├── 27-状态图-发送会话.svg/png
+    ├── 28-状态图-接收会话.svg/png
+    └── 29-状态图-状态与用户操作约束.svg/png
 ```
+
+每张图同时提供 SVG（无损缩放）和 PNG（固定分辨率）两种格式。
+
+`类图-应用逻辑层与上下层边界.vpp` 是 Visual Paradigm 工程文件，可用于编辑和重新导出类图。
 
 ## 图表索引
 
-| 文件 | 内容 | 说明 |
-|:-----|:-----|:-----|
-| [class-diagram.md](class-diagram.md) | 分层类图 | 按表现层、应用逻辑层、领域层和数据管理层说明当前类关系 |
-| [component-diagram.md](component-diagram.md) | 组件图 | 展示模块结构和依赖关系 |
-| [sequence-diagram.md](sequence-diagram.md) | 序列图 | 展示 C++↔QML 通信流程 |
-| [data-flow-diagram.md](data-flow-diagram.md) | 数据流图 | 展示数据在各层间的流动 |
-| [module-dependency.md](module-dependency.md) | 模块依赖图 | 展示模块间依赖方向 |
+### 类图（01-03）
 
-## 图表索引（SVG 高清版）
+展示项目中所有 C++ 类、Q_GADGET 值类型和 QML 组件的属性、方法、信号及依赖关系。
 
-| 文件 | 内容 | 说明 |
-|:-----|:-----|:-----|
-| [class-diagram-1.svg](class-diagram-1.svg) | 类图 §1 应用逻辑层 | AppController / ConfigManager / DiscoveryService / P2pServer / TransferSessionManager 组装关系 |
-| [class-diagram-2.svg](class-diagram-2.svg) | 类图 §2 协议契约与共享值类型 | ProtocolConstants / ErrorCode / FrameCodec / PeerInfo / FileEntry / TransferSession |
-| [class-diagram-3.svg](class-diagram-3.svg) | 类图 §3 文件传输运行时与线程模型 | Worker / P2pServer / QThread 后台线程与协议错误处理链路 |
-| [class-diagram-4.svg](class-diagram-4.svg) | 类图 §4 QML 表现层组件 | Main.qml / PeerListView / DeviceSessionView / TransferPanel / Dialogs |
-| [class-diagram-5.svg](class-diagram-5.svg) | 类图 §5 数据管理层与外部资源 | ConfigManager / Logger 与 QSettings / FileSystem / NetworkConnection |
-| [component-diagram.svg](component-diagram.svg) | 组件图 | src/ 目录树 + 四层架构颜色对照 |
-| [sequence-diagram-1.svg](sequence-diagram-1.svg) | 序列图 §1 应用启动初始化 | main → engine → AppController.create → init 三件套 |
-| [sequence-diagram-2.svg](sequence-diagram-2.svg) | 序列图 §2 文件发送 | QML → TransferSessionManager → QThread + Worker → FrameCodec → TCP |
-| [sequence-diagram-3.svg](sequence-diagram-3.svg) | 序列图 §3 文件接收（后台线程） | TCP 入站 → P2pServer 创建后台线程 → initialize → 弹窗确认 → 落盘 |
-| [sequence-diagram-4.svg](sequence-diagram-4.svg) | 序列图 §4 取消与错误处理 | cancelSession / FrameCodec.errorOccurred / transferFinished(ErrorCode) |
-| [data-flow-diagram-1.svg](data-flow-diagram-1.svg) | 数据流图 §1 设备发现流 | UDP Hello ↔ DiscoveryService |
-| [data-flow-diagram-2.svg](data-flow-diagram-2.svg) | 数据流图 §2 文件发送流 | QML 拖拽 → Worker → FrameCodec → TCP |
-| [data-flow-diagram-3.svg](data-flow-diagram-3.svg) | 数据流图 §3 文件接收流 | TCP → 后台 Worker → FrameCodec → FileSystem |
-| [data-flow-diagram-4.svg](data-flow-diagram-4.svg) | 数据流图 §4 配置与日志流 | QSettings / 日志文件 |
-| [data-flow-diagram-5.svg](data-flow-diagram-5.svg) | 数据流图 §5 协议错误流 | FrameCodec → Worker → SessionRecord.errorCode → QML |
-| [module-dependency.svg](module-dependency.svg) | 模块依赖图 | 四层架构 + 具体类 #include 依赖方向 |
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 01 | 01-类图-应用组装与传输会话管理 | AppController、ConfigManager、TransferSessionManager、DiscoveryService、P2pServer 及 SessionRecord 的完整属性与方法；应用逻辑层与领域层的组合/依赖关系。 |
+| 02 | 02-类图-共享协议与传输运行时 | gy::protocol 命名空间（Type 码、ErrorCode、Payload 限制）、FrameCodec、PeerInfo、FileEntry、FileItem、FileSenderWorker、FileReceiverWorker、DirSerializer 的完整定义。 |
+| 03 | 03-类图-QML表现层与基础设施 | Main.qml、PeerListView、DeviceCard、DeviceSessionView、AcceptDialog、SettingsDialog、TransferTaskCard 的属性与信号；FormatUtils.js、Style.js 工具；Logger、QSettings 基础设施。 |
 
-> class-diagram / sequence-diagram / data-flow-diagram 均按层 / 场景 / 数据流拆分为多张子图，导出后保留 `-1.svg` ~ `-N.svg` 分层归档；component-diagram 与 module-dependency 各只含 1 个 mermaid 块，导出后规整为单文件。如需在文档中嵌入，按节引用对应的 `-N.svg` 即可。
+### 组件图（04-06）
 
-## 使用方式
+展示项目的物理模块划分、构建依赖和资源所有权。
 
-1. **GitHub/GitLab**：直接查看 `.md` 文件，Mermaid 图会自动渲染
-2. **本地预览**：使用 VS Code + Mermaid 插件
-3. **导出 SVG**：使用 Mermaid CLI（见下方）
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 04 | 04-组件图-四层架构与外部资源 | src/client 与 src/shared 的模块划分；QML 表现层、应用逻辑层、领域层、共享层的组件及其与外部资源（QSettings、文件系统、局域网）的连接。 |
+| 05 | 05-组件图-CMake构建与QML注册边界 | CMakeLists.txt 构建链路；gy_shared 静态库、appGridYard 可执行文件、qt_add_qml_module 的注册关系；Qt6 依赖。 |
+| 06 | 06-组件图-接收连接资源所有权 | P2pServer 为每个入站 TCP 连接创建 QThread 和 FileReceiverWorker 的过程；socket、FrameCodec、QTimer、文件 I/O 的线程归属；moveToThread 与 deleteLater 的生命周期管理。 |
 
-## SVG 导出方法
+### 模块依赖图（07-09）
 
-### 环境准备
+展示分层依赖方向、头文件依赖和 QML 数据流。
 
-```bash
-# 安装 mermaid-cli（全局）
-npm install -g @mermaid-js/mermaid-cli
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 07 | 07-模块依赖图-分层依赖方向 | 表现层→应用逻辑层→领域层→共享层的单向依赖；下层不依赖上层。 |
+| 08 | 08-模块依赖图-具体头文件依赖 | 各 .h 文件之间的 include 和前置声明关系；实现文件承担具体依赖。 |
+| 09 | 09-模块依赖图-QML单向数据流 | 用户操作→QML 意图→Q_INVOKABLE/信号→业务对象→Q_PROPERTY+NOTIFY→QML 绑定的单向数据流。 |
 
-# Linux root 用户需要 puppeteer 配置（跳过沙箱）
-cat > /tmp/puppeteer-config.json << 'EOF'
-{
-  "args": ["--no-sandbox", "--disable-setuid-sandbox"]
-}
-EOF
-```
+### 部署图与线程图（10-11）
 
-### 单文件转换
+展示双端部署拓扑、端口分配和线程亲和性。
 
-```bash
-cd doc/diagrams
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 10 | 10-部署图-双端客户端端口与外部资源 | 发送端与接收端的组件分布；UDP 45678 设备发现、TCP 35100 文件传输的端口分配；QSettings、文件系统等本地资源。 |
+| 11 | 11-线程图-线程亲和性与跨线程通信 | 主线程（UI、TransferSessionManager、P2pServer）与后台 QThread（FileSenderWorker、FileReceiverWorker）的跨线程信号通信；QueuedConnection 的使用场景。 |
 
-# 基本用法
-mmdc -i class-diagram.md -o class-diagram.svg
+### 协议图（12-17）
 
-# 推荐参数：dark 主题 + 透明背景 + 3x 缩放
-PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
-mmdc -i class-diagram.md -o class-diagram.svg \
-  -t dark -b transparent --scale 3 \
-  -p /tmp/puppeteer-config.json
-```
+展示 TLV 帧格式、Type 码、JSON 载荷和错误码体系。
 
-### 批量转换
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 12 | 12-协议图-TLV帧结构 | 8 字节帧头（Type 4B + Length 4B，大端序）+ 变长 Payload 的帧格式。 |
+| 13 | 13-协议图-FrameCodec解码状态机 | WaitingHeader / WaitingPayload 两状态机；粘包/半包处理逻辑；按 Type 分级 Payload 上限检查。 |
+| 14 | 14-协议图-Type码与帧职责 | 7 个 V1.0 Type 码（Hello、TransferReq/Rsp、DataChunk、ChunkAck、TransferDone、Cancel）的方向与载荷说明。 |
+| 15 | 15-协议图-关键JSON载荷关系 | TransferReq、FileItem、TransferRsp、ChunkAck 的 JSON 字段定义与关联。 |
+| 16 | 16-协议图-版本兼容决策 | protocol_version 主版本号不匹配→拒绝；次版本号不匹配→安全降级的决策流程。 |
+| 17 | 17-协议图-Payload限制与错误码 | DataChunk 256MB / 控制帧 1MB 的 Payload 上限；ErrorCode 枚举（1000 连接、2000 帧、3000 协议、4000 I/O、5000 用户、9000 未知）。 |
 
-```bash
-cd doc/diagrams
+### 时序图（18-21）
 
-for f in class-diagram component-diagram data-flow-diagram module-dependency sequence-diagram; do
-  PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
-  mmdc -i "${f}.md" -o "${f}.svg" \
-    -t dark -b transparent --scale 3 \
-    -p /tmp/puppeteer-config.json
+展示关键业务流程的调用时序。
 
-  # mmdc 处理含 N 个 mermaid 块的 md 时会输出 N 个文件：${f}-1.svg ... ${f}-N.svg
-  # 单图 md（component / sequence / data-flow / module-dependency）只有 1 块，规整为 ${f}.svg
-  # 多图 md（class-diagram 按 4 层拆 5 节）保留所有 -N.svg 分层归档
-  count=$(ls "${f}-"*.svg 2>/dev/null | wc -l)
-  if [ "$count" -eq 1 ]; then
-    mv "${f}-1.svg" "${f}.svg"
-  fi
-done
-```
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 18 | 18-时序图-应用启动与对象组装 | main.cpp→Logger→QQmlApplicationEngine→ConfigManager→AppController→DiscoveryService→P2pServer→TransferSessionManager→Main.qml 的初始化时序。 |
+| 19 | 19-时序图-文件发送 | QML→TransferSessionManager→FileSenderWorker 的完整发送流程：TCP 连接、TransferReq 握手、DataChunk 循环发送、TransferDone。 |
+| 20 | 20-时序图-文件接收与后台线程 | P2pServer 接受连接→创建 QThread→FileReceiverWorker.initialize()→TransferReq 解析→用户确认→DataChunk 接收→ChunkAck 校验的完整流程。 |
+| 21 | 21-时序图-取消与协议失败 | 用户取消→Cancel 帧→双端清理；帧超限→errorOccurred→cleanup→transferFinished 的异常处理流程。 |
 
-> **注意**：`class-diagram.md` 包含 5 个 mermaid 块（§1 ~ §5），导出后保留为 `class-diagram-1.svg` ~ `class-diagram-5.svg`，对应 README "图表索引（SVG 高清版）" 表中的分层映射；其他 4 份 md 各只含 1 个 mermaid 块，导出后会规整为单文件 `${f}.svg`。
+### 数据流图（22-26）
 
-### 参数说明
+展示数据在各模块间的流转路径。
 
-| 参数 | 作用 |
-|:-----|:-----|
-| `-i` | 输入文件（`.md` 或 `.mmd`） |
-| `-o` | 输出文件名 |
-| `-t dark` | 暗色主题 |
-| `-b transparent` | 透明背景 |
-| `--scale 3` | 3 倍缩放（高清） |
-| `-p` | puppeteer 配置文件路径 |
-| `PUPPETEER_EXECUTABLE_PATH` | 指定 Chrome/Chromium 路径 |
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 22 | 22-数据流图-设备发现 | ConfigManager→DiscoveryService→UDP 广播→PeerInfo 哈希表→QML peers 绑定的数据流。 |
+| 23 | 23-数据流图-帧校验错误码与清理 | TCP 字节流→FrameCodec→按 Type 上限校验→Worker→cleanup（socket/timer/文件）→TransferSessionManager→QML 错误通知。 |
+| 24 | 24-数据流图-文件发送 | 用户选择文件→QML→TransferSessionManager→FileSenderWorker→DirSerializer→FrameCodec→TCP 对端。 |
+| 25 | 25-数据流图-文件接收 | TCP 对端→P2pServer→FileReceiverWorker→FrameCodec→TransferSessionManager→AcceptDialog→接收目录。 |
+| 26 | 26-数据流图-配置日志与错误 | SettingsDialog→ConfigManager↔QSettings；Logger→日志文件；FrameCodec→Worker→TransferSessionManager→QML 错误通知。 |
 
-> **注意**：mmdc 从 Markdown 读取时会自动给输出文件名加 `-1` 后缀，批量脚本中已处理重命名。
+### 状态图（27-29）
 
-## 更新说明
+展示传输会话的状态迁移和用户操作约束。
 
-- Stage 0（2026-05-24）：初始版本，展示工程骨架
-- Stage 2（2026-06-02）：更新类图，新增 ConfigManager / DiscoveryService / TransferSessionManager
-- 2026-06-03：导出全部 SVG 高清版（dark 主题、3x 缩放）
-- v4.9（2026-06-13）：类图按层拆分，补充设备会话页、运行时会话记录和 senderDeviceId 链路
-- v4.11（2026-06-13）：类图补充自动接收配置、文件夹根目录和空目录传输状态
-- v4.12（2026-06-14）：类图补充共享展示格式化工具和表现层动画职责
-- v4.13.1 ~ v4.13.3（2026-06-15）：类图记录文件夹标记、根目录预览与会话展开状态
-- v4.14.0（2026-06-15）：类图补充单条与批量清理会话记录、删除已接收本地文件字段
-- v4.15.0 ~ v4.15.2（2026-06-17）：类图新增 ErrorCode 枚举、协议版本字段、分级 Payload 上限与 maxPayloadForType()；FrameCodec 补 errorOccurred 信号；Worker transferFinished 改三参数并新增 requestAccepted/requestRejected/initialize；SessionRecord 补 errorCode/errorMsg；P2pServer 后台线程模型（每连接独立 QThread，worker+socket moveToThread，children() 统一收尾）；标题同步到 v4.15.2
-- 2026-06-18：按 v4.15.2 重写后的 class-diagram.md（含 5 个 mermaid 块）重新批量导出 SVG；class-diagram 改为分层归档（-1 ~ -5），同步更新 README 索引与批量导出脚本以正确处理多 mermaid 块场景
-- 2026-06-18：补齐 component-diagram / sequence-diagram / data-flow-diagram / module-dependency 四张图——之前停留在 Stage 0 状态严重过时；按 v4.16.0 实际目录树、C++↔QML 通信、跨层数据流与 #include 依赖重写；sequence 与 data-flow 各含 4 ~ 5 个 mermaid 块，按层归档为 `-N.svg`
-- 2026-06-18：审核修正——版本号统一为 v4.16.0（main.cpp / CMakeLists.txt / README.md 三处一致），新增 `utils/Style.js` 样式常量系统到 class-diagram / component-diagram / module-dependency；class-diagram SessionRecord 补 filePath / fileSize / totalFiles / senderName 4 个字段；TransferPanel 修正不存在的属性，补 isSessionExpanded / setSessionExpanded JS 函数
+| 编号 | 文件名 | 内容 |
+|:-----|:-------|:-----|
+| 27 | 27-状态图-发送会话 | connecting→waiting_response→transferring→verifying→completed 的状态迁移；各状态允许的用户操作（取消）。 |
+| 28 | 28-状态图-接收会话 | validating_request→waiting_confirm→transferring→verifying→completed→removable 的状态迁移；自动接收与手动确认两条路径。 |
+| 29 | 29-状态图-状态与用户操作约束 | 各状态下允许的操作（接受/拒绝/取消/移除/删除文件）与结果的约束矩阵。 |
+
+## 当前架构要点
+
+- QML 只通过 `AppController` 与 `ConfigManager` 单例访问 C++ 状态；`TransferSessionManager` 由 `AppController.transfer` 暴露。
+- 设备发现使用 UDP Hello；文件传输使用 TCP 和 `FrameCodec` 的 TLV 帧编解码。
+- 文件发送在独立 `QThread` 的 `FileSenderWorker` 中运行；每个入站连接由 `P2pServer` 创建独立接收线程和 `FileReceiverWorker`。
+- 接收端文件 I/O、SHA-256 校验和超时计时均在接收后台线程完成；主线程只更新会话模型并驱动 QML。
+- 当前数据管理仅包括 `QSettings`、文件系统和日志文件；SQLite Repository 属于后续 Stage 6。
