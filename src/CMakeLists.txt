@@ -7,7 +7,7 @@ set(CMAKE_CXX_MODULE_STD ON)
 project(GridYard VERSION 4.16.2 LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Network QuickControls2)
-qt_standard_project_setup(REQUIRES 6.11)
+qt_standard_project_setup(REQUIRES 6.9)
 
 # ---- 子模块引入 --------------------------------------------------------
 add_subdirectory(shared)

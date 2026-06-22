@@ -21,6 +21,8 @@ const Color = {
     menubarSelect: "#E1E1E1",
     menubarClicked:"#D5D5D5",
     menubar:"#7F7F7F",
+    window:"#FFFFFF",
+    textfield:"#82DEAF",
     false:"#F7F7F7",
     select:"#EAEAEA",
     selected:"#D3D3D3",
