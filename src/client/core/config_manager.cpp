@@ -25,6 +25,7 @@
 #include "config_manager.h"
 #include "protocol.h"
 
+#include <algorithm>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -60,6 +61,7 @@ ConfigManager::ConfigManager(QObject *parent)
     _receivePath = settings.value("device/receivePath", defaultPath).toString();
     QDir().mkpath(_receivePath);
     _autoAcceptFiles = settings.value("device/autoAcceptFiles", false).toBool();
+    _retentionDays = std::max(0, settings.value("history/retentionDays", 0).toInt());
 
     // TCP 端口：优先使用命令行参数，否则读配置
     QString envPort = qEnvironmentVariable("GRIDYARD_PORT");
@@ -124,6 +126,11 @@ bool ConfigManager::autoAcceptFiles() const
 quint16 ConfigManager::tcpPort() const
 {
     return _tcpPort;
+}
+
+int ConfigManager::retentionDays() const
+{
+    return _retentionDays;
 }
 
 // 获取本机 IP 地址
@@ -226,6 +233,18 @@ void ConfigManager::setTcpPort(quint16 port)
     settings.setValue("network/tcpPort", port);
 
     emit tcpPortChanged();
+}
+
+void ConfigManager::setRetentionDays(int days)
+{
+    days = std::max(0, days);
+    if (_retentionDays == days) return;
+
+    _retentionDays = days;
+    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    settings.setValue("history/retentionDays", days);
+    emit retentionDaysChanged();
 }
 
 // 确保设备 ID 存在（首次启动生成 UUID 并持久化）

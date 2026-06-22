@@ -43,10 +43,12 @@ public:
     // 按游标加载一页聊天记录
     virtual QList<MessageRecord> loadMessages(const MessageCursor &cursor, int limit,
                                               QString *errorMessage) const = 0;
+    virtual bool deleteMessage(const QString &messageId, QString *errorMessage) = 0;
     // 删除一个会话的所有聊天记录
     virtual bool deleteConversation(const QString &deviceId, QString *errorMessage) = 0;
     // 删除早于指定时间的聊天记录
     virtual bool deleteExpiredMessages(const QDateTime &before, QString *errorMessage) = 0;
+    virtual bool clearAllMessages(QString *errorMessage) = 0;
 };
 
 class ITransferHistoryRepository {
@@ -62,4 +64,5 @@ public:
     virtual bool deleteTransfer(const QString &recordId, QString *errorMessage) = 0;
     // 删除早于指定时间的传输历史
     virtual bool deleteExpiredTransfers(const QDateTime &before, QString *errorMessage) = 0;
+    virtual bool clearAllTransfers(QString *errorMessage) = 0;
 };

@@ -201,6 +201,31 @@ bool SqliteMessageProxy::deleteConversation(const QString &deviceId, QString *er
         errorMessage);
 }
 
+bool SqliteMessageProxy::deleteMessage(const QString &messageId, QString *errorMessage)
+{
+    if (!_database) {
+        if (errorMessage) {
+            *errorMessage = "数据库代理未初始化";
+        }
+        return false;
+    }
+
+    return _database->runInTransaction(
+        [&messageId](QSqlDatabase &database, QString *taskError) {
+            QSqlQuery query(database);
+            query.prepare("DELETE FROM chat_messages WHERE message_id=?");
+            query.addBindValue(messageId);
+            if (query.exec()) {
+                return true;
+            }
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        },
+        errorMessage);
+}
+
 // 删除早于指定时间的聊天记录
 bool SqliteMessageProxy::deleteExpiredMessages(const QDateTime &before, QString *errorMessage)
 {
@@ -218,6 +243,29 @@ bool SqliteMessageProxy::deleteExpiredMessages(const QDateTime &before, QString 
             query.prepare("DELETE FROM chat_messages WHERE sent_at < ?");
             query.addBindValue(sqlTime(before));
             if (query.exec()) {
+                return true;
+            }
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        },
+        errorMessage);
+}
+
+bool SqliteMessageProxy::clearAllMessages(QString *errorMessage)
+{
+    if (!_database) {
+        if (errorMessage) {
+            *errorMessage = "数据库代理未初始化";
+        }
+        return false;
+    }
+
+    return _database->runInTransaction(
+        [](QSqlDatabase &database, QString *taskError) {
+            QSqlQuery query(database);
+            if (query.exec("DELETE FROM chat_conversations")) {
                 return true;
             }
             if (taskError) {

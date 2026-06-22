@@ -50,8 +50,12 @@ public:
     virtual QHash<int, QByteArray> roleNames() const override;
     // 追加一条新消息并发出精确插入通知
     void appendMessage(const QVariantMap &message);
+    // 在当前首条消息前插入一页更早的历史消息
+    void prependMessages(const QList<QVariantMap> &messages);
     // 修改指定消息的发送状态
     bool updateMessageStatus(const QString &messageId, int status);
+    // 从模型中移除指定消息
+    bool removeMessage(const QString &messageId);
     // 返回兼容旧调用方的消息快照
     QVariantList messages() const;
     // 清空当前设备的运行期消息

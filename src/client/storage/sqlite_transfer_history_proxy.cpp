@@ -228,3 +228,26 @@ bool SqliteTransferHistoryProxy::deleteExpiredTransfers(const QDateTime &before,
         },
         errorMessage);
 }
+
+bool SqliteTransferHistoryProxy::clearAllTransfers(QString *errorMessage)
+{
+    if (!_database) {
+        if (errorMessage) {
+            *errorMessage = "数据库代理未初始化";
+        }
+        return false;
+    }
+
+    return _database->runInTransaction(
+        [](QSqlDatabase &database, QString *taskError) {
+            QSqlQuery query(database);
+            if (query.exec("DELETE FROM transfer_history")) {
+                return true;
+            }
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        },
+        errorMessage);
+}

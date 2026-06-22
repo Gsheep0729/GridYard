@@ -135,6 +135,43 @@ void ChatManager::clearMessages(const QString &deviceId)
     }
 }
 
+void ChatManager::removeMessage(const QString &deviceId, const QString &messageId)
+{
+    ChatMessageModel *model = _models.value(deviceId);
+    if (!model || !model->removeMessage(messageId)) {
+        return;
+    }
+    _messageIds[deviceId].remove(messageId);
+    _pendingRecords.remove(messageId);
+    emit messagesChanged(deviceId);
+}
+
+void ChatManager::prependHistoryMessages(const QString &deviceId,
+                                         const QList<MessageRecord> &records)
+{
+    QList<QVariantMap> messages;
+    for (auto it = records.crbegin(); it != records.crend(); ++it) {
+        const MessageRecord &record = *it;
+        if (_messageIds[deviceId].contains(record.messageId)) {
+            continue;
+        }
+        _messageIds[deviceId].insert(record.messageId);
+        gy::ChatMessage message;
+        message.messageId = record.messageId;
+        message.fromDeviceId = record.senderDeviceId;
+        message.fromName = record.senderName;
+        message.content = record.content;
+        message.sentAt = record.sentAt;
+        messages.append(messageToVariant(deviceId, message,
+            record.direction == RecordDirection::Outgoing,
+            static_cast<MessageStatus>(record.localStatus)));
+    }
+    if (!messages.isEmpty()) {
+        modelForDevice(deviceId)->prependMessages(messages);
+        emit messagesChanged(deviceId);
+    }
+}
+
 // 接管 P2P 服务分流后的入站聊天 socket
 void ChatManager::onChatConnectionReceived(QTcpSocket *socket)
 {

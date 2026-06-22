@@ -42,6 +42,7 @@ class ConfigManager : public QObject {
     Q_PROPERTY(QString  receivePath READ receivePath WRITE setReceivePath NOTIFY receivePathChanged)
     Q_PROPERTY(bool     autoAcceptFiles READ autoAcceptFiles WRITE setAutoAcceptFiles NOTIFY autoAcceptFilesChanged)
     Q_PROPERTY(quint16  tcpPort     READ tcpPort     WRITE setTcpPort     NOTIFY tcpPortChanged)
+    Q_PROPERTY(int retentionDays READ retentionDays WRITE setRetentionDays NOTIFY retentionDaysChanged)
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
@@ -54,11 +55,13 @@ public:
     QString  receivePath() const;
     bool     autoAcceptFiles() const;
     quint16  tcpPort()     const;
+    int retentionDays() const;
 
     void setDeviceName(const QString &name);
     void setReceivePath(const QString &path);
     void setAutoAcceptFiles(bool enabled);
     void setTcpPort(quint16 port);
+    void setRetentionDays(int days);
 
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
@@ -77,6 +80,7 @@ signals:
     void receivePathChanged();
     void autoAcceptFilesChanged();
     void tcpPortChanged();
+    void retentionDaysChanged();
 
 private:
     explicit ConfigManager(QObject *parent = nullptr);
@@ -98,4 +102,5 @@ private:
     QString _receivePath;             // 接收文件的本地保存目录
     bool    _autoAcceptFiles = false; // 是否跳过接收确认直接保存
     quint16 _tcpPort = 0;             // TCP P2P 服务监听端口
+    int _retentionDays = 0;           // 本地历史保留天数，0 表示永久保留
 };

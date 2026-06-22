@@ -46,6 +46,9 @@ Item {
 
         onContentYChanged: {
             followLatest = contentY + height >= contentHeight - Style.Space.lg
+            if (contentY <= 0 && messageList.count > 0 && !AppController.history.loading) {
+                AppController.history.loadMoreMessages(chatView.deviceId)
+            }
         }
 
         onCountChanged: {
@@ -136,7 +139,7 @@ Item {
             spacing: Style.Space.sm
 
             Label {
-                text: qsTr("本次运行还没有聊天消息")
+                text: qsTr("还没有聊天记录")
                 color: Style.Color.textWeak
                 font.pixelSize: 16
                 font.bold: true
@@ -144,7 +147,7 @@ Item {
             }
 
             Label {
-                text: qsTr("消息不会在应用重启后保留")
+                text: qsTr("发送消息后将在本机历史中保留")
                 color: Style.Color.textMuted
                 font.pixelSize: 13
                 Layout.alignment: Qt.AlignHCenter
