@@ -1,6 +1,6 @@
 /**
  * @file    ChatView.qml
- * @version 4.16.6
+ * @version 5.2.0
  * @date    2026-06-24
  * @author  GridYard Team
  * @brief   设备会话的在线聊天消息视图
@@ -9,7 +9,7 @@
  * 滚动行为。此组件不处理网络发送、协议解析或消息持久化。
  *
  * Change Log:
- * [v4.16.6] GY   2026-06-24
+ * [v5.2.0] GY   2026-06-24
  * * 新增 Stage 5 聊天消息气泡视图
  */
 

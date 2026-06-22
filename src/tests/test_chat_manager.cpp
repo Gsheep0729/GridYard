@@ -1,6 +1,6 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 4.16.6
+* @version 5.2.0
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话测试
@@ -9,9 +9,9 @@
 * 使用本地 TCP 服务验证 ChatManager，不依赖 QML 页面或持久化存储。
 *
 * Change Log:
-* [v4.16.6] GY   2026-06-24
+* [v5.2.0] GY   2026-06-24
 * * 验证聊天消息模型角色与行数据
-* [v4.16.5] GY   2026-06-24
+* [v5.1.0] GY   2026-06-24
 * * 新增 Stage 5 聊天连接与内存会话测试
 */
 

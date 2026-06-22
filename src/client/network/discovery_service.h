@@ -12,7 +12,7 @@
 * Change Log:
 * [v6.1.0] GY   2026-06-25
 * * 新增 peerUpdated 信号供应用层异步持久化设备目录
-* [v4.16.5] FengChunlin   2026-06-24
+* [v5.1.0] FengChunlin   2026-06-24
 * * 接入 ChatManager 处理入站聊天连接
 * [v4.16.1] GY   2026-06-21
 * * 提供 transferEndpoint() 对端快照查询，避免拆分读取节点字段

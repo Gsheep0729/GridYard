@@ -1,6 +1,6 @@
 /**
 * @file    chat_manager.cpp
-* @version 4.16.6
+* @version 5.2.0
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
@@ -9,9 +9,9 @@
 * 设备标识归档消息，并使用 messageId 防止重复帧污染会话。
 *
 * Change Log:
-* [v4.16.6] DuRuoxian   2026-06-24
+* [v5.2.0] DuRuoxian   2026-06-24
 * * 接入按设备维护的聊天消息模型
-* [v4.16.5] FengChunlin   2026-06-24
+* [v5.1.0] FengChunlin   2026-06-24
 * * 实现 Stage 5 聊天连接、消息会话和断线清理
 */
 

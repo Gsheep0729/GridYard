@@ -1,6 +1,6 @@
 /**
 * @file    chat_connection.h
-* @version 4.16.5
+* @version 5.1.0
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接
@@ -9,7 +9,7 @@
 * 字节流与连接状态，不维护设备会话或界面消息状态。
 *
 * Change Log:
-* [v4.16.5] FengChunlin   2026-06-24
+* [v5.1.0] FengChunlin   2026-06-24
 * * 新增 Stage 5 聊天连接收发和断线处理
 */
 

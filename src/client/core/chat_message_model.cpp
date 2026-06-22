@@ -1,6 +1,6 @@
 /**
 * @file    chat_message_model.cpp
-* @version 4.16.6
+* @version 5.2.0
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天内存消息列表模型实现
@@ -9,7 +9,7 @@
 * 每次收到消息都替换整个会话列表。
 *
 * Change Log:
-* [v4.16.6] DuRuoxian   2026-06-24
+* [v5.2.0] DuRuoxian   2026-06-24
 * * 实现 Stage 5 聊天消息列表模型
 */
 
