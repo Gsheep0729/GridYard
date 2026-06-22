@@ -1,12 +1,15 @@
 /**
 * @file    test_session_manager.cpp
-* @date    2026-06-05
+* @version 6.3.0
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   TransferSessionManager 会话管理测试
 *
-* 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知
+* 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复
 *
 * Change Log:
+* [v6.3.0] GY   2026-06-25
+* * 新增已结束传输历史恢复测试
 * [v1.0] GY   2026-06-05
 * * 初始版本
 */
@@ -32,6 +35,7 @@ private slots:
     void testCancelSession();
     void testMultipleSessions();
     void testAcceptRejectRemoveSession();
+    void testRestoreFinishedTransfers();
 
 private:
     ConfigManager *_config = nullptr;
@@ -152,6 +156,45 @@ void TestSessionManager::testAcceptRejectRemoveSession()
     // 测试 removeSession（会话不存在，应安全处理）
     _manager->removeSession("non_existent_session");
     QCOMPARE(_manager->sessions().size(), 0);
+}
+
+void TestSessionManager::testRestoreFinishedTransfers()
+{
+    TransferRecord first;
+    first.recordId = "record-1";
+    first.sessionId = "restored-1";
+    first.peerDeviceId = "peer-one";
+    first.peerName = "Peer One";
+    first.direction = RecordDirection::Incoming;
+    first.displayName = "from-history.txt";
+    first.fileCount = 1;
+    first.totalBytes = 128;
+    first.status = "completed";
+    first.startedAt = QDateTime::fromString("2026-06-25T21:00:00.000Z", Qt::ISODateWithMs);
+
+    TransferRecord second;
+    second.recordId = "record-2";
+    second.sessionId = "restored-2";
+    second.peerDeviceId = "peer-two";
+    second.peerName = "Peer Two";
+    second.direction = RecordDirection::Outgoing;
+    second.displayName = "failed.bin";
+    second.fileCount = 1;
+    second.totalBytes = 256;
+    second.status = "failed";
+    second.startedAt = QDateTime::fromString("2026-06-25T21:05:00.000Z", Qt::ISODateWithMs);
+    second.errorCode = 12;
+    second.errorMessage = QString::fromUtf8("网络错误");
+
+    _manager->restoreFinishedTransfers({second, first});
+    _manager->restoreFinishedTransfers({second});
+
+    const QVariantList sessions = _manager->sessions();
+    QCOMPARE(sessions.size(), 2);
+    QCOMPARE(sessions.at(0).toMap().value("sessionId").toString(), QStringLiteral("restored-1"));
+    QCOMPARE(sessions.at(1).toMap().value("sessionId").toString(), QStringLiteral("restored-2"));
+    QCOMPARE(sessions.at(0).toMap().value("status").toString(), QStringLiteral("completed"));
+    QCOMPARE(sessions.at(1).toMap().value("errorCode").toInt(), 12);
 }
 
 QTEST_MAIN(TestSessionManager)

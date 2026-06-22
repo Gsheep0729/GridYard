@@ -1,13 +1,15 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 5.0.0
-* @date    2026-06-24
+* @version 6.3.0
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v6.3.0] GY   2026-06-25
+* * 新增结束态传输快照信号测试
 * [v5.0.0] GY   2026-06-24
 * * 新增首帧路由的聊天连接和未知 Type 测试
 * [v4.16.1] GY   2026-06-21
@@ -73,6 +75,8 @@ private slots:
     void testEmptyDirectoryTransferEndToEnd();
     void testLargeFileTransferEndToEnd();
     void testAutoAcceptAndSave();
+    void testPersistFinishedReceiveSession();
+    void testPersistCancelledReceiveSession();
     void testReceiveFolderPreview();
     void testCancelTransfer();
     void testConnectionLost();
@@ -516,6 +520,107 @@ void TestFileTransfer::testAutoAcceptAndSave()
 
     stopSenderThread(clearSender, clearSenderThread);
     _config->setAutoAcceptFiles(false);
+}
+
+void TestFileTransfer::testPersistFinishedReceiveSession()
+{
+    const QString sendPath = _sendDir->path() + "/persist_receive.txt";
+    createTestFile(sendPath, "persist receive");
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setAutoAcceptFiles(true);
+    _config->setTcpPort(++_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    int persistedCount = 0;
+    TransferRecord persistedRecord;
+    connect(&manager, &TransferSessionManager::transferToPersist, this,
+            [&persistedCount, &persistedRecord](const TransferRecord &record) {
+                ++persistedCount;
+                persistedRecord = record;
+            });
+
+    QSignalSpy completedSpy(&manager, &TransferSessionManager::transferCompleted);
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "persist-sender-id"),
+                              Q_ARG(QString, "PersistSender"));
+
+    QVERIFY(waitForTransfer(completedSpy));
+    QVERIFY(waitForTransfer(senderSpy));
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 10000);
+    QCOMPARE(persistedRecord.peerDeviceId, QStringLiteral("persist-sender-id"));
+    QCOMPARE(persistedRecord.peerName, QStringLiteral("PersistSender"));
+    QCOMPARE(persistedRecord.direction, RecordDirection::Incoming);
+    QCOMPARE(persistedRecord.displayName, QStringLiteral("persist_receive.txt"));
+    QCOMPARE(persistedRecord.status, QStringLiteral("completed"));
+    QCOMPARE(persistedRecord.totalBytes, QFileInfo(sendPath).size());
+    QCOMPARE(persistedRecord.errorCode, 0);
+    QVERIFY(persistedRecord.errorMessage.isEmpty());
+
+    stopSenderThread(sender, senderThread);
+    _config->setAutoAcceptFiles(false);
+}
+
+void TestFileTransfer::testPersistCancelledReceiveSession()
+{
+    const QString sendPath = _sendDir->path() + "/persist_cancel.txt";
+    createTestFile(sendPath, "persist cancel");
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setAutoAcceptFiles(false);
+    _config->setTcpPort(++_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    int persistedCount = 0;
+    TransferRecord persistedRecord;
+    connect(&manager, &TransferSessionManager::transferToPersist, this,
+            [&persistedCount, &persistedRecord](const TransferRecord &record) {
+                ++persistedCount;
+                persistedRecord = record;
+            });
+
+    QSignalSpy requestSpy(&manager, &TransferSessionManager::receiveRequestReceived);
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "cancel-sender-id"),
+                              Q_ARG(QString, "CancelSender"));
+
+    QVERIFY(waitForTransfer(requestSpy));
+    manager.cancelSession(requestSpy.first().at(0).toString());
+    QVERIFY(waitForTransfer(senderSpy));
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 10000);
+    QCOMPARE(persistedRecord.peerDeviceId, QStringLiteral("cancel-sender-id"));
+    QCOMPARE(persistedRecord.direction, RecordDirection::Incoming);
+    QCOMPARE(persistedRecord.status, QStringLiteral("cancelled"));
+    QVERIFY(persistedRecord.errorCode != 0);
+    QVERIFY(!persistedRecord.errorMessage.isEmpty());
+
+    stopSenderThread(sender, senderThread);
 }
 
 void TestFileTransfer::testReceiveFolderPreview()
