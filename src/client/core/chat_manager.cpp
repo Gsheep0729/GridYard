@@ -1,6 +1,6 @@
 /**
 * @file    chat_manager.cpp
-* @version 6.2.0
+* @version 6.5.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
@@ -11,6 +11,8 @@
 * 由 AppController 异步提交持久化任务。
 *
 * Change Log:
+* [v6.5.0] GY   2026-06-25
+* * 收到远端消息后发布受限长度的通知预览
 * [v6.2.0] GY   2026-06-25
 * * 接入聊天消息持久化，消息成功收发后发射持久化信号
 * [v5.2.0] DuRuoxian   2026-06-24
@@ -219,7 +221,10 @@ void ChatManager::onMessageReceived(ChatConnection *connection, const gy::ChatMe
         return;
     }
 
-    appendMessage(deviceId, message, false, MessageStatus::Sent);
+    if (appendMessage(deviceId, message, false, MessageStatus::Sent)) {
+        const QString preview = message.content.simplified().left(20);
+        emit incomingMessageReceived(deviceId, message.fromName, preview);
+    }
 }
 
 // 写入内存模型，并按收发状态决定持久化时机

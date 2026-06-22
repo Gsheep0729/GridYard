@@ -1,6 +1,6 @@
 /**
 * @file    Main.qml
-* @version 4.16.3
+* @version 6.5.0
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
@@ -10,6 +10,8 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v6.5.0] GY   2026-06-25
+* * 接入系统托盘、后台运行与非阻塞通知
 * [v4.16.3] FengChunlin   2026-06-24
 * * 调整主窗口为三栏会话布局，增加本机信息和菜单入口
 * [v4.16.2] DuRuoxian   2026-06-22
@@ -38,6 +40,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import Qt.labs.platform as Platform
 import cqnu.gridyard.client 1.0
 import "utils/Style.js" as Style
 
@@ -51,13 +54,55 @@ ApplicationWindow {
                      .arg(AppController.applicationVersion)
     color: Style.Color.pageBg
 
-    onClosing: AppController.quit()
+    onClosing: function(close) {
+        if (!trayIcon.available) {
+            AppController.quit()
+            return
+        }
+        close.accepted = false
+        mainWindow.hide()
+        trayIcon.showMessage(qsTr("GridYard"), qsTr("应用仍在后台运行"))
+    }
 
     property string _targetDeviceId: ""
     property string _targetDeviceName: ""
     property string _targetIpAddress: ""
     property bool _targetIsOnline: false
     readonly property int kPopupEnterDuration: 180
+
+    function showMainWindow(): void {
+        mainWindow.show()
+        mainWindow.raise()
+        mainWindow.requestActivate()
+    }
+
+    Platform.SystemTrayIcon {
+        id: trayIcon
+        visible: true
+        tooltip: qsTr("GridYard")
+        icon.source: "qrc:/qt/qml/cqnu/gridyard/client/icons/gridyard.png"
+        menu: Platform.Menu {
+            Platform.MenuItem {
+                text: qsTr("显示主窗口")
+                onTriggered: mainWindow.showMainWindow()
+            }
+            Platform.MenuItem {
+                text: qsTr("隐藏到托盘")
+                onTriggered: mainWindow.hide()
+            }
+            Platform.MenuSeparator {}
+            Platform.MenuItem {
+                text: qsTr("退出")
+                onTriggered: AppController.quit()
+            }
+        }
+        onActivated: function(reason) {
+            if (reason === Platform.SystemTrayIcon.Trigger
+                    || reason === Platform.SystemTrayIcon.DoubleClick) {
+                mainWindow.showMainWindow()
+            }
+        }
+    }
 
     function selectDevice(deviceId: string, deviceName: string,
                           ipAddress: string, isOnline: bool): void {
@@ -494,11 +539,14 @@ ApplicationWindow {
             acceptDialog.isDirectory = isDirectory
             acceptDialog.fileList = fileList
             acceptDialog.open()
+            trayIcon.showMessage(qsTr("传输请求"),
+                                 qsTr("%1 想发送 %2 个文件").arg(senderName).arg(totalFiles))
         }
         function onTransferCompleted(sessionId, fileName, filePath) {
             completeDialog._fileName = fileName
             completeDialog._filePath = filePath
             completeDialog.open()
+            trayIcon.showMessage(qsTr("传输完成"), qsTr("已完成一项文件传输"))
         }
         function onErrorOccurred(message) { errorLabel.text = message; errorPopup.open() }
         function onMessageOccurred(message) { successLabel.text = message; successPopup.open() }
@@ -509,12 +557,28 @@ ApplicationWindow {
         function onPeersChanged() { mainWindow.refreshSelectedDevice() }
     }
 
+    Connections {
+        target: AppController.chat
+        function onIncomingMessageReceived(deviceId, senderName, preview) {
+            trayIcon.showMessage(senderName, preview)
+        }
+    }
+
+    Connections {
+        target: AppController
+        function onLocalHistoryOperationFailed() {
+            errorLabel.text = qsTr("本地保存失败，历史可能缺失")
+            errorPopup.open()
+            trayIcon.showMessage(qsTr("本地历史"), errorLabel.text)
+        }
+    }
+
     Popup {
         id: errorPopup
         anchors.centerIn: parent
         width: 300
         height: errorLabel.implicitHeight + 48
-        modal: true
+        modal: false
         closePolicy: Popup.CloseOnPressOutside
 
         enter: Transition {
@@ -549,7 +613,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 300
         height: successLabel.implicitHeight + 48
-        modal: true
+        modal: false
         closePolicy: Popup.CloseOnPressOutside
 
         enter: Transition {

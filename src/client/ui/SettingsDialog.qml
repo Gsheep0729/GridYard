@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 4.16.0
+ * @version 6.5.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v6.5.0] GY   2026-06-25
+ * * 显示本地历史不可用状态
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 使用 Style.js 统一样式常量
  * [v4.15.2] DuRuoxian   2026-06-17
@@ -374,6 +376,15 @@ Dialog {
             }
 
             Item { Layout.preferredHeight: Style.Space.sm }
+
+            Label {
+                Layout.fillWidth: true
+                visible: !AppController.localHistoryAvailable
+                text: qsTr("本地历史不可用，聊天和传输仍可正常使用。")
+                color: Style.Color.warning
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+            }
         }
     }
 
