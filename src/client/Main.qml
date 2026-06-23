@@ -1,6 +1,6 @@
 /**
 * @file    Main.qml
-* @version 6.5.0
+* @version 6.6.2
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
@@ -10,6 +10,9 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 约束主窗口最小尺寸并限制侧栏设备名宽度，避免整体布局压缩遮挡
+* * 创建传输任务后自动切换到当前设备的传输页
 * [v6.5.0] GY   2026-06-25
 * * 关闭窗口时增加隐藏后台/退出程序确认，修复托盘后台无法退出
 * * 接入系统托盘、后台运行与非阻塞通知
@@ -50,6 +53,8 @@ ApplicationWindow {
 
     width:   980
     height:  725
+    minimumWidth: 860
+    minimumHeight: 620
     visible: true
     title:   "%1 v%2".arg(AppController.applicationName)
                      .arg(AppController.applicationVersion)
@@ -137,6 +142,13 @@ ApplicationWindow {
         _targetIsOnline = false
     }
 
+    function showTransferTimeline(): void {
+        if (_targetDeviceId.length === 0) {
+            return
+        }
+        sessionView.timelineMode = 1
+    }
+
     Dialog {
         id: closeChoiceDialog
         title: qsTr("关闭 GridYard")
@@ -201,6 +213,7 @@ ApplicationWindow {
                 if (path.startsWith("file://")) path = path.substring(7)
                 AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
             }
+            mainWindow.showTransferTimeline()
         }
     }
 
@@ -211,6 +224,7 @@ ApplicationWindow {
             let path = selectedFolder.toString()
             if (path.startsWith("file://")) path = path.substring(7)
             AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
+            mainWindow.showTransferTimeline()
         }
     }
 
@@ -383,10 +397,12 @@ ApplicationWindow {
             anchors.top: avatarBtn.bottom
             anchors.topMargin: 8
             anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 10
             text: ConfigManager.deviceName
             font.pixelSize: 10
             color: Style.Color.textSecondary
             elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
         }
 
         // 菜单按钮（底部）
@@ -473,6 +489,7 @@ ApplicationWindow {
                 }
             }
             AppController.transfer.createSendSession(deviceId, filePath)
+            mainWindow.showTransferTimeline()
         }
     }
 
@@ -524,6 +541,8 @@ ApplicationWindow {
 
         // 设备会话页
         DeviceSessionView {
+            id: sessionView
+
             anchors.fill: parent
             visible: mainWindow._targetDeviceId.length > 0
             deviceId: mainWindow._targetDeviceId
@@ -537,6 +556,7 @@ ApplicationWindow {
             onSendFolderRequested: folderDialog.open()
             onFileDropped: function(filePath) {
                 AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
+                mainWindow.showTransferTimeline()
             }
         }
     }
@@ -592,6 +612,7 @@ ApplicationWindow {
                     break
                 }
             }
+            mainWindow.showTransferTimeline()
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName
             acceptDialog.fileName = fileName

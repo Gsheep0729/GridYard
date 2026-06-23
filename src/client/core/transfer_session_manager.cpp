@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 6.3.0
+* @version 6.6.2
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
@@ -10,6 +10,8 @@
 * 使用委托模式从 ConfigManager 和 FileReceiverWorker 获取信息。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 支持按当前设备清空已结束传输记录
 * [v6.3.0] GY   2026-06-25
 * * 生成结束态传输快照并支持恢复历史记录
 * [v4.16.1] FengChunlin   2026-06-21
@@ -448,7 +450,7 @@ void TransferSessionManager::removeSessionAndDeleteFile(const QString &sessionId
 }
 
 // 清空所有已结束的传输记录（可选删除已接收文件）
-void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles)
+void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles, const QString &deviceId)
 {
     int removedCount = 0;
     int deletedCount = 0;
@@ -457,6 +459,9 @@ void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles)
     // 倒序移除，避免删除元素后改变后续索引
     for (int i = _sessions.size() - 1; i >= 0; --i) {
         if (!isFinishedStatus(_sessions[i]["status"].toString())) {
+            continue;
+        }
+        if (!deviceId.isEmpty() && _sessions[i]["deviceId"].toString() != deviceId) {
             continue;
         }
 

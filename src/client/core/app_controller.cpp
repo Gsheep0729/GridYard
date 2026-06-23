@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.cpp
-* @version 6.5.0
+* @version 6.6.2
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   应用全局控制器实现
@@ -9,6 +9,8 @@
 * TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 消息持久化时同步更新设备最近聊天活动时间
 * [v6.5.0] GY   2026-06-25
 * * 为托盘退出增加存储排空超时兜底，避免后台进程无法关闭
 * * 向表现层发布本地历史可用性与异步保存失败状态
@@ -130,6 +132,8 @@ AppController::AppController(QObject *parent)
                 _storageWorker->submitSave(
                     [this, peer, record](SqliteDatabaseProxy &, QString *errorMessage) {
                         return _deviceRepository->upsertPeer(peer, errorMessage)
+                               && _deviceRepository->markChatActivity(peer.deviceId, record.sentAt,
+                                                                      errorMessage)
                                && _messageRepository->saveMessage(record, errorMessage);
                     });
             });

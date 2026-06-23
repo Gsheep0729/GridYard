@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 6.6.1
+ * @version 6.6.2
  * @date    2026-06-24
  * @author  GridYard Team
  * @brief   当前设备的文件传输会话页
@@ -8,6 +8,10 @@
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 整理会话页标题栏、页签、内容区和底部输入区尺寸，避免控件遮挡
+ * * 清空记录限定当前设备，发送入口改为文件夹图标下拉菜单
+ * * 对齐聊天输入框占位提示和真实输入光标
  * [v6.6.1] GY   2026-06-25
  * * 修复聊天输入框占位提示不隐藏并遮挡输入内容
  * [v5.3.0] GY   2026-06-24
@@ -90,6 +94,9 @@ Frame {
        const sessions = AppController.transfer.sessions
        for (let i = 0; i < sessions.length; i++) {
            const status = sessions[i].status
+           if (sessions[i].deviceId !== deviceSessionView.deviceId) {
+               continue
+           }
            if (status === "completed" || status === "failed"
                    || status === "rejected" || status === "cancelled") {
                count++
@@ -109,12 +116,15 @@ Frame {
        // ===== ① 标题栏 =====
        Rectangle {
            Layout.fillWidth: true
-           Layout.preferredHeight: 48
+           Layout.preferredHeight: 58
            color: Style.Color.surface
 
            RowLayout {
                anchors.fill: parent
-               anchors.margins: 12
+               anchors.leftMargin: Style.Space.md
+               anchors.rightMargin: Style.Space.md
+               anchors.topMargin: Style.Space.sm
+               anchors.bottomMargin: Style.Space.sm
                spacing: Style.Space.md
 
                ColumnLayout {
@@ -147,6 +157,7 @@ Frame {
                ToolButton {
                    text: qsTr("清空记录")
                    enabled: deviceSessionView.finishedCount > 0
+                   Layout.preferredHeight: 32
                    onClicked: clearMenu.open()
 
                    Menu {
@@ -154,7 +165,8 @@ Frame {
 
                        MenuItem {
                            text: qsTr("清空已结束记录")
-                           onTriggered: AppController.transfer.clearFinishedSessions(false)
+                           onTriggered: AppController.transfer.clearFinishedSessions(
+                                            false, deviceSessionView.deviceId)
                        }
 
                        MenuItem {
@@ -176,118 +188,129 @@ Frame {
        TabBar {
            id: timelineTabs
            Layout.fillWidth: true
-           Layout.preferredHeight: 38
+           Layout.preferredHeight: 44
            currentIndex: deviceSessionView.timelineMode
+           background: Rectangle {
+               color: Style.Color.surface
+           }
 
            onCurrentIndexChanged: deviceSessionView.timelineMode = currentIndex
 
            TabButton {
                text: qsTr("聊天")
+               height: timelineTabs.height
+               font.pixelSize: 14
            }
 
            TabButton {
                text: qsTr("传输")
+               height: timelineTabs.height
+               font.pixelSize: 14
            }
        }
 
        // ===== 记录浏览 =====
-       ChatView {
+       StackLayout {
            Layout.fillWidth: true
            Layout.fillHeight: true
-           visible: deviceSessionView.timelineMode === 0
-           deviceId: deviceSessionView.deviceId
-       }
+           currentIndex: deviceSessionView.timelineMode
 
-       ListView {
-           id: sessionList
-           Layout.fillWidth: true
-           Layout.fillHeight: true
-           visible: deviceSessionView.timelineMode === 1
-           clip: true
-           spacing: 8
-
-           model: AppController.transfer.sessions
-
-           delegate: Item {
-               id: sessionDelegate
-
-               required property string sessionId
-               required property string type
-               required property string deviceId
-               required property string fileName
-               required property string status
-               required property int progress
-               required property var bytesTransferred
-               required property var totalBytes
-               required property string createdAt
-               required property string peerDeviceName
-               required property bool isDirectory
-               required property var fileList
-               required property bool canDeleteLocalFile
-
-               width: sessionList.width
-               visible: deviceId === deviceSessionView.deviceId
-               height: visible ? taskCard.height : 0
-
-               TransferTaskCard {
-                   id: taskCard
-
-                   width: sessionDelegate.width
-                   sessionId: sessionDelegate.sessionId
-                   taskType: sessionDelegate.type
-                   taskName: sessionDelegate.fileName
-                   status: sessionDelegate.status
-                   progress: sessionDelegate.progress
-                   bytesTransferred: sessionDelegate.bytesTransferred
-                   totalBytes: sessionDelegate.totalBytes
-                   createdAt: sessionDelegate.createdAt
-                   peerDeviceName: sessionDelegate.peerDeviceName
-                   isDirectory: sessionDelegate.isDirectory
-                   fileList: sessionDelegate.fileList
-                   canDeleteLocalFile: sessionDelegate.canDeleteLocalFile
-                   expanded: deviceSessionView.isSessionExpanded(sessionDelegate.sessionId)
-                   onExpansionRequested: function(expanded) {
-                       deviceSessionView.setSessionExpanded(sessionDelegate.sessionId, expanded)
-                   }
-               }
+           ChatView {
+               deviceId: deviceSessionView.deviceId
            }
 
-           ColumnLayout {
-               anchors.centerIn: parent
-               visible: deviceSessionView.filteredCount === 0
-               spacing: Style.Space.md
+           Item {
+               ListView {
+                   id: sessionList
+                   anchors.fill: parent
+                   anchors.margins: Style.Space.md
+                   clip: true
+                   spacing: Style.Space.sm
 
-               Label {
-                   text: qsTr("还没有传输记录")
-                   color: Style.Color.textWeak
-                   font.pixelSize: 20
-                   font.bold: true
-                   Layout.alignment: Qt.AlignHCenter
-               }
+                   model: AppController.transfer.sessions
 
-               Label {
-                   text: qsTr("从下方菜单发送文件或文件夹")
-                   color: Style.Color.textMuted
-                   horizontalAlignment: Text.AlignHCenter
-                   font.pixelSize: 13
-               }
-           }
+                   delegate: Item {
+                       id: sessionDelegate
 
-           DropArea {
-               anchors.fill: parent
-               keys: ["text/uri-list"]
+                       required property string sessionId
+                       required property string type
+                       required property string deviceId
+                       required property string fileName
+                       required property string status
+                       required property int progress
+                       required property real bytesTransferred
+                       required property real totalBytes
+                       required property string createdAt
+                       required property string peerDeviceName
+                       required property bool isDirectory
+                       required property list<string> fileList
+                       required property bool canDeleteLocalFile
 
-               onDropped: function(drop) {
-                   if (!deviceSessionView.isOnline) {
-                       return
-                   }
-                   const urls = drop.urls
-                   for (let i = 0; i < urls.length; i++) {
-                       let path = urls[i].toString()
-                       if (path.startsWith("file://")) {
-                           path = path.substring(7)
+                       width: sessionList.width
+                       visible: deviceId === deviceSessionView.deviceId
+                       height: visible ? taskCard.height : 0
+
+                       TransferTaskCard {
+                           id: taskCard
+
+                           width: sessionDelegate.width
+                           sessionId: sessionDelegate.sessionId
+                           taskType: sessionDelegate.type
+                           taskName: sessionDelegate.fileName
+                           status: sessionDelegate.status
+                           progress: sessionDelegate.progress
+                           bytesTransferred: sessionDelegate.bytesTransferred
+                           totalBytes: sessionDelegate.totalBytes
+                           createdAt: sessionDelegate.createdAt
+                           peerDeviceName: sessionDelegate.peerDeviceName
+                           isDirectory: sessionDelegate.isDirectory
+                           fileList: sessionDelegate.fileList
+                           canDeleteLocalFile: sessionDelegate.canDeleteLocalFile
+                           expanded: deviceSessionView.isSessionExpanded(sessionDelegate.sessionId)
+                           onExpansionRequested: function(expanded) {
+                               deviceSessionView.setSessionExpanded(sessionDelegate.sessionId, expanded)
+                           }
                        }
-                       deviceSessionView.fileDropped(path)
+                   }
+               }
+
+               ColumnLayout {
+                   anchors.centerIn: parent
+                   visible: deviceSessionView.filteredCount === 0
+                   spacing: Style.Space.md
+
+                   Label {
+                       text: qsTr("还没有传输记录")
+                       color: Style.Color.textWeak
+                       font.pixelSize: 20
+                       font.bold: true
+                       Layout.alignment: Qt.AlignHCenter
+                   }
+
+                   Label {
+                       text: qsTr("从下方菜单发送文件或文件夹")
+                       color: Style.Color.textMuted
+                       horizontalAlignment: Text.AlignHCenter
+                       font.pixelSize: 13
+                   }
+               }
+
+               DropArea {
+                   anchors.fill: parent
+                   keys: ["text/uri-list"]
+
+                   onDropped: function(drop) {
+                       if (!deviceSessionView.isOnline) {
+                           return
+                       }
+                       const urls = drop.urls
+                       for (let i = 0; i < urls.length; i++) {
+                           let path = urls[i].toString()
+                           if (path.startsWith("file://")) {
+                               path = path.substring(7)
+                           }
+                           deviceSessionView.fileDropped(path)
+                       }
                    }
                }
            }
@@ -303,7 +326,7 @@ Frame {
        // ===== 文件操作工具栏 =====
        Rectangle {
            Layout.fillWidth: true
-           Layout.preferredHeight: 36
+           Layout.preferredHeight: 40
            color: Style.Color.surface
 
            RowLayout {
@@ -312,10 +335,25 @@ Frame {
                anchors.rightMargin: Style.Space.sm
 
                ToolButton {
-                   icon.name: "list-add"
+                   id: sendButton
+                   icon.name: "folder-open"
                    ToolTip.text: qsTr("发送文件或文件夹")
                    ToolTip.visible: hovered
                    onClicked: sendMenu.open()
+
+                   Menu {
+                       id: sendMenu
+                       y: sendButton.height
+
+                       MenuItem {
+                           text: qsTr("发送文件")
+                           onTriggered: deviceSessionView.sendFileRequested()
+                       }
+                       MenuItem {
+                           text: qsTr("发送文件夹")
+                           onTriggered: deviceSessionView.sendFolderRequested()
+                       }
+                   }
                }
 
                Item { Layout.fillWidth: true }
@@ -325,7 +363,8 @@ Frame {
        // ===== 文本输入 =====
        Rectangle {
            Layout.fillWidth: true
-           Layout.preferredHeight: 104
+           Layout.preferredHeight: deviceSessionView.timelineMode === 0 ? 104 : 0
+           visible: deviceSessionView.timelineMode === 0
            color: Style.Color.surface
 
            RowLayout {
@@ -351,6 +390,10 @@ Frame {
                        color: Style.Color.textMain
                        wrapMode: TextEdit.Wrap
                        selectByMouse: true
+                       leftPadding: 0
+                       rightPadding: 0
+                       topPadding: 0
+                       bottomPadding: 0
 
                        background: Item {}
 
@@ -370,10 +413,9 @@ Frame {
                    }
 
                    Label {
-                       anchors.left: parent.left
-                       anchors.right: parent.right
-                       anchors.top: parent.top
-                       anchors.margins: Style.Space.md
+                       anchors.left: messageInput.left
+                       anchors.right: messageInput.right
+                       anchors.top: messageInput.top
                        visible: messageInput.text.length === 0
                        text: deviceSessionView.isOnline
                              ? qsTr("输入消息") : qsTr("设备离线，无法发送")
@@ -429,21 +471,6 @@ Frame {
        }
    }
 
-   // ===== 文件发送菜单（Frame 级别）=====
-   Menu {
-       id: sendMenu
-       y: -height - 4
-
-       MenuItem {
-           text: qsTr("发送文件")
-           onTriggered: deviceSessionView.sendFileRequested()
-       }
-       MenuItem {
-           text: qsTr("发送文件夹")
-           onTriggered: deviceSessionView.sendFolderRequested()
-       }
-   }
-
    // ===== 清空确认弹窗（Frame 级别）=====
    Dialog {
        id: clearDeleteConfirmDialog
@@ -457,6 +484,6 @@ Frame {
            wrapMode: Text.WordWrap
        }
 
-       onAccepted: AppController.transfer.clearFinishedSessions(true)
+       onAccepted: AppController.transfer.clearFinishedSessions(true, deviceSessionView.deviceId)
    }
 }
