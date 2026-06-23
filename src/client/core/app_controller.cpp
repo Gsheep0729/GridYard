@@ -10,6 +10,7 @@
 *
 * Change Log:
 * [v6.5.0] GY   2026-06-25
+* * 为托盘退出增加存储排空超时兜底，避免后台进程无法关闭
 * * 向表现层发布本地历史可用性与异步保存失败状态
 * [v6.3.0] GY   2026-06-25
 * * 接入传输历史持久化与启动恢复
@@ -253,15 +254,19 @@ void AppController::quit()
     qDebug() << "AppController::quit invoked from QML";
 
     if (!_storageThread || !_storageThread->isRunning() || !_storageWorker) {
-        QCoreApplication::quit();
+        QCoreApplication::exit(0);
         return;
     }
 
     // 将停止标记排入 Worker 队列尾部，确保退出前不会丢失已提交的历史写入。
     connect(_storageWorker, &DatabaseWorker::drained,
-            this, [] { QCoreApplication::quit(); }, Qt::SingleShotConnection);
+            this, [] { QCoreApplication::exit(0); },
+            static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
     QMetaObject::invokeMethod(_storageWorker, &DatabaseWorker::beginShutdown,
                               Qt::QueuedConnection);
+
+    // 极端情况下 Worker 线程没有及时响应，也不能让托盘进程永久留在后台。
+    QTimer::singleShot(3000, this, [] { QCoreApplication::exit(0); });
 }
 
 // 验证 QML 调用链路
