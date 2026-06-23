@@ -1,6 +1,6 @@
 # GridYard API 文档索引
 
-本文档是 GridYard 项目内部 API 接口文档的入口索引，按模块划分为 6 份独立文档。
+本文档是 GridYard 项目内部 API 接口文档的入口索引，按模块划分为 8 份独立文档。
 
 ---
 
@@ -15,6 +15,7 @@
 | 05 | UI 组件模块 | [05-UI组件模块.md](./05-UI组件模块.md) | QML 组件、Style.js、FormatUtils.js、ChatView |
 | 06 | 全局 UI 设计规范 | [06-全局UI设计规范.md](./06-全局UI设计规范.md) | 配色、圆角、间距、动画、交互、字体规范 |
 | 07 | 在线聊天模块 | [07-在线聊天模块.md](./07-在线聊天模块.md) | ChatManager、ChatConnection、ChatMessageModel、P2P 文本聊天 |
+| 08 | 本地数据层模块 | [08-本地数据层模块.md](./08-本地数据层模块.md) | Repository 端口、SQLite Proxy、HistoryController、异常恢复 |
 
 ---
 
@@ -36,6 +37,10 @@ AppController (应用逻辑层)
     │       ↓ 使用
     │       ├── ChatConnection (单条 TCP 连接)
     │       └── ChatMessageModel (消息列表模型)
+    ├── HistoryController (本地历史)
+    │       ↓ 使用
+    │       ├── IMessageRepository (聊天记录端口)
+    │       └── ITransferHistoryRepository (传输历史端口)
     └── P2pServer (TCP 服务器)
             ↓ 按首帧 Type 分流
             ├── FileReceiverWorker (文件传输)
@@ -53,9 +58,9 @@ AppController (应用逻辑层)
 | 层级 | 模块 | 文档 |
 |------|------|------|
 | 表现层 | Main.qml、DeviceCard、PeerListView、DeviceSessionView、ChatView、AcceptDialog、SettingsDialog、TransferTaskCard | 05-UI组件模块 |
-| 应用逻辑层 | AppController、TransferSessionManager、ChatManager | 03-应用与配置模块、02-传输管理模块、07-在线聊天模块 |
-| 领域层 | DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker、ChatConnection、FrameCodec、protocol.h | 01-设备发现模块、02-传输管理模块、04-协议与编解码模块、07-在线聊天模块 |
-| 数据管理层 | ConfigManager、Logger | 03-应用与配置模块 |
+| 应用逻辑层 | AppController、TransferSessionManager、ChatManager、HistoryController | 03-应用与配置模块、02-传输管理模块、07-在线聊天模块、08-本地数据层模块 |
+| 领域层 | DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker、ChatConnection、FrameCodec、protocol.h、Repository 端口和值对象 | 01-设备发现模块、02-传输管理模块、04-协议与编解码模块、07-在线聊天模块、08-本地数据层模块 |
+| 数据管理层 | ConfigManager、Logger、SqliteDatabaseProxy、SqliteDeviceProxy、SqliteMessageProxy、SqliteTransferHistoryProxy | 03-应用与配置模块、08-本地数据层模块 |
 
 ---
 
@@ -68,4 +73,3 @@ AppController (应用逻辑层)
 - 接口描述包含：参数表、返回值、线程安全说明、文件路径
 - 跨模块引用使用 `[模块名](./xx-模块名.md)` 格式
 - 全局 UI 设计规范独立成文，配色/圆角/间距/动画常量统一管理
-

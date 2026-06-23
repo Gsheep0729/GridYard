@@ -2,7 +2,9 @@
 
 > 局域网 P2P 文件传输与即时通讯桌面应用，全程零公网流量。
 
-当前版本：v6.5.0
+当前版本：v6.6.0
+
+当前阶段：Stage 6 阶段 G，聚焦异常验证、打包验收、文档同步和本地数据层交付收尾，不启动 Stage 7 服务端漫游。
 
 GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
 
@@ -15,6 +17,8 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 - **在线聊天**：复用 P2P 通道的文本消息收发，连接复用、消息去重、断线按需重连
 - **协议自研**：TLV 二进制帧格式，按 Type 分级 Payload 上限，粘包/半包状态机，协议版本协商
 - **本地持久化**：SQLite 存储聊天记录、传输历史与设备目录，重启可查；WAL 模式 + 异步写入不阻塞主链路
+- **历史管理**：聊天记录分页加载，传输历史按设备/状态筛选，支持删除、清空和保留期限设置
+- **桌面体验**：系统托盘后台运行，聊天和传输事件非阻塞通知，本地历史不可用时自动降级
 - **零公网**：全程局域网通信，不依赖云服务、账号体系或第三方中转
 - **跨文件系统安全**：路径穿越防护、磁盘空间预检、零字节文件处理、重名避让
 
@@ -244,8 +248,7 @@ GridYard/
 │   │   ├── 规格与设计/                   # 技术规格、架构设计
 │   │   ├── 开发心得/                     # 踩坑记录、开发手册
 │   │   └── 测试与部署/                   # 测试与打包指南
-│   ├── plans/                           # 阶段开发计划
-│   ├── spec/                            # 业务逻辑、需求规格
+│   ├── plan/                            # 阶段开发计划
 │   └── api-docs/                        # 模块 API 文档
 ├── scripts/                             # 辅助脚本
 └── src/
@@ -264,6 +267,7 @@ GridYard/
     │   │   ├── transfer_session_manager.{h,cpp}
     │   │   ├── chat_manager.{h,cpp}     # 聊天连接与内存会话
     │   │   ├── chat_message_model.{h,cpp}
+    │   │   ├── history_controller.{h,cpp} # 本地历史分页、筛选和清理
     │   │   ├── application_paths.{h,cpp}
     │   │   ├── dir_serializer.{h,cpp}   # 目录遍历 + SHA-256
     │   │   └── logger.{h,cpp}           # 日志拦截器
@@ -280,6 +284,7 @@ GridYard/
     │   │   ├── sqlite_database_proxy.{h,cpp}  # 连接、WAL、事务
     │   │   ├── sqlite_device_proxy.{h,cpp}    # 设备目录 Data Mapper
     │   │   ├── sqlite_message_proxy.{h,cpp}   # 聊天消息 Data Mapper
+    │   │   ├── sqlite_transfer_history_proxy.{h,cpp} # 传输历史 Data Mapper
     │   │   ├── migration_runner.{h,cpp}       # Schema 版本迁移
     │   │   └── database_worker.{h,cpp}        # 异步数据库线程
     │   ├── ui/                          # QML 界面组件
@@ -309,7 +314,9 @@ GridYard/
         ├── test_integration.cpp
         ├── test_storage_database.cpp
         ├── test_storage_device.cpp
-        └── test_storage_message.cpp
+        ├── test_storage_message.cpp
+        ├── test_storage_transfer_history.cpp
+        └── test_history_controller.cpp
 ```
 
 ---
@@ -338,6 +345,7 @@ GridYard/
 | 离线剔除 | 15 秒无心跳 |
 | 发现节流 | 30 秒（相同设备快照） |
 | 数据库模式 | WAL，synchronous=NORMAL，busy_timeout=5000ms |
+| 损坏库恢复 | 备份为 `.corrupt-{timestamp}` 后重建空库 |
 | 聊天消息上限 | 4000 字符 / 64 KB Payload |
 
 ---
@@ -346,10 +354,9 @@ GridYard/
 
 | 文档 | 路径 |
 |:-----|:-----|
-| 需求规格 | `doc/spec/鸽邮(GridYard)——技术需求与系统设计规格说明书.md` |
-| 架构设计 | `doc/spec/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md` |
-| 业务逻辑 | `doc/spec/GridYard业务逻辑说明.md` |
-| 团队开发手册 | `doc/dev-manual/开发心得/鸽邮(GridYard)——团队开发者手册.md` |
+| 需求规格 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——技术需求与系统设计规格说明书.md` |
+| 架构设计 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md` |
+| 业务逻辑 | `doc/dev-manual/规格与设计/GridYard业务逻辑说明.md` |
 | 开发心得 | `doc/dev-manual/开发心得/开发心得_从架构设计到踩坑记录.md` |
 | Stage 6 数据层设计 | `doc/dev-manual/规格与设计/GridYard_Stage6_本地数据层设计.md` |
 | 模块 API 文档 | `doc/api-docs/` |

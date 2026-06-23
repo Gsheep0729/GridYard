@@ -93,6 +93,9 @@ linuxdeploy 不会自动收集 Qt6 插件和 QML 模块，需要手动复制：
 mkdir -p dist/AppDir/usr/lib/qt6/plugins
 cp -r /usr/lib/qt6/plugins/* dist/AppDir/usr/lib/qt6/plugins/
 
+# 确认 SQLite 驱动被带入包内
+test -f dist/AppDir/usr/lib/qt6/plugins/sqldrivers/libqsqlite.so
+
 # 复制 QML 模块
 mkdir -p dist/AppDir/usr/lib/qt6/qml
 cp -r /usr/lib/qt6/qml/* dist/AppDir/usr/lib/qt6/qml/
@@ -172,7 +175,15 @@ dist/AppDir/
 
 **解决**：手动复制 `/usr/lib/qt6/plugins` 和 `/usr/lib/qt6/qml` 到 AppDir。
 
-### 5.3 appimagetool 找不到 desktop 文件
+### 5.3 本地历史不可用
+
+**现象**：应用可以启动和收发文件，但设置页提示本地历史不可用。
+
+**原因**：包内缺少 Qt SQLite 驱动，运行时 `QSqlDatabase::drivers()` 不包含 `QSQLITE`。
+
+**解决**：确认 `dist/AppDir/usr/lib/qt6/plugins/sqldrivers/libqsqlite.so` 存在，并检查 `AppRun` 中的 `QT_PLUGIN_PATH` 是否指向 `usr/lib/qt6/plugins`。
+
+### 5.4 appimagetool 找不到 desktop 文件
 
 **现象**：`Desktop file not found, aborting`
 
@@ -180,7 +191,7 @@ dist/AppDir/
 
 **解决**：将 desktop 文件复制到 `dist/AppDir/` 根目录。
 
-### 5.4 appimagetool 架构错误
+### 5.5 appimagetool 架构错误
 
 **现象**：`More than one architectures were found`
 
@@ -188,7 +199,7 @@ dist/AppDir/
 
 **解决**：设置环境变量 `ARCH=x86_64`。
 
-### 5.5 图标未找到
+### 5.6 图标未找到
 
 **现象**：`gridyard{.png,.svg,.xpm} defined in desktop file but not found`
 
@@ -235,6 +246,7 @@ echo ">>> 收集依赖库..."
 # 4. 复制 Qt6 组件
 echo ">>> 复制 Qt6 插件和 QML 模块..."
 cp -r /usr/lib/qt6/plugins/* "$APPDIR/usr/lib/qt6/plugins/"
+test -f "$APPDIR/usr/lib/qt6/plugins/sqldrivers/libqsqlite.so"
 cp -r /usr/lib/qt6/qml/* "$APPDIR/usr/lib/qt6/qml/"
 
 # 5. 创建 AppRun
