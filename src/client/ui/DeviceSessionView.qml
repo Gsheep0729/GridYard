@@ -1,9 +1,32 @@
-/* @file    DeviceSessionView.qml
-* @version 4.16.0
-* @date    2026-06-23
-* @author  GridYard Team
-* @brief   当前设备的文件传输会话页 (四段式布局)
-*/
+/**
+ * @file    DeviceSessionView.qml
+ * @version 4.16.3
+ * @date    2026-06-24
+ * @author  GridYard Team
+ * @brief   当前设备的文件传输会话页
+ *
+ * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
+ *
+ * Change Log:
+ * [v4.16.3] FengChunlin   2026-06-24
+ * * 调整设备会话页头部、传输列表和底部发送区布局
+ * [v4.16.0] DuRuoxian   2026-06-18
+ * * 使用 Style.js 统一样式常量，调整底部发送栏为 Stage 5 预留文本输入区域
+ * [v4.15.2] DuRuoxian   2026-06-17
+ * * 优化会话页头部、传输空状态和底部发送栏视觉层级
+ * [v4.14.0] GY   2026-06-15
+ * * 增加清空传输记录及删除已接收本地文件选项
+ * [v4.13.3] GY   2026-06-15
+ * * 按会话保存文件夹根目录预览的展开状态
+ * [v4.13.1] DuRuoxian   2026-06-15
+ * * 传递文件夹和相对路径列表到任务卡片
+ * [v4.10.1] DuRuoxian   2026-06-13
+ * * 使用显式模型角色修复传输记录字段为空
+ * [v4.10.0] DuRuoxian   2026-06-13
+ * * 修复 delegate 绑定问题，添加 filteredCount 属性
+ * [v4.9.0] DuRuoxian   2026-06-13
+ * * 初始版本
+ */
 
 pragma ComponentBehavior: Bound
 

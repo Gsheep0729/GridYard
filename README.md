@@ -4,8 +4,8 @@
 
 | 字段       | 内容                                                                  |
 | :--------- | :-------------------------------------------------------------------- |
-| 项目版本   | v4.16.2                                                               |
-| 当前阶段   | **Stage 4 健壮性增强**（收尾中），下一步 Stage 5 局域网在线聊天          |
+| 项目版本   | v4.16.3                                                               |
+| 当前阶段   | **Stage 5 局域网在线聊天**（阶段 A 已完成，准备连接分流）                 |
 | 技术栈     | C++23 · Qt 6.11 · QML · CMake 4.2.3 · GCC 16.1                        |
 | 部署平台   | Manjaro Linux（开发、编译、运行三端统一）                              |
 | 团队成员   | 高扬 · 杜若贤 · 冯春霖                                                |
@@ -22,8 +22,8 @@
   页面布局、用户交互、属性绑定和状态展示
         ↓ 用户操作                  ↑ 界面状态
 应用逻辑层
-  AppController、TransferSessionManager
-  组织设备发现和文件传输用例，协调各领域对象
+  AppController（QML 单例）、TransferSessionManager
+  组织设备发现、文件传输和后续在线聊天用例，协调各领域对象
         ↓ 调用                      ↑ 结果与事件
 领域层
   DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker
@@ -128,6 +128,7 @@ GridYard/
     ├── shared/                            # 共用核心库 gy_shared
     │   ├── protocol.h                     # 通信协议 Type 码定义
     │   ├── data_types.h                   # 跨模块数据类型（PeerInfo 等）
+    │   ├── chat_message.{h,cpp}           # 在线聊天消息 JSON 编解码
     │   └── frame_codec.{h,cpp}            # TLV 帧编解码器
     ├── client/                            # 桌面客户端
     │   ├── main.cpp                       # 程序入口
@@ -176,8 +177,8 @@ GridYard/
 | Stage 1 | 通信基石 | ✅ 完成 | 协议定义、帧编解码、C++↔QML 通信 |
 | Stage 2 | 设备发现 | ✅ 完成 | UDP 广播、设备列表、配置管理 |
 | Stage 3 | 文件传输 | ✅ 完成 | P2P 文件传输、拖拽传输、取消功能 |
-| Stage 4 | 健壮性增强 | 🔧 收尾中 | 目录传输、SHA-256、吞吐量已达标；协议分级防护与接收侧后台化待补 |
-| Stage 5 | 局域网在线聊天 | ⏳ 待开始 | 在线设备间 P2P 文本聊天，不依赖服务端 |
+| Stage 4 | 健壮性增强 | ✅ 完成 | 目录传输、SHA-256、协议分级防护、错误码和接收侧后台化 |
+| Stage 5 | 局域网在线聊天 | 🔧 进行中 | 阶段 A 已完成：文本 Type 码、消息 JSON 编解码与单元测试；下一步连接分流 |
 | Stage 6 | 本地数据层 | ⏳ 待开始 | SQLite 聊天记录与传输历史、托盘、体验打磨 |
 | Stage 7 | 服务端与漫游 | ⭐ 加分 | 登录、对话历史与传输记录漫游、离线消息 |
 

@@ -1,6 +1,6 @@
 /**
 * @file    test_chat_message.cpp
-* @version 4.16.2
+* @version 4.16.3
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天消息编解码测试
@@ -9,7 +9,7 @@
 * 确保非法入站数据不会进入后续聊天连接与消息模型。
 *
 * Change Log:
-* [v4.16.2] GY   2026-06-24
+* [v4.16.3] GY   2026-06-24
 * * 新增 Stage 5 在线聊天消息协议测试
 */
 

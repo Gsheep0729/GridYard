@@ -139,7 +139,7 @@ notes_local/
 *.draft.md
 doc/freetext/
 doc/文档/
-
+doc/plan/
 
 # ============================================================================
 #  Python（scripts/ 下可能产生）

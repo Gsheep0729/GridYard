@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 4.16.0
- * @date    2026-06-18
+ * @version 4.16.3
+ * @date    2026-06-24
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -12,6 +12,8 @@
  * 支持拖拽文件到卡片触发传输。
  *
  * Change Log:
+ * [v4.16.3] FengChunlin   2026-06-24
+ * * 调整设备列表项的头像、在线状态和选中状态表现
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 调整设备卡片为会话列表项，为在线聊天列表铺路
  * [v4.15.2] DuRuoxian   2026-06-17
