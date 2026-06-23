@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 5.3.0
+ * @version 6.6.1
  * @date    2026-06-24
  * @author  GridYard Team
  * @brief   当前设备的文件传输会话页
@@ -8,6 +8,8 @@
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
  *
  * Change Log:
+ * [v6.6.1] GY   2026-06-25
+ * * 修复聊天输入框占位提示不隐藏并遮挡输入内容
  * [v5.3.0] GY   2026-06-24
  * * 接入聊天视图和在线文本发送入口
  * [v4.16.3] FengChunlin   2026-06-24
@@ -344,8 +346,7 @@ Frame {
                        anchors.fill: parent
                        anchors.margins: Style.Space.sm
                        enabled: deviceSessionView.isOnline
-                       placeholderText: deviceSessionView.isOnline
-                                        ? qsTr("输入消息") : qsTr("设备离线，无法发送")
+                       placeholderText: ""
                        font.pixelSize: 14
                        color: Style.Color.textMain
                        wrapMode: TextEdit.Wrap
@@ -366,6 +367,19 @@ Frame {
                                deviceSessionView.sendChatMessage()
                            }
                        }
+                   }
+
+                   Label {
+                       anchors.left: parent.left
+                       anchors.right: parent.right
+                       anchors.top: parent.top
+                       anchors.margins: Style.Space.md
+                       visible: messageInput.text.length === 0
+                       text: deviceSessionView.isOnline
+                             ? qsTr("输入消息") : qsTr("设备离线，无法发送")
+                       color: deviceSessionView.isOnline ? Style.Color.textWeak : Style.Color.error
+                       font.pixelSize: 14
+                       elide: Text.ElideRight
                    }
                }
 
