@@ -1,13 +1,15 @@
 /**
 * @file    test_frame_codec.cpp
-* @version 4.15.0
-* @date    2026-06-17
+* @version 4.16.2
+* @date    2026-06-24
 * @author  GridYard Team
 * @brief   FrameCodec 单元测试
 *
 * 测试用例：单帧 / 粘包 / 半包 / 空 payload / 超大 payload / 协议版本 / 分级 Payload 上限
 *
 * Change Log:
+* [v4.16.2] GY   2026-06-24
+* * 新增聊天控制帧 Type 与 Payload 上限测试
 * [v4.15.1] FengChunlin   2026-06-17
 * * 新增 testControlFrameLimit：控制帧超 1MB 被 feed/encode 拒绝
 * * 新增 testDataChunkLimit：DataChunk 允许超 1MB，超 256MB 被拒绝
@@ -36,6 +38,7 @@ private slots:
     void testProtocolVersion();
     void testControlFrameLimit();
     void testDataChunkLimit();
+    void testChatFrameLimit();
 };
 
 void TestFrameCodec::testSingleFrame()
@@ -267,6 +270,21 @@ void TestFrameCodec::testDataChunkLimit()
     codec2.feed(bigFrame);
     QCOMPARE(errorSpy2.count(), 1);
     QCOMPARE(frameSpy2.count(), 0);
+}
+
+void TestFrameCodec::testChatFrameLimit()
+{
+    QCOMPARE(gy::protocol::kTypeChatText, quint32(0x0501));
+    QCOMPARE(gy::protocol::kTypeChatAck, quint32(0x0502));
+    QCOMPARE(gy::protocol::maxPayloadForType(gy::protocol::kTypeChatText),
+             gy::protocol::kMaxControlPayloadBytes);
+    QCOMPARE(gy::protocol::maxPayloadForType(gy::protocol::kTypeChatAck),
+             gy::protocol::kMaxControlPayloadBytes);
+
+    const quint32 overLimit = gy::protocol::kMaxControlPayloadBytes + 1;
+    QByteArray oversizePayload(overLimit, 'C');
+    QVERIFY(FrameCodec::encode(gy::protocol::kTypeChatText, oversizePayload).isEmpty());
+    QVERIFY(FrameCodec::encode(gy::protocol::kTypeChatAck, oversizePayload).isEmpty());
 }
 
 QTEST_MAIN(TestFrameCodec)
