@@ -3,6 +3,9 @@
 # 所有带 QML_ELEMENT / QML_SINGLETON 宏的 C++ 类型由 qt_add_qml_module
 # 自动注册；QML 文件统一打包到资源系统 /qt/qml/<URI> 标准路径
 
+add_subdirectory(domain)
+add_subdirectory(storage)
+
 qt_add_executable(appGridYard WIN32)
 
 set_source_files_properties(utils/FormatUtils.js utils/Style.js PROPERTIES
@@ -17,6 +20,8 @@ qt_add_qml_module(appGridYard
         main.cpp
         core/app_controller.h
         core/app_controller.cpp
+        core/application_paths.h
+        core/application_paths.cpp
         core/chat_manager.h
         core/chat_manager.cpp
         core/chat_message_model.h
@@ -70,6 +75,7 @@ target_link_libraries(appGridYard PRIVATE
     Qt6::QuickControls2
     Qt6::Network
     gy_shared
+    gy_storage
 )
 
 target_include_directories(appGridYard PRIVATE core network)
