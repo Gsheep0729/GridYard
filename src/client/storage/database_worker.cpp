@@ -18,11 +18,13 @@
 
 #include <QMetaObject>
 
+// 构造函数
 DatabaseWorker::DatabaseWorker(SqliteDatabaseProxy *database)
     : _database(database)
 {
 }
 
+// 析构函数
 DatabaseWorker::~DatabaseWorker()
 {
     if (_database) {
@@ -31,21 +33,25 @@ DatabaseWorker::~DatabaseWorker()
     }
 }
 
+// 提交保存类任务
 void DatabaseWorker::submitSave(const DatabaseTask &task)
 {
     submitTask(task);
 }
 
+// 提交加载类任务
 void DatabaseWorker::submitLoad(const DatabaseTask &task)
 {
     submitTask(task);
 }
 
+// 提交删除类任务
 void DatabaseWorker::submitDelete(const DatabaseTask &task)
 {
     submitTask(task);
 }
 
+// 开始关闭并通知已排空
 void DatabaseWorker::beginShutdown()
 {
     // 此方法通过 QueuedConnection 投递到 Worker 线程；按事件队列 FIFO 语义，
@@ -54,6 +60,7 @@ void DatabaseWorker::beginShutdown()
     emit drained();
 }
 
+// 将任务投递到 Worker 所在线程
 void DatabaseWorker::submitTask(const DatabaseTask &task)
 {
     if (!_acceptingTasks.load()) {
@@ -66,6 +73,7 @@ void DatabaseWorker::submitTask(const DatabaseTask &task)
     }, Qt::QueuedConnection);
 }
 
+// 执行单个数据库任务并发出结果
 void DatabaseWorker::executeTask(const DatabaseTask &task)
 {
     if (!_database) {

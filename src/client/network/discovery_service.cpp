@@ -34,11 +34,11 @@
 #include <QNetworkInterface>
 #include <QNetworkProxy>
 
-// 心跳间隔（秒）
+// 心跳间隔：5 秒，兼顾发现速度和局域网广播噪声
 static constexpr int kBroadcastIntervalSec = 5;
-// 节点超时时间（秒）
+// 节点超时时间：15 秒，允许丢失两次心跳后再判离线
 static constexpr int kNodeTimeoutSec = 15;
-// 清理检查间隔（秒）
+// 清理检查间隔：3 秒，让离线状态不会长时间滞后
 static constexpr int kPruneIntervalSec = 3;
 
 // 构造函数，初始化 UDP socket、广播定时器和清理定时器
@@ -86,19 +86,17 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     connect(_config, &ConfigManager::deviceNameChanged,
             this,    &DiscoveryService::sendHelloPacket);
 
-    // 初始化广播定时器
     _broadcastTimer = new QTimer(this);
     connect(_broadcastTimer, &QTimer::timeout,
             this,            &DiscoveryService::sendHelloPacket);
     _broadcastTimer->start(kBroadcastIntervalSec * 1000);
 
-    // 初始化清理定时器
     _pruneTimer = new QTimer(this);
     connect(_pruneTimer, &QTimer::timeout,
             this,        &DiscoveryService::pruneOfflineNodes);
     _pruneTimer->start(kPruneIntervalSec * 1000);
 
-    // 延迟发送第一次 Hello，确保 socket 已绑定
+    // 延迟 200ms 发送第一次 Hello，确保 socket 绑定和事件循环都已就绪。
     QTimer::singleShot(200, this, &DiscoveryService::sendHelloPacket);
 }
 
@@ -167,7 +165,7 @@ void DiscoveryService::sendHelloPacket()
                 sentCount++;
             }
 
-            // 如果本地端口不是默认端口，也发送到本地端口（确保绑定到备用端口的实例也能收到）
+            // 备用端口用于单机多实例测试，默认端口失败时仍能互相发现。
             if (_socket->localPort() != gy::protocol::kDefaultDiscoveryPort) {
                 _socket->writeDatagram(data, entry.broadcast(), _socket->localPort());
             }

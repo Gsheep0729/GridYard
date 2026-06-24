@@ -137,6 +137,7 @@ void ChatManager::clearMessages(const QString &deviceId)
     }
 }
 
+// 从内存模型中移除指定消息
 void ChatManager::removeMessage(const QString &deviceId, const QString &messageId)
 {
     ChatMessageModel *model = _models.value(deviceId);
@@ -222,6 +223,7 @@ void ChatManager::onMessageReceived(ChatConnection *connection, const gy::ChatMe
     }
 
     if (appendMessage(deviceId, message, false, MessageStatus::Sent)) {
+        // 通知预览只取前 20 个字符，避免系统通知泄露完整聊天内容。
         const QString preview = message.content.simplified().left(20);
         emit incomingMessageReceived(deviceId, message.fromName, preview);
     }

@@ -169,6 +169,7 @@ void ChatConnection::bindSocket(QTcpSocket *socket)
 {
     _socket = socket;
     _socket->setParent(this);
+    // 聊天复用 TCP 通道，调大缓冲可兼容首帧分流后已积压的数据。
     _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
     _socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
 
@@ -193,6 +194,7 @@ void ChatConnection::writePendingFrames()
         const PendingFrame pending = _pendingFrames.takeFirst();
         const qint64 written = _socket->write(pending.frame);
         if (written != pending.frame.size()) {
+            // Qt 写入短帧表示本地 socket 缓冲异常，剩余待写消息必须统一失败。
             const QString errorMessage = _socket->errorString().isEmpty()
                 ? tr("聊天消息写入失败")
                 : _socket->errorString();

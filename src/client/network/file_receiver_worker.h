@@ -136,8 +136,7 @@ private:
     int     _totalFiles = 0;         // 请求声明的文件总数
     qint64  _totalBytes = 0;         // 请求声明的文件总字节数
 
-    // 文件列表（含 sha256）
-    QList<gy::FileItem> _fileList;
+    QList<gy::FileItem> _fileList;        // 待接收文件列表（含 sha256）
 
     // 当前文件信息
     int     _currentFileIndex = 0;      // 当前接收文件在列表中的索引

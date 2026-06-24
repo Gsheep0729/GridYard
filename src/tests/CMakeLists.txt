@@ -1,3 +1,5 @@
+# tests/ —— Qt Test 单元测试与集成测试入口。
+# 每个测试保持独立可执行文件，按需链接 shared、storage 或客户端实现文件，避免测试之间共享状态。
 find_package(Qt6 REQUIRED COMPONENTS Test Gui)
 
 # 通用 include 路径

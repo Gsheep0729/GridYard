@@ -235,6 +235,7 @@ void ConfigManager::setTcpPort(quint16 port)
     emit tcpPortChanged();
 }
 
+// 设置历史保留天数并持久化
 void ConfigManager::setRetentionDays(int days)
 {
     days = std::max(0, days);
