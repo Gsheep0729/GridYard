@@ -5,9 +5,9 @@
 * @author  GY
 * @brief   GridYard 客户端程序入口
 *
-* 启动 QQmlApplicationEngine，通过 loadFromModule 加载
-* cqnu.gridyard.client 模块的 Main 根 QML。所有 C++ 类型通过
-* QML_ELEMENT + qt_add_qml_module 路径自动注册，不走上下文属性。
+* main.cpp 只负责启动准备并显式创建 AppController。
+* AppController 作为组合根初始化应用层对象和 UI 层。
+* 所有 C++ 类型通过 QML_ELEMENT + qt_add_qml_module 路径自动注册，不走上下文属性。
 * 自定义值类型（PeerInfo 等）在此统一
 * qRegisterMetaType 注册，供跨线程 QueuedConnection 使用。
 *
@@ -18,6 +18,7 @@
 *
 * Change Log:
 * [v6.6.2] GY   2026-06-25
+* * 调整启动入口，由 AppController 负责系统和 UI 初始化
 * * 修复聊天输入框对齐、历史首屏恢复、设备列表搜索刷新和传输清空范围
 * [v6.6.1] GY   2026-06-25
 * * 修复托盘退出确认与聊天输入框占位提示显示问题
@@ -87,9 +88,9 @@
 #include <QDir>
 #include <QGuiApplication>
 #include <QIcon>
-#include <QQmlApplicationEngine>
 #include <QQuickStyle>
 
+#include "app_controller.h"
 #include "data_types.h"
 #include "logger.h"
 
@@ -109,7 +110,7 @@ void configurePlatformTheme()
 
 }
 
-// 程序主函数入口，初始化应用、解析命令行参数并加载 QML 引擎
+// 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
     configurePlatformTheme();
 
@@ -163,16 +164,9 @@ int main(int argc, char *argv[]) {
 
     qRegisterMetaType<PeerInfo>("PeerInfo");
 
-    QQmlApplicationEngine engine;
-    QObject::connect(
-        &engine, &QQmlApplicationEngine::objectCreationFailed,
-        &app,    []{ QCoreApplication::exit(-1); },
-        Qt::QueuedConnection
-    );
-
-    engine.loadFromModule("cqnu.gridyard.client", "Main");
-    // QML 根对象创建失败时直接退出，避免进入无窗口事件循环
-    if (engine.rootObjects().isEmpty()) {
+    AppController *controller = AppController::singleton();
+    // QML 根对象创建失败时直接退出，避免进入无窗口事件循环。
+    if (!controller->uiReady()) {
         return -1;
     }
 

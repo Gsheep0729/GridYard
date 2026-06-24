@@ -6,12 +6,14 @@
 * @brief   应用全局控制器（QML 单例）
 *
 * 按四层架构要求，AppController 是中介者单例，负责组装和持有
-* DiscoveryService、TransferSessionManager、P2pServer 等下层模块。
+* DiscoveryService、TransferSessionManager、P2pServer 等下层模块，
+* 并负责初始化 QML UI 层。
 * QML 通过 AppController.discovery.peers 等路径触达业务对象，
 * 不使用上下文属性直接暴露 C++ 对象。
 *
 * Change Log:
 * [v6.6.2] GY   2026-06-25
+* * 将 AppController 调整为系统组合根，接管 UI 引擎初始化
 * * 同步文件头版本与当前主版本
 * [v6.5.0] GY   2026-06-25
 * * 向表现层发布本地历史可用性与异步保存失败状态
@@ -49,6 +51,7 @@
 
 class QQmlEngine;
 class QJSEngine;
+class QQmlApplicationEngine;
 
 class ConfigManager;
 class P2pServer;
@@ -76,6 +79,8 @@ private:
 public:
     virtual ~AppController() override;
 
+    // 获取应用全局控制器实例
+    static AppController *singleton();
     // 创建 QML 单例实例
     static AppController *create(QQmlEngine *engine, QJSEngine *scriptEngine);
 
@@ -92,6 +97,8 @@ public:
     ChatManager *chat() const;
     HistoryController *history() const;
     bool localHistoryAvailable() const;
+    // 获取 UI 根对象是否创建成功
+    bool uiReady() const;
 
     // 退出应用
     Q_INVOKABLE void quit();
@@ -111,6 +118,8 @@ private:
     void loadRecentChatHistories();
     // 异步恢复最近传输历史
     void loadRecentTransferHistories();
+    // 初始化 QML UI 层
+    void initializeUi();
 
     ConfigManager           *_config    = nullptr;  // 本机身份与配置来源
     DiscoveryService        *_discovery = nullptr;  // 在线设备发现服务
@@ -123,8 +132,11 @@ private:
     std::unique_ptr<SqliteTransferHistoryProxy> _transferRepository;  // 传输历史持久化端口
     QThread *_storageThread = nullptr;  // 存储任务专用线程
     DatabaseWorker *_storageWorker = nullptr;  // 串行执行存储任务的 Worker
+    QQmlApplicationEngine *_uiEngine = nullptr;  // 由控制器持有的 QML UI 引擎
     HistoryController *_history = nullptr;  // 本地历史查询、清理与 QML 操作入口
     QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
     bool _quitRequested = false;  // 防止托盘退出动作重复请求排空同一任务队列
+    bool _uiInitialized = false;  // 防止 QML 单例回调期间重复加载界面
+    bool _uiReady = false;  // QML 根对象是否已成功创建
 };

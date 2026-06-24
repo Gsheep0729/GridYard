@@ -7,9 +7,11 @@
 *
 * 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、
 * TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
+* UI 引擎由 singleton() 在控制器实例缓存后再初始化，避免 QML 单例回调递归创建。
 *
 * Change Log:
 * [v6.6.2] GY   2026-06-25
+* * 将 AppController 调整为系统组合根，负责应用层和 UI 层初始化
 * * 消息持久化时同步更新设备最近聊天活动时间
 * [v6.5.0] GY   2026-06-25
 * * 为托盘退出增加存储排空超时兜底，避免后台进程无法关闭
@@ -50,8 +52,17 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaObject>
+#include <QPointer>
+#include <QQmlApplicationEngine>
+#include <QQmlEngine>
 #include <QThread>
 #include <QTimer>
+
+namespace {
+
+QPointer<AppController> s_appController;
+
+}
 
 // 构造并组装应用运行期依赖
 AppController::AppController(QObject *parent)
@@ -202,11 +213,48 @@ AppController::~AppController()
     }
 }
 
+// 初始化 QML UI 层
+void AppController::initializeUi()
+{
+    if (_uiInitialized) {
+        return;
+    }
+    _uiInitialized = true;
+
+    _uiEngine = new QQmlApplicationEngine{this};
+    connect(
+        _uiEngine, &QQmlApplicationEngine::objectCreationFailed,
+        qApp, [] { QCoreApplication::exit(-1); },
+        Qt::QueuedConnection
+    );
+
+    _uiEngine->loadFromModule("cqnu.gridyard.client", "Main");
+    // QML 根对象创建失败时直接退出，避免进入无窗口事件循环。
+    if (_uiEngine->rootObjects().isEmpty()) {
+        _uiReady = false;
+        return;
+    }
+    _uiReady = true;
+}
+
+// 获取应用全局控制器实例
+AppController *AppController::singleton()
+{
+    if (!s_appController) {
+        s_appController = new AppController{qApp};
+        QQmlEngine::setObjectOwnership(s_appController, QQmlEngine::CppOwnership);
+        s_appController->initializeUi();
+    }
+    return s_appController;
+}
+
 // 创建 QML 单例实例
 AppController *AppController::create(QQmlEngine *engine, QJSEngine *)
 {
     Q_UNUSED(engine);
-    return new AppController{};
+    AppController *controller = singleton();
+    QQmlEngine::setObjectOwnership(controller, QQmlEngine::CppOwnership);
+    return controller;
 }
 
 // 获取应用名称
@@ -247,6 +295,12 @@ HistoryController *AppController::history() const
 bool AppController::localHistoryAvailable() const
 {
     return _localHistoryAvailable;
+}
+
+// 获取 UI 根对象是否创建成功
+bool AppController::uiReady() const
+{
+    return _uiReady;
 }
 
 // 请求退出应用
