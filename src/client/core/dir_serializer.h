@@ -1,7 +1,7 @@
 /**
 * @file    dir_serializer.h
-* @version 4.1.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   目录序列化工具（递归遍历 + SHA-256 计算）
 *
@@ -10,7 +10,9 @@
 * 用于多文件/目录传输功能，发送前遍历源路径生成文件清单。
 *
 * Change Log:
-* [v4.1.0] FengChunlin   2026-06-04
+* [v4.16.1] GY   2026-06-21
+* * 优化封装性，补充注释
+* [v0.4.1] GY   2026-05-23
 * * Stage 4：初始实现，递归遍历 + SHA-256 计算
 */
 

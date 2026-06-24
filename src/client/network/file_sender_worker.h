@@ -12,27 +12,27 @@
 * Change Log:
 * [v4.16.1] GY   2026-06-21
 * * 补充传输状态成员的职责注释
-* [v4.15.1] FengChunlin   2026-06-17
+* [v4.15.1] FengChunlin   2026-06-16
 * * 连接 FrameCodec::errorOccurred 信号，协议错误时清理并结束会话
 * * 进度节流 static 变量改为成员变量 _sendChunkCount
 * * TransferRsp/ChunkAck 响应优先读取 error_code 字段
-* [v4.15.0] GY   2026-06-17
+* [v4.15.0] FengChunlin   2026-06-16
 * * transferFinished 信号添加 ErrorCode 参数
 * [v4.12.1] FengChunlin   2026-06-14
 * * 修复多文件重复读取并为大型文件发送增加背压
 * [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹传输保留顶层目录并支持空文件夹
-* [v4.8.3] FengChunlin   2026-06-13
+* [v4.8.3] FengChunlin   2026-06-10
 * * 使用传入的设备别名作为发送方名称
-* [v4.5.3] GY   2026-06-04
+* [v4.5.3] GY   2026-06-01
 * * Stage 4.5：调大 socket buffer，减少进度信号频率
-* [v4.4.2] FengChunlin   2026-06-04
+* [v4.4.2] FengChunlin   2026-05-30
 * * Stage 4.4：添加超时检测机制
-* [v4.2.0] GY   2026-06-04
+* [v4.2.0] FengChunlin   2026-05-24
 * * Stage 4.2：支持多文件/目录传输，SHA-256 校验
-* [v0.3.1] GY   2026-06-03
+* [v0.3.1] GY   2026-05-21
 * * Stage 3.10：添加 cancel() 槽函数
-* [v0.2.0] FengChunlin   2026-06-02
+* [v0.2.0] DuRuoxian   2026-05-17
 * * Stage 3：初始版本
 */
 

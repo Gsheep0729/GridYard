@@ -1,7 +1,7 @@
 /**
 * @file    dir_serializer.cpp
-* @version 4.1.0
-* @date    2026-06-13
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   目录序列化工具实现
 *
@@ -9,7 +9,9 @@
 * 用于传输前的文件清单生成，支持多层目录结构和空文件夹。
 *
 * Change Log:
-* [v4.1.0] FengChunlin   2026-06-04
+* [v4.16.1] GY   2026-06-21
+* * 优化封装性，补充注释
+* [v0.4.1] GY   2026-05-23
 * * Stage 4：初始实现
 */
 

@@ -10,36 +10,36 @@
 * 使用委托模式从 ConfigManager 和 FileReceiverWorker 获取信息。
 *
 * Change Log:
-* [v4.16.1] GY   2026-06-21
+* [v4.16.1] FengChunlin   2026-06-21
 * * 接收请求和完成结果改为跨线程值传递，删除 Worker 状态读取函数
-* [v4.15.0] GY   2026-06-17
+* [v4.15.0] FengChunlin   2026-06-16
 * * transferFinished 信号适配 ErrorCode 参数
 * * 会话模型新增 errorCode 字段
 * [v4.14.0] GY   2026-06-15
 * * 支持清理传输记录并删除已接收的本地文件
-* [v4.13.3] GY   2026-06-15
+* [v4.13.3] DuRuoxian   2026-06-15
 * * 仅在可见进度变化时通知会话列表，减少文件夹传输任务闪烁
-* [v4.13.2] GY   2026-06-15
+* [v4.13.2] DuRuoxian   2026-06-15
 * * 统一生成文件夹根目录预览并传递给接收确认弹窗
-* [v4.13.1] GY   2026-06-15
+* [v4.13.1] DuRuoxian   2026-06-15
 * * 添加 isDirectory 和 fileList 字段到会话
-* [v4.11.0] GY   2026-06-13
+* [v4.11.0] FengChunlin   2026-06-13
 * * 支持按配置自动接受并保存接收文件
-* [v4.10.1] GY   2026-06-13
+* [v4.10.1] DuRuoxian   2026-06-11
 * * 补齐接收会话字段，保证 QML 模型角色一致
 * [v4.10.0] GY   2026-06-13
 * * 新增 removeSession() 方法，添加 createdAt 时间戳
-* [v4.8.3] GY   2026-06-13
+* [v4.8.3] FengChunlin   2026-06-10
 * * 文件传输使用发送方设备别名
-* [v4.7.1] GY   2026-06-05
+* [v4.7.1] GY   2026-06-07
 * * 移除 QML_SINGLETON，改为通过 AppController 暴露
-* [v4.3.4] GY   2026-06-04
+* [v4.3.4] GY   2026-05-27
 * * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
-* [v0.3.1] GY   2026-06-03
+* [v0.3.1] GY   2026-05-21
 * * Stage 3.10：实现 cancelSession()；保存/清理发送方 worker
-* [v0.3.0] GY   2026-06-03
+* [v0.3.0] FengChunlin   2026-05-19
 * * 接收会话连接 transferFinished 信号；设置接收路径
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] GY   2026-05-08
 * * Stage 3：初始版本
 */
 

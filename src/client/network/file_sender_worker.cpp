@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 4.15.1
-* @date    2026-06-17
+* @version 4.16.1
+* @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -10,26 +10,28 @@
 * 取消操作和超时检测。
 *
 * Change Log:
-* [v4.15.1] FengChunlin   2026-06-17
+* [v4.16.1] GY   2026-06-21
+* * 优化封装性，补充注释
+* [v4.15.1] FengChunlin   2026-06-16
 * * 连接 FrameCodec::errorOccurred，协议错误时 cleanup + disconnect + emit transferFinished
 * * sendNextChunk 进度节流 static 改为成员 _sendChunkCount，startTransfer 时重置
 * * kTypeTransferRsp 分支优先读 error_code，非默认值直接作为 errorCode 传递
 * * kTypeChunkAck 分支优先读 error_code，失败时按响应携带的错误码传递
-* [v4.15.0] GY   2026-06-17
+* [v4.15.0] FengChunlin   2026-06-16
 * * transferFinished 信号添加 ErrorCode 参数
 * [v4.12.1] FengChunlin   2026-06-14
 * * 修复多文件最后一块重复读取并限制大型文件写队列
 * [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹传输保留顶层目录并支持空文件夹
-* [v4.8.3] FengChunlin   2026-06-13
+* [v4.8.3] FengChunlin   2026-06-10
 * * 使用传入的设备别名作为发送方名称
-* [v4.5.3] GY   2026-06-04
+* [v4.5.3] GY   2026-06-02
 * * Stage 4.5：调大 socket buffer，减少进度信号频率
-* [v4.4.2] FengChunlin   2026-06-04
+* [v4.4.2] FengChunlin   2026-05-30
 * * Stage 4.4：添加超时检测机制
-* [v4.2.0] GY   2026-06-04
+* [v4.2.0] FengChunlin   2026-05-24
 * * Stage 4.2：支持多文件/目录传输，SHA-256 校验
-* [v0.2.0] FengChunlin   2026-06-02
+* [v0.2.0] DuRuoxian   2026-05-17
 * * Stage 3：初始版本
 */
 

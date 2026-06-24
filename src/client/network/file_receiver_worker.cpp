@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.cpp
 * @version 4.16.4
-* @date    2026-06-24
+* @date    2026-06-23
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
 *
@@ -10,40 +10,40 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
-* [v4.16.4] GY   2026-06-24
+* [v4.16.4] FengChunlin   2026-06-23
 * * 初始化后主动处理首帧路由保留的 socket 缓冲数据
 * [v4.16.1] GY   2026-06-21
 * * 通过接收请求快照和完成结果传递状态，删除 Worker 状态读取函数
-* [v4.15.1] FengChunlin   2026-06-17
+* [v4.15.1] FengChunlin   2026-06-16
 * * 连接 FrameCodec::errorOccurred，协议错误时 cleanup + disconnect + emit transferFinished
 * * handleDataChunk 进度节流 static 改为成员 _receiveChunkCount，acceptTransfer 时重置
 * * sendTransferResponse/sendChunkAck 写入 error_code 字段，调用处传入具体 ErrorCode
 * * handleTransferRequest 加强 JSON 校验：解析错误、缺字段、类型错误、负数大小、
 *   total_files 不一致、total_bytes 不一致均拒绝并返回稳定 ErrorCode
-* [v4.15.0] GY   2026-06-17
+* [v4.15.0] FengChunlin   2026-06-16
 * * 新增 initialize() 方法，在后台线程中创建 QTimer 和连接信号
 * * transferFinished 信号添加 ErrorCode 参数
 * * rejectTransfer() 发射 transferFinished 信号
 * * socket 父对象设为 this，随 worker 一起 moveToThread
 * [v4.14.0] GY   2026-06-15
 * * 提供接收完成后的实际保存路径
-* [v4.13.1] FengChunlin   2026-06-15
+* [v4.13.1] DuRuoxian   2026-06-15
 * * 向会话层提供接收文件夹相对路径列表
 * [v4.12.1] FengChunlin   2026-06-14
 * * 校验数据块、修正文件夹累计进度，并等待最终完成确认
 * [v4.11.0] FengChunlin   2026-06-13
 * * 文件夹接收保留顶层目录，校验路径并避免覆盖
-* [v4.8.3] FengChunlin   2026-06-13
+* [v4.8.3] FengChunlin   2026-06-10
 * * 传输请求中使用发送方设备别名
-* [v4.4.2] FengChunlin   2026-06-04
+* [v4.4.2] FengChunlin   2026-05-30
 * * Stage 4.4：添加超时检测机制
-* [v4.3.4] FengChunlin   2026-06-04
+* [v4.3.4] FengChunlin   2026-05-26
 * * Stage 4.3：SHA-256 校验实现，多文件接收支持
-* [v4.3.1] FengChunlin   2026-06-04
+* [v4.3.1] FengChunlin   2026-05-25
 * * Stage 4.3：解析文件列表（含 sha256），支持多文件接收
-* [v0.3.0] FengChunlin   2026-06-03
+* [v0.3.0] FengChunlin   2026-05-19
 * * 接收路径改用 _receivePath 成员，支持外部配置
-* [v0.2.0] FengChunlin   2026-06-02
+* [v0.2.0] FengChunlin   2026-05-07
 * * Stage 3：初始版本
 */
 

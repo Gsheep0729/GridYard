@@ -1,7 +1,7 @@
 /**
 * @file    p2p_server.h
 * @version 4.16.4
-* @date    2026-06-24
+* @date    2026-06-23
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器
 *
@@ -10,18 +10,18 @@
 * 两种业务共用端口但不共享状态机。
 *
 * Change Log:
-* [v4.16.4] GY   2026-06-24
+* [v4.16.4] FengChunlin   2026-06-23
 * * 按首个完整 TLV 帧分流文件传输和在线聊天连接
 * [v4.16.1] GY   2026-06-21
 * * 使用请求快照转发接收信息，删除未使用的 isListening() 访问器
-* [v4.15.1] FengChunlin   2026-06-17
+* [v4.15.1] FengChunlin   2026-06-16
 * * 删除未使用的 _threads 成员，析构改用 children() 遍历
-* [v4.15.0] GY   2026-06-17
+* [v4.15.0] FengChunlin   2026-06-16
 * * 为每个连接创建独立的 QThread，实现接收侧后台化
 * * worker + socket 移到后台线程，写盘与 SHA-256 不阻塞 UI
-* [v4.3.4] FengChunlin   2026-06-04
+* [v4.3.4] GY   2026-05-27
 * * Stage 4.3：信号签名添加 totalFiles/totalBytes 参数
-* [v0.2.0] FengChunlin   2026-06-02
+* [v0.2.0] FengChunlin   2026-05-03
 * * Stage 3：初始版本
 */
 

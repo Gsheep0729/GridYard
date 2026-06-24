@@ -5,7 +5,7 @@
 | 字段       | 内容                                                                  |
 | :--------- | :-------------------------------------------------------------------- |
 | 项目版本   | v4.16.8                                                               |
-| 当前阶段   | **Stage 5 局域网在线聊天**（已完成验收）                                      |
+| 当前阶段   | **Stage 6 本地数据层**（设计完成，阶段 A 待实施）                              |
 | 技术栈     | C++23 · Qt 6.11 · QML · CMake 4.2.3 · GCC 16.1                        |
 | 部署平台   | Manjaro Linux（开发、编译、运行三端统一）                              |
 | 团队成员   | 高扬 · 杜若贤 · 冯春霖                                                |
@@ -40,9 +40,9 @@
 | 表现层 | `src/client/Main.qml`、`src/client/ui/` | 较完整。QML 只负责页面和交互，没有直接操作网络与文件系统 |
 | 应用逻辑层 | `src/client/core/app_controller.*`、`transfer_session_manager.*` | 较完整。负责组装对象、组织发送和接收流程 |
 | 领域层 | `src/client/network/`、`dir_serializer.*`、`src/shared/` | 基本形成。包含设备发现、传输过程、协议和核心数据类型 |
-| 数据管理层 | `config_manager.*`、`logger.*`，以及 Worker 内部的文件和网络 I/O | 尚未完全独立。持久化和外部访问仍分散在 `core/` 与 `network/` 中 |
+| 数据管理层 | `config_manager.*`、`logger.*`，以及 Worker 内部的文件和网络 I/O | 尚未完全独立。Stage 6 已完成 SQLite、DDD 分层与 Proxy 设计，尚未实现 |
 
-后续若加入 SQLite 传输历史，应新增独立的数据管理模块，并通过仓储接口向应用逻辑层提供数据；同时逐步把 Worker 中可分离的文件访问细节下沉。这样才能从“职责上基本符合”推进到“目录和依赖方向都严格符合”。
+Stage 6 将新增独立的 `client/domain/` 与 `client/storage/`，通过 Repository 端口和 SQLite Proxy 向应用逻辑层提供历史数据；具体表结构、迁移与线程边界见 `doc/dev-manual/规格与设计/GridYard_Stage6_本地数据层设计.md`。实现完成后，数据管理层才能从“职责上基本符合”推进到“目录和依赖方向都严格符合”。
 
 ---
 
@@ -179,7 +179,7 @@ GridYard/
 | Stage 3 | 文件传输 | ✅ 完成 | P2P 文件传输、拖拽传输、取消功能 |
 | Stage 4 | 健壮性增强 | ✅ 完成 | 目录传输、SHA-256、协议分级防护、错误码和接收侧后台化 |
 | Stage 5 | 局域网在线聊天 | ✅ 完成 | 阶段 A/B/C/D/E/F 已完成：在线文本收发、断线恢复、会话页集成和文件传输回归均已验证 |
-| Stage 6 | 本地数据层 | ⏳ 待开始 | SQLite 聊天记录与传输历史、托盘、体验打磨 |
+| Stage 6 | 本地数据层 | 🔧 设计完成 | SQLite、DDD 分层、Repository/Proxy 与 migration 设计已完成；下一步实施阶段 A |
 | Stage 7 | 服务端与漫游 | ⭐ 加分 | 登录、对话历史与传输记录漫游、离线消息 |
 
 ---
