@@ -1,6 +1,6 @@
 /**
 * @file    chat_manager.h
-* @version 4.16.6
+* @version 5.2.0
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
@@ -9,9 +9,9 @@
 * 已发现在线的设备发起连接，不创建离线待投递队列。
 *
 * Change Log:
-* [v4.16.6] DuRuoxian   2026-06-24
+* [v5.2.0] DuRuoxian   2026-06-24
 * * 改为按设备提供稳定消息模型
-* [v4.16.5] FengChunlin   2026-06-24
+* [v5.1.0] FengChunlin   2026-06-24
 * * 新增 Stage 5 聊天连接和内存消息会话管理
 */
 

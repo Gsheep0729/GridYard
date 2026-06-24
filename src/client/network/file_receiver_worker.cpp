@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 4.16.4
+* @version 5.0.0
 * @date    2026-06-23
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
@@ -10,7 +10,7 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
-* [v4.16.4] FengChunlin   2026-06-23
+* [v5.0.0] FengChunlin   2026-06-23
 * * 初始化后主动处理首帧路由保留的 socket 缓冲数据
 * [v4.16.1] GY   2026-06-21
 * * 通过接收请求快照和完成结果传递状态，删除 Worker 状态读取函数

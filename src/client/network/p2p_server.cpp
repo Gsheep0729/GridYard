@@ -1,6 +1,6 @@
 /**
 * @file    p2p_server.cpp
-* @version 4.16.4
+* @version 5.0.0
 * @date    2026-06-23
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
@@ -10,7 +10,7 @@
 * 保证目标处理者能自行解析完整首帧。
 *
 * Change Log:
-* [v4.16.4] FengChunlin   2026-06-23
+* [v5.0.0] FengChunlin   2026-06-23
 * * 新增首帧路由和聊天连接交接逻辑
 * [v4.16.1] GY   2026-06-21
 * * 使用请求快照转发接收信息，删除未使用的 isListening() 访问器

@@ -1,6 +1,6 @@
 /**
 * @file    chat_message_model.h
-* @version 4.16.6
+* @version 5.2.0
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天内存消息列表模型
@@ -9,7 +9,7 @@
 * 列表通知与状态变更，不负责网络、协议解析或消息持久化。
 *
 * Change Log:
-* [v4.16.6] DuRuoxian   2026-06-24
+* [v5.2.0] DuRuoxian   2026-06-24
 * * 新增 Stage 5 聊天消息列表模型
 */
 
