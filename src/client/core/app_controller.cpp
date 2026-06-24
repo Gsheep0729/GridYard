@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.cpp
-* @version 4.16.8
+* @version 6.1.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   应用全局控制器实现
@@ -9,7 +9,9 @@
 * TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
 *
 * Change Log:
-* [v4.16.8] GY   2026-06-25
+* [v6.1.0] GY   2026-06-25
+* * 接入设备目录 Proxy，异步投递发现设备快照
+* [v6.0.0] GY   2026-06-25
 * * 集中管理本地历史数据库与数据库任务线程
 * [v4.16.5] FengChunlin   2026-06-24
 * * 创建并初始化在线聊天管理器
@@ -30,6 +32,7 @@
 #include "p2p_server.h"
 #include "transfer_session_manager.h"
 #include "sqlite_database_proxy.h"
+#include "sqlite_device_proxy.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -44,6 +47,7 @@ AppController::AppController(QObject *parent)
     , _transfer{new TransferSessionManager{this}}
     , _chat{new ChatManager{this}}
     , _storage{std::make_unique<SqliteDatabaseProxy>()}
+    , _deviceRepository{std::make_unique<SqliteDeviceProxy>(_storage.get())}
     , _storageThread{new QThread{this}}
     , _storageWorker{new DatabaseWorker{_storage.get()}}
 {
@@ -59,6 +63,23 @@ AppController::AppController(QObject *parent)
     connect(_storageThread, &QThread::finished, _storageWorker, &QObject::deleteLater);
     connect(_storageThread, &QThread::finished, _storageThread, &QObject::deleteLater);
     _storageThread->start();
+
+    // 发现服务只发送值对象，应用层负责投递设备目录持久化任务
+    connect(_discovery, &DiscoveryService::peerUpdated,
+            this, [this](const PeerInfo &peer) {
+                PeerRecord record;
+                record.deviceId = peer.deviceId;
+                record.deviceName = peer.deviceName;
+                record.lastIpAddress = peer.ipAddress;
+                record.lastTcpPort = peer.tcpPort;
+                record.firstSeenAt = peer.lastSeen;
+                record.lastSeenAt = peer.lastSeen;
+
+                _storageWorker->submitSave(
+                    [this, record](SqliteDatabaseProxy &, QString *errorMessage) {
+                        return _deviceRepository->upsertPeer(record, errorMessage);
+                    });
+            });
 
     // 启动 P2P 服务器
     _p2pServer->start();

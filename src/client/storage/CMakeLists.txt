@@ -3,6 +3,8 @@ add_library(gy_storage STATIC
     migration_runner.cpp
     sqlite_database_proxy.h
     sqlite_database_proxy.cpp
+    sqlite_device_proxy.h
+    sqlite_device_proxy.cpp
     database_worker.h
     database_worker.cpp
 )

@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.cpp
-* @version 4.16.1
-* @date    2026-06-21
+* @version 6.1.0
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
@@ -10,6 +10,8 @@
 * 和多网卡广播。
 *
 * Change Log:
+* [v6.1.0] GY   2026-06-25
+* * 设备首次发现或元数据变化时发射 peerUpdated 信号
 * [v4.16.1] GY   2026-06-21
 * * 提供 transferEndpoint() 对端快照查询，避免拆分读取节点字段
 * [v4.15.0] FengChunlin   2026-06-16
@@ -315,6 +317,9 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
     }
 
     _peers.insert(deviceId, info);
+
+    // 应用层据此异步更新本地设备目录，发现服务不直接依赖 storage
+    emit peerUpdated(info);
 
     if (isNew) {
         qDebug() << "DiscoveryService: 发现新设备" << deviceId << info.deviceName;
