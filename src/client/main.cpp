@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 4.16.4
+* @version 4.16.5
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   GridYard 客户端程序入口
@@ -17,6 +17,8 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v4.16.5] GY   2026-06-24
+* * 完成在线聊天连接和内存会话阶段
 * [v4.16.4] GY   2026-06-24
 * * 版本号更新到 v4.16.4
 * [v4.16.3] GY   2026-06-24
@@ -94,7 +96,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-QGuiApplication::setApplicationVersion("4.16.4");
+QGuiApplication::setApplicationVersion("4.16.5");
     QGuiApplication::setOrganizationName("CQNU-SED");
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 

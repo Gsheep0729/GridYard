@@ -17,6 +17,8 @@ qt_add_qml_module(appGridYard
         main.cpp
         core/app_controller.h
         core/app_controller.cpp
+        core/chat_manager.h
+        core/chat_manager.cpp
         core/config_manager.h
         core/config_manager.cpp
         core/dir_serializer.h
@@ -26,6 +28,8 @@ qt_add_qml_module(appGridYard
         core/transfer_session_manager.h
         core/transfer_session_manager.cpp
         network/discovery_service.cpp
+        network/chat_connection.h
+        network/chat_connection.cpp
         network/p2p_server.cpp
         network/file_sender_worker.cpp
         network/file_receiver_worker.cpp
