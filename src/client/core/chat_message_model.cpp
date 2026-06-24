@@ -77,6 +77,20 @@ void ChatMessageModel::appendMessage(const QVariantMap &message)
     emit countChanged();
 }
 
+void ChatMessageModel::prependMessages(const QList<QVariantMap> &messages)
+{
+    if (messages.isEmpty()) {
+        return;
+    }
+
+    beginInsertRows({}, 0, messages.size() - 1);
+    for (auto it = messages.crbegin(); it != messages.crend(); ++it) {
+        _messages.prepend(*it);
+    }
+    endInsertRows();
+    emit countChanged();
+}
+
 // 修改指定消息的发送状态
 bool ChatMessageModel::updateMessageStatus(const QString &messageId, int status)
 {
@@ -95,6 +109,22 @@ bool ChatMessageModel::updateMessageStatus(const QString &messageId, int status)
         return true;
     }
 
+    return false;
+}
+
+bool ChatMessageModel::removeMessage(const QString &messageId)
+{
+    for (int row = 0; row < _messages.size(); ++row) {
+        if (_messages.at(row).value("messageId").toString() != messageId) {
+            continue;
+        }
+
+        beginRemoveRows({}, row, row);
+        _messages.removeAt(row);
+        endRemoveRows();
+        emit countChanged();
+        return true;
+    }
     return false;
 }
 

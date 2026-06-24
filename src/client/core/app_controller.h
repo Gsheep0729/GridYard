@@ -40,6 +40,7 @@
 
 #include "chat_manager.h"
 #include "discovery_service.h"
+#include "history_controller.h"
 #include "transfer_session_manager.h"
 
 class QQmlEngine;
@@ -53,6 +54,7 @@ class SqliteMessageProxy;
 class SqliteTransferHistoryProxy;
 class DatabaseWorker;
 class QThread;
+class QTimer;
 
 class AppController : public QObject {
 private:
@@ -64,6 +66,7 @@ private:
     Q_PROPERTY(DiscoveryService* discovery READ discovery         CONSTANT)
     Q_PROPERTY(TransferSessionManager* transfer READ transfer     CONSTANT)
     Q_PROPERTY(ChatManager* chat READ chat                         CONSTANT)
+    Q_PROPERTY(HistoryController* history READ history             CONSTANT)
 
 public:
     virtual ~AppController() override;
@@ -82,6 +85,7 @@ public:
     TransferSessionManager *transfer() const;
     // 获取在线聊天管理器
     ChatManager *chat() const;
+    HistoryController *history() const;
 
     // 退出应用
     Q_INVOKABLE void quit();
@@ -112,4 +116,6 @@ private:
     std::unique_ptr<SqliteTransferHistoryProxy> _transferRepository;  // 传输历史持久化端口
     QThread *_storageThread = nullptr;  // 存储任务专用线程
     DatabaseWorker *_storageWorker = nullptr;  // 串行执行存储任务的 Worker
+    HistoryController *_history = nullptr;  // 本地历史查询、清理与 QML 操作入口
+    QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
 };

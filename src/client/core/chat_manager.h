@@ -57,6 +57,10 @@ public:
     Q_INVOKABLE void sendText(const QString &deviceId, const QString &content);
     // 清理一个或全部运行期会话
     Q_INVOKABLE void clearMessages(const QString &deviceId = {});
+    // 仅从当前会话模型移除一条已删除的本地历史消息
+    void removeMessage(const QString &deviceId, const QString &messageId);
+    // 在模型头部恢复一页更早的历史消息
+    void prependHistoryMessages(const QString &deviceId, const QList<MessageRecord> &records);
 
 signals:
     void messagesChanged(const QString &deviceId);

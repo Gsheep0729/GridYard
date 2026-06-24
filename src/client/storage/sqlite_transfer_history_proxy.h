@@ -35,6 +35,7 @@ public:
     // 删除早于指定时间的传输历史
     virtual bool deleteExpiredTransfers(const QDateTime &before,
                                         QString *errorMessage) override;
+    virtual bool clearAllTransfers(QString *errorMessage) override;
 
 private:
     SqliteDatabaseProxy *_database = nullptr;  // 数据库连接和事务入口

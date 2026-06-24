@@ -29,11 +29,13 @@ public:
     // 按稳定游标倒序读取一页消息
     virtual QList<MessageRecord> loadMessages(const MessageCursor &cursor, int limit,
                                               QString *errorMessage) const override;
+    virtual bool deleteMessage(const QString &messageId, QString *errorMessage) override;
     // 删除会话及其级联消息
     virtual bool deleteConversation(const QString &deviceId, QString *errorMessage) override;
     // 删除早于指定时间的消息
     virtual bool deleteExpiredMessages(const QDateTime &before,
                                        QString *errorMessage) override;
+    virtual bool clearAllMessages(QString *errorMessage) override;
 
 private:
     SqliteDatabaseProxy *_database = nullptr;  // 数据库连接和事务入口

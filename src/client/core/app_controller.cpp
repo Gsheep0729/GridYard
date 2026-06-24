@@ -34,6 +34,7 @@
 #include "database_worker.h"
 #include "discovery_service.h"
 #include "history_records.h"
+#include "history_controller.h"
 #include "p2p_server.h"
 #include "sqlite_database_proxy.h"
 #include "sqlite_device_proxy.h"
@@ -45,6 +46,7 @@
 #include <QDebug>
 #include <QMetaObject>
 #include <QThread>
+#include <QTimer>
 
 // 构造并组装应用运行期依赖
 AppController::AppController(QObject *parent)
@@ -60,6 +62,9 @@ AppController::AppController(QObject *parent)
     , _transferRepository{std::make_unique<SqliteTransferHistoryProxy>(_storage.get())}
     , _storageThread{new QThread{this}}
     , _storageWorker{new DatabaseWorker{_storage.get()}}
+    , _history{new HistoryController{_chat, _transfer, _config, _storageWorker,
+                                     _messageRepository.get(), _transferRepository.get(), this}}
+    , _retentionTimer{new QTimer{this}}
 {
     QString storageError;
     if (!_storage->initialize(ApplicationPaths::databaseDir() + "/gridyard-history.sqlite", &storageError)) {
@@ -169,6 +174,12 @@ AppController::AppController(QObject *parent)
             });
 
     loadRecentTransferHistories();
+
+    _history->cleanupExpiredRecords();
+    _retentionTimer->setInterval(60 * 60 * 1000);
+    connect(_retentionTimer, &QTimer::timeout,
+            _history, &HistoryController::cleanupExpiredRecords);
+    _retentionTimer->start();
 }
 
 // 停止存储线程，避免存储对象先于 Worker 销毁
@@ -216,6 +227,11 @@ TransferSessionManager *AppController::transfer() const
 ChatManager *AppController::chat() const
 {
     return _chat;
+}
+
+HistoryController *AppController::history() const
+{
+    return _history;
 }
 
 // 请求退出应用
