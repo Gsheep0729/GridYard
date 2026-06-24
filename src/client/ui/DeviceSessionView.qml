@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 4.16.3
+ * @version 4.16.7
  * @date    2026-06-24
  * @author  GridYard Team
  * @brief   当前设备的文件传输会话页
@@ -8,6 +8,8 @@
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
  *
  * Change Log:
+ * [v4.16.7] GY   2026-06-24
+ * * 接入聊天视图和在线文本发送入口
  * [v4.16.3] FengChunlin   2026-06-24
  * * 调整设备会话页头部、传输列表和底部发送区布局
  * [v4.16.0] DuRuoxian   2026-06-18
@@ -45,6 +47,20 @@ Frame {
    required property bool isOnline
 
    property var expandedSessions: ({})
+   property int timelineMode: 0
+   property string chatError: ""
+   readonly property bool canSendChat: isOnline
+                                      && messageInput.text.trim().length > 0
+                                      && messageInput.text.length <= 4000
+
+   function sendChatMessage(): void {
+       if (!canSendChat) {
+           return
+       }
+       AppController.chat.sendText(deviceId, messageInput.text)
+       messageInput.clear()
+       chatError = ""
+   }
 
    function isSessionExpanded(sessionId: string): bool {
        return expandedSessions[sessionId] === true
@@ -155,11 +171,36 @@ Frame {
            color: Style.Color.border
        }
 
+       TabBar {
+           id: timelineTabs
+           Layout.fillWidth: true
+           Layout.preferredHeight: 38
+           currentIndex: deviceSessionView.timelineMode
+
+           onCurrentIndexChanged: deviceSessionView.timelineMode = currentIndex
+
+           TabButton {
+               text: qsTr("聊天")
+           }
+
+           TabButton {
+               text: qsTr("传输")
+           }
+       }
+
        // ===== 记录浏览 =====
+       ChatView {
+           Layout.fillWidth: true
+           Layout.fillHeight: true
+           visible: deviceSessionView.timelineMode === 0
+           deviceId: deviceSessionView.deviceId
+       }
+
        ListView {
            id: sessionList
            Layout.fillWidth: true
-           Layout.preferredHeight:500
+           Layout.fillHeight: true
+           visible: deviceSessionView.timelineMode === 1
            clip: true
            spacing: 8
 
@@ -215,7 +256,7 @@ Frame {
                spacing: Style.Space.md
 
                Label {
-                   text: qsTr("还没有会话内容")
+                   text: qsTr("还没有传输记录")
                    color: Style.Color.textWeak
                    font.pixelSize: 20
                    font.bold: true
@@ -223,7 +264,7 @@ Frame {
                }
 
                Label {
-                   text: qsTr("发送文件，或稍后在这里查看聊天消息")
+                   text: qsTr("从下方菜单发送文件或文件夹")
                    color: Style.Color.textMuted
                    horizontalAlignment: Text.AlignHCenter
                    font.pixelSize: 13
@@ -257,65 +298,119 @@ Frame {
            color: Style.Color.border
        }
 
-       // ===== ③ 操作工具栏 =====
+       // ===== 文件操作工具栏 =====
        Rectangle {
            Layout.fillWidth: true
-           Layout.preferredHeight: 25
+           Layout.preferredHeight: 36
            color: Style.Color.surface
+
            RowLayout {
                anchors.fill: parent
-               Rectangle {
-                   Layout.preferredWidth: 15
-                   Layout.preferredHeight: 15
-                   Layout.leftMargin: 10
-                   color: _plusHovered ? "#E0E0E0" : "#F0F0F0"
-                   property bool _plusHovered: false
+               anchors.leftMargin: Style.Space.sm
+               anchors.rightMargin: Style.Space.sm
 
-                   Label {
-                       anchors.centerIn: parent
-                       text: "+"
-                       font.pixelSize: 22
-                       color: "#666666"
-                   }
-                   MouseArea {
-                       anchors.fill: parent
-                       hoverEnabled: true
-                       onEntered: parent._plusHovered = true
-                       onExited:  parent._plusHovered = false
-                       onClicked: sendMenu.open()
-                   }
+               ToolButton {
+                   icon.name: "list-add"
+                   ToolTip.text: qsTr("发送文件或文件夹")
+                   ToolTip.visible: hovered
+                   onClicked: sendMenu.open()
                }
 
                Item { Layout.fillWidth: true }
            }
        }
-       // ===== ④ 文本输入 =====
+
+       // ===== 文本输入 =====
        Rectangle {
            Layout.fillWidth: true
-           Layout.fillHeight: true
+           Layout.preferredHeight: 104
            color: Style.Color.surface
+
            RowLayout {
                anchors.fill: parent
+               anchors.margins: Style.Space.sm
+               spacing: Style.Space.sm
+
                Rectangle {
                    Layout.fillWidth: true
                    Layout.fillHeight: true
-                   radius: 4
-                   color: Style.Color.surfaceLeft
+                   radius: Style.Radius.sm
+                   color: deviceSessionView.isOnline ? Style.Color.window : Style.Color.surfaceSoft
                    border.color: Style.Color.border
                    border.width: 1
 
-                   Label {
+                   TextArea {
+                       id: messageInput
                        anchors.fill: parent
-                       Layout.topMargin: 15
-                       text: deviceSessionView.isOnline
-                             ? qsTr("输入消息...")
-                             : qsTr("设备离线，无法发送")
+                       anchors.margins: Style.Space.sm
+                       enabled: deviceSessionView.isOnline
+                       placeholderText: deviceSessionView.isOnline
+                                        ? qsTr("输入消息") : qsTr("设备离线，无法发送")
                        font.pixelSize: 14
-                       color: deviceSessionView.isOnline
-                             ? Style.Color.textWeak
-                             : Style.Color.textMuted
+                       color: Style.Color.textMain
+                       wrapMode: TextEdit.Wrap
+                       selectByMouse: true
+
+                       background: Item {}
+
+                       onTextChanged: {
+                           if (text.length > 4000) {
+                               text = text.slice(0, 4000)
+                           }
+                           deviceSessionView.chatError = ""
+                       }
+
+                       Keys.onReturnPressed: function(event) {
+                           if ((event.modifiers & Qt.ShiftModifier) === 0) {
+                               event.accepted = true
+                               deviceSessionView.sendChatMessage()
+                           }
+                       }
                    }
                }
+
+               ColumnLayout {
+                   Layout.fillHeight: true
+                   Layout.preferredWidth: 44
+                   spacing: Style.Space.xs
+
+                   ToolButton {
+                       icon.name: "mail-send"
+                       enabled: deviceSessionView.canSendChat
+                       ToolTip.text: qsTr("发送消息")
+                       ToolTip.visible: hovered
+                       onClicked: deviceSessionView.sendChatMessage()
+                       Layout.alignment: Qt.AlignHCenter
+                   }
+
+                   Label {
+                       text: "%1/4000".arg(messageInput.text.length)
+                       color: Style.Color.textWeak
+                       font.pixelSize: 10
+                       Layout.alignment: Qt.AlignHCenter
+                   }
+               }
+           }
+
+           Label {
+               anchors.left: parent.left
+               anchors.leftMargin: Style.Space.md
+               anchors.bottom: parent.bottom
+               anchors.bottomMargin: 2
+               text: deviceSessionView.chatError
+               color: Style.Color.error
+               font.pixelSize: 11
+               visible: text.length > 0
+           }
+       }
+   }
+
+   Connections {
+       target: AppController.chat
+
+       function onSendFailed(targetDeviceId, error, errorMessage) {
+           if (targetDeviceId === deviceSessionView.deviceId) {
+               deviceSessionView.chatError = errorMessage
            }
        }
    }
