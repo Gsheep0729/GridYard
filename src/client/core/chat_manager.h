@@ -1,6 +1,6 @@
 /**
 * @file    chat_manager.h
-* @version 4.16.5
+* @version 4.16.6
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
@@ -9,12 +9,15 @@
 * 已发现在线的设备发起连接，不创建离线待投递队列。
 *
 * Change Log:
+* [v4.16.6] GY   2026-06-24
+* * 改为按设备提供稳定消息模型
 * [v4.16.5] GY   2026-06-24
 * * 新增 Stage 5 聊天连接和内存消息会话管理
 */
 
 #pragma once
 
+#include "chat_message_model.h"
 #include "chat_message.h"
 
 #include <QHash>
@@ -42,6 +45,8 @@ public:
     void init(ConfigManager *config, DiscoveryService *discovery, P2pServer *p2pServer);
     // 获取指定设备的运行期消息快照
     Q_INVOKABLE QVariantList messagesForDevice(const QString &deviceId) const;
+    // 获取指定设备的稳定消息模型
+    Q_INVOKABLE QObject *messageModelForDevice(const QString &deviceId);
     // 向在线设备发送一条文本消息
     Q_INVOKABLE void sendText(const QString &deviceId, const QString &content);
     // 清理指定设备或全部设备的运行期消息
@@ -73,6 +78,8 @@ private:
                              MessageStatus status);
     // 获取连接或按发现端点创建出站连接
     ChatConnection *connectionForDevice(const QString &deviceId);
+    // 获取或创建指定设备的内存消息模型
+    ChatMessageModel *modelForDevice(const QString &deviceId);
     // 将连接登记到设备，并按既有可用连接优先的规则去重
     bool registerConnection(const QString &deviceId, ChatConnection *connection);
     // 连接失效后从设备表中移除
@@ -86,6 +93,6 @@ private:
     P2pServer *_p2pServer = nullptr;           // 聊天入站 socket 来源
 
     QHash<QString, ChatConnection *> _connections; // deviceId 对应的可用连接
-    QHash<QString, QVariantList> _sessions;         // deviceId 对应的运行期消息
+    QHash<QString, ChatMessageModel *> _models;     // deviceId 对应的运行期消息模型
     QHash<QString, QSet<QString>> _messageIds;      // 每个会话的消息去重索引
 };

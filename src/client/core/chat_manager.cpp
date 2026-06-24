@@ -1,6 +1,6 @@
 /**
 * @file    chat_manager.cpp
-* @version 4.16.5
+* @version 4.16.6
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
@@ -9,6 +9,8 @@
 * 设备标识归档消息，并使用 messageId 防止重复帧污染会话。
 *
 * Change Log:
+* [v4.16.6] GY   2026-06-24
+* * 接入按设备维护的聊天消息模型
 * [v4.16.5] GY   2026-06-24
 * * 实现 Stage 5 聊天连接、消息会话和断线清理
 */
@@ -46,7 +48,18 @@ void ChatManager::init(ConfigManager *config, DiscoveryService *discovery, P2pSe
 // 获取指定设备的运行期消息快照
 QVariantList ChatManager::messagesForDevice(const QString &deviceId) const
 {
-    return _sessions.value(deviceId);
+    const ChatMessageModel *model = _models.value(deviceId);
+    return model ? model->messages() : QVariantList{};
+}
+
+// 获取指定设备的稳定消息模型
+QObject *ChatManager::messageModelForDevice(const QString &deviceId)
+{
+    if (deviceId.isEmpty()) {
+        return nullptr;
+    }
+
+    return modelForDevice(deviceId);
 }
 
 // 向在线设备发送一条文本消息
@@ -95,16 +108,17 @@ void ChatManager::sendText(const QString &deviceId, const QString &content)
 void ChatManager::clearMessages(const QString &deviceId)
 {
     if (deviceId.isEmpty()) {
-        const QList<QString> deviceIds = _sessions.keys();
-        _sessions.clear();
+        const QList<QString> deviceIds = _models.keys();
         _messageIds.clear();
         for (const QString &id : deviceIds) {
+            _models.value(id)->clear();
             emit messagesChanged(id);
         }
         return;
     }
 
-    if (_sessions.remove(deviceId) > 0) {
+    if (_models.contains(deviceId)) {
+        _models.value(deviceId)->clear();
         _messageIds.remove(deviceId);
         emit messagesChanged(deviceId);
     }
@@ -168,7 +182,7 @@ bool ChatManager::appendMessage(const QString &deviceId, const gy::ChatMessage &
     }
 
     messageIds.insert(message.messageId);
-    _sessions[deviceId].append(messageToVariant(deviceId, message, isOutgoing, status));
+    modelForDevice(deviceId)->appendMessage(messageToVariant(deviceId, message, isOutgoing, status));
     emit messagesChanged(deviceId);
     return true;
 }
@@ -177,23 +191,13 @@ bool ChatManager::appendMessage(const QString &deviceId, const gy::ChatMessage &
 void ChatManager::updateMessageStatus(const QString &deviceId, const QString &messageId,
                                       MessageStatus status)
 {
-    auto sessionIt = _sessions.find(deviceId);
-    if (sessionIt == _sessions.end()) {
+    ChatMessageModel *model = _models.value(deviceId);
+    if (!model) {
         return;
     }
 
-    QVariantList &session = sessionIt.value();
-    for (QVariant &item : session) {
-        QVariantMap message = item.toMap();
-        if (message.value("messageId").toString() == messageId) {
-            if (message.value("status").toInt() == static_cast<int>(status)) {
-                return;
-            }
-            message.insert("status", static_cast<int>(status));
-            item = message;
-            emit messagesChanged(deviceId);
-            return;
-        }
+    if (model->updateMessageStatus(messageId, static_cast<int>(status))) {
+        emit messagesChanged(deviceId);
     }
 }
 
@@ -245,6 +249,17 @@ ChatConnection *ChatManager::connectionForDevice(const QString &deviceId)
     _connections.insert(deviceId, connection);
     connection->connectToHost(address, port);
     return connection;
+}
+
+// 获取或创建指定设备的内存消息模型
+ChatMessageModel *ChatManager::modelForDevice(const QString &deviceId)
+{
+    ChatMessageModel *model = _models.value(deviceId);
+    if (!model) {
+        model = new ChatMessageModel{this};
+        _models.insert(deviceId, model);
+    }
+    return model;
 }
 
 // 将连接登记到设备，并按既有可用连接优先的规则去重
