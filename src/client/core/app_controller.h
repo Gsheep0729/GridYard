@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 6.1.0
+* @version 6.3.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -11,6 +11,10 @@
 * 禁止使用 setContextProperty 暴露 C++ 对象。
 *
 * Change Log:
+* [v6.3.0] GY   2026-06-25
+* * 接入传输历史持久化与启动恢复
+* [v6.2.0] GY   2026-06-25
+* * 接入聊天消息持久化，监听 messageToPersist 并异步提交存储
 * [v6.1.0] GY   2026-06-25
 * * 接入设备目录 Proxy，异步投递发现设备快照
 * [v6.0.0] GY   2026-06-25
@@ -45,14 +49,14 @@ class ConfigManager;
 class P2pServer;
 class SqliteDatabaseProxy;
 class SqliteDeviceProxy;
+class SqliteMessageProxy;
+class SqliteTransferHistoryProxy;
 class DatabaseWorker;
 class QThread;
 
 class AppController : public QObject {
 private:
     Q_OBJECT
-
-public:
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(QString applicationName    READ applicationName    CONSTANT)
@@ -64,21 +68,25 @@ public:
 public:
     virtual ~AppController() override;
 
-    // QML_SINGLETON 必需的工厂；引擎调用，外界不应直接 new
+    // 创建 QML 单例实例
     static AppController *create(QQmlEngine *engine, QJSEngine *scriptEngine);
 
+    // 获取应用名称
     QString applicationName()    const;
+    // 获取应用版本
     QString applicationVersion() const;
 
-    // 获取设备发现服务（供 QML 绑定设备列表）
+    // 获取设备发现服务
     DiscoveryService *discovery() const;
     // 获取传输会话管理器
     TransferSessionManager *transfer() const;
     // 获取在线聊天管理器
     ChatManager *chat() const;
 
+    // 退出应用
     Q_INVOKABLE void quit();
-    Q_INVOKABLE void test();  // Stage 1：验证 C++↔QML 通信
+    // 验证 QML 调用链路
+    Q_INVOKABLE void test();
 
 signals:
     void appReady();
@@ -88,13 +96,20 @@ private:
     AppController(const AppController &)            = delete;
     AppController &operator=(const AppController &) = delete;
 
-    ConfigManager           *_config    = nullptr;  // 配置管理器（设备名、端口、接收路径）
-    DiscoveryService        *_discovery = nullptr;  // UDP 设备发现服务
-    P2pServer               *_p2pServer = nullptr;  // TCP P2P 文件传输服务器
-    TransferSessionManager  *_transfer  = nullptr;  // 传输会话管理器
-    ChatManager             *_chat      = nullptr;  // 在线聊天连接和内存会话管理器
-    std::unique_ptr<SqliteDatabaseProxy> _storage;   // 本地历史数据库代理
-    std::unique_ptr<SqliteDeviceProxy> _deviceRepository; // 设备目录 Repository
-    QThread *_storageThread = nullptr;        // 数据库任务专用线程
-    DatabaseWorker *_storageWorker = nullptr; // 在专用线程执行存储任务
+    // 异步恢复最近设备的聊天记录
+    void loadRecentChatHistories();
+    // 异步恢复最近传输历史
+    void loadRecentTransferHistories();
+
+    ConfigManager           *_config    = nullptr;  // 本机身份与配置来源
+    DiscoveryService        *_discovery = nullptr;  // 在线设备发现服务
+    P2pServer               *_p2pServer = nullptr;  // P2P 入站服务器
+    TransferSessionManager  *_transfer  = nullptr;  // 文件传输会话管理器
+    ChatManager             *_chat      = nullptr;  // 在线聊天管理器
+    std::unique_ptr<SqliteDatabaseProxy> _storage;  // 本地历史数据库入口
+    std::unique_ptr<SqliteDeviceProxy> _deviceRepository;  // 设备目录持久化端口
+    std::unique_ptr<SqliteMessageProxy> _messageRepository;  // 消息持久化端口
+    std::unique_ptr<SqliteTransferHistoryProxy> _transferRepository;  // 传输历史持久化端口
+    QThread *_storageThread = nullptr;  // 存储任务专用线程
+    DatabaseWorker *_storageWorker = nullptr;  // 串行执行存储任务的 Worker
 };

@@ -2,6 +2,8 @@
 
 > 局域网 P2P 文件传输与即时通讯桌面应用，全程零公网流量。
 
+当前版本：v6.3.0
+
 GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
 
 ---
@@ -277,6 +279,7 @@ GridYard/
     │   ├── storage/                     # 基础设施层（SQLite Proxy）
     │   │   ├── sqlite_database_proxy.{h,cpp}  # 连接、WAL、事务
     │   │   ├── sqlite_device_proxy.{h,cpp}    # 设备目录 Data Mapper
+    │   │   ├── sqlite_message_proxy.{h,cpp}   # 聊天消息 Data Mapper
     │   │   ├── migration_runner.{h,cpp}       # Schema 版本迁移
     │   │   └── database_worker.{h,cpp}        # 异步数据库线程
     │   ├── ui/                          # QML 界面组件
@@ -305,7 +308,8 @@ GridYard/
         ├── test_edge_cases.cpp
         ├── test_integration.cpp
         ├── test_storage_database.cpp
-        └── test_storage_device.cpp
+        ├── test_storage_device.cpp
+        └── test_storage_message.cpp
 ```
 
 ---
