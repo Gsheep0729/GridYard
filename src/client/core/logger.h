@@ -1,8 +1,8 @@
 /**
 * @file    logger.h
-* @version 6.0.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   运行日志工具（拦截 Qt 日志输出到文件）
 *
 * 单例模式，使用 qInstallMessageHandler 拦截所有 qDebug/qWarning/
@@ -11,6 +11,8 @@
 * 存放在应用数据目录 logs/ 文件夹下。线程安全。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.0.0] GY   2026-06-25
 * * 日志默认目录迁移到应用数据目录
 * [v4.16.1] GY   2026-06-21
@@ -39,7 +41,8 @@ public:
 
 private:
     explicit Logger(QObject *parent = nullptr);
-    ~Logger() override;
+    // 析构函数
+    virtual ~Logger() override;
 
     // Qt 消息处理回调
     static void messageHandler(QtMsgType type,

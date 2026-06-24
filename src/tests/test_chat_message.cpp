@@ -2,7 +2,7 @@
 * @file    test_chat_message.cpp
 * @version 4.16.3
 * @date    2026-06-24
-* @author  GridYard Team
+* @author  GY
 * @brief   在线聊天消息编解码测试
 *
 * 覆盖聊天消息的 JSON 往返、字段校验、文本长度限制和业务 Payload 上限，

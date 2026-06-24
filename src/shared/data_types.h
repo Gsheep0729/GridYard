@@ -1,8 +1,8 @@
 /**
 * @file    data_types.h
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   跨模块共享数据类型定义（值类型 / POD）
 *
 * 含 PeerInfo（局域网在线节点描述）、FileEntry（文件元数据）、
@@ -11,6 +11,8 @@
 * QObject 的身份语义不适合。QML 端通过 Q_PROPERTY MEMBER 反射访问。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 优化封装性，补充 Tell, Don't Ask 语义化方法注释
 * [v0.2.0] FengChunlin   2026-04-24

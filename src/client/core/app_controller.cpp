@@ -2,7 +2,7 @@
 * @file    app_controller.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   应用全局控制器实现
 *
 * 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、

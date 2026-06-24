@@ -2,12 +2,14 @@
 
 /**
  * @file    Style.js
- * @version 4.16.3
+ * @version 6.6.2
  * @date    2026-06-24
- * @author  GridYard Team
+ * @author  GY
  * @brief   QML 界面样式常量
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
  * [v4.16.3] FengChunlin   2026-06-24
  * * 补充三栏会话布局使用的颜色常量
  * [v4.16.0] DuRuoxian   2026-06-18

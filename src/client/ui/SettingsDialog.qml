@@ -1,14 +1,16 @@
 /**
  * @file    SettingsDialog.qml
- * @version 6.5.0
+ * @version 6.6.2
  * @date    2026-06-17
- * @author  GridYard Team
+ * @author  GY
  * @brief   设置对话框
  *
  * 编辑设备名、选择接收路径、修改 TCP 端口。
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
  * [v6.5.0] GY   2026-06-25
  * * 显示本地历史不可用状态
  * [v4.16.0] DuRuoxian   2026-06-18

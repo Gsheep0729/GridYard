@@ -1,8 +1,8 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 5.0.0
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   文件接收 Worker 实现
 *
 * 实现完整的文件接收流程：解析传输请求、通知 UI 确认、接收数据块、
@@ -10,6 +10,8 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.0.0] FengChunlin   2026-06-23
 * * 初始化后主动处理首帧路由保留的 socket 缓冲数据
 * [v4.16.1] GY   2026-06-21

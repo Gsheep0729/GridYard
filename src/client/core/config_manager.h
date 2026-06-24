@@ -1,8 +1,8 @@
 /**
 * @file    config_manager.h
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   应用配置管理器（QML 单例）
 *
 * 使用 QSettings 管理设备名、接收路径、TCP 端口、自动接收等配置。
@@ -10,6 +10,8 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 新增 isMyDevice()、fillHelloPayload()、fillSenderInfo() 语义化方法
 * [v4.11.0] FengChunlin   2026-06-13
@@ -47,7 +49,8 @@ class ConfigManager : public QObject {
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
 
-    ~ConfigManager() override;
+    // 析构函数
+    virtual ~ConfigManager() override;
 
     QString  deviceId()    const;
     QString  deviceName()  const;

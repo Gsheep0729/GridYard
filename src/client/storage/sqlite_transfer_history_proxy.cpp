@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_transfer_history_proxy.cpp
-* @version 6.3.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 传输历史 Repository 实现
 *
 * 只保存最终状态快照，不保存发送源绝对路径、文件内容或调试堆栈。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.3.0] GY 2026-06-25
 * * 新增传输历史 SQLite Proxy
 */

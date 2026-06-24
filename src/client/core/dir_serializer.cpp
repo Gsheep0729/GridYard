@@ -1,14 +1,16 @@
 /**
 * @file    dir_serializer.cpp
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   目录序列化工具实现
 *
 * 实现递归遍历目录、计算文件 SHA-256 哈希值、生成 FileItem 列表。
 * 用于传输前的文件清单生成，支持多层目录结构和空文件夹。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 优化封装性，补充注释
 * [v0.4.1] GY   2026-05-23

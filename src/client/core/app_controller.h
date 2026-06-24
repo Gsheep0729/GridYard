@@ -1,16 +1,18 @@
 /**
 * @file    app_controller.h
-* @version 6.5.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   应用全局控制器（QML 单例）
 *
 * 按四层架构要求，AppController 是中介者单例，负责组装和持有
 * DiscoveryService、TransferSessionManager、P2pServer 等下层模块。
 * QML 通过 AppController.discovery.peers 等路径触达业务对象，
-* 禁止使用 setContextProperty 暴露 C++ 对象。
+* 不使用上下文属性直接暴露 C++ 对象。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.5.0] GY   2026-06-25
 * * 向表现层发布本地历史可用性与异步保存失败状态
 * [v6.3.0] GY   2026-06-25

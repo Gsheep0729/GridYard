@@ -1,8 +1,8 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   文件发送 Worker 实现
 *
 * 实现完整的文件发送流程：建立 TCP 连接、发送传输请求、等待响应、
@@ -10,6 +10,8 @@
 * 取消操作和超时检测。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 优化封装性，补充注释
 * [v4.15.1] FengChunlin   2026-06-16

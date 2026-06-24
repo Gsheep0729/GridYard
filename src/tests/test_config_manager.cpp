@@ -2,7 +2,7 @@
 * @file    test_config_manager.cpp
 * @version 4.11.0
 * @date    2026-06-05
-* @author  GridYard Team
+* @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化

@@ -2,7 +2,7 @@
 * @file    test_storage_database.cpp
 * @version 6.6.0
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 初始化、迁移与异常恢复测试
 *
 * 使用临时数据库验证首次建库、重复初始化、缺失驱动、锁竞争和损坏库重建。

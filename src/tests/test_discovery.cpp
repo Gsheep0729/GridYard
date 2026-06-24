@@ -2,7 +2,7 @@
 * @file    test_discovery.cpp
 * @version 4.16.1
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
 * 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()
@@ -128,7 +128,7 @@ void TestDiscovery::testNodeExpiry()
     // 监听节点过期信号
     QSignalSpy spy1(_discovery1, &DiscoveryService::nodeExpired);
 
-    // 注意：节点过期需要 15 秒超时 + 3 秒清理间隔 = 约 18 秒
+    // 节点过期需要 15 秒超时 + 3 秒清理间隔，完整流程约 18 秒
     // 为了测试速度，这里只验证信号连接正确
     // 完整的过期测试需要在手动测试中进行
     QVERIFY(spy1.isValid());

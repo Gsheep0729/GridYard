@@ -1,14 +1,16 @@
 /**
 * @file    chat_message.h
-* @version 4.16.3
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   在线聊天消息值类型与 JSON 编解码接口
 *
 * 集中定义 P2P 在线文本消息的内存表示、错误分类和 JSON 编解码入口。
 * 网络层与后续聊天管理器只通过该接口构造和校验消息，避免协议字段分散。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.3] GY   2026-06-23
 * * 新增 Stage 5 在线聊天消息值类型和校验接口
 */

@@ -1,11 +1,17 @@
 /**
 * @file    database_worker.cpp
-* @version 6.5.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 异步任务执行线程实现
 *
+* Worker 在构造时获得 SqliteDatabaseProxy 指针，moveToThread 后
+* 由调用方通过 submitSave/submitLoad/submitDelete 提交任务，任务在
+* 数据库线程中串行执行，执行完后发射 taskFinished 信号。
+*
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.5.0] GY 2026-06-25
 * * 支持退出前排空已提交的存储任务
 * [v6.0.0] GY 2026-06-25

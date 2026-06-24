@@ -1,11 +1,17 @@
 /**
 * @file    sqlite_database_proxy.cpp
-* @version 6.6.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 连接、参数与迁移管理实现
 *
+* 管理每个线程独立的命名连接、PRAGMA 参数配置、WAL 模式和
+* migration 版本序列。连接由 DatabaseWorker 在专用线程中持有，
+* 应用退出时自动关闭并移除连接名。
+*
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.6.0] GY 2026-06-25
 * * 增加损坏数据库备份重建和异常验收支撑
 * [v6.0.0] GY 2026-06-25

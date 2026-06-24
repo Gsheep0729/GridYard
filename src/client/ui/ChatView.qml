@@ -2,7 +2,7 @@
  * @file    ChatView.qml
  * @version 6.6.2
  * @date    2026-06-24
- * @author  GridYard Team
+ * @author  GY
  * @brief   设备会话的在线聊天消息视图
  *
  * 仅绑定 ChatManager 提供的内存消息模型，负责空状态、气泡、时间和
