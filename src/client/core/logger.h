@@ -2,7 +2,7 @@
 * @file    logger.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   运行日志工具（拦截 Qt 日志输出到文件）
 *
 * 单例模式，使用 qInstallMessageHandler 拦截所有 qDebug/qWarning/

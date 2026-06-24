@@ -2,7 +2,7 @@
 * @file    chat_manager.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
 *
 * 发送路径先检查发现结果，再复用或建立 TCP 连接。接收路径按发送方
@@ -151,6 +151,7 @@ void ChatManager::removeMessage(const QString &deviceId, const QString &messageI
     emit messagesChanged(deviceId);
 }
 
+// 在模型头部恢复一页更早的历史消息
 void ChatManager::prependHistoryMessages(const QString &deviceId,
                                          const QList<MessageRecord> &records)
 {

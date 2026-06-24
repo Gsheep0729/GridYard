@@ -2,7 +2,7 @@
 * @file    logger.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   运行日志工具实现
 *
 * 使用 qInstallMessageHandler 拦截 Qt 日志输出，同时写入控制台和文件。

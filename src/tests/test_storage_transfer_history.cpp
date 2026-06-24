@@ -3,20 +3,20 @@
 * @version 6.3.0
 * @date    2026-06-25
 * @author  GY
-* @brief   SQLite 传输历史 Proxy 测试
+* @brief   SQLite 传输历史 Repository 测试
 *
 * Change Log:
 * [v6.3.0] GY   2026-06-25
-* * 新增传输历史 SQLite Proxy 测试
+* * 新增传输历史 SQLite Repository 测试
 */
 
 #include <QtTest/QtTest>
 
 #include "application_paths.h"
 #include "history_records.h"
-#include "sqlite_database_proxy.h"
-#include "sqlite_device_proxy.h"
-#include "sqlite_transfer_history_proxy.h"
+#include "sqlite_database_broker.h"
+#include "sqlite_device_repository.h"
+#include "sqlite_transfer_history_repository.h"
 
 #include <QFile>
 #include <QSqlDatabase>
@@ -40,11 +40,11 @@ private slots:
     void testReopenDatabase();
 
 private:
-    std::unique_ptr<SqliteDatabaseProxy> openDatabase(const QString &relativePath);
-    void seedDevice(SqliteDatabaseProxy &database, const QString &deviceId, const QString &name);
+    std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
+    void seedDevice(SqliteDatabaseBroker &database, const QString &deviceId, const QString &name);
     TransferRecord makeRecord(const QString &sessionId, const QString &peerDeviceId,
                               const QString &status, const QDateTime &startedAt);
-    int transferRowCount(SqliteDatabaseProxy &database);
+    int transferRowCount(SqliteDatabaseBroker &database);
 
     QTemporaryDir _temporaryDir;
 };
@@ -64,16 +64,16 @@ void TestStorageTransferHistory::testSaveAndQuery()
 {
     auto database = openDatabase("save-query.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy proxy(database.get());
+    SqliteTransferHistoryRepository repository(database.get());
     seedDevice(*database, "peer-A", "Device Alpha");
 
     QString error;
     const QDateTime startedAt = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs);
     const TransferRecord record = makeRecord("session-001", "peer-A", "completed", startedAt);
-    QVERIFY2(proxy.upsertFinishedTransfer(record, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
 
     TransferQuery query;
-    const QList<TransferRecord> loaded = proxy.queryTransfers(query, 10, &error);
+    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
     QVERIFY2(loaded.size() == 1, qPrintable(error));
     QCOMPARE(loaded.first().sessionId, QStringLiteral("session-001"));
     QCOMPARE(loaded.first().peerDeviceId, QStringLiteral("peer-A"));
@@ -90,7 +90,7 @@ void TestStorageTransferHistory::testUpsertBySessionId()
 {
     auto database = openDatabase("upsert.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy proxy(database.get());
+    SqliteTransferHistoryRepository repository(database.get());
     seedDevice(*database, "peer-B", "Device Bravo");
 
     QString error;
@@ -98,17 +98,17 @@ void TestStorageTransferHistory::testUpsertBySessionId()
     TransferRecord first = makeRecord("session-dup", "peer-B", "failed", startedAt);
     first.errorCode = 7;
     first.errorMessage = QString::fromUtf8("连接断开");
-    QVERIFY2(proxy.upsertFinishedTransfer(first, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(first, &error), qPrintable(error));
 
     TransferRecord second = first;
     second.recordId = "transfer-rewritten";
     second.errorCode = 8;
     second.errorMessage = QString::fromUtf8("磁盘空间不足");
-    QVERIFY2(proxy.upsertFinishedTransfer(second, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(second, &error), qPrintable(error));
 
     TransferQuery query;
     query.peerDeviceId = "peer-B";
-    const QList<TransferRecord> loaded = proxy.queryTransfers(query, 10, &error);
+    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
     QVERIFY2(loaded.size() == 1, qPrintable(error));
     QCOMPARE(loaded.first().sessionId, QStringLiteral("session-dup"));
     QCOMPARE(loaded.first().recordId, QStringLiteral("transfer-001"));
@@ -120,7 +120,7 @@ void TestStorageTransferHistory::testFiltersAndPagination()
 {
     auto database = openDatabase("filters.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy proxy(database.get());
+    SqliteTransferHistoryRepository repository(database.get());
     seedDevice(*database, "peer-C", "Device Charlie");
     seedDevice(*database, "peer-D", "Device Delta");
 
@@ -132,38 +132,38 @@ void TestStorageTransferHistory::testFiltersAndPagination()
     first.isDirectory = true;
     first.fileCount = 4;
     first.totalBytes = 1024;
-    QVERIFY2(proxy.upsertFinishedTransfer(first, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(first, &error), qPrintable(error));
 
     TransferRecord second = makeRecord("session-c2", "peer-C", "failed", base.addSecs(60));
     second.recordId = "transfer-c2";
     second.errorCode = 9;
     second.errorMessage = QString::fromUtf8("网络错误");
-    QVERIFY2(proxy.upsertFinishedTransfer(second, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(second, &error), qPrintable(error));
 
     TransferRecord third = makeRecord("session-d1", "peer-D", "cancelled", base.addSecs(120));
     third.recordId = "transfer-d1";
     third.errorCode = 10;
     third.errorMessage = QString::fromUtf8("已取消");
-    QVERIFY2(proxy.upsertFinishedTransfer(third, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(third, &error), qPrintable(error));
 
     TransferQuery peerQuery;
     peerQuery.peerDeviceId = "peer-C";
-    const QList<TransferRecord> peerRecords = proxy.queryTransfers(peerQuery, 10, &error);
+    const QList<TransferRecord> peerRecords = repository.queryTransfers(peerQuery, 10, &error);
     QVERIFY2(peerRecords.size() == 2, qPrintable(error));
     QCOMPARE(peerRecords.at(0).recordId, QStringLiteral("transfer-c2"));
     QCOMPARE(peerRecords.at(1).recordId, QStringLiteral("transfer-c1"));
 
     TransferQuery statusQuery;
     statusQuery.status = "cancelled";
-    const QList<TransferRecord> statusRecords = proxy.queryTransfers(statusQuery, 10, &error);
+    const QList<TransferRecord> statusRecords = repository.queryTransfers(statusQuery, 10, &error);
     QVERIFY2(statusRecords.size() == 1, qPrintable(error));
     QCOMPARE(statusRecords.first().recordId, QStringLiteral("transfer-d1"));
 
     TransferQuery pageQuery;
-    const QList<TransferRecord> firstPage = proxy.queryTransfers(pageQuery, 2, &error);
+    const QList<TransferRecord> firstPage = repository.queryTransfers(pageQuery, 2, &error);
     QVERIFY2(firstPage.size() == 2, qPrintable(error));
     pageQuery.beforeStartedAt = firstPage.last().startedAt;
-    const QList<TransferRecord> secondPage = proxy.queryTransfers(pageQuery, 2, &error);
+    const QList<TransferRecord> secondPage = repository.queryTransfers(pageQuery, 2, &error);
     QVERIFY2(secondPage.size() == 1, qPrintable(error));
     QCOMPARE(secondPage.first().recordId, QStringLiteral("transfer-c1"));
 }
@@ -172,7 +172,7 @@ void TestStorageTransferHistory::testDeleteTransferKeepsSourceFile()
 {
     auto database = openDatabase("delete-one.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy proxy(database.get());
+    SqliteTransferHistoryRepository repository(database.get());
     seedDevice(*database, "peer-E", "Device Echo");
 
     QFile sourceFile(_temporaryDir.path() + "/keep-source.txt");
@@ -185,10 +185,10 @@ void TestStorageTransferHistory::testDeleteTransferKeepsSourceFile()
                                        QDateTime::fromString("2026-06-25T18:00:00.000Z",
                                                              Qt::ISODateWithMs));
     record.recordId = "transfer-e1";
-    QVERIFY2(proxy.upsertFinishedTransfer(record, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
     QVERIFY(QFile::exists(sourceFile.fileName()));
 
-    QVERIFY2(proxy.deleteTransfer("transfer-e1", &error), qPrintable(error));
+    QVERIFY2(repository.deleteTransfer("transfer-e1", &error), qPrintable(error));
     QCOMPARE(transferRowCount(*database), 0);
     QVERIFY(QFile::exists(sourceFile.fileName()));
 }
@@ -197,7 +197,7 @@ void TestStorageTransferHistory::testDeleteExpiredTransfers()
 {
     auto database = openDatabase("delete-expired.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy proxy(database.get());
+    SqliteTransferHistoryRepository repository(database.get());
     seedDevice(*database, "peer-F", "Device Foxtrot");
 
     QString error;
@@ -207,13 +207,13 @@ void TestStorageTransferHistory::testDeleteExpiredTransfers()
     oldRecord.recordId = "transfer-f1";
     TransferRecord keepRecord = makeRecord("session-f2", "peer-F", "completed", keepTime);
     keepRecord.recordId = "transfer-f2";
-    QVERIFY2(proxy.upsertFinishedTransfer(oldRecord, &error), qPrintable(error));
-    QVERIFY2(proxy.upsertFinishedTransfer(keepRecord, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(oldRecord, &error), qPrintable(error));
+    QVERIFY2(repository.upsertFinishedTransfer(keepRecord, &error), qPrintable(error));
 
-    QVERIFY2(proxy.deleteExpiredTransfers(keepTime, &error), qPrintable(error));
+    QVERIFY2(repository.deleteExpiredTransfers(keepTime, &error), qPrintable(error));
 
     TransferQuery query;
-    const QList<TransferRecord> loaded = proxy.queryTransfers(query, 10, &error);
+    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
     QVERIFY2(loaded.size() == 1, qPrintable(error));
     QCOMPARE(loaded.first().recordId, QStringLiteral("transfer-f2"));
 }
@@ -225,7 +225,7 @@ void TestStorageTransferHistory::testReopenDatabase()
     {
         auto database = openDatabase("reopen.sqlite");
         QVERIFY(database);
-        SqliteTransferHistoryProxy proxy(database.get());
+        SqliteTransferHistoryRepository repository(database.get());
         seedDevice(*database, "peer-G", "Device Golf");
 
         QString error;
@@ -235,7 +235,7 @@ void TestStorageTransferHistory::testReopenDatabase()
         record.recordId = "transfer-g1";
         record.errorCode = 11;
         record.errorMessage = QString::fromUtf8("对方拒绝");
-        QVERIFY2(proxy.upsertFinishedTransfer(record, &error), qPrintable(error));
+        QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
 
         // WAL 模式下，关闭前做一次 checkpoint 确保数据落盘到主库
         QSqlDatabase conn = database->connectionForWorkerThread(&error);
@@ -251,18 +251,18 @@ void TestStorageTransferHistory::testReopenDatabase()
 
     auto reopened = openDatabase("reopen.sqlite");
     QVERIFY(reopened);
-    SqliteTransferHistoryProxy proxy(reopened.get());
+    SqliteTransferHistoryRepository repository(reopened.get());
     QString error;
     TransferQuery query;
-    const QList<TransferRecord> loaded = proxy.queryTransfers(query, 10, &error);
+    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
     QVERIFY2(loaded.size() == 1, qPrintable(error));
     QCOMPARE(loaded.first().recordId, QStringLiteral("transfer-g1"));
     QCOMPARE(loaded.first().status, QStringLiteral("rejected"));
 }
 
-std::unique_ptr<SqliteDatabaseProxy> TestStorageTransferHistory::openDatabase(const QString &relativePath)
+std::unique_ptr<SqliteDatabaseBroker> TestStorageTransferHistory::openDatabase(const QString &relativePath)
 {
-    auto database = std::make_unique<SqliteDatabaseProxy>();
+    auto database = std::make_unique<SqliteDatabaseBroker>();
     QString error;
     if (!database->initialize(_temporaryDir.path() + "/" + relativePath, &error)) {
         qWarning() << error;
@@ -271,10 +271,10 @@ std::unique_ptr<SqliteDatabaseProxy> TestStorageTransferHistory::openDatabase(co
     return database;
 }
 
-void TestStorageTransferHistory::seedDevice(SqliteDatabaseProxy &database, const QString &deviceId,
+void TestStorageTransferHistory::seedDevice(SqliteDatabaseBroker &database, const QString &deviceId,
                                             const QString &name)
 {
-    SqliteDeviceProxy proxy(&database);
+    SqliteDeviceRepository repository(&database);
     PeerRecord peer;
     peer.deviceId = deviceId;
     peer.deviceName = name;
@@ -283,7 +283,7 @@ void TestStorageTransferHistory::seedDevice(SqliteDatabaseProxy &database, const
     peer.firstSeenAt = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
     peer.lastSeenAt = peer.firstSeenAt;
     QString error;
-    QVERIFY2(proxy.upsertPeer(peer, &error), qPrintable(error));
+    QVERIFY2(repository.upsertPeer(peer, &error), qPrintable(error));
 }
 
 TransferRecord TestStorageTransferHistory::makeRecord(const QString &sessionId,
@@ -307,7 +307,7 @@ TransferRecord TestStorageTransferHistory::makeRecord(const QString &sessionId,
     return record;
 }
 
-int TestStorageTransferHistory::transferRowCount(SqliteDatabaseProxy &database)
+int TestStorageTransferHistory::transferRowCount(SqliteDatabaseBroker &database)
 {
     QString error;
     QSqlDatabase connection = database.connectionForWorkerThread(&error);

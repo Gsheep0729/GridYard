@@ -2,7 +2,7 @@
 * @file    database_worker.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 异步任务执行线程
 *
 * Worker 持有专用线程中的任务队列，任务只访问该线程自己的数据库连接，
@@ -23,16 +23,16 @@
 
 #include <QObject>
 
-class SqliteDatabaseProxy;
+class SqliteDatabaseBroker;
 
 class DatabaseWorker : public QObject {
 private:
     Q_OBJECT
 
 public:
-    using DatabaseTask = std::function<bool(SqliteDatabaseProxy &, QString *)>;
+    using DatabaseTask = std::function<bool(SqliteDatabaseBroker &, QString *)>;
 
-    explicit DatabaseWorker(SqliteDatabaseProxy *database);
+    explicit DatabaseWorker(SqliteDatabaseBroker *database);
     virtual ~DatabaseWorker() override;
 
     DatabaseWorker(const DatabaseWorker &) = delete;
@@ -54,6 +54,6 @@ private:
     // 在数据库线程中执行已投递任务
     void executeTask(const DatabaseTask &task);
 
-    SqliteDatabaseProxy *_database = nullptr;  // 由应用层持有的连接代理
+    SqliteDatabaseBroker *_database = nullptr;  // 由应用层持有的连接代管者
     std::atomic_bool _acceptingTasks{true};  // 退出开始后拒绝新任务，避免排空边界持续后移
 };

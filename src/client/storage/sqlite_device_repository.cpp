@@ -1,8 +1,8 @@
 /**
-* @file    sqlite_device_proxy.cpp
+* @file    sqlite_device_repository.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
@@ -11,12 +11,12 @@
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.1.0] GY   2026-06-25
-* * 新增设备目录 SQLite Proxy
+* * 新增设备目录 SQLite Repository
 */
 
-#include "sqlite_device_proxy.h"
+#include "sqlite_device_repository.h"
 
-#include "sqlite_database_proxy.h"
+#include "sqlite_database_broker.h"
 
 #include <QSqlError>
 #include <QSqlQuery>
@@ -26,16 +26,16 @@ constexpr qint64 kDiscoveryWriteIntervalMs = 30000; // 相同发现快照最短�
 
 // 将 UTC 时间转换为 SQLite 使用的 ISO 文本
 QString sqlTime(const QDateTime &time) { return time.toUTC().toString(Qt::ISODateWithMs); }
-} // namespace
+}
 
 // 构造函数
-SqliteDeviceProxy::SqliteDeviceProxy(SqliteDatabaseProxy *database) : _database(database) {}
+SqliteDeviceRepository::SqliteDeviceRepository(SqliteDatabaseBroker *database) : _database(database) {}
 
 // 新增或更新设备目录快照
-bool SqliteDeviceProxy::upsertPeer(const PeerRecord &record, QString *errorMessage) {
+bool SqliteDeviceRepository::upsertPeer(const PeerRecord &record, QString *errorMessage) {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -82,7 +82,7 @@ bool SqliteDeviceProxy::upsertPeer(const PeerRecord &record, QString *errorMessa
 }
 
 // 更新设备最近聊天活动时间
-bool SqliteDeviceProxy::markChatActivity(const QString &deviceId, const QDateTime &time,
+bool SqliteDeviceRepository::markChatActivity(const QString &deviceId, const QDateTime &time,
                                          QString *errorMessage) {
     return _database &&
            _database->runInTransaction(
@@ -101,7 +101,7 @@ bool SqliteDeviceProxy::markChatActivity(const QString &deviceId, const QDateTim
 }
 
 // 更新设备最近传输活动时间
-bool SqliteDeviceProxy::markTransferActivity(const QString &deviceId, const QDateTime &time,
+bool SqliteDeviceRepository::markTransferActivity(const QString &deviceId, const QDateTime &time,
                                              QString *errorMessage) {
     return _database && _database->runInTransaction(
                             [&](QSqlDatabase &database, QString *taskError) {
@@ -120,11 +120,11 @@ bool SqliteDeviceProxy::markTransferActivity(const QString &deviceId, const QDat
 }
 
 // 获取按最近活动排序的设备目录
-QList<PeerRecord> SqliteDeviceProxy::recentPeers(int limit, QString *errorMessage) const {
+QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorMessage) const {
     QList<PeerRecord> records;
     if (!_database) {
         if (errorMessage)
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         return records;
     }
     QSqlDatabase database = _database->connectionForWorkerThread(errorMessage);

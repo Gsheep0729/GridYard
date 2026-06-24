@@ -19,10 +19,10 @@
 #include "history_controller.h"
 #include "history_records.h"
 #include "history_repositories.h"
-#include "sqlite_database_proxy.h"
-#include "sqlite_device_proxy.h"
-#include "sqlite_message_proxy.h"
-#include "sqlite_transfer_history_proxy.h"
+#include "sqlite_database_broker.h"
+#include "sqlite_device_repository.h"
+#include "sqlite_message_repository.h"
+#include "sqlite_transfer_history_repository.h"
 
 #include <QSignalSpy>
 #include <QSqlDatabase>
@@ -52,15 +52,15 @@ private slots:
     void testConfigManagerRetentionDaysPersists();
 
 private:
-    std::unique_ptr<SqliteDatabaseProxy> openDatabase(const QString &relativePath);
-    void seedDevice(SqliteDatabaseProxy &database, const QString &deviceId, const QString &name);
-    void seedMessage(SqliteMessageProxy &proxy, const QString &deviceId, const QString &msgId,
+    std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
+    void seedDevice(SqliteDatabaseBroker &database, const QString &deviceId, const QString &name);
+    void seedMessage(SqliteMessageRepository &repository, const QString &deviceId, const QString &msgId,
                      const QDateTime &sentAt, const QString &content = "test");
-    void seedTransfer(SqliteTransferHistoryProxy &proxy, const QString &sessionId,
+    void seedTransfer(SqliteTransferHistoryRepository &repository, const QString &sessionId,
                       const QString &peerDeviceId, const QString &status, const QDateTime &startedAt);
-    int messageRowCount(SqliteDatabaseProxy &database);
-    int transferRowCount(SqliteDatabaseProxy &database);
-    int deviceRowCount(SqliteDatabaseProxy &database);
+    int messageRowCount(SqliteDatabaseBroker &database);
+    int transferRowCount(SqliteDatabaseBroker &database);
+    int deviceRowCount(SqliteDatabaseBroker &database);
 
     QTemporaryDir _temporaryDir;
 };
@@ -80,12 +80,12 @@ void TestHistoryController::testChatPaginationCursorAdvances()
 {
     auto database = openDatabase("cursor-advance.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     seedDevice(*database, "peer-A", "Device Alpha");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs);
     for (int i = 0; i < 10; ++i) {
-        seedMessage(messageProxy, "peer-A",
+        seedMessage(messageRepository, "peer-A",
                     QStringLiteral("cursor-%1").arg(i),
                     base.addSecs(i * 60),
                     QStringLiteral("Message %1").arg(i));
@@ -97,9 +97,9 @@ void TestHistoryController::testChatPaginationCursorAdvances()
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     QSignalSpy spy1(&controller, &HistoryController::messagesLoaded);
     controller.loadMoreMessages("peer-A");
@@ -124,12 +124,12 @@ void TestHistoryController::testChatPaginationNoDuplicates()
 {
     auto database = openDatabase("no-dup.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     seedDevice(*database, "peer-B", "Device Bravo");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T11:00:00.000Z", Qt::ISODateWithMs);
-    seedMessage(messageProxy, "peer-B", "dup-001", base, "first");
-    seedMessage(messageProxy, "peer-B", "dup-002", base.addSecs(60), "second");
+    seedMessage(messageRepository, "peer-B", "dup-001", base, "first");
+    seedMessage(messageRepository, "peer-B", "dup-002", base.addSecs(60), "second");
 
     ChatManager chat;
     DatabaseWorker worker(database.get());
@@ -137,9 +137,9 @@ void TestHistoryController::testChatPaginationNoDuplicates()
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     QSignalSpy spy(&controller, &HistoryController::messagesLoaded);
     controller.loadMoreMessages("peer-B");
@@ -160,22 +160,22 @@ void TestHistoryController::testTransferFilterByDevice()
 {
     auto database = openDatabase("filter-device.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     seedDevice(*database, "peer-C", "Device Charlie");
     seedDevice(*database, "peer-D", "Device Delta");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T12:00:00.000Z", Qt::ISODateWithMs);
-    seedTransfer(transferProxy, "s-c1", "peer-C", "completed", base);
-    seedTransfer(transferProxy, "s-d1", "peer-D", "completed", base.addSecs(60));
+    seedTransfer(transferRepository, "s-c1", "peer-C", "completed", base);
+    seedTransfer(transferRepository, "s-d1", "peer-D", "completed", base.addSecs(60));
 
     DatabaseWorker worker(database.get());
     QThread workerThread;
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     QSignalSpy spy(&controller, &HistoryController::transfersChanged);
     QVariantMap filter;
@@ -196,22 +196,22 @@ void TestHistoryController::testTransferFilterByStatus()
 {
     auto database = openDatabase("filter-status.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     seedDevice(*database, "peer-E", "Device Echo");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs);
-    seedTransfer(transferProxy, "s-e1", "peer-E", "completed", base);
-    seedTransfer(transferProxy, "s-e2", "peer-E", "failed", base.addSecs(60));
-    seedTransfer(transferProxy, "s-e3", "peer-E", "cancelled", base.addSecs(120));
+    seedTransfer(transferRepository, "s-e1", "peer-E", "completed", base);
+    seedTransfer(transferRepository, "s-e2", "peer-E", "failed", base.addSecs(60));
+    seedTransfer(transferRepository, "s-e3", "peer-E", "cancelled", base.addSecs(120));
 
     DatabaseWorker worker(database.get());
     QThread workerThread;
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     QSignalSpy spy(&controller, &HistoryController::transfersChanged);
     QVariantMap filter;
@@ -232,12 +232,12 @@ void TestHistoryController::testDeleteMessageOnlyAffectsTarget()
 {
     auto database = openDatabase("del-msg.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     seedDevice(*database, "peer-F", "Device Foxtrot");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs);
-    seedMessage(messageProxy, "peer-F", "del-001", base, "keep");
-    seedMessage(messageProxy, "peer-F", "del-002", base.addSecs(60), "remove");
+    seedMessage(messageRepository, "peer-F", "del-001", base, "keep");
+    seedMessage(messageRepository, "peer-F", "del-002", base.addSecs(60), "remove");
 
     ChatManager chat;
     MessageRecord m1;
@@ -263,9 +263,9 @@ void TestHistoryController::testDeleteMessageOnlyAffectsTarget()
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     controller.deleteMessage("peer-F", "del-002");
     QTest::qWait(500);
@@ -281,13 +281,13 @@ void TestHistoryController::testDeleteConversationOnlyAffectsTarget()
 {
     auto database = openDatabase("del-conv.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     seedDevice(*database, "peer-G", "Device Golf");
     seedDevice(*database, "peer-H", "Device Hotel");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
-    seedMessage(messageProxy, "peer-G", "gc-001", base, "to-delete");
-    seedMessage(messageProxy, "peer-H", "hc-001", base.addSecs(60), "to-keep");
+    seedMessage(messageRepository, "peer-G", "gc-001", base, "to-delete");
+    seedMessage(messageRepository, "peer-H", "hc-001", base.addSecs(60), "to-keep");
 
     ChatManager chat;
     MessageRecord mg;
@@ -318,9 +318,9 @@ void TestHistoryController::testDeleteConversationOnlyAffectsTarget()
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     controller.deleteConversation("peer-G");
     QTest::qWait(500);
@@ -336,21 +336,21 @@ void TestHistoryController::testDeleteTransferOnlyAffectsTarget()
 {
     auto database = openDatabase("del-transfer.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     seedDevice(*database, "peer-I", "Device India");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs);
-    seedTransfer(transferProxy, "s-i1", "peer-I", "completed", base);
-    seedTransfer(transferProxy, "s-i2", "peer-I", "failed", base.addSecs(60));
+    seedTransfer(transferRepository, "s-i1", "peer-I", "completed", base);
+    seedTransfer(transferRepository, "s-i2", "peer-I", "failed", base.addSecs(60));
 
     DatabaseWorker worker(database.get());
     QThread workerThread;
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     QSignalSpy spy(&controller, &HistoryController::transfersChanged);
     controller.queryTransfers();
@@ -371,11 +371,11 @@ void TestHistoryController::testClearAllMessagesPreservesDevices()
 {
     auto database = openDatabase("clear-msg.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     seedDevice(*database, "peer-J", "Device Juliet");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs);
-    seedMessage(messageProxy, "peer-J", "cj-001", base);
+    seedMessage(messageRepository, "peer-J", "cj-001", base);
 
     ChatManager chat;
     DatabaseWorker worker(database.get());
@@ -383,9 +383,9 @@ void TestHistoryController::testClearAllMessagesPreservesDevices()
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     controller.clearAllMessages();
     QTest::qWait(500);
@@ -401,20 +401,20 @@ void TestHistoryController::testClearAllTransfersPreservesDevices()
 {
     auto database = openDatabase("clear-transfer.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     seedDevice(*database, "peer-K", "Device Kilo");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T18:00:00.000Z", Qt::ISODateWithMs);
-    seedTransfer(transferProxy, "s-k1", "peer-K", "completed", base);
+    seedTransfer(transferRepository, "s-k1", "peer-K", "completed", base);
 
     DatabaseWorker worker(database.get());
     QThread workerThread;
     worker.moveToThread(&workerThread);
     workerThread.start();
 
-    SqliteMessageProxy messageProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
     HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     controller.clearAllTransfers();
     QTest::qWait(500);
@@ -430,16 +430,16 @@ void TestHistoryController::testRetentionDaysCleansExpired()
 {
     auto database = openDatabase("retention.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy messageProxy(database.get());
-    SqliteTransferHistoryProxy transferProxy(database.get());
+    SqliteMessageRepository messageRepository(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
     seedDevice(*database, "peer-L", "Device Lima");
 
     const QDateTime old = QDateTime::currentDateTimeUtc().addDays(-30);
     const QDateTime recent = QDateTime::currentDateTimeUtc().addDays(-3);
-    seedMessage(messageProxy, "peer-L", "old-msg", old, "old");
-    seedMessage(messageProxy, "peer-L", "recent-msg", recent, "recent");
-    seedTransfer(transferProxy, "s-old", "peer-L", "completed", old);
-    seedTransfer(transferProxy, "s-recent", "peer-L", "completed", recent);
+    seedMessage(messageRepository, "peer-L", "old-msg", old, "old");
+    seedMessage(messageRepository, "peer-L", "recent-msg", recent, "recent");
+    seedTransfer(transferRepository, "s-old", "peer-L", "completed", old);
+    seedTransfer(transferRepository, "s-recent", "peer-L", "completed", recent);
 
     QTemporaryDir configDir;
     qputenv("GRIDYARD_CONFIG", (configDir.path() + "/retention.ini").toUtf8());
@@ -454,7 +454,7 @@ void TestHistoryController::testRetentionDaysCleansExpired()
 
     ChatManager chat;
     HistoryController controller(&chat, nullptr, config, &worker,
-                                 &messageProxy, &transferProxy);
+                                 &messageRepository, &transferRepository);
 
     controller.cleanupExpiredRecords();
     QTest::qWait(500);
@@ -493,10 +493,10 @@ void TestHistoryController::testConfigManagerRetentionDaysPersists()
     qunsetenv("GRIDYARD_NAME");
 }
 
-std::unique_ptr<SqliteDatabaseProxy> TestHistoryController::openDatabase(
+std::unique_ptr<SqliteDatabaseBroker> TestHistoryController::openDatabase(
     const QString &relativePath)
 {
-    auto database = std::make_unique<SqliteDatabaseProxy>();
+    auto database = std::make_unique<SqliteDatabaseBroker>();
     QString error;
     if (!database->initialize(_temporaryDir.path() + "/" + relativePath, &error)) {
         qWarning() << error;
@@ -505,10 +505,10 @@ std::unique_ptr<SqliteDatabaseProxy> TestHistoryController::openDatabase(
     return database;
 }
 
-void TestHistoryController::seedDevice(SqliteDatabaseProxy &database,
+void TestHistoryController::seedDevice(SqliteDatabaseBroker &database,
                                        const QString &deviceId, const QString &name)
 {
-    SqliteDeviceProxy proxy(&database);
+    SqliteDeviceRepository repository(&database);
     PeerRecord peer;
     peer.deviceId = deviceId;
     peer.deviceName = name;
@@ -517,10 +517,10 @@ void TestHistoryController::seedDevice(SqliteDatabaseProxy &database,
     peer.firstSeenAt = QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs);
     peer.lastSeenAt = peer.firstSeenAt;
     QString error;
-    proxy.upsertPeer(peer, &error);
+    repository.upsertPeer(peer, &error);
 }
 
-void TestHistoryController::seedMessage(SqliteMessageProxy &proxy, const QString &deviceId,
+void TestHistoryController::seedMessage(SqliteMessageRepository &repository, const QString &deviceId,
                                         const QString &msgId, const QDateTime &sentAt,
                                         const QString &content)
 {
@@ -535,10 +535,10 @@ void TestHistoryController::seedMessage(SqliteMessageProxy &proxy, const QString
     record.localStatus = 1;
     record.createdAt = sentAt;
     QString error;
-    proxy.saveMessage(record, &error);
+    repository.saveMessage(record, &error);
 }
 
-void TestHistoryController::seedTransfer(SqliteTransferHistoryProxy &proxy,
+void TestHistoryController::seedTransfer(SqliteTransferHistoryRepository &repository,
                                          const QString &sessionId,
                                          const QString &peerDeviceId,
                                          const QString &status,
@@ -559,10 +559,10 @@ void TestHistoryController::seedTransfer(SqliteTransferHistoryProxy &proxy,
     record.finishedAt = startedAt.addSecs(30);
     record.errorCode = 0;
     QString error;
-    proxy.upsertFinishedTransfer(record, &error);
+    repository.upsertFinishedTransfer(record, &error);
 }
 
-int TestHistoryController::messageRowCount(SqliteDatabaseProxy &database)
+int TestHistoryController::messageRowCount(SqliteDatabaseBroker &database)
 {
     QString error;
     QSqlDatabase conn = database.connectionForWorkerThread(&error);
@@ -576,7 +576,7 @@ int TestHistoryController::messageRowCount(SqliteDatabaseProxy &database)
     return query.value(0).toInt();
 }
 
-int TestHistoryController::transferRowCount(SqliteDatabaseProxy &database)
+int TestHistoryController::transferRowCount(SqliteDatabaseBroker &database)
 {
     QString error;
     QSqlDatabase conn = database.connectionForWorkerThread(&error);
@@ -590,7 +590,7 @@ int TestHistoryController::transferRowCount(SqliteDatabaseProxy &database)
     return query.value(0).toInt();
 }
 
-int TestHistoryController::deviceRowCount(SqliteDatabaseProxy &database)
+int TestHistoryController::deviceRowCount(SqliteDatabaseBroker &database)
 {
     QString error;
     QSqlDatabase conn = database.connectionForWorkerThread(&error);

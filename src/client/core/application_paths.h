@@ -2,7 +2,7 @@
 * @file    application_paths.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   应用数据目录统一入口
 *
 * 日志和数据库共享应用数据根目录，测试可覆盖为临时目录。

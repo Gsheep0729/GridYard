@@ -1,8 +1,8 @@
 /**
-* @file    sqlite_message_proxy.cpp
+* @file    sqlite_message_repository.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 聊天消息 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；消息写入前先确保会话行存在。
@@ -11,12 +11,12 @@
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.2.0] GY 2026-06-25
-* * 新增聊天消息 SQLite Proxy
+* * 新增聊天消息 SQLite Repository
 */
 
-#include "sqlite_message_proxy.h"
+#include "sqlite_message_repository.h"
 
-#include "sqlite_database_proxy.h"
+#include "sqlite_database_broker.h"
 
 #include <QSqlError>
 #include <QSqlQuery>
@@ -26,20 +26,20 @@ namespace {
 QString sqlTime(const QDateTime &time) {
     return time.toUTC().toString(Qt::ISODateWithMs);
 }
-} // namespace
+}
 
 // 构造函数
-SqliteMessageProxy::SqliteMessageProxy(SqliteDatabaseProxy *database)
+SqliteMessageRepository::SqliteMessageRepository(SqliteDatabaseBroker *database)
     : _database(database)
 {
 }
 
 // 幂等保存聊天消息
-bool SqliteMessageProxy::saveMessage(const MessageRecord &record, QString *errorMessage)
+bool SqliteMessageRepository::saveMessage(const MessageRecord &record, QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -107,7 +107,7 @@ bool SqliteMessageProxy::saveMessage(const MessageRecord &record, QString *error
 }
 
 // 按游标分页加载聊天记录
-QList<MessageRecord> SqliteMessageProxy::loadMessages(const MessageCursor &cursor,
+QList<MessageRecord> SqliteMessageRepository::loadMessages(const MessageCursor &cursor,
                                                         int limit,
                                                         QString *errorMessage) const
 {
@@ -118,7 +118,7 @@ QList<MessageRecord> SqliteMessageProxy::loadMessages(const MessageCursor &curso
     }
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return records;
     }
@@ -177,11 +177,11 @@ QList<MessageRecord> SqliteMessageProxy::loadMessages(const MessageCursor &curso
 }
 
 // 删除指定设备的所有聊天记录（CASCADE 同时清理会话行）
-bool SqliteMessageProxy::deleteConversation(const QString &deviceId, QString *errorMessage)
+bool SqliteMessageRepository::deleteConversation(const QString &deviceId, QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -204,11 +204,11 @@ bool SqliteMessageProxy::deleteConversation(const QString &deviceId, QString *er
 }
 
 // 删除单条聊天消息
-bool SqliteMessageProxy::deleteMessage(const QString &messageId, QString *errorMessage)
+bool SqliteMessageRepository::deleteMessage(const QString &messageId, QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -230,11 +230,11 @@ bool SqliteMessageProxy::deleteMessage(const QString &messageId, QString *errorM
 }
 
 // 删除早于指定时间的聊天记录
-bool SqliteMessageProxy::deleteExpiredMessages(const QDateTime &before, QString *errorMessage)
+bool SqliteMessageRepository::deleteExpiredMessages(const QDateTime &before, QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -257,11 +257,11 @@ bool SqliteMessageProxy::deleteExpiredMessages(const QDateTime &before, QString 
 }
 
 // 清空全部聊天消息和会话
-bool SqliteMessageProxy::clearAllMessages(QString *errorMessage)
+bool SqliteMessageRepository::clearAllMessages(QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }

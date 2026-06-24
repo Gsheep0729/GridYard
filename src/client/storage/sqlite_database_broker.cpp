@@ -1,8 +1,8 @@
 /**
-* @file    sqlite_database_proxy.cpp
+* @file    sqlite_database_broker.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理实现
 *
 * 管理每个线程独立的命名连接、PRAGMA 参数配置、WAL 模式和
@@ -15,9 +15,9 @@
 * [v6.6.0] GY 2026-06-25
 * * 增加损坏数据库备份重建和异常验收支撑
 * [v6.0.0] GY 2026-06-25
-* * 新增 SQLite 数据库代理基础
+* * 新增 SQLite 数据库 Broker 基础
 */
-#include "sqlite_database_proxy.h"
+#include "sqlite_database_broker.h"
 
 #include "migration_runner.h"
 
@@ -33,25 +33,25 @@
 #include <utility>
 
 // 构造函数
-SqliteDatabaseProxy::SqliteDatabaseProxy()
+SqliteDatabaseBroker::SqliteDatabaseBroker()
     : _driverProvider(QSqlDatabase::drivers)
 {
 }
 
 // 使用自定义驱动来源构造，供缺失驱动场景测试
-SqliteDatabaseProxy::SqliteDatabaseProxy(DriverProvider driverProvider)
+SqliteDatabaseBroker::SqliteDatabaseBroker(DriverProvider driverProvider)
     : _driverProvider(std::move(driverProvider))
 {
 }
 
 // 析构函数，关闭并移除初始化线程的命名连接
-SqliteDatabaseProxy::~SqliteDatabaseProxy()
+SqliteDatabaseBroker::~SqliteDatabaseBroker()
 {
     closeMainConnection();
 }
 
 // 打开数据库、配置连接参数并执行迁移
-bool SqliteDatabaseProxy::initialize(const QString &databasePath, QString *errorMessage)
+bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *errorMessage)
 {
     _available = false;
     if (errorMessage) {
@@ -116,7 +116,7 @@ bool SqliteDatabaseProxy::initialize(const QString &databasePath, QString *error
 }
 
 // 打开主连接并完成参数配置与迁移
-bool SqliteDatabaseProxy::openMainConnection(QString *errorMessage)
+bool SqliteDatabaseBroker::openMainConnection(QString *errorMessage)
 {
     QSqlDatabase database = QSqlDatabase::addDatabase("QSQLITE", _mainConnectionName);
     database.setDatabaseName(_databasePath);
@@ -135,7 +135,7 @@ bool SqliteDatabaseProxy::openMainConnection(QString *errorMessage)
 }
 
 // 关闭并移除初始化线程的主连接
-void SqliteDatabaseProxy::closeMainConnection()
+void SqliteDatabaseBroker::closeMainConnection()
 {
     if (_mainConnectionName.isEmpty() || !QSqlDatabase::contains(_mainConnectionName)) {
         return;
@@ -149,7 +149,7 @@ void SqliteDatabaseProxy::closeMainConnection()
 }
 
 // 返回当前线程独占的数据库连接
-QSqlDatabase SqliteDatabaseProxy::connectionForWorkerThread(QString *errorMessage) const
+QSqlDatabase SqliteDatabaseBroker::connectionForWorkerThread(QString *errorMessage) const
 {
     if (!_available) {
         if (errorMessage) {
@@ -174,7 +174,7 @@ QSqlDatabase SqliteDatabaseProxy::connectionForWorkerThread(QString *errorMessag
 }
 
 // 关闭并移除当前线程的命名连接
-void SqliteDatabaseProxy::closeConnectionForCurrentThread() const
+void SqliteDatabaseBroker::closeConnectionForCurrentThread() const
 {
     const QString connectionName = connectionNameForCurrentThread();
     if (!QSqlDatabase::contains(connectionName)) {
@@ -189,7 +189,7 @@ void SqliteDatabaseProxy::closeConnectionForCurrentThread() const
 }
 
 // 在短事务中执行跨表持久化任务
-bool SqliteDatabaseProxy::runInTransaction(const TransactionTask &task, QString *errorMessage) const
+bool SqliteDatabaseBroker::runInTransaction(const TransactionTask &task, QString *errorMessage) const
 {
     QSqlDatabase database = connectionForWorkerThread(errorMessage);
     if (!database.isValid() || !database.transaction()) {
@@ -215,7 +215,7 @@ bool SqliteDatabaseProxy::runInTransaction(const TransactionTask &task, QString 
 }
 
 // 获取当前 Schema 版本
-int SqliteDatabaseProxy::schemaVersion() const
+int SqliteDatabaseBroker::schemaVersion() const
 {
     QString errorMessage;
     QSqlDatabase database = connectionForWorkerThread(&errorMessage);
@@ -226,13 +226,13 @@ int SqliteDatabaseProxy::schemaVersion() const
 }
 
 // 判断数据库是否已成功初始化
-bool SqliteDatabaseProxy::isAvailable() const
+bool SqliteDatabaseBroker::isAvailable() const
 {
     return _available;
 }
 
 // 应用所有线程都需要的 SQLite 连接参数
-bool SqliteDatabaseProxy::configureConnection(QSqlDatabase &database, QString *errorMessage) const
+bool SqliteDatabaseBroker::configureConnection(QSqlDatabase &database, QString *errorMessage) const
 {
     QSqlQuery query(database);
     const QStringList pragmas = {
@@ -255,7 +255,7 @@ bool SqliteDatabaseProxy::configureConnection(QSqlDatabase &database, QString *e
 }
 
 // 将损坏数据库备份到同目录的 .corrupt 时间戳文件
-bool SqliteDatabaseProxy::backupCorruptDatabase(QString *errorMessage) const
+bool SqliteDatabaseBroker::backupCorruptDatabase(QString *errorMessage) const
 {
     const QString timestamp = QDateTime::currentDateTimeUtc().toString("yyyyMMddHHmmsszzz");
     const QString backupPath = _databasePath + ".corrupt-" + timestamp;
@@ -280,7 +280,7 @@ bool SqliteDatabaseProxy::backupCorruptDatabase(QString *errorMessage) const
 }
 
 // 判断底层错误是否属于 SQLite 文件损坏
-bool SqliteDatabaseProxy::isCorruptionError(const QString &errorMessage)
+bool SqliteDatabaseBroker::isCorruptionError(const QString &errorMessage)
 {
     const QString normalized = errorMessage.toLower();
     return normalized.contains("file is not a database")
@@ -290,7 +290,7 @@ bool SqliteDatabaseProxy::isCorruptionError(const QString &errorMessage)
 }
 
 // 根据当前线程生成唯一连接名称
-QString SqliteDatabaseProxy::connectionNameForCurrentThread() const
+QString SqliteDatabaseBroker::connectionNameForCurrentThread() const
 {
     return QString("gridyard-storage-%1-%2")
         .arg(reinterpret_cast<quintptr>(this))

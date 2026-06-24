@@ -2,7 +2,7 @@
 * @file    history_records.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   本地历史持久化领域记录
 *
 * 应用层与存储层之间使用的纯值类型，不含 Qt Sql 或 QML 类型。

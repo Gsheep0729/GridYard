@@ -3,23 +3,23 @@
 * @version 6.2.0
 * @date    2026-06-25
 * @author  GY
-* @brief   SQLite 聊天消息 Proxy 测试
+* @brief   SQLite 聊天消息 Repository 测试
 *
 * 覆盖单条往返、幂等性、游标分页、中文/多行/emoji 内容、
 * deleteConversation CASCADE、deleteExpiredMessages 和重启恢复。
 *
 * Change Log:
 * [v6.2.0] GY   2026-06-25
-* * 新增聊天消息 SQLite Proxy 测试
+* * 新增聊天消息 SQLite Repository 测试
 */
 
 #include <QtTest/QtTest>
 
 #include "application_paths.h"
 #include "history_records.h"
-#include "sqlite_database_proxy.h"
-#include "sqlite_device_proxy.h"
-#include "sqlite_message_proxy.h"
+#include "sqlite_database_broker.h"
+#include "sqlite_device_repository.h"
+#include "sqlite_message_repository.h"
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -44,13 +44,13 @@ private slots:
     void testReopenDatabase();
 
 private:
-    std::unique_ptr<SqliteDatabaseProxy> openDatabase(const QString &relativePath);
-    void seedDevice(SqliteDatabaseProxy &database, const QString &deviceId, const QString &name);
+    std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
+    void seedDevice(SqliteDatabaseBroker &database, const QString &deviceId, const QString &name);
     MessageRecord makeRecord(const QString &deviceId, const QString &msgId,
                              RecordDirection direction, const QString &content,
                              const QDateTime &sentAt);
-    int messageRowCount(SqliteDatabaseProxy &database);
-    int conversationRowCount(SqliteDatabaseProxy &database);
+    int messageRowCount(SqliteDatabaseBroker &database);
+    int conversationRowCount(SqliteDatabaseBroker &database);
 
     QTemporaryDir _temporaryDir;
     QString _databasePath;
@@ -73,18 +73,18 @@ void TestStorageMessage::testSaveAndLoad()
 {
     auto database = openDatabase("save-load.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy proxy(database.get());
+    SqliteMessageRepository repository(database.get());
     seedDevice(*database, "peer-A", "Device Alpha");
 
     const QDateTime sentAt = QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs);
     const MessageRecord record = makeRecord("peer-A", "msg-001", RecordDirection::Outgoing,
                                             "Hello world", sentAt);
     QString error;
-    QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
+    QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
 
     MessageCursor cursor;
     cursor.peerDeviceId = "peer-A";
-    const QList<MessageRecord> loaded = proxy.loadMessages(cursor, 50, &error);
+    const QList<MessageRecord> loaded = repository.loadMessages(cursor, 50, &error);
     QVERIFY2(!loaded.isEmpty(), qPrintable(error));
     const MessageRecord &loadedMsg = loaded.first();
     QCOMPARE(loadedMsg.messageId, QStringLiteral("msg-001"));
@@ -101,7 +101,7 @@ void TestStorageMessage::testIdempotentSave()
 {
     auto database = openDatabase("idempotent.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy proxy(database.get());
+    SqliteMessageRepository repository(database.get());
     seedDevice(*database, "peer-B", "Device Bravo");
 
     const QDateTime sentAt = QDateTime::fromString("2026-06-25T11:00:00.000Z", Qt::ISODateWithMs);
@@ -109,14 +109,14 @@ void TestStorageMessage::testIdempotentSave()
                                             "Repeated", sentAt);
 
     QString error;
-    QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
-    QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
-    QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
+    QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
+    QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
+    QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
 
     // 只能查到一条
     MessageCursor cursor;
     cursor.peerDeviceId = "peer-B";
-    const QList<MessageRecord> loaded = proxy.loadMessages(cursor, 50, &error);
+    const QList<MessageRecord> loaded = repository.loadMessages(cursor, 50, &error);
     QCOMPARE(loaded.size(), 1);
 
     // 数据库实际也只有一行
@@ -134,7 +134,7 @@ void TestStorageMessage::testPagination()
 {
     auto database = openDatabase("pagination.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy proxy(database.get());
+    SqliteMessageRepository repository(database.get());
     seedDevice(*database, "peer-C", "Device Charlie");
 
     QString error;
@@ -146,13 +146,13 @@ void TestStorageMessage::testPagination()
         const QDateTime t = base.addSecs(i * 60);
         const MessageRecord record = makeRecord("peer-C", msgId, RecordDirection::Outgoing,
                                                 QStringLiteral("Message %1").arg(i), t);
-        QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
+        QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
     }
 
     // 首次加载应拿到最新 3 条（倒序）
     MessageCursor cursor;
     cursor.peerDeviceId = "peer-C";
-    const QList<MessageRecord> firstPage = proxy.loadMessages(cursor, 3, &error);
+    const QList<MessageRecord> firstPage = repository.loadMessages(cursor, 3, &error);
     QVERIFY2(firstPage.size() == 3, qPrintable(error));
     QCOMPARE(firstPage.at(0).messageId, QStringLiteral("page-msg-4"));
     QCOMPARE(firstPage.at(1).messageId, QStringLiteral("page-msg-3"));
@@ -162,7 +162,7 @@ void TestStorageMessage::testPagination()
     const MessageRecord &lastOnPage = firstPage.last();
     cursor.beforeSentAt = lastOnPage.sentAt;
     cursor.beforeMessageId = lastOnPage.messageId;
-    const QList<MessageRecord> secondPage = proxy.loadMessages(cursor, 3, &error);
+    const QList<MessageRecord> secondPage = repository.loadMessages(cursor, 3, &error);
     QVERIFY2(secondPage.size() == 2, qPrintable(error));
     QCOMPARE(secondPage.at(0).messageId, QStringLiteral("page-msg-1"));
     QCOMPARE(secondPage.at(1).messageId, QStringLiteral("page-msg-0"));
@@ -173,7 +173,7 @@ void TestStorageMessage::testChineseAndEmoji()
 {
     auto database = openDatabase("unicode.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy proxy(database.get());
+    SqliteMessageRepository repository(database.get());
     seedDevice(*database, "peer-D", "Device Delta");
 
     const QStringList samples = {
@@ -189,12 +189,12 @@ void TestStorageMessage::testChineseAndEmoji()
         const QString msgId = QStringLiteral("unicode-%1").arg(i);
         const MessageRecord record = makeRecord("peer-D", msgId, RecordDirection::Outgoing,
                                                 samples[i], sentAt.addSecs(i * 10));
-        QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
+        QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
     }
 
     MessageCursor cursor;
     cursor.peerDeviceId = "peer-D";
-    const QList<MessageRecord> loaded = proxy.loadMessages(cursor, 50, &error);
+    const QList<MessageRecord> loaded = repository.loadMessages(cursor, 50, &error);
     QVERIFY2(loaded.size() == samples.size(), qPrintable(error));
     for (int i = 0; i < samples.size(); ++i) {
         const QString msgId = QStringLiteral("unicode-%1").arg(i);
@@ -213,7 +213,7 @@ void TestStorageMessage::testDeleteConversation()
 {
     auto database = openDatabase("delete-conv.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy proxy(database.get());
+    SqliteMessageRepository repository(database.get());
     seedDevice(*database, "peer-E", "Device Echo");
 
     const QDateTime sentAt = QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs);
@@ -224,7 +224,7 @@ void TestStorageMessage::testDeleteConversation()
                                                 RecordDirection::Incoming,
                                                 QStringLiteral("To be deleted %1").arg(i),
                                                 sentAt.addSecs(i * 30));
-        QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
+        QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
     }
 
     // 确认数据和会话行已写入
@@ -232,7 +232,7 @@ void TestStorageMessage::testDeleteConversation()
     QVERIFY2(conversationRowCount(*database) == 1, "conversation not created");
 
     // 删除会话
-    QVERIFY2(proxy.deleteConversation("peer-E", &error), qPrintable(error));
+    QVERIFY2(repository.deleteConversation("peer-E", &error), qPrintable(error));
 
     // 消息和会话行均应清空
     QVERIFY2(messageRowCount(*database) == 0, "messages not deleted");
@@ -241,7 +241,7 @@ void TestStorageMessage::testDeleteConversation()
     // 重新加载应为空
     MessageCursor cursor;
     cursor.peerDeviceId = "peer-E";
-    const QList<MessageRecord> loaded = proxy.loadMessages(cursor, 50, &error);
+    const QList<MessageRecord> loaded = repository.loadMessages(cursor, 50, &error);
     QVERIFY2(loaded.isEmpty(), "should return empty after delete");
 }
 
@@ -250,7 +250,7 @@ void TestStorageMessage::testDeleteExpiredMessages()
 {
     auto database = openDatabase("expire.sqlite");
     QVERIFY(database);
-    SqliteMessageProxy proxy(database.get());
+    SqliteMessageRepository repository(database.get());
     seedDevice(*database, "peer-F", "Device Foxtrot");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
@@ -262,17 +262,17 @@ void TestStorageMessage::testDeleteExpiredMessages()
         const QDateTime t = base.addSecs(i * 60);
         const MessageRecord record = makeRecord("peer-F", msgIds[i], RecordDirection::Outgoing,
                                                 QStringLiteral("Expire test %1").arg(i), t);
-        QVERIFY2(proxy.saveMessage(record, &error), qPrintable(error));
+        QVERIFY2(repository.saveMessage(record, &error), qPrintable(error));
     }
 
     // 截止时间是 base + 90s（expire-0 和 expire-1 应被删除）
     const QDateTime cutoff = base.addSecs(90);
-    QVERIFY2(proxy.deleteExpiredMessages(cutoff, &error), qPrintable(error));
+    QVERIFY2(repository.deleteExpiredMessages(cutoff, &error), qPrintable(error));
 
     // 剩下 2 条
     MessageCursor cursor;
     cursor.peerDeviceId = "peer-F";
-    const QList<MessageRecord> remaining = proxy.loadMessages(cursor, 50, &error);
+    const QList<MessageRecord> remaining = repository.loadMessages(cursor, 50, &error);
     QVERIFY2(remaining.size() == 2, qPrintable(error));
 
     // 剩下的应该是 expire-2 和 expire-3
@@ -292,42 +292,42 @@ void TestStorageMessage::testReopenDatabase()
     const QString path = _temporaryDir.path() + "/reopen-msg.sqlite";
 
     {
-        SqliteDatabaseProxy database;
+        SqliteDatabaseBroker database;
         QString error;
         QVERIFY2(database.initialize(path, &error), qPrintable(error));
 
-        SqliteDeviceProxy deviceProxy(&database);
+        SqliteDeviceRepository deviceRepository(&database);
         PeerRecord peer;
         peer.deviceId = "peer-G";
         peer.deviceName = "Device Golf";
         peer.firstSeenAt = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs);
         peer.lastSeenAt = peer.firstSeenAt;
-        QVERIFY2(deviceProxy.upsertPeer(peer, &error), qPrintable(error));
+        QVERIFY2(deviceRepository.upsertPeer(peer, &error), qPrintable(error));
 
-        SqliteMessageProxy messageProxy(&database);
+        SqliteMessageRepository messageRepository(&database);
         const QDateTime sentAt = QDateTime::fromString("2026-06-25T16:30:00.000Z", Qt::ISODateWithMs);
         const MessageRecord record = makeRecord("peer-G", "reopen-001", RecordDirection::Incoming,
                                                "Survives restart", sentAt);
-        QVERIFY2(messageProxy.saveMessage(record, &error), qPrintable(error));
+        QVERIFY2(messageRepository.saveMessage(record, &error), qPrintable(error));
     }
 
     // 重新打开数据库
-    SqliteDatabaseProxy reopened;
+    SqliteDatabaseBroker reopened;
     QString error;
     QVERIFY2(reopened.initialize(path, &error), qPrintable(error));
-    SqliteMessageProxy proxy(&reopened);
+    SqliteMessageRepository repository(&reopened);
     MessageCursor cursor;
     cursor.peerDeviceId = "peer-G";
-    const QList<MessageRecord> loaded = proxy.loadMessages(cursor, 50, &error);
+    const QList<MessageRecord> loaded = repository.loadMessages(cursor, 50, &error);
     QVERIFY2(!loaded.isEmpty(), "messages should survive restart");
     QCOMPARE(loaded.first().messageId, QStringLiteral("reopen-001"));
     QCOMPARE(loaded.first().content, QStringLiteral("Survives restart"));
 }
 
 // 工具方法：在临时目录中创建并初始化数据库
-std::unique_ptr<SqliteDatabaseProxy> TestStorageMessage::openDatabase(const QString &relativePath)
+std::unique_ptr<SqliteDatabaseBroker> TestStorageMessage::openDatabase(const QString &relativePath)
 {
-    auto database = std::make_unique<SqliteDatabaseProxy>();
+    auto database = std::make_unique<SqliteDatabaseBroker>();
     const QString path = _temporaryDir.path() + "/" + relativePath;
     QString error;
     if (!database->initialize(path, &error)) {
@@ -337,19 +337,19 @@ std::unique_ptr<SqliteDatabaseProxy> TestStorageMessage::openDatabase(const QStr
     return database;
 }
 
-// 工具方法：向数据库写入一个设备记录（消息 Proxy 依赖 peer_devices FK）
-void TestStorageMessage::seedDevice(SqliteDatabaseProxy &database,
+// 工具方法：向数据库写入一个设备记录（消息 Repository 依赖 peer_devices FK）
+void TestStorageMessage::seedDevice(SqliteDatabaseBroker &database,
                                      const QString &deviceId,
                                      const QString &name)
 {
-    SqliteDeviceProxy deviceProxy(&database);
+    SqliteDeviceRepository deviceRepository(&database);
     PeerRecord peer;
     peer.deviceId = deviceId;
     peer.deviceName = name;
     peer.firstSeenAt = QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs);
     peer.lastSeenAt = peer.firstSeenAt;
     QString error;
-    QVERIFY2(deviceProxy.upsertPeer(peer, &error), qPrintable(error));
+    QVERIFY2(deviceRepository.upsertPeer(peer, &error), qPrintable(error));
 }
 
 // 工具方法：构造一条固定字段的消息记录
@@ -371,7 +371,7 @@ MessageRecord TestStorageMessage::makeRecord(const QString &deviceId, const QStr
 }
 
 // 工具方法：统计 chat_messages 行数
-int TestStorageMessage::messageRowCount(SqliteDatabaseProxy &database)
+int TestStorageMessage::messageRowCount(SqliteDatabaseBroker &database)
 {
     QString error;
     QSqlDatabase connection = database.connectionForWorkerThread(&error);
@@ -386,7 +386,7 @@ int TestStorageMessage::messageRowCount(SqliteDatabaseProxy &database)
 }
 
 // 工具方法：统计 chat_conversations 行数
-int TestStorageMessage::conversationRowCount(SqliteDatabaseProxy &database)
+int TestStorageMessage::conversationRowCount(SqliteDatabaseBroker &database)
 {
     QString error;
     QSqlDatabase connection = database.connectionForWorkerThread(&error);

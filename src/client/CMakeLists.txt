@@ -17,6 +17,8 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/application_paths.cpp
     core/chat_manager.h
     core/chat_manager.cpp
+    core/chat_controller.h
+    core/chat_controller.cpp
     core/chat_message_model.h
     core/chat_message_model.cpp
     core/history_controller.h
@@ -27,6 +29,10 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/dir_serializer.cpp
     core/logger.h
     core/logger.cpp
+    core/peer_discovery_view_model.h
+    core/peer_discovery_view_model.cpp
+    core/transfer_controller.h
+    core/transfer_controller.cpp
     core/transfer_session_manager.h
     core/transfer_session_manager.cpp
 )

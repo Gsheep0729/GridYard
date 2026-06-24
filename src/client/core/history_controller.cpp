@@ -2,7 +2,7 @@
 * @file    history_controller.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   本地历史控制器实现
 *
 * 持有 ChatManager、TransferSessionManager 和 DatabaseWorker，
@@ -83,7 +83,7 @@ void HistoryController::loadMoreMessages(const QString &deviceId)
     }
 
     setLoading(true);
-    _worker->submitLoad([this, deviceId, cursor](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitLoad([this, deviceId, cursor](SqliteDatabaseBroker &, QString *error) {
         // 聊天历史每次加载 50 条，保持翻页响应速度和内存占用可控。
         const QList<MessageRecord> records = _messages->loadMessages(cursor, 50, error);
         const bool succeeded = error->isEmpty();
@@ -109,7 +109,7 @@ void HistoryController::queryTransfers(const QVariantMap &filter)
     }
 
     setLoading(true);
-    _worker->submitLoad([this, filter](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitLoad([this, filter](SqliteDatabaseBroker &, QString *error) {
         TransferQuery query;
         query.peerDeviceId = filter.value("peerDeviceId").toString();
         query.status = filter.value("status").toString();
@@ -143,7 +143,7 @@ void HistoryController::deleteMessage(const QString &deviceId, const QString &me
         return;
     }
 
-    _worker->submitDelete([this, deviceId, messageId](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitDelete([this, deviceId, messageId](SqliteDatabaseBroker &, QString *error) {
         const bool succeeded = _messages->deleteMessage(messageId, error);
         QMetaObject::invokeMethod(this, [this, deviceId, messageId, succeeded] {
             if (succeeded && _chat) {
@@ -164,7 +164,7 @@ void HistoryController::deleteConversation(const QString &deviceId)
         return;
     }
 
-    _worker->submitDelete([this, deviceId](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitDelete([this, deviceId](SqliteDatabaseBroker &, QString *error) {
         const bool succeeded = _messages->deleteConversation(deviceId, error);
         QMetaObject::invokeMethod(this, [this, deviceId, succeeded] {
             if (succeeded && _chat) {
@@ -185,7 +185,7 @@ void HistoryController::deleteTransfer(const QString &recordId)
         return;
     }
 
-    _worker->submitDelete([this, recordId](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitDelete([this, recordId](SqliteDatabaseBroker &, QString *error) {
         const bool succeeded = _transferHistory->deleteTransfer(recordId, error);
         QMetaObject::invokeMethod(this, [this, recordId, succeeded] {
             if (succeeded) {
@@ -212,7 +212,7 @@ void HistoryController::clearAllMessages()
         return;
     }
 
-    _worker->submitDelete([this](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitDelete([this](SqliteDatabaseBroker &, QString *error) {
         const bool succeeded = _messages->clearAllMessages(error);
         QMetaObject::invokeMethod(this, [this, succeeded] {
             if (succeeded && _chat) {
@@ -233,7 +233,7 @@ void HistoryController::clearAllTransfers()
         return;
     }
 
-    _worker->submitDelete([this](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitDelete([this](SqliteDatabaseBroker &, QString *error) {
         const bool succeeded = _transferHistory->clearAllTransfers(error);
         QMetaObject::invokeMethod(this, [this, succeeded] {
             if (succeeded) {
@@ -270,7 +270,7 @@ void HistoryController::cleanupExpiredRecords()
 
     // 保留期限以 UTC 计算，避免本地时区变化导致历史边界抖动。
     const QDateTime before = QDateTime::currentDateTimeUtc().addDays(-days);
-    _worker->submitDelete([this, before](SqliteDatabaseProxy &, QString *error) {
+    _worker->submitDelete([this, before](SqliteDatabaseBroker &, QString *error) {
         return _messages->deleteExpiredMessages(before, error)
                && _transferHistory->deleteExpiredTransfers(before, error);
     });

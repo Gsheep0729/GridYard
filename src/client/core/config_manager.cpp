@@ -2,7 +2,7 @@
 * @file    config_manager.cpp
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   应用配置管理器实现
 *
 * 实现配置的读取、写入和持久化。使用 QSettings 存储设备名、
@@ -130,6 +130,7 @@ quint16 ConfigManager::tcpPort() const
     return _tcpPort;
 }
 
+// 获取历史保留天数
 int ConfigManager::retentionDays() const
 {
     return _retentionDays;

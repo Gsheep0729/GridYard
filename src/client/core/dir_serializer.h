@@ -2,7 +2,7 @@
 * @file    dir_serializer.h
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   目录序列化工具（递归遍历 + SHA-256 计算）
 *
 * 提供静态方法将文件/目录路径转换为 FileItem 列表，

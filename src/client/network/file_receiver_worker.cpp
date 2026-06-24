@@ -2,7 +2,7 @@
 * @file    file_receiver_worker.cpp
 * @version 6.6.2
 * @date    2026-06-23
-* @author  GY
+* @author  GridYard Team
 * @brief   文件接收 Worker 实现
 *
 * 实现完整的文件接收流程：解析传输请求、通知 UI 确认、接收数据块、

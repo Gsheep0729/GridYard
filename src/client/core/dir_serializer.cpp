@@ -2,7 +2,7 @@
 * @file    dir_serializer.cpp
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   目录序列化工具实现
 *
 * 实现递归遍历目录、计算文件 SHA-256 哈希值、生成 FileItem 列表。

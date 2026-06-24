@@ -2,7 +2,7 @@
 * @file    chat_manager.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
 *
 * 以设备标识维护可复用聊天连接和运行期消息会话。管理器只允许向

@@ -2,7 +2,7 @@
 * @file    application_paths.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   应用数据目录统一入口实现
 *
 * Change Log:

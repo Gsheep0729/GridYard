@@ -1,8 +1,8 @@
 /**
-* @file    sqlite_message_proxy.h
+* @file    sqlite_message_repository.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 聊天消息 Repository 实现
 *
 * 负责聊天消息的幂等写入、游标分页加载、删除和过期清理。
@@ -12,19 +12,19 @@
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.2.0] GY 2026-06-25
-* * 新增聊天消息 SQLite Proxy
+* * 新增聊天消息 SQLite Repository
 */
 
 #pragma once
 
 #include "history_repositories.h"
 
-class SqliteDatabaseProxy;
+class SqliteDatabaseBroker;
 
-class SqliteMessageProxy : public IMessageRepository {
+class SqliteMessageRepository : public IMessageRepository {
 public:
     // 构造消息 Repository
-    explicit SqliteMessageProxy(SqliteDatabaseProxy *database);
+    explicit SqliteMessageRepository(SqliteDatabaseBroker *database);
 
     // 幂等写入消息及其所属会话
     virtual bool saveMessage(const MessageRecord &record, QString *errorMessage) override;
@@ -40,5 +40,5 @@ public:
     virtual bool clearAllMessages(QString *errorMessage) override;
 
 private:
-    SqliteDatabaseProxy *_database = nullptr;  // 数据库连接和事务入口
+    SqliteDatabaseBroker *_database = nullptr;  // 数据库连接和事务入口
 };

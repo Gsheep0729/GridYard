@@ -2,10 +2,10 @@
 * @file    database_worker.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 异步任务执行线程实现
 *
-* Worker 在构造时获得 SqliteDatabaseProxy 指针，moveToThread 后
+* Worker 在构造时获得 SqliteDatabaseBroker 指针，moveToThread 后
 * 由调用方通过 submitSave/submitLoad/submitDelete 提交任务，任务在
 * 数据库线程中串行执行，执行完后发射 taskFinished 信号。
 *
@@ -20,12 +20,12 @@
 
 #include "database_worker.h"
 
-#include "sqlite_database_proxy.h"
+#include "sqlite_database_broker.h"
 
 #include <QMetaObject>
 
 // 构造函数
-DatabaseWorker::DatabaseWorker(SqliteDatabaseProxy *database)
+DatabaseWorker::DatabaseWorker(SqliteDatabaseBroker *database)
     : _database(database)
 {
 }
@@ -83,11 +83,11 @@ void DatabaseWorker::submitTask(const DatabaseTask &task)
 void DatabaseWorker::executeTask(const DatabaseTask &task)
 {
     if (!_database) {
-        emit taskFinished(false, "数据库代理未初始化");
+        emit taskFinished(false, "数据库入口未初始化");
         return;
     }
 
-    // 代理按当前线程创建独立连接，避免跨线程传递 QSqlDatabase
+    // 数据库入口按当前线程创建独立连接，避免跨线程传递 QSqlDatabase
     QString errorMessage;
     const bool succeeded = task(*_database, &errorMessage);
     emit taskFinished(succeeded, errorMessage);

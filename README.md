@@ -7,8 +7,6 @@
 | 项目版本 | v6.6.2 |
 | :--- | :--- |
 
-当前阶段：Stage 6 本地数据层交付已完成到 v6.6.2；下一轮工作聚焦持续测试、功能问题验证和代码注释规范审查，不启动 Stage 7 服务端漫游。
-
 GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
 
 ---
@@ -119,26 +117,32 @@ GridYard 采用四层架构，职责严格隔离：
 
 ```mermaid
 graph TD
+    ENTRY["main.cpp<br/>QGuiApplication"]
     subgraph 表现层["表现层 · QML + JavaScript"]
         UI["Main.qml · DeviceSessionView<br/>ChatView · TransferPanel"]
     end
     subgraph 应用逻辑层["应用逻辑层 · Controller + Manager"]
-        APP["AppController（QML 单例）<br/>TransferSessionManager · ChatManager"]
+        APP["AppController（组合根 / QML 单例）<br/>TransferSessionManager · ChatManager"]
     end
     subgraph 领域层["领域层 · 协议 + 网络 + 业务规则"]
         DOM["DiscoveryService · P2pServer<br/>FileSender/ReceiverWorker · ChatConnection<br/>FrameCodec · DirSerializer"]
     end
     subgraph 数据管理层["数据管理层 · 配置 + 日志 + 持久化"]
-        DATA["ConfigManager · Logger<br/>SqliteDatabaseProxy · Repository Proxy"]
+        DATA["ConfigManager · Logger<br/>LocalDataBroker<br/>SqliteDatabaseBroker · Repository"]
     end
 
+    ENTRY -->|"显式创建"| APP
+    APP -->|"初始化 / 持有 UI 引擎"| UI
     UI -->|"属性绑定 / 信号上报"| APP
     APP -->|"接口调用 / 事件回调"| DOM
-    DOM -->|"数据读写"| DATA
+    APP -->|"Broker 编排"| DATA
+    DOM -->|"运行期数据"| APP
 ```
 
 **分层约束**
 
+- `main.cpp` 只负责创建 `QGuiApplication`、解析启动参数、初始化日志和显式创建 `AppController`
+- `AppController` 是客户端组合根，负责初始化应用层对象和 UI 层
 - QML 禁止直接访问 `QSqlDatabase`、SQL 或文件系统
 - 应用层只依赖 Repository 接口，不感知 SQLite 实现细节
 - SQL 仅存在于 `client/storage/*.cpp`，所有参数通过 `bindValue()` 绑定
@@ -283,10 +287,10 @@ GridYard/
     │   └── frame_codec.{h,cpp}          # TLV 帧编解码（粘包状态机）
     ├── client/
     │   ├── CMakeLists.txt               # 客户端 QML 模块与 IDE 分组
-    │   ├── main.cpp                     # 程序入口
-    │   ├── Main.qml                     # QML 根窗口
+    │   ├── main.cpp                     # 程序入口，显式创建 AppController
+    │   ├── Main.qml                     # QML 根窗口，由 AppController 初始化
     │   ├── core/                        # 应用逻辑层
-    │   │   ├── app_controller.{h,cpp}   # 全局控制器（QML 单例）
+    │   │   ├── app_controller.{h,cpp}   # 全局控制器，初始化应用层与 UI 层
     │   │   ├── config_manager.{h,cpp}   # 配置管理（QSettings）
     │   │   ├── transfer_session_manager.{h,cpp}
     │   │   ├── chat_manager.{h,cpp}     # 聊天连接与内存会话
@@ -305,12 +309,13 @@ GridYard/
     │   │   ├── CMakeLists.txt
     │   │   ├── history_records.h        # PeerRecord / MessageRecord / TransferRecord
     │   │   └── history_repositories.h   # IDevice/Message/TransferHistory Repository
-    │   ├── storage/                     # 基础设施层（SQLite Proxy）
+    │   ├── storage/                     # 基础设施层（SQLite Broker + Repository）
     │   │   ├── CMakeLists.txt
-    │   │   ├── sqlite_database_proxy.{h,cpp}  # 连接、WAL、事务
-    │   │   ├── sqlite_device_proxy.{h,cpp}    # 设备目录 Data Mapper
-    │   │   ├── sqlite_message_proxy.{h,cpp}   # 聊天消息 Data Mapper
-    │   │   ├── sqlite_transfer_history_proxy.{h,cpp} # 传输历史 Data Mapper
+    │   │   ├── local_data_broker.{h,cpp}       # 本地数据层代管者
+    │   │   ├── sqlite_database_broker.{h,cpp}  # 连接、WAL、事务
+    │   │   ├── sqlite_device_repository.{h,cpp} # 设备目录 Data Mapper
+    │   │   ├── sqlite_message_repository.{h,cpp} # 聊天消息 Data Mapper
+    │   │   ├── sqlite_transfer_history_repository.{h,cpp} # 传输历史 Data Mapper
     │   │   ├── migration_runner.{h,cpp}       # Schema 版本迁移
     │   │   └── database_worker.{h,cpp}        # 异步数据库线程
     │   ├── ui/                          # QML 界面组件

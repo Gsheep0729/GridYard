@@ -1,8 +1,8 @@
 /**
-* @file    sqlite_transfer_history_proxy.cpp
+* @file    sqlite_transfer_history_repository.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 传输历史 Repository 实现
 *
 * 只保存最终状态快照，不保存发送源绝对路径、文件内容或调试堆栈。
@@ -11,12 +11,12 @@
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.3.0] GY 2026-06-25
-* * 新增传输历史 SQLite Proxy
+* * 新增传输历史 SQLite Repository
 */
 
-#include "sqlite_transfer_history_proxy.h"
+#include "sqlite_transfer_history_repository.h"
 
-#include "sqlite_database_proxy.h"
+#include "sqlite_database_broker.h"
 
 #include <QSqlError>
 #include <QSqlQuery>
@@ -32,18 +32,18 @@ QString sqlTime(const QDateTime &time)
 }
 
 // 构造传输历史 Repository
-SqliteTransferHistoryProxy::SqliteTransferHistoryProxy(SqliteDatabaseProxy *database)
+SqliteTransferHistoryRepository::SqliteTransferHistoryRepository(SqliteDatabaseBroker *database)
     : _database(database)
 {
 }
 
 // 幂等保存结束态传输记录
-bool SqliteTransferHistoryProxy::upsertFinishedTransfer(const TransferRecord &record,
+bool SqliteTransferHistoryRepository::upsertFinishedTransfer(const TransferRecord &record,
                                                         QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -101,7 +101,8 @@ bool SqliteTransferHistoryProxy::upsertFinishedTransfer(const TransferRecord &re
         errorMessage);
 }
 
-QList<TransferRecord> SqliteTransferHistoryProxy::queryTransfers(const TransferQuery &query,
+// 按设备、状态和时间游标查询一页历史
+QList<TransferRecord> SqliteTransferHistoryRepository::queryTransfers(const TransferQuery &query,
                                                                  int limit,
                                                                  QString *errorMessage) const
 {
@@ -111,7 +112,7 @@ QList<TransferRecord> SqliteTransferHistoryProxy::queryTransfers(const TransferQ
     }
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return records;
     }
@@ -185,11 +186,11 @@ QList<TransferRecord> SqliteTransferHistoryProxy::queryTransfers(const TransferQ
 }
 
 // 删除单条传输历史
-bool SqliteTransferHistoryProxy::deleteTransfer(const QString &recordId, QString *errorMessage)
+bool SqliteTransferHistoryRepository::deleteTransfer(const QString &recordId, QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -211,12 +212,13 @@ bool SqliteTransferHistoryProxy::deleteTransfer(const QString &recordId, QString
         errorMessage);
 }
 
-bool SqliteTransferHistoryProxy::deleteExpiredTransfers(const QDateTime &before,
+// 删除早于指定时间的传输历史
+bool SqliteTransferHistoryRepository::deleteExpiredTransfers(const QDateTime &before,
                                                         QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }
@@ -239,11 +241,11 @@ bool SqliteTransferHistoryProxy::deleteExpiredTransfers(const QDateTime &before,
 }
 
 // 清空全部传输历史
-bool SqliteTransferHistoryProxy::clearAllTransfers(QString *errorMessage)
+bool SqliteTransferHistoryRepository::clearAllTransfers(QString *errorMessage)
 {
     if (!_database) {
         if (errorMessage) {
-            *errorMessage = "数据库代理未初始化";
+            *errorMessage = "数据库入口未初始化";
         }
         return false;
     }

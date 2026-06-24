@@ -2,7 +2,7 @@
  * @file    DeviceSessionView.qml
  * @version 6.6.2
  * @date    2026-06-24
- * @author  GY
+ * @author  GridYard Team
  * @brief   当前设备的文件传输会话页
  *
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
@@ -59,11 +59,12 @@ Frame {
                                       && messageInput.text.trim().length > 0
                                       && messageInput.text.length <= 4000
 
+   // 校验输入后发送文本消息并清空输入框
    function sendChatMessage(): void {
        if (!canSendChat) {
            return
        }
-       AppController.chat.sendText(deviceId, messageInput.text)
+       AppController.chatController.sendText(deviceId, messageInput.text)
        messageInput.clear()
        chatError = ""
    }
@@ -78,9 +79,10 @@ Frame {
        expandedSessions = next
    }
 
+   // 当前设备对应的传输会话数量（用于空状态判断）
    property int filteredCount: {
        let count = 0
-       const sessions = AppController.transfer.sessions
+       const sessions = AppController.transferController.sessions
        for (let i = 0; i < sessions.length; i++) {
            if (sessions[i].deviceId === deviceSessionView.deviceId) {
                count++
@@ -89,9 +91,10 @@ Frame {
        return count
    }
 
+   // 当前设备已结束的传输会话数量（用于清空按钮可用性判断）
    property int finishedCount: {
        let count = 0
-       const sessions = AppController.transfer.sessions
+       const sessions = AppController.transferController.sessions
        for (let i = 0; i < sessions.length; i++) {
            const status = sessions[i].status
            if (sessions[i].deviceId !== deviceSessionView.deviceId) {
@@ -165,7 +168,7 @@ Frame {
 
                        MenuItem {
                            text: qsTr("清空已结束记录")
-                           onTriggered: AppController.transfer.clearFinishedSessions(
+                           onTriggered: AppController.transferController.clearFinishedSessions(
                                             false, deviceSessionView.deviceId)
                        }
 
@@ -227,7 +230,7 @@ Frame {
                    clip: true
                    spacing: Style.Space.sm
 
-                   model: AppController.transfer.sessions
+                   model: AppController.transferController.sessions
 
                    delegate: Item {
                        id: sessionDelegate
@@ -462,7 +465,7 @@ Frame {
    }
 
    Connections {
-       target: AppController.chat
+       target: AppController.chatController
 
        function onSendFailed(targetDeviceId: string, error: int, errorMessage: string): void {
            if (targetDeviceId === deviceSessionView.deviceId) {
@@ -484,6 +487,6 @@ Frame {
            wrapMode: Text.WordWrap
        }
 
-       onAccepted: AppController.transfer.clearFinishedSessions(true, deviceSessionView.deviceId)
+       onAccepted: AppController.transferController.clearFinishedSessions(true, deviceSessionView.deviceId)
    }
 }

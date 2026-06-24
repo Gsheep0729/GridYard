@@ -2,7 +2,7 @@
 * @file    discovery_service.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   局域网设备发现服务
 *
 * 通过 UDP 广播实现局域网内设备自动发现。每 5 秒发送 Hello 包，

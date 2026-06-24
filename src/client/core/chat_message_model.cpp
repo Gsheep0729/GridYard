@@ -2,7 +2,7 @@
 * @file    chat_message_model.cpp
 * @version 6.6.2
 * @date    2026-06-24
-* @author  GY
+* @author  GridYard Team
 * @brief   在线聊天内存消息列表模型实现
 *
 * 使用 beginInsertRows 和 dataChanged 向 QML 通知最小变化范围，避免

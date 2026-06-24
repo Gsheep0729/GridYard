@@ -2,7 +2,7 @@
  * @file    TransferHistoryView.qml
  * @version 6.6.2
  * @date    2026-06-25
- * @author  GY
+ * @author  GridYard Team
  * @brief   当前设备的传输历史视图
  *
  * 展示当前设备的传输历史筛选、刷新、删除和清空入口。
@@ -26,7 +26,7 @@ Frame {
     property string selectedStatus: ""
 
     function refresh(): void {
-        AppController.history.queryTransfers({
+        AppController.historyController.queryTransfers({
             "peerDeviceId": root.peerDeviceId,
             "status": root.selectedStatus
         })
@@ -72,7 +72,7 @@ Frame {
 
         BusyIndicator {
             Layout.alignment: Qt.AlignHCenter
-            running: AppController.history.loading
+            running: AppController.historyController.loading
             visible: running
         }
 
@@ -82,7 +82,7 @@ Frame {
             Layout.fillHeight: true
             clip: true
             spacing: Style.Space.sm
-            model: AppController.history.transfers
+            model: AppController.historyController.transfers
 
             delegate: Rectangle {
                 required property string recordId
@@ -118,7 +118,7 @@ Frame {
                         }
                         ToolButton {
                             text: qsTr("删除")
-                            onClicked: AppController.history.deleteTransfer(recordId)
+                            onClicked: AppController.historyController.deleteTransfer(recordId)
                         }
                     }
 
@@ -153,7 +153,7 @@ Frame {
 
             Label {
                 anchors.centerIn: parent
-                visible: historyList.count === 0 && !AppController.history.loading
+                visible: historyList.count === 0 && !AppController.historyController.loading
                 text: qsTr("还没有传输历史")
                 color: Style.Color.textWeak
             }
@@ -170,6 +170,6 @@ Frame {
             text: qsTr("仅删除本地历史记录，不会删除已接收文件或发送源文件。")
             wrapMode: Text.Wrap
         }
-        onAccepted: AppController.history.clearAllTransfers()
+        onAccepted: AppController.historyController.clearAllTransfers()
     }
 }

@@ -2,10 +2,10 @@
  * @file    PeerListView.qml
  * @version 6.6.2
  * @date    2026-06-24
- * @author  GY
+ * @author  GridYard Team
  * @brief   在线设备列表组件
  *
- * 绑定 AppController.discovery.peers 显示发现的其他设备。
+ * 绑定 AppController.peerDiscoveryViewModel.peers 显示发现的其他设备。
  * 支持手动刷新。
  *
  * Change Log:
@@ -37,7 +37,7 @@ Rectangle {
     readonly property int kDeviceCardHeight: 76
     readonly property string _searchKeyword: searchInput.text.trim().toLowerCase()
     readonly property int _filteredCount: {
-        const peers = AppController.discovery.peers
+        const peers = AppController.peerDiscoveryViewModel.peers
         if (_searchKeyword.length === 0) {
             return peers.length
         }
@@ -126,7 +126,7 @@ Rectangle {
                 icon.name: "view-refresh"
                 ToolTip.text: qsTr("刷新附近设备列表")
                 ToolTip.visible: hovered
-                onClicked: AppController.discovery.refresh()
+                onClicked: AppController.peerDiscoveryViewModel.refresh()
             }
         }
     }
@@ -161,7 +161,7 @@ Rectangle {
         anchors.top: deviceTitle.bottom
         anchors.bottom: parent.bottom
         clip: true
-        model: AppController.discovery.peers
+        model: AppController.peerDiscoveryViewModel.peers
         delegate: Item {
             id: peerDelegate
 

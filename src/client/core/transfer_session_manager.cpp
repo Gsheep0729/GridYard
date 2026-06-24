@@ -2,7 +2,7 @@
 * @file    transfer_session_manager.cpp
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * 管理发送和接收会话的生命周期，包括创建、接受、拒绝、取消、移除。
@@ -649,6 +649,7 @@ void TransferSessionManager::restoreFinishedTransfers(const QList<TransferRecord
     }
 }
 
+// 将运行期会话收敛为可持久化的最终快照
 void TransferSessionManager::finalizeSession(const QString &sessionId, const QString &finalStatus,
                                              gy::protocol::ErrorCode errorCode,
                                              const QString &errorMessage,
@@ -715,6 +716,7 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
     }
 }
 
+// 将一条历史记录恢复成 QML 可消费的会话项
 QVariantMap TransferSessionManager::sessionFromRecord(const TransferRecord &record) const
 {
     QVariantMap session;

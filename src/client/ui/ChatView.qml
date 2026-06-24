@@ -2,7 +2,7 @@
  * @file    ChatView.qml
  * @version 6.6.2
  * @date    2026-06-24
- * @author  GY
+ * @author  GridYard Team
  * @brief   设备会话的在线聊天消息视图
  *
  * 仅绑定 ChatManager 提供的内存消息模型，负责空状态、气泡、时间和
@@ -27,18 +27,19 @@ Item {
 
     required property string deviceId
     property var messageModel: deviceId.length > 0
-                               ? AppController.chat.messageModelForDevice(deviceId)
+                               ? AppController.chatController.messageModelForDevice(deviceId)
                                : null
 
     onDeviceIdChanged: Qt.callLater(chatView.loadInitialHistory)
     onMessageModelChanged: Qt.callLater(chatView.loadInitialHistory)
     Component.onCompleted: Qt.callLater(chatView.loadInitialHistory)
 
+    // 设备切换或模型为空时加载首页本地历史
     function loadInitialHistory(): void {
-        if (deviceId.length === 0 || messageList.count > 0 || AppController.history.loading) {
+        if (deviceId.length === 0 || messageList.count > 0 || AppController.historyController.loading) {
             return
         }
-        AppController.history.loadMoreMessages(deviceId)
+        AppController.historyController.loadMoreMessages(deviceId)
     }
 
     function scrollToLatest(): void {
@@ -59,8 +60,9 @@ Item {
 
         onContentYChanged: {
             followLatest = contentY + height >= contentHeight - Style.Space.lg
-            if (contentY <= 0 && messageList.count > 0 && !AppController.history.loading) {
-                AppController.history.loadMoreMessages(chatView.deviceId)
+            // 滚动到顶部且有消息时触发向上翻页加载更早历史
+            if (contentY <= 0 && messageList.count > 0 && !AppController.historyController.loading) {
+                AppController.historyController.loadMoreMessages(chatView.deviceId)
             }
         }
 

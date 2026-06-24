@@ -2,7 +2,7 @@
 * @file    chat_message.cpp
 * @version 6.6.2
 * @date    2026-06-23
-* @author  GY
+* @author  GridYard Team
 * @brief   在线聊天消息 JSON 编解码实现
 *
 * 负责将 ChatMessage 转换为紧凑 JSON，并在接收端统一校验 JSON 结构、

@@ -2,7 +2,7 @@
 * @file    history_controller.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   本地聊天与传输历史的 QML 应用层入口
 *
 * 聚合 ChatManager 和 TransferSessionManager 的查询/删除意图，

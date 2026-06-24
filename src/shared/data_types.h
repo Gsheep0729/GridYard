@@ -2,7 +2,7 @@
 * @file    data_types.h
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   跨模块共享数据类型定义（值类型 / POD）
 *
 * 含 PeerInfo（局域网在线节点描述）、FileEntry（文件元数据）、

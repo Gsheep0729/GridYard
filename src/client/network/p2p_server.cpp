@@ -2,7 +2,7 @@
 * @file    p2p_server.cpp
 * @version 6.6.2
 * @date    2026-06-23
-* @author  GY
+* @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
 *
 * 首帧路由阶段只窥视 socket 中的完整 TLV 帧，不读取其字节。

@@ -2,7 +2,7 @@
 * @file    Main.qml
 * @version 6.6.2
 * @date    2026-06-24
-* @author  GY
+* @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
 * 标题通过 AppController.applicationName/Version 绑定，
@@ -131,7 +131,7 @@ ApplicationWindow {
 
     function refreshSelectedDevice(): void {
         if (_targetDeviceId.length === 0) return
-        const peers = AppController.discovery.peers
+        const peers = AppController.peerDiscoveryViewModel.peers
         for (let i = 0; i < peers.length; i++) {
             if (peers[i].deviceId === _targetDeviceId) {
                 selectDevice(peers[i].deviceId, peers[i].deviceName,
@@ -199,7 +199,7 @@ ApplicationWindow {
         }
     }
 
-    //对话框
+    // 文件选择与设置弹窗
 
     FileDialog {
         id: fileDialog
@@ -211,7 +211,7 @@ ApplicationWindow {
             for (let i = 0; i < urls.length; i++) {
                 let path = urls[i].toString()
                 if (path.startsWith("file://")) path = path.substring(7)
-                AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
+                AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
             }
             mainWindow.showTransferTimeline()
         }
@@ -223,7 +223,7 @@ ApplicationWindow {
         onAccepted: {
             let path = selectedFolder.toString()
             if (path.startsWith("file://")) path = path.substring(7)
-            AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
+            AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
             mainWindow.showTransferTimeline()
         }
     }
@@ -306,7 +306,7 @@ ApplicationWindow {
                         flat: true
                         ToolTip.text: qsTr("刷新")
                         ToolTip.visible: hovered
-                        onClicked: AppController.discovery.refresh()
+                        onClicked: AppController.peerDiscoveryViewModel.refresh()
                     }
                 }
             }
@@ -484,7 +484,7 @@ ApplicationWindow {
         }
         onFileDropped: function(deviceId, filePath) {
             console.log("拖拽文件到设备:", deviceId, filePath)
-            const peers = AppController.discovery.peers
+            const peers = AppController.peerDiscoveryViewModel.peers
             for (let i = 0; i < peers.length; i++) {
                 if (peers[i].deviceId === deviceId) {
                     mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
@@ -492,7 +492,7 @@ ApplicationWindow {
                     break
                 }
             }
-            AppController.transfer.createSendSession(deviceId, filePath)
+            AppController.transferController.createSendSession(deviceId, filePath)
             mainWindow.showTransferTimeline()
         }
     }
@@ -559,7 +559,7 @@ ApplicationWindow {
             onSendFileRequested: fileDialog.open()
             onSendFolderRequested: folderDialog.open()
             onFileDropped: function(filePath) {
-                AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
+                AppController.transferController.createSendSession(mainWindow._targetDeviceId, filePath)
                 mainWindow.showTransferTimeline()
             }
         }
@@ -604,11 +604,11 @@ ApplicationWindow {
     }
 
     Connections {
-        target: AppController.transfer
+        target: AppController.transferController
         function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
                                           fileSize, totalFiles, totalBytes,
                                           isDirectory, fileList) {
-            const peers = AppController.discovery.peers
+            const peers = AppController.peerDiscoveryViewModel.peers
             for (let i = 0; i < peers.length; i++) {
                 if (peers[i].deviceId === senderDeviceId) {
                     mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
@@ -640,12 +640,12 @@ ApplicationWindow {
     }
 
     Connections {
-        target: AppController.discovery
+        target: AppController.peerDiscoveryViewModel
         function onPeersChanged(): void { mainWindow.refreshSelectedDevice() }
     }
 
     Connections {
-        target: AppController.chat
+        target: AppController.chatController
         function onIncomingMessageReceived(deviceId: string, senderName: string, preview: string): void {
             trayIcon.showMessage(senderName, preview)
         }

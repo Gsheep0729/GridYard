@@ -2,7 +2,7 @@
 * @file    chat_connection.cpp
 * @version 6.6.2
 * @date    2026-06-24
-* @author  GY
+* @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接实现
 *
 * 连接建立后连续解析 ChatText 帧，并将待发送消息按原顺序写入 socket。

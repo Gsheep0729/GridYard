@@ -2,7 +2,7 @@
 * @file    chat_connection.h
 * @version 6.6.2
 * @date    2026-06-24
-* @author  GY
+* @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接
 *
 * 封装聊天连接的 socket、TLV 编解码和待写消息队列。连接对象只处理

@@ -2,7 +2,7 @@
 * @file    chat_message_model.h
 * @version 6.6.2
 * @date    2026-06-24
-* @author  GY
+* @author  GridYard Team
 * @brief   在线聊天内存消息列表模型
 *
 * 为单个设备会话保存运行期消息，并向 QML 提供稳定角色。模型只承担

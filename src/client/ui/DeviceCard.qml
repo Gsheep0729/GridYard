@@ -2,7 +2,7 @@
  * @file    DeviceCard.qml
  * @version 6.6.2
  * @date    2026-06-24
- * @author  GY
+ * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
  * 全部 4 个 property 都声明为 required：当本组件作为 delegate

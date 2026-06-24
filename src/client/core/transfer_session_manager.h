@@ -2,7 +2,7 @@
 * @file    transfer_session_manager.h
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   传输会话管理器
 *
 * 管理所有进行中的传输会话（发送和接收），维护会话状态和进度。

@@ -1,8 +1,8 @@
 /**
-* @file    sqlite_database_proxy.h
+* @file    sqlite_database_broker.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理
 *
 * 每个线程按唯一连接名取得自己的数据库连接，禁止跨线程传递连接。
@@ -13,7 +13,7 @@
 * [v6.6.0] GY 2026-06-25
 * * 增加损坏数据库备份重建和异常验收支撑
 * [v6.0.0] GY 2026-06-25
-* * 新增 SQLite 数据库代理基础
+* * 新增 SQLite 数据库 Broker 基础
 */
 
 #pragma once
@@ -25,17 +25,17 @@
 
 class QSqlDatabase;
 
-class SqliteDatabaseProxy {
+class SqliteDatabaseBroker {
 public:
     using TransactionTask = std::function<bool(QSqlDatabase &, QString *)>;
     using DriverProvider = std::function<QStringList()>;
 
-    SqliteDatabaseProxy();
-    explicit SqliteDatabaseProxy(DriverProvider driverProvider);
-    ~SqliteDatabaseProxy();
+    SqliteDatabaseBroker();
+    explicit SqliteDatabaseBroker(DriverProvider driverProvider);
+    ~SqliteDatabaseBroker();
 
-    SqliteDatabaseProxy(const SqliteDatabaseProxy &) = delete;
-    SqliteDatabaseProxy &operator=(const SqliteDatabaseProxy &) = delete;
+    SqliteDatabaseBroker(const SqliteDatabaseBroker &) = delete;
+    SqliteDatabaseBroker &operator=(const SqliteDatabaseBroker &) = delete;
 
     // 打开数据库、配置连接参数并执行迁移
     bool initialize(const QString &databasePath, QString *errorMessage);

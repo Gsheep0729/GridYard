@@ -2,7 +2,7 @@
  * @file    TransferTaskCard.qml
  * @version 6.6.2
  * @date    2026-06-17
- * @author  GY
+ * @author  GridYard Team
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
@@ -274,7 +274,7 @@ Frame {
                 text: qsTr("取消")
                 flat: true
                 visible: taskCard.status === "transferring" || taskCard.status === "waiting_confirm"
-                onClicked: AppController.transfer.cancelSession(taskCard.sessionId)
+                onClicked: AppController.transferController.cancelSession(taskCard.sessionId)
             }
         }
 
@@ -291,7 +291,7 @@ Frame {
                 Button {
                     text: qsTr("移除记录")
                     flat: true
-                    onClicked: AppController.transfer.removeSession(taskCard.sessionId)
+                    onClicked: AppController.transferController.removeSession(taskCard.sessionId)
                 }
 
                 ToolButton {
@@ -534,7 +534,7 @@ Frame {
             }
         }
 
-        onAccepted: AppController.transfer.removeSessionAndDeleteFile(taskCard.sessionId)
+        onAccepted: AppController.transferController.removeSessionAndDeleteFile(taskCard.sessionId)
     }
 
 }

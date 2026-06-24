@@ -2,7 +2,7 @@
 * @file    file_sender_worker.cpp
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
 * 实现完整的文件发送流程：建立 TCP 连接、发送传输请求、等待响应、

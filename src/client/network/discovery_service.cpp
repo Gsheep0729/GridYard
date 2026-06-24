@@ -2,7 +2,7 @@
 * @file    discovery_service.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
 * 实现 UDP 广播发送、接收、节点管理等功能。每 5 秒发送 Hello 包，

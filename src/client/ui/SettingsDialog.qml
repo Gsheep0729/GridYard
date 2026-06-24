@@ -2,7 +2,7 @@
  * @file    SettingsDialog.qml
  * @version 6.6.2
  * @date    2026-06-17
- * @author  GY
+ * @author  GridYard Team
  * @brief   设置对话框
  *
  * 编辑设备名、选择接收路径、修改 TCP 端口。
@@ -439,7 +439,7 @@ Dialog {
                     ConfigManager.receivePath = settingsDialog._tempReceivePath
                     ConfigManager.autoAcceptFiles = settingsDialog._tempAutoAcceptFiles
                     ConfigManager.tcpPort = settingsDialog._tempTcpPort
-                    AppController.history.setRetentionDays(settingsDialog._tempRetentionDays)
+                    AppController.historyController.setRetentionDays(settingsDialog._tempRetentionDays)
                     settingsDialog.accept()
                 }
             }

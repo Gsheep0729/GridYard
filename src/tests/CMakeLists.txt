@@ -18,7 +18,7 @@ target_include_directories(test_storage_database PRIVATE
 target_compile_features(test_storage_database PRIVATE cxx_std_23)
 add_test(NAME test_storage_database COMMAND test_storage_database)
 
-# --- 设备目录 Proxy 测试 ---
+# --- 设备目录 Repository 测试 ---
 qt_add_executable(test_storage_device test_storage_device.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
@@ -30,7 +30,7 @@ target_include_directories(test_storage_device PRIVATE
 target_compile_features(test_storage_device PRIVATE cxx_std_23)
 add_test(NAME test_storage_device COMMAND test_storage_device)
 
-# --- 聊天消息 Proxy 测试 ---
+# --- 聊天消息 Repository 测试 ---
 qt_add_executable(test_storage_message test_storage_message.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
@@ -42,7 +42,7 @@ target_include_directories(test_storage_message PRIVATE
 target_compile_features(test_storage_message PRIVATE cxx_std_23)
 add_test(NAME test_storage_message COMMAND test_storage_message)
 
-# --- 传输历史 Proxy 测试 ---
+# --- 传输历史 Repository 测试 ---
 qt_add_executable(test_storage_transfer_history test_storage_transfer_history.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )

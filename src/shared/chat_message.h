@@ -2,7 +2,7 @@
 * @file    chat_message.h
 * @version 6.6.2
 * @date    2026-06-23
-* @author  GY
+* @author  GridYard Team
 * @brief   在线聊天消息值类型与 JSON 编解码接口
 *
 * 集中定义 P2P 在线文本消息的内存表示、错误分类和 JSON 编解码入口。

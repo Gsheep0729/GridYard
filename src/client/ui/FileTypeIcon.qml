@@ -2,7 +2,7 @@
  * @file    FileTypeIcon.qml
  * @version 6.6.2
  * @date    2026-06-15
- * @author  GY
+ * @author  GridYard Team
  * @brief   根据文件类型显示项目内置图标
  *
  * 根据文件名选择项目内置图标，避免依赖系统图标主题。
@@ -30,12 +30,19 @@ Image {
 
     readonly property url iconSource: {
         if (isDirectory || fileName.endsWith("/")) return "../icons/folder.svg"
+        // 图片
         if (["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico", "heic"].includes(extension)) return "../icons/file-image.svg"
+        // 视频
         if (["mp4", "mkv", "avi", "mov", "wmv", "webm", "flv", "mpeg", "mpg"].includes(extension)) return "../icons/file-video.svg"
+        // 音频
         if (["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma"].includes(extension)) return "../icons/file-audio.svg"
+        // 压缩包
         if (["zip", "7z", "rar", "tar", "gz", "bz2", "xz", "zst"].includes(extension)) return "../icons/file-archive.svg"
+        // 源代码
         if (["cpp", "c", "h", "hpp", "qml", "js", "py", "java", "rs", "go", "html", "css", "json", "xml", "yaml", "yml", "cmake", "sh"].includes(extension)) return "../icons/file-code.svg"
+        // 文档
         if (["pdf", "doc", "docx", "odt", "xls", "xlsx", "ods", "ppt", "pptx", "odp", "txt", "md", "rtf"].includes(extension)) return "../icons/file-document.svg"
+        // 可执行程序
         if (["exe", "msi", "appimage", "apk", "deb", "rpm", "dmg", "pkg", "bin", "run"].includes(extension)) return "../icons/file-executable.svg"
         return "../icons/file-generic.svg"
     }

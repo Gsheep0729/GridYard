@@ -2,7 +2,7 @@
 * @file    frame_codec.cpp
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   TLV 帧编解码器实现
 *
 * 实现 encode() 编码和 feed() 解码状态机。编码时按 Type 分级检查

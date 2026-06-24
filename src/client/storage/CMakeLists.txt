@@ -2,16 +2,18 @@
 # 数据库代码不放进 appGridYard 的 source_group，而是作为单独 target 展示在 client/storage；
 # 这样可以隔离 Qt Sql 依赖，也方便存储层单元测试直接链接复用。
 set(GRIDYARD_STORAGE_SOURCES
+    local_data_broker.h
+    local_data_broker.cpp
     migration_runner.h
     migration_runner.cpp
-    sqlite_database_proxy.h
-    sqlite_database_proxy.cpp
-    sqlite_device_proxy.h
-    sqlite_device_proxy.cpp
-    sqlite_message_proxy.h
-    sqlite_message_proxy.cpp
-    sqlite_transfer_history_proxy.h
-    sqlite_transfer_history_proxy.cpp
+    sqlite_database_broker.h
+    sqlite_database_broker.cpp
+    sqlite_device_repository.h
+    sqlite_device_repository.cpp
+    sqlite_message_repository.h
+    sqlite_message_repository.cpp
+    sqlite_transfer_history_repository.h
+    sqlite_transfer_history_repository.cpp
     database_worker.h
     database_worker.cpp
 )

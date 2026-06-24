@@ -2,7 +2,7 @@
 * @file    file_receiver_worker.h
 * @version 6.6.2
 * @date    2026-06-23
-* @author  GY
+* @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
 * 由 P2pServer 为每个入站连接创建，运行在独立后台线程中。

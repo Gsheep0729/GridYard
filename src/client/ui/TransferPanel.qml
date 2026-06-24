@@ -2,7 +2,7 @@
  * @file    TransferPanel.qml
  * @version 6.6.2
  * @date    2026-06-18
- * @author  GY
+ * @author  GridYard Team
  * @brief   传输面板
  *
  * 显示所有进行中的传输任务，每个任务显示进度条、速度、取消按钮。
@@ -104,7 +104,7 @@ Frame {
 
                     MenuItem {
                         text: qsTr("清空已结束记录")
-                        onTriggered: AppController.transfer.clearFinishedSessions(false)
+                        onTriggered: AppController.transferController.clearFinishedSessions(false)
                     }
 
                     MenuItem {
@@ -132,7 +132,7 @@ Frame {
             visible: transferPanel.viewMode === 0
             spacing: Style.Space.sm
 
-            model: AppController.transfer.sessions
+            model: AppController.transferController.sessions
 
             delegate: Item {
                 id: sessionDelegate
@@ -259,6 +259,6 @@ Frame {
             }
         }
 
-        onAccepted: AppController.transfer.clearFinishedSessions(true)
+        onAccepted: AppController.transferController.clearFinishedSessions(true)
     }
 }

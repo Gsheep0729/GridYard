@@ -2,7 +2,7 @@
 * @file    config_manager.h
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
 * 使用 QSettings 管理设备名、接收路径、TCP 端口、自动接收等配置。
@@ -52,18 +52,30 @@ public:
     // 析构函数
     virtual ~ConfigManager() override;
 
+    // 获取设备 UUID
     QString  deviceId()    const;
+    // 获取设备名称
     QString  deviceName()  const;
+    // 获取本机 IP 地址
     QString  localIp()     const;
+    // 获取文件接收路径
     QString  receivePath() const;
+    // 获取自动接收文件配置
     bool     autoAcceptFiles() const;
+    // 获取 TCP 端口
     quint16  tcpPort()     const;
+    // 获取历史保留天数
     int retentionDays() const;
 
+    // 设置设备名称
     void setDeviceName(const QString &name);
+    // 设置文件接收路径
     void setReceivePath(const QString &path);
+    // 设置自动接收文件开关
     void setAutoAcceptFiles(bool enabled);
+    // 设置 TCP 端口
     void setTcpPort(quint16 port);
+    // 设置历史保留天数
     void setRetentionDays(int days);
 
     Q_INVOKABLE void refreshLocalIp();

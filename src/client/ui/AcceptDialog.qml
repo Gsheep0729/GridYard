@@ -2,7 +2,7 @@
  * @file    AcceptDialog.qml
  * @version 6.6.2
  * @date    2026-06-17
- * @author  GY
+ * @author  GridYard Team
  * @brief   接收确认弹窗
  *
  * 显示发送方设备名、文件名、文件大小。
@@ -44,9 +44,9 @@ Dialog {
     property string sessionId: ""
     property string senderName: ""
     property string fileName: ""
-    property var    fileSize: 0
+    property real   fileSize: 0
     property int    totalFiles: 1
-    property var    totalBytes: 0
+    property real   totalBytes: 0
     property bool   isDirectory: false
     property var    fileList: []
 
@@ -217,11 +217,11 @@ Dialog {
 
     onAccepted: {
         // 用户接受
-        AppController.transfer.acceptReceiveSession(sessionId)
+        AppController.transferController.acceptReceiveSession(sessionId)
     }
 
     onRejected: {
         // 用户拒绝
-        AppController.transfer.rejectReceiveSession(sessionId)
+        AppController.transferController.rejectReceiveSession(sessionId)
     }
 }

@@ -2,7 +2,7 @@
 * @file    file_sender_worker.h
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GY
+* @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
 * 运行在独立后台线程中，负责建立 TCP 连接、发送传输握手请求、

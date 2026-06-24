@@ -2,7 +2,7 @@
 * @file    app_controller.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   应用全局控制器实现
 *
 * 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、
@@ -21,7 +21,7 @@
 * [v6.2.0] GY   2026-06-25
 * * 接入聊天消息持久化，监听 messageToPersist 信号并异步提交存储
 * [v6.1.0] GY   2026-06-25
-* * 接入设备目录 Proxy，异步投递发现设备快照
+* * 接入设备目录 Repository，异步投递发现设备快照
 * [v6.0.0] GY   2026-06-25
 * * 集中管理本地历史数据库与数据库任务线程
 * [v5.1.0] FengChunlin   2026-06-24
@@ -37,25 +37,22 @@
 #include "app_controller.h"
 #include "application_paths.h"
 #include "chat_manager.h"
+#include "chat_controller.h"
 #include "config_manager.h"
-#include "database_worker.h"
 #include "discovery_service.h"
 #include "history_records.h"
 #include "history_controller.h"
+#include "local_data_broker.h"
 #include "p2p_server.h"
-#include "sqlite_database_proxy.h"
-#include "sqlite_device_proxy.h"
-#include "sqlite_message_proxy.h"
-#include "sqlite_transfer_history_proxy.h"
+#include "peer_discovery_view_model.h"
+#include "transfer_controller.h"
 #include "transfer_session_manager.h"
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QMetaObject>
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
-#include <QThread>
 #include <QTimer>
 
 namespace {
@@ -72,54 +69,34 @@ AppController::AppController(QObject *parent)
     , _p2pServer{new P2pServer{_config, this}}
     , _transfer{new TransferSessionManager{this}}
     , _chat{new ChatManager{this}}
-    , _storage{std::make_unique<SqliteDatabaseProxy>()}
-    , _deviceRepository{std::make_unique<SqliteDeviceProxy>(_storage.get())}
-    , _messageRepository{std::make_unique<SqliteMessageProxy>(_storage.get())}
-    , _transferRepository{std::make_unique<SqliteTransferHistoryProxy>(_storage.get())}
-    , _storageThread{new QThread{this}}
-    , _storageWorker{new DatabaseWorker{_storage.get()}}
-    , _history{new HistoryController{_chat, _transfer, _config, _storageWorker,
-                                     _messageRepository.get(), _transferRepository.get(), this}}
+    , _peerDiscoveryViewModel{new PeerDiscoveryViewModel{_discovery, this}}
+    , _transferController{new TransferController{_transfer, this}}
+    , _chatController{new ChatController{_chat, this}}
+    , _dataBroker{new LocalDataBroker{this}}
+    , _history{new HistoryController{_chat, _transfer, _config, _dataBroker->worker(),
+                                     _dataBroker->messageRepository(),
+                                     _dataBroker->transferHistoryRepository(), this}}
     , _retentionTimer{new QTimer{this}}
 {
     QString storageError;
-    if (!_storage->initialize(ApplicationPaths::databaseDir() + "/gridyard-history.sqlite", &storageError)) {
+    if (!_dataBroker->initialize(ApplicationPaths::databaseDir() + "/gridyard-history.sqlite",
+                                 &storageError)) {
         // 历史库不可用时保留在线收发能力，避免本地磁盘问题影响 P2P 主链路。
         qWarning() << "[Storage] 本地历史不可用:" << storageError;
     }
-    _localHistoryAvailable = _storage->isAvailable();
-
-    // Worker 没有 parent，才能移动到存储线程并由 finished 安全回收。
-    _storageWorker->moveToThread(_storageThread);
-    connect(_storageThread, &QThread::finished, _storageWorker, &QObject::deleteLater);
-    connect(_storageThread, &QThread::finished, _storageThread, &QObject::deleteLater);
-    _storageThread->start();
+    _localHistoryAvailable = _dataBroker->isAvailable();
 
     // 存储失败只记录降级状态，不影响已完成的网络收发。
-    connect(_storageWorker, &DatabaseWorker::taskFinished,
-            this, [this](bool succeeded, const QString &) {
-                if (!succeeded) {
-                    qWarning() << "[Storage] 存储任务失败，当前操作未写入本地历史";
-                    emit localHistoryOperationFailed();
-                }
+    connect(_dataBroker, &LocalDataBroker::operationFailed,
+            this, [this] {
+                qWarning() << "[Storage] 存储任务失败，当前操作未写入本地历史";
+                emit localHistoryOperationFailed();
             });
 
     // 发现结果异步写入设备目录，避免 UDP 心跳阻塞主线程。
     connect(_discovery, &DiscoveryService::peerUpdated,
             this, [this](const PeerInfo &peer) {
-                PeerRecord record;
-                record.deviceId = peer.deviceId;
-                record.deviceName = peer.deviceName;
-                record.lastIpAddress = peer.ipAddress;
-                record.lastTcpPort = peer.tcpPort;
-                record.firstSeenAt = peer.lastSeen;
-                record.lastSeenAt = peer.lastSeen;
-
-                // 发现服务只维护在线快照，磁盘写入统一串行化到存储线程。
-                _storageWorker->submitSave(
-                    [this, record](SqliteDatabaseProxy &, QString *errorMessage) {
-                        return _deviceRepository->upsertPeer(record, errorMessage);
-                    });
+                _dataBroker->persistDiscoveredPeer(peer);
             });
 
     _p2pServer->start();
@@ -132,21 +109,7 @@ AppController::AppController(QObject *parent)
     connect(_chat, &ChatManager::messageToPersist,
             this, [this](const MessageRecord &record) {
                 const QVariantMap endpoint = _discovery->transferEndpoint(record.peerDeviceId);
-                PeerRecord peer;
-                peer.deviceId = record.peerDeviceId;
-                peer.deviceName = endpoint.value("deviceName", record.senderName).toString();
-                peer.lastIpAddress = endpoint.value("ipAddress").toString();
-                peer.lastTcpPort = static_cast<quint16>(endpoint.value("tcpPort").toUInt());
-                peer.firstSeenAt = QDateTime::currentDateTimeUtc();
-                peer.lastSeenAt = peer.firstSeenAt;
-                // 同一 Worker 队列内先写设备，再写消息，满足会话外键前置条件。
-                _storageWorker->submitSave(
-                    [this, peer, record](SqliteDatabaseProxy &, QString *errorMessage) {
-                        return _deviceRepository->upsertPeer(peer, errorMessage)
-                               && _deviceRepository->markChatActivity(peer.deviceId, record.sentAt,
-                                                                      errorMessage)
-                               && _messageRepository->saveMessage(record, errorMessage);
-                    });
+                _dataBroker->persistChatMessage(record, endpoint);
             });
 
     loadRecentChatHistories();
@@ -154,26 +117,7 @@ AppController::AppController(QObject *parent)
     connect(_transfer, &TransferSessionManager::transferToPersist,
             this, [this](const TransferRecord &record) {
                 const QVariantMap endpoint = _discovery->transferEndpoint(record.peerDeviceId);
-                const QDateTime activityAt = record.finishedAt.isValid()
-                                                ? record.finishedAt
-                                                : record.startedAt;
-
-                PeerRecord peer;
-                peer.deviceId = record.peerDeviceId;
-                peer.deviceName = endpoint.value("deviceName", record.peerName).toString();
-                peer.lastIpAddress = endpoint.value("ipAddress").toString();
-                peer.lastTcpPort = static_cast<quint16>(endpoint.value("tcpPort").toUInt());
-                peer.firstSeenAt = activityAt;
-                peer.lastSeenAt = activityAt;
-
-                // 先确保设备目录存在，再更新活动时间和写入历史，满足外键约束。
-                _storageWorker->submitSave(
-                    [this, peer, record, activityAt](SqliteDatabaseProxy &, QString *errorMessage) {
-                        return _deviceRepository->upsertPeer(peer, errorMessage)
-                               && _deviceRepository->markTransferActivity(peer.deviceId, activityAt,
-                                                                          errorMessage)
-                               && _transferRepository->upsertFinishedTransfer(record, errorMessage);
-                    });
+                _dataBroker->persistTransferRecord(record, endpoint);
             });
 
     connect(_transfer, &TransferSessionManager::transferHistoryDeleteRequested,
@@ -182,16 +126,7 @@ AppController::AppController(QObject *parent)
                     return;
                 }
 
-                _storageWorker->submitDelete(
-                    [this, recordIds](SqliteDatabaseProxy &, QString *errorMessage) {
-                        // 批量删除保持在同一存储任务中，避免界面侧频繁触发数据库队列。
-                        for (const QString &recordId : recordIds) {
-                            if (!_transferRepository->deleteTransfer(recordId, errorMessage)) {
-                                return false;
-                            }
-                        }
-                        return true;
-                    });
+                _dataBroker->deleteTransfers(recordIds);
             });
 
     loadRecentTransferHistories();
@@ -203,14 +138,9 @@ AppController::AppController(QObject *parent)
     _retentionTimer->start();
 }
 
-// 停止存储线程，避免存储对象先于 Worker 销毁
+// 析构函数
 AppController::~AppController()
 {
-    if (_storageThread && _storageThread->isRunning()) {
-        // 等待已入队任务结束，防止 Worker 继续访问即将销毁的 Repository。
-        _storageThread->quit();
-        _storageThread->wait();
-    }
 }
 
 // 初始化 QML UI 层
@@ -269,29 +199,31 @@ QString AppController::applicationVersion() const
     return QCoreApplication::applicationVersion();
 }
 
-// 获取设备发现服务
-DiscoveryService *AppController::discovery() const
+// 获取设备发现视图模型
+PeerDiscoveryViewModel *AppController::peerDiscoveryViewModel() const
 {
-    return _discovery;
+    return _peerDiscoveryViewModel;
 }
 
-// 获取传输会话管理器
-TransferSessionManager *AppController::transfer() const
+// 获取传输 UI 控制器
+TransferController *AppController::transferController() const
 {
-    return _transfer;
+    return _transferController;
 }
 
-// 获取在线聊天管理器
-ChatManager *AppController::chat() const
+// 获取聊天 UI 控制器
+ChatController *AppController::chatController() const
 {
-    return _chat;
+    return _chatController;
 }
 
-HistoryController *AppController::history() const
+// 获取本地历史 UI 控制器
+HistoryController *AppController::historyController() const
 {
     return _history;
 }
 
+// 获取本地历史可用性
 bool AppController::localHistoryAvailable() const
 {
     return _localHistoryAvailable;
@@ -312,17 +244,16 @@ void AppController::quit()
     _quitRequested = true;
     qDebug() << "AppController::quit invoked from QML";
 
-    if (!_storageThread || !_storageThread->isRunning() || !_storageWorker) {
+    if (!_dataBroker) {
         QCoreApplication::exit(0);
         return;
     }
 
     // 将停止标记排入 Worker 队列尾部，确保退出前不会丢失已提交的历史写入。
-    connect(_storageWorker, &DatabaseWorker::drained,
+    connect(_dataBroker, &LocalDataBroker::drained,
             this, [] { QCoreApplication::exit(0); },
             static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
-    QMetaObject::invokeMethod(_storageWorker, &DatabaseWorker::beginShutdown,
-                              Qt::QueuedConnection);
+    _dataBroker->beginShutdown();
 
     // 极端情况下 Worker 线程没有及时响应，也不能让托盘进程永久留在后台。
     QTimer::singleShot(3000, this, [] { QCoreApplication::exit(0); });
@@ -337,63 +268,27 @@ void AppController::test()
 // 在存储线程读取最近历史并回投到主线程恢复模型
 void AppController::loadRecentChatHistories()
 {
-    if (!_storage->isAvailable() || !_messageRepository) {
+    if (!_dataBroker || !_dataBroker->isAvailable()) {
         return;
     }
 
-    _storageWorker->submitLoad(
-        [this](SqliteDatabaseProxy &, QString *errorMessage) {
-            // 启动只恢复最近设备，避免历史量随使用时长线性拖慢首屏。
-            const QList<PeerRecord> recentDevices = _deviceRepository->recentPeers(10, errorMessage);
-            if (recentDevices.isEmpty() && errorMessage->isEmpty()) {
-                return true;
+    _dataBroker->loadRecentChatHistories(
+        this, [this](const QHash<QString, QList<MessageRecord>> &histories) {
+            for (auto it = histories.cbegin(); it != histories.cend(); ++it) {
+                _chat->restoreMessages(it.key(), it.value());
             }
-
-            QHash<QString, QList<MessageRecord>> histories;
-            for (const PeerRecord &peer : recentDevices) {
-                MessageCursor cursor;
-                cursor.peerDeviceId = peer.deviceId;
-                // 每个会话限制一页，向上翻页由后续历史界面负责。
-                const QList<MessageRecord> messages = _messageRepository->loadMessages(
-                    cursor, 50, errorMessage);
-                if (!errorMessage->isEmpty()) {
-                    return false;
-                }
-                if (!messages.isEmpty()) {
-                    histories.insert(peer.deviceId, messages);
-                }
-            }
-
-            // 模型属于主线程，不能在数据库线程直接追加行。
-            QMetaObject::invokeMethod(this, [this, histories] {
-                for (auto it = histories.cbegin(); it != histories.cend(); ++it) {
-                    _chat->restoreMessages(it.key(), it.value());
-                }
-            }, Qt::QueuedConnection);
-            return true;
         });
 }
 
 // 在存储线程读取最近传输历史并回投到主线程恢复模型
 void AppController::loadRecentTransferHistories()
 {
-    if (!_storage->isAvailable() || !_transferRepository) {
+    if (!_dataBroker || !_dataBroker->isAvailable()) {
         return;
     }
 
-    _storageWorker->submitLoad(
-        [this](SqliteDatabaseProxy &, QString *errorMessage) {
-            TransferQuery query;
-            const QList<TransferRecord> records = _transferRepository->queryTransfers(
-                query, 100, errorMessage);
-            if (!errorMessage->isEmpty()) {
-                return false;
-            }
-
-            // 传输模型属于主线程，恢复历史时必须回投到 AppController 所在线程。
-            QMetaObject::invokeMethod(this, [this, records] {
-                _transfer->restoreFinishedTransfers(records);
-            }, Qt::QueuedConnection);
-            return true;
+    _dataBroker->loadRecentTransferHistories(
+        this, [this](const QList<TransferRecord> &records) {
+            _transfer->restoreFinishedTransfers(records);
         });
 }

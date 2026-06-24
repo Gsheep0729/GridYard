@@ -38,9 +38,9 @@
 #include "history_records.h"
 #include "p2p_server.h"
 #include "protocol.h"
-#include "sqlite_database_proxy.h"
-#include "sqlite_device_proxy.h"
-#include "sqlite_message_proxy.h"
+#include "sqlite_database_broker.h"
+#include "sqlite_device_repository.h"
+#include "sqlite_message_repository.h"
 
 class TestChatManager : public QObject {
 private:
@@ -236,12 +236,12 @@ void TestChatManager::testInvalidFollowUpFrameRejected()
 
 void TestChatManager::testMessagesPersisted()
 {
-    SqliteDatabaseProxy database;
+    SqliteDatabaseBroker database;
     QString errorMessage;
     QVERIFY2(database.initialize(_tempDir->path() + "/chat-history.sqlite", &errorMessage),
              qPrintable(errorMessage));
-    SqliteDeviceProxy deviceRepository(&database);
-    SqliteMessageProxy messageRepository(&database);
+    SqliteDeviceRepository deviceRepository(&database);
+    SqliteMessageRepository messageRepository(&database);
 
     bool persisted = true;
     int persistedCount = 0;

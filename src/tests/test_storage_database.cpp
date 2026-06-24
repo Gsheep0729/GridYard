@@ -25,7 +25,7 @@
 #include <QTemporaryDir>
 
 #include "application_paths.h"
-#include "sqlite_database_proxy.h"
+#include "sqlite_database_broker.h"
 
 class TestStorageDatabase : public QObject {
 private:
@@ -38,7 +38,7 @@ private slots:
     void testRepeatedInitializePreservesData();
     void testMissingDriverDegrades();
     void testCorruptDatabaseBackedUpAndRebuilt();
-    void testLockedDatabaseWriteFailsButProxyStaysAvailable();
+    void testLockedDatabaseWriteFailsButBrokerStaysAvailable();
 
 private:
     bool tableExists(QSqlDatabase &connection, const QString &tableName);
@@ -59,7 +59,7 @@ void TestStorageDatabase::cleanupTestCase()
 
 void TestStorageDatabase::testInitializeAndSchema()
 {
-    SqliteDatabaseProxy database;
+    SqliteDatabaseBroker database;
     QString error;
     const QString path = ApplicationPaths::databaseDir() + "/gridyard-history.sqlite";
 
@@ -81,7 +81,7 @@ void TestStorageDatabase::testRepeatedInitializePreservesData()
     const QString path = _temporaryDir.path() + "/repeat.sqlite";
 
     {
-        SqliteDatabaseProxy database;
+        SqliteDatabaseBroker database;
         QVERIFY2(database.initialize(path, &error), qPrintable(error));
         QSqlDatabase connection = database.connectionForWorkerThread(&error);
         QVERIFY2(connection.isValid(), qPrintable(error));
@@ -101,7 +101,7 @@ void TestStorageDatabase::testRepeatedInitializePreservesData()
                  qPrintable(checkpoint.lastError().text()));
     }
 
-    SqliteDatabaseProxy database;
+    SqliteDatabaseBroker database;
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
     QCOMPARE(database.schemaVersion(), 1);
 
@@ -115,7 +115,7 @@ void TestStorageDatabase::testRepeatedInitializePreservesData()
 
 void TestStorageDatabase::testMissingDriverDegrades()
 {
-    SqliteDatabaseProxy database([] { return QStringList{}; });
+    SqliteDatabaseBroker database([] { return QStringList{}; });
     QString error;
 
     QVERIFY(!database.initialize(_temporaryDir.path() + "/missing-driver.sqlite", &error));
@@ -131,7 +131,7 @@ void TestStorageDatabase::testCorruptDatabaseBackedUpAndRebuilt()
     QVERIFY(corruptFile.write("this is not a sqlite database") > 0);
     corruptFile.close();
 
-    SqliteDatabaseProxy database;
+    SqliteDatabaseBroker database;
     QString error;
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
     QVERIFY(database.isAvailable());
@@ -148,9 +148,9 @@ void TestStorageDatabase::testCorruptDatabaseBackedUpAndRebuilt()
     QVERIFY(tableExists(connection, "chat_messages"));
 }
 
-void TestStorageDatabase::testLockedDatabaseWriteFailsButProxyStaysAvailable()
+void TestStorageDatabase::testLockedDatabaseWriteFailsButBrokerStaysAvailable()
 {
-    SqliteDatabaseProxy database;
+    SqliteDatabaseBroker database;
     QString error;
     const QString path = _temporaryDir.path() + "/locked.sqlite";
     QVERIFY2(database.initialize(path, &error), qPrintable(error));

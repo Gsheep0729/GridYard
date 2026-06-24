@@ -1,8 +1,8 @@
 /**
-* @file    sqlite_device_proxy.h
+* @file    sqlite_device_repository.h
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GY
+* @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
 *
 * 负责设备快照、最近业务活动时间和最近设备查询；纯发现心跳在代理内部
@@ -12,7 +12,7 @@
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.1.0] GY 2026-06-25
-* * 新增设备目录 SQLite Proxy
+* * 新增设备目录 SQLite Repository
 */
 
 #pragma once
@@ -21,12 +21,12 @@
 
 #include <QHash>
 
-class SqliteDatabaseProxy;
+class SqliteDatabaseBroker;
 
-class SqliteDeviceProxy : public IDeviceRepository {
+class SqliteDeviceRepository : public IDeviceRepository {
 public:
     // 构造设备目录 Repository
-    explicit SqliteDeviceProxy(SqliteDatabaseProxy *database);
+    explicit SqliteDeviceRepository(SqliteDatabaseBroker *database);
 
     // 新增或更新设备目录快照
     virtual bool upsertPeer(const PeerRecord &record, QString *errorMessage) override;
@@ -38,6 +38,6 @@ public:
     virtual QList<PeerRecord> recentPeers(int limit, QString *errorMessage) const override;
 
 private:
-    SqliteDatabaseProxy *_database = nullptr;  // 数据库连接和事务入口
+    SqliteDatabaseBroker *_database = nullptr;  // 数据库连接和事务入口
     QHash<QString, PeerRecord> _recentWrites;  // 最近持久化的发现快照
 };
