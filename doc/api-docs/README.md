@@ -1,6 +1,6 @@
 # GridYard API 文档索引
 
-本文档是 GridYard 项目内部 API 接口文档的入口索引，按模块划分为 8 份独立文档。
+本文档是 GridYard 项目内部 API 接口文档的入口索引，按总览和模块文档组织。
 
 ---
 
@@ -8,14 +8,15 @@
 
 | 序号 | 模块 | 文档 | 核心内容 |
 |------|------|------|----------|
+| 00 | 接口总览与数据库连接指南 | [00-接口总览与数据库连接指南.md](./00-接口总览与数据库连接指南.md) | QML/C++ 公共接口总表、命令行入口、SQLite Schema、数据库连接与排查教程 |
 | 01 | 设备发现模块 | [01-设备发现模块.md](./01-设备发现模块.md) | DiscoveryService、PeerInfo、UDP 广播、心跳机制 |
 | 02 | 传输管理模块 | [02-传输管理模块.md](./02-传输管理模块.md) | TransferSessionManager、FileSenderWorker、FileReceiverWorker |
-| 03 | 应用与配置模块 | [03-应用与配置模块.md](./03-应用与配置模块.md) | AppController、ConfigManager、Logger |
+| 03 | 应用与配置模块 | [03-应用与配置模块.md](./03-应用与配置模块.md) | AppController、ConfigManager、Logger、命令行配置隔离 |
 | 04 | 协议与编解码模块 | [04-协议与编解码模块.md](./04-协议与编解码模块.md) | protocol.h、FrameCodec、TLV 帧格式、ErrorCode |
 | 05 | UI 组件模块 | [05-UI组件模块.md](./05-UI组件模块.md) | QML 组件、Style.js、FormatUtils.js、ChatView |
 | 06 | 全局 UI 设计规范 | [06-全局UI设计规范.md](./06-全局UI设计规范.md) | 配色、圆角、间距、动画、交互、字体规范 |
 | 07 | 在线聊天模块 | [07-在线聊天模块.md](./07-在线聊天模块.md) | ChatManager、ChatConnection、ChatMessageModel、P2P 文本聊天 |
-| 08 | 本地数据层模块 | [08-本地数据层模块.md](./08-本地数据层模块.md) | Repository 端口、SQLite Proxy、HistoryController、异常恢复 |
+| 08 | 本地数据层模块 | [08-本地数据层模块.md](./08-本地数据层模块.md) | Repository 端口、SQLite Proxy、HistoryController、数据库设计、连接教程、异常恢复 |
 
 ---
 
@@ -49,6 +50,32 @@ AppController (应用逻辑层)
                     └── FrameCodec (TLV 编解码)
                             ↓ 引用
                             └── protocol.h (协议常量与错误码)
+```
+
+---
+
+## 快速入口
+
+### QML 调用入口
+
+```qml
+AppController.discovery.refresh()
+AppController.transfer.createSendSession(deviceId, filePath)
+AppController.chat.sendText(deviceId, content)
+AppController.history.loadMoreMessages(deviceId)
+ConfigManager.openFolder(ConfigManager.receivePath)
+```
+
+### 本地数据库入口
+
+```text
+<QStandardPaths::AppDataLocation>/database/gridyard-history.sqlite
+```
+
+核心规则：
+
+```text
+聊天记录和传输历史按“对端 device_id”归属，不按设备名、IP 或端口归属。
 ```
 
 ---

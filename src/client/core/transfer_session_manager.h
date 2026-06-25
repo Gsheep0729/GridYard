@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 6.3.0
+* @version 6.6.2
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,8 @@
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 支持按当前设备清空已结束传输记录
 * [v6.3.0] GY   2026-06-25
 * * 发射结束态传输快照并支持启动恢复历史记录
 * [v4.16.1] FengChunlin   2026-06-21
@@ -73,7 +75,8 @@ public:
     Q_INVOKABLE void removeSession(const QString &sessionId);
     // 删除本地文件只允许接收成功记录，避免误删发送源文件
     Q_INVOKABLE void removeSessionAndDeleteFile(const QString &sessionId);
-    Q_INVOKABLE void clearFinishedSessions(bool deleteReceivedFiles = false);
+    Q_INVOKABLE void clearFinishedSessions(bool deleteReceivedFiles = false,
+                                           const QString &deviceId = {});
     // 启动阶段恢复已结束的历史记录
     void restoreFinishedTransfers(const QList<TransferRecord> &records);
 
