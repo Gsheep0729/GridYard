@@ -1,7 +1,7 @@
 /**
 * @file    Main.qml
-* @version 6.6.2
-* @date    2026-06-24
+* @version 6.7.0
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
@@ -10,9 +10,14 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v6.7.0] GY   2026-06-28
+* * 关闭按钮触发时短暂置顶主窗口，确保立即回到桌面最上层
+* * 关闭确认弹窗打开后重试恢复并聚焦主窗口
+* [v6.6.3] GY   2026-06-28
+* * 发送和接收传输后停留在统一会话流，不再切换传输页签
 * [v6.6.2] GY   2026-06-25
 * * 约束主窗口最小尺寸并限制侧栏设备名宽度，避免整体布局压缩遮挡
-* * 创建传输任务后自动切换到当前设备的传输页
+* * 创建传输任务后自动显示在当前设备会话中
 * [v6.5.0] GY   2026-06-25
 * * 关闭窗口时增加隐藏后台/退出程序确认，修复托盘后台无法退出
 * * 接入系统托盘、后台运行与非阻塞通知
@@ -60,25 +65,61 @@ ApplicationWindow {
                      .arg(AppController.applicationVersion)
     color: Style.Color.pageBg
 
-    onClosing: function(close) {
-        if (_allowWindowClose) {
-            return
-        }
-        close.accepted = false
-        closeChoiceDialog.open()
+    // 窗口首次显示后记录常规标志位，供临时置顶后恢复使用
+    Component.onCompleted: {
+        _normalWindowFlags = mainWindow.flags
     }
 
+    onClosing: function(close) {
+        if (_allowWindowClose) {
+            return  // 已获准退出，不拦截
+        }
+        close.accepted = false
+        mainWindow.bringMainWindowToFront()
+        closeChoiceDialog.open()
+        closeDialogFocusTimer.restart()
+    }
+
+    // 当前选中的目标设备信息
     property string _targetDeviceId: ""
     property string _targetDeviceName: ""
     property string _targetIpAddress: ""
     property bool _targetIsOnline: false
-    property bool _allowWindowClose: false
-    readonly property int kPopupEnterDuration: 180
+    property bool _allowWindowClose: false  // 标记用户已确认退出，允许窗口关闭
+    readonly property int kPopupEnterDuration: 180  // 弹窗淡入动画时长
+    // 记录常规窗口标志，临时置顶后恢复
+    property int _normalWindowFlags: 0
 
+    // 最小化或隐藏状态下恢复到普通窗口并激活到前台
     function showMainWindow(): void {
+        mainWindow.visible = true
+        if (mainWindow.visibility === Window.Minimized
+                || mainWindow.visibility === Window.Hidden) {
+            mainWindow.visibility = Window.Windowed
+        }
         mainWindow.show()
         mainWindow.raise()
         mainWindow.requestActivate()
+    }
+
+    // 临时添加置顶标志将窗口拉到最前，配合定时器自动取消置顶
+    function bringMainWindowToFront(): void {
+        mainWindow.flags = _normalWindowFlags | Qt.WindowStaysOnTopHint
+        mainWindow.visible = true
+        if (mainWindow.visibility === Window.Minimized
+                || mainWindow.visibility === Window.Hidden) {
+            mainWindow.visibility = Window.Windowed
+        }
+        mainWindow.show()
+        mainWindow.raise()
+        mainWindow.requestActivate()
+        releaseTopMostTimer.restart()
+    }
+
+    // 置顶窗口并聚焦关闭确认弹窗，配合定时器恢复焦点
+    function focusCloseChoiceDialog(): void {
+        mainWindow.bringMainWindowToFront()
+        closeDialogFocusTimer.restart()
     }
 
     function hideToTray(): void {
@@ -91,6 +132,32 @@ ApplicationWindow {
     function requestApplicationQuit(): void {
         _allowWindowClose = true
         AppController.quit()
+    }
+
+    // 关闭确认弹窗聚焦定时器：短暂延迟后聚焦弹窗内容，避免窗口切换导致焦点丢失
+    Timer {
+        id: closeDialogFocusTimer
+        interval: 120
+        repeat: false
+
+        onTriggered: {
+            mainWindow.showMainWindow()
+            if (closeChoiceDialog.opened && closeChoiceDialog.contentItem) {
+                closeChoiceDialog.contentItem.forceActiveFocus()
+            }
+        }
+    }
+
+    // 置顶释放定时器：短暂置顶后恢复常规窗口标志，避免窗口永远悬浮
+    Timer {
+        id: releaseTopMostTimer
+        interval: 260
+        repeat: false
+
+        onTriggered: {
+            mainWindow.flags = mainWindow._normalWindowFlags
+            mainWindow.showMainWindow()
+        }
     }
 
     Platform.SystemTrayIcon {
@@ -123,12 +190,14 @@ ApplicationWindow {
 
     function selectDevice(deviceId: string, deviceName: string,
                           ipAddress: string, isOnline: bool): void {
+        // 更新右侧会话页绑定的目标设备信息
         _targetDeviceId = deviceId
         _targetDeviceName = deviceName
         _targetIpAddress = ipAddress
         _targetIsOnline = isOnline
     }
 
+    // 设备列表刷新后重新同步选中设备的在线状态和 IP
     function refreshSelectedDevice(): void {
         if (_targetDeviceId.length === 0) return
         const peers = AppController.peerDiscoveryViewModel.peers
@@ -142,13 +211,6 @@ ApplicationWindow {
         _targetIsOnline = false
     }
 
-    function showTransferTimeline(): void {
-        if (_targetDeviceId.length === 0) {
-            return
-        }
-        sessionView.timelineMode = 1
-    }
-
     Dialog {
         id: closeChoiceDialog
         title: qsTr("关闭 GridYard")
@@ -156,6 +218,8 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: Math.min(420, parent ? parent.width - 48 : 420)
         padding: 20
+
+        onOpened: mainWindow.focusCloseChoiceDialog()
 
         ColumnLayout {
             spacing: 14
@@ -199,8 +263,7 @@ ApplicationWindow {
         }
     }
 
-    // 文件选择与设置弹窗
-
+    // 文件选择弹窗：支持多选，选中后为每个文件创建发送会话
     FileDialog {
         id: fileDialog
         title: qsTr("选择要发送的文件")
@@ -213,10 +276,10 @@ ApplicationWindow {
                 if (path.startsWith("file://")) path = path.substring(7)
                 AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
             }
-            mainWindow.showTransferTimeline()
         }
     }
 
+    // 文件夹选择弹窗：选中后去掉 file:// 前缀再创建发送会话
     FolderDialog {
         id: folderDialog
         title: qsTr("选择要发送的文件夹")
@@ -224,7 +287,6 @@ ApplicationWindow {
             let path = selectedFolder.toString()
             if (path.startsWith("file://")) path = path.substring(7)
             AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
-            mainWindow.showTransferTimeline()
         }
     }
 
@@ -482,6 +544,7 @@ ApplicationWindow {
             console.log("选中设备:", deviceId)
             mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
         }
+        // 拖拽文件到设备列表项时，先选中该设备再创建发送会话
         onFileDropped: function(deviceId, filePath) {
             console.log("拖拽文件到设备:", deviceId, filePath)
             const peers = AppController.peerDiscoveryViewModel.peers
@@ -493,7 +556,6 @@ ApplicationWindow {
                 }
             }
             AppController.transferController.createSendSession(deviceId, filePath)
-            mainWindow.showTransferTimeline()
         }
     }
 
@@ -560,7 +622,6 @@ ApplicationWindow {
             onSendFolderRequested: folderDialog.open()
             onFileDropped: function(filePath) {
                 AppController.transferController.createSendSession(mainWindow._targetDeviceId, filePath)
-                mainWindow.showTransferTimeline()
             }
         }
     }
@@ -616,7 +677,6 @@ ApplicationWindow {
                     break
                 }
             }
-            mainWindow.showTransferTimeline()
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName
             acceptDialog.fileName = fileName
