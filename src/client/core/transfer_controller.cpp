@@ -20,11 +20,13 @@ TransferController::TransferController(TransferSessionManager *manager, QObject 
     , _manager{manager}
 {
     if (!_manager) {
-        return;
+        return;  // 管理器为空时跳过信号连接，防御性编程
     }
 
+    // 将内部管理器的信号逐个转发给 QML 控制器，隐藏传输管理器的内部实现
     connect(_manager, &TransferSessionManager::sessionsChanged,
             this, &TransferController::sessionsChanged);
+    // 接收请求信号直接透传，由表现层弹窗确认
     connect(_manager, &TransferSessionManager::receiveRequestReceived,
             this, &TransferController::receiveRequestReceived);
     connect(_manager, &TransferSessionManager::transferCompleted,

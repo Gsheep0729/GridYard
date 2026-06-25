@@ -42,13 +42,14 @@ import "../utils/Style.js" as Style
 Frame {
     id: transferPanel
 
-    property var expandedSessions: ({})
-    property int viewMode: 0
+    property var expandedSessions: ({})  // 记录文件夹展开状态的字典，键为 sessionId
+    property int viewMode: 0  // 0=任务列表, 1=历史视图
 
     function isSessionExpanded(sessionId: string): bool {
         return expandedSessions[sessionId] === true
     }
 
+    // 使用 Object.assign 浅拷贝触发 QML 属性绑定更新
     function setSessionExpanded(sessionId: string, expanded: bool): void {
         const next = Object.assign({}, expandedSessions)
         next[sessionId] = expanded
@@ -73,6 +74,7 @@ Frame {
 
             Item { Layout.fillWidth: true }
 
+            // 清空记录按钮：弹出下拉菜单选择仅清空或同时删除本地文件
             ToolButton {
                 icon.name: "edit-clear-all-symbolic"
                 text: qsTr("清空记录")
@@ -119,11 +121,11 @@ Frame {
             Layout.fillWidth: true
             currentIndex: transferPanel.viewMode
             onCurrentIndexChanged: transferPanel.viewMode = currentIndex
-            TabButton { text: qsTr("任务") }
-            TabButton { text: qsTr("历史") }
+            TabButton { text: qsTr("任务") }  // 当前进行中的传输任务
+            TabButton { text: qsTr("历史") }  // 已完成/失败的历史记录
         }
 
-        // 任务列表
+        // 任务列表：绑定 TransferController.sessions，仅 viewMode===0 时可见
         ListView {
             id: listView
             Layout.fillWidth: true
@@ -187,6 +189,7 @@ Frame {
             }
         }
 
+        // 历史视图：绑定 HistoryController，仅 viewMode===1 时可见
         TransferHistoryView {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -194,6 +197,7 @@ Frame {
         }
     }
 
+    // 清空确认弹窗：警告用户操作不可撤销，确认后删除已接收本地文件
     Dialog {
         id: clearDeleteConfirmDialog
         title: qsTr("清空记录")

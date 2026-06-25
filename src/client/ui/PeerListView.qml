@@ -33,9 +33,10 @@ import "../utils/Style.js" as Style
 Rectangle {
     id: peerListView
 
-    property string selectedDeviceId: ""
-    readonly property int kDeviceCardHeight: 76
+    property string selectedDeviceId: ""  // 当前选中的设备 ID，由 Main.qml 设置
+    readonly property int kDeviceCardHeight: 76  // 单个设备卡片的固定高度
     readonly property string _searchKeyword: searchInput.text.trim().toLowerCase()
+    // 过滤后的设备数量，用于标题栏显示"N 台"
     readonly property int _filteredCount: {
         const peers = AppController.peerDiscoveryViewModel.peers
         if (_searchKeyword.length === 0) {
@@ -51,6 +52,7 @@ Rectangle {
         return count
     }
 
+    // 模糊匹配：同时搜索设备名和 IP 地址，任一包含关键词即匹配
     function matchesPeer(deviceName: string, ipAddress: string): bool {
         if (_searchKeyword.length === 0) {
             return true
@@ -62,11 +64,11 @@ Rectangle {
     }
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
-    signal fileDropped(string deviceId, string filePath)
+    signal fileDropped(string deviceId, string filePath)  // 拖拽文件到设备卡片时触发
 
     color: Style.Color.surfaceMid
 
-    // 搜索区
+    // 搜索区：包含搜索输入框和刷新按钮
     Rectangle {
         id: searchArea
         anchors.left: parent.left
@@ -79,6 +81,7 @@ Rectangle {
             anchors.centerIn: parent
             spacing: 15
 
+            // 搜索输入框容器：管理焦点和悬停视觉反馈
             Rectangle {
                 id: searchBox
                 width: 150; height: 25
@@ -86,7 +89,7 @@ Rectangle {
                 color: _activeFocus
                        ? Style.Color.surfaceMid
                        : (_hovered ? Style.Color.surfaceSoft : Style.Color.select)
-                border.width: _activeFocus? 1.5 : 0
+                border.width: _activeFocus? 1.5 : 0  // 获焦时显示边框
                 border.color: Style.Color.textfield
                 property bool _hovered: false
                 property bool _activeFocus: false
@@ -131,7 +134,7 @@ Rectangle {
         }
     }
 
-    // 附近设备标题
+    // 附近设备标题：显示"附近设备"文字
     Label {
         id: deviceTitle
         anchors.left: parent.left
@@ -144,6 +147,7 @@ Rectangle {
         color: Style.Color.textSecondary
     }
 
+    // 设备数量标签：显示过滤后的设备数量
     Label {
         anchors.right: parent.right
         anchors.rightMargin: 16
@@ -153,7 +157,7 @@ Rectangle {
         color: Style.Color.textWeak
     }
 
-    // 设备列表
+    // 设备列表：绑定在线设备数组，delegate 自动从 PeerInfo 填充 required property
     ListView {
         id: listView
         anchors.left: parent.left
@@ -173,7 +177,7 @@ Rectangle {
             readonly property bool _matches: peerListView.matchesPeer(deviceName, ipAddress)
 
             width: listView.width
-            height: _matches ? peerListView.kDeviceCardHeight : 0
+            height: _matches ? peerListView.kDeviceCardHeight : 0  // 不匹配时高度为 0 实现隐藏
             visible: _matches
 
             DeviceCard {
@@ -195,6 +199,7 @@ Rectangle {
             }
         }
 
+        // 空列表提示：搜索无结果或尚未发现设备时显示
         Label {
             anchors.centerIn: parent
             text: peerListView._searchKeyword.length > 0

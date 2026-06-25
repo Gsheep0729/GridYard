@@ -26,11 +26,12 @@ Item {
     id: chatView
 
     required property string deviceId
+    // 延迟获取消息模型：设备切换时自动重新绑定
     property var messageModel: deviceId.length > 0
                                ? AppController.chatController.messageModelForDevice(deviceId)
                                : null
 
-    onDeviceIdChanged: Qt.callLater(chatView.loadInitialHistory)
+    onDeviceIdChanged: Qt.callLater(chatView.loadInitialHistory)  // 延迟执行避免绑定风暴
     onMessageModelChanged: Qt.callLater(chatView.loadInitialHistory)
     Component.onCompleted: Qt.callLater(chatView.loadInitialHistory)
 
@@ -56,9 +57,10 @@ Item {
         spacing: Style.Space.md
         model: chatView.messageModel
 
-        property bool followLatest: true
+        property bool followLatest: true  // 是否自动滚动到最新消息
 
         onContentYChanged: {
+            // 判断用户是否仍在底部附近（16px 容差），决定是否自动跟随新消息
             followLatest = contentY + height >= contentHeight - Style.Space.lg
             // 滚动到顶部且有消息时触发向上翻页加载更早历史
             if (contentY <= 0 && messageList.count > 0 && !AppController.historyController.loading) {
@@ -66,12 +68,14 @@ Item {
             }
         }
 
+        // 新消息追加后，如果处于跟随模式则自动滚动到底部
         onCountChanged: {
             if (followLatest) {
                 Qt.callLater(chatView.scrollToLatest)
             }
         }
 
+        // 历史消息 prepend 后内容高度变化，同样需要跟随滚动
         onContentHeightChanged: {
             if (followLatest) {
                 Qt.callLater(chatView.scrollToLatest)
@@ -107,13 +111,14 @@ Item {
                 }
 
                 Rectangle {
+                    // 气泡宽度自适应：最大 72% 容器宽度，最小 96px 保证短消息可读
                     width: Math.min(parent.width * 0.72,
                                     Math.max(96, messageText.implicitWidth + Style.Space.lg * 2))
                     height: messageText.implicitHeight + Style.Space.md * 2
                     anchors.right: messageDelegate.isOutgoing ? parent.right : undefined
                     radius: Style.Radius.sm
                     color: messageDelegate.isOutgoing ? Style.Color.primary : Style.Color.window
-                    border.width: messageDelegate.status === 2 ? 1 : 0
+                    border.width: messageDelegate.status === 2 ? 1 : 0  // 发送失败时显示红色边框
                     border.color: Style.Color.error
 
                     Label {
@@ -139,6 +144,7 @@ Item {
                     }
 
                     Label {
+                        // 仅出站消息且状态非 Sent 时显示发送状态文字（Pending/Failed）
                         visible: messageDelegate.isOutgoing && messageDelegate.status !== 1
                         text: messageDelegate.status === 2 ? qsTr("发送失败") : qsTr("发送中")
                         color: messageDelegate.status === 2 ? Style.Color.error : Style.Color.textWeak
@@ -148,6 +154,7 @@ Item {
             }
         }
 
+        // 空聊天状态占位，引导用户发送第一条消息
         ColumnLayout {
             anchors.centerIn: parent
             visible: messageList.count === 0

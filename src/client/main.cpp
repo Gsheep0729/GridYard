@@ -1,7 +1,7 @@
 /**
 * @file    main.cpp
-* @version 6.6.2
-* @date    2026-06-25
+* @version 6.6.3
+* @date    2026-06-28
 * @author  GY
 * @brief   GridYard 客户端程序入口
 *
@@ -17,6 +17,8 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v6.6.3] GY   2026-06-28
+* * 提升 core 和 ui 分组源码行内注释密度，同步版本号
 * [v6.6.2] GY   2026-06-25
 * * 调整启动入口，由 AppController 负责系统和 UI 初始化
 * * 修复聊天输入框对齐、历史首屏恢复、设备列表搜索刷新和传输清空范围
@@ -117,7 +119,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("6.6.2");
+    QGuiApplication::setApplicationVersion("6.6.3");
     QGuiApplication::setOrganizationName("CQNU-SED");
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 

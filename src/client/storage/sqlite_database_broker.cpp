@@ -58,6 +58,7 @@ bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *erro
         errorMessage->clear();
     }
 
+    // 驱动不可用时静默降级，不阻塞在线收发
     if (!_driverProvider().contains("QSQLITE")) {
         if (errorMessage) {
             *errorMessage = "QSQLITE 驱动不可用";
@@ -67,6 +68,7 @@ bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *erro
     }
 
     const QFileInfo fileInfo(databasePath);
+    // 首次使用时自动创建数据库目录
     if (!QDir().mkpath(fileInfo.absolutePath())) {
         if (errorMessage) {
             *errorMessage = "无法创建数据库目录";
@@ -77,6 +79,7 @@ bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *erro
     closeMainConnection();  // 重复初始化前先释放旧主连接，避免复用旧文件句柄
     _databasePath = fileInfo.absoluteFilePath();
     const bool existingDatabase = QFileInfo::exists(_databasePath);
+    // 主连接名含实例指针地址，确保同一进程多 Broker 不冲突
     _mainConnectionName = QString("gridyard-storage-main-%1")
         .arg(reinterpret_cast<quintptr>(this));
 
@@ -86,6 +89,7 @@ bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *erro
         return true;
     }
 
+    // 首次打开失败后判断是否为文件损坏，尝试备份重建
     const QString firstError = errorMessage ? *errorMessage : QString{};
     qWarning() << "[Storage] 数据库初始化失败";
     closeMainConnection();  // 备份损坏库前必须释放 SQLite 文件句柄
@@ -99,6 +103,7 @@ bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *erro
             return false;
         }
 
+        // 备份成功后重新创建空库并迁移
         if (errorMessage) {
             errorMessage->clear();
         }

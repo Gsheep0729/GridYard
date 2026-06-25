@@ -86,12 +86,13 @@ void ChatManager::sendText(const QString &deviceId, const QString &content)
     }
 
     gy::ChatMessage message;
-    message.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    message.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);  // 生成唯一消息 ID
     message.fromDeviceId = _config->deviceId();
     message.fromName = _config->deviceName();
     message.content = content;
-    message.sentAt = QDateTime::currentDateTimeUtc();
+    message.sentAt = QDateTime::currentDateTimeUtc();  // 使用 UTC 时间，避免本地时区差异
 
+    // 复用或建立到目标设备的 TCP 聊天连接
     ChatConnection *connection = connectionForDevice(deviceId);
     if (!connection) {
         emit sendFailed(deviceId, gy::ChatMessageError::ConnectionFailed, tr("无法创建聊天连接"));
@@ -114,6 +115,7 @@ void ChatManager::sendText(const QString &deviceId, const QString &content)
 void ChatManager::clearMessages(const QString &deviceId)
 {
     if (deviceId.isEmpty()) {
+        // 全部清空：遍历所有设备模型逐个重置
         const QList<QString> deviceIds = _models.keys();
         _messageIds.clear();
         _pendingRecords.clear();
@@ -126,10 +128,10 @@ void ChatManager::clearMessages(const QString &deviceId)
 
     if (_models.contains(deviceId)) {
         _models.value(deviceId)->clear();
-        _messageIds.remove(deviceId);
+        _messageIds.remove(deviceId);  // 同步清除去重索引
+        // 清空该设备的所有待确认出站消息，避免后续写入确认触发错误持久化
         for (auto it = _pendingRecords.begin(); it != _pendingRecords.end();) {
             if (it->peerDeviceId == deviceId) {
-                // 清空会话后，迟到的写入确认不应重新把旧消息写入历史。
                 it = _pendingRecords.erase(it);
             } else {
                 ++it;
@@ -159,7 +161,7 @@ void ChatManager::prependHistoryMessages(const QString &deviceId,
     for (auto it = records.crbegin(); it != records.crend(); ++it) {
         const MessageRecord &record = *it;
         if (_messageIds[deviceId].contains(record.messageId)) {
-            continue;
+            continue;  // 跳过已存在于内存模型的消息，避免分页重叠
         }
         _messageIds[deviceId].insert(record.messageId);
         gy::ChatMessage message;
@@ -173,7 +175,7 @@ void ChatManager::prependHistoryMessages(const QString &deviceId,
             static_cast<MessageStatus>(record.localStatus)));
     }
     if (!messages.isEmpty()) {
-        modelForDevice(deviceId)->prependMessages(messages);
+        modelForDevice(deviceId)->prependMessages(messages);  // 在模型头部插入更早的历史消息
         emit messagesChanged(deviceId);
     }
 }
@@ -319,36 +321,39 @@ ChatConnection *ChatManager::connectionForDevice(const QString &deviceId)
     }
 
     connection = new ChatConnection{this};
+    // 接收远端消息：归档到内存模型并触发通知
     connect(connection, &ChatConnection::messageReceived,
             this, [this, connection](const gy::ChatMessage &message) {
         onMessageReceived(connection, message);
     });
+    // 写入成功：更新状态为已发送并提交持久化
     connect(connection, &ChatConnection::messageWritten,
             this, [this, deviceId](const QString &messageId) {
-        // 持久化仅发生在写入成功之后，失败发送不污染跨重启历史。
         updateMessageStatus(deviceId, messageId, MessageStatus::Sent);
         persistWrittenMessage(messageId);
     });
+    // 写入失败：移除暂存记录，更新状态为失败并通知 UI
     connect(connection, &ChatConnection::messageWriteFailed,
             this, [this, deviceId](const QString &messageId, gy::ChatMessageError error,
                                    const QString &errorMessage) {
-        // 移除暂存记录，防止断线后的旧确认触发错误持久化。
-        _pendingRecords.remove(messageId);
+        _pendingRecords.remove(messageId);  // 移除暂存记录，防止断线后的旧确认触发错误持久化
         updateMessageStatus(deviceId, messageId, MessageStatus::Failed);
         emit sendFailed(deviceId, error, errorMessage);
     });
+    // 协议错误：通知 UI 层展示连接异常提示
     connect(connection, &ChatConnection::protocolError,
             this, [this, deviceId](gy::ChatMessageError error, const QString &errorMessage) {
         emit connectionError(deviceId, error, errorMessage);
     });
+    // 连接断开：清理连接映射并延迟销毁对象
     connect(connection, &ChatConnection::disconnected,
             this, [this, deviceId, connection]() {
         removeConnection(deviceId, connection);
-        connection->deleteLater();
+        connection->deleteLater();  // 延迟销毁，避免信号处理栈中的悬空引用
     });
 
     _connections.insert(deviceId, connection);
-    connection->connectToHost(address, port);
+    connection->connectToHost(address, port);  // 发起异步 TCP 连接
     return connection;
 }
 

@@ -29,13 +29,13 @@ int ChatMessageModel::count() const
     return _messages.size();
 }
 
-// 返回模型行数
+// 返回模型行数，parent 有效时返回 0（非树形模型）
 int ChatMessageModel::rowCount(const QModelIndex &parent) const
 {
     return parent.isValid() ? 0 : _messages.size();
 }
 
-// 返回指定角色的消息字段
+// 根据角色索引返回消息字段，QML ListView delegate 通过角色名访问
 QVariant ChatMessageModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid() || index.row() < 0 || index.row() >= _messages.size()) {
@@ -50,12 +50,12 @@ QVariant ChatMessageModel::data(const QModelIndex &index, int role) const
     case ContentRole: return message.value("content");
     case SentAtRole: return message.value("sentAt");
     case IsOutgoingRole: return message.value("isOutgoing");
-    case StatusRole: return message.value("status");
+    case StatusRole: return message.value("status");  // 0=Pending, 1=Sent, 2=Failed
     default: return {};
     }
 }
 
-// 返回 QML delegate 使用的角色名称
+// 返回 QML delegate 使用的角色名称映射，QML 通过 role name 绑定数据
 QHash<int, QByteArray> ChatMessageModel::roleNames() const
 {
     return {
@@ -79,7 +79,7 @@ void ChatMessageModel::appendMessage(const QVariantMap &message)
     emit countChanged();
 }
 
-// 在当前首条消息前插入一页更早的历史消息
+// 在当前首条消息前插入一页更早的历史消息，保持模型时间正序
 void ChatMessageModel::prependMessages(const QList<QVariantMap> &messages)
 {
     if (messages.isEmpty()) {
@@ -87,15 +87,14 @@ void ChatMessageModel::prependMessages(const QList<QVariantMap> &messages)
     }
 
     beginInsertRows({}, 0, messages.size() - 1);
-    // 调用方传入旧到新的页面；倒序 prepend 后仍保持模型时间正序。
     for (auto it = messages.crbegin(); it != messages.crend(); ++it) {
-        _messages.prepend(*it);
+        _messages.prepend(*it);  // 倒序 prepend 后仍保持模型时间正序
     }
     endInsertRows();
     emit countChanged();
 }
 
-// 修改指定消息的发送状态
+// 修改指定消息的发送状态，仅在状态实际变化时通知 QML 刷新对应行
 bool ChatMessageModel::updateMessageStatus(const QString &messageId, int status)
 {
     for (int row = 0; row < _messages.size(); ++row) {
@@ -104,19 +103,19 @@ bool ChatMessageModel::updateMessageStatus(const QString &messageId, int status)
             continue;
         }
         if (message.value("status").toInt() == status) {
-            return true;
+            return true;  // 状态未变化，无需触发 dataChanged
         }
 
         message.insert("status", status);
         const QModelIndex changedIndex = index(row, 0);
-        emit dataChanged(changedIndex, changedIndex, {StatusRole});
+        emit dataChanged(changedIndex, changedIndex, {StatusRole});  // 精确通知只有 Status 角色变化
         return true;
     }
 
-    return false;
+    return false;  // 消息 ID 不存在
 }
 
-// 从模型中移除指定消息
+// 从模型中移除指定消息，使用 beginRemoveRows 精确通知 QML 刷新
 bool ChatMessageModel::removeMessage(const QString &messageId)
 {
     for (int row = 0; row < _messages.size(); ++row) {
@@ -130,10 +129,10 @@ bool ChatMessageModel::removeMessage(const QString &messageId)
         emit countChanged();
         return true;
     }
-    return false;
+    return false;  // 消息 ID 不存在，返回 false 供调用方判断是否需要额外清理
 }
 
-// 返回兼容旧调用方的消息快照
+// 返回兼容旧调用方的消息快照，将 QVariantMap 列表转换为 QVariantList
 QVariantList ChatMessageModel::messages() const
 {
     QVariantList messages;
@@ -144,11 +143,11 @@ QVariantList ChatMessageModel::messages() const
     return messages;
 }
 
-// 清空当前设备的运行期消息
+// 清空当前设备的运行期消息，使用 beginResetModel 通知 QML 全量刷新
 void ChatMessageModel::clear()
 {
     if (_messages.isEmpty()) {
-        return;
+        return;  // 空列表无需触发重置
     }
 
     beginResetModel();

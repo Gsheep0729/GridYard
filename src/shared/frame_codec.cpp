@@ -39,7 +39,7 @@ FrameCodec::FrameCodec(QObject *parent)
 // 将 type + payload 编码为完整 TLV 帧字节流（含 8 字节帧头）
 QByteArray FrameCodec::encode(quint32 type, const QByteArray &payload)
 {
-    // 按 Type 分级检查载荷长度
+    // 按 Type 分级检查载荷长度，DataChunk 允许 256MB，其他帧限制 1MB
     const quint32 maxPayload = gy::protocol::maxPayloadForType(type);
     if (static_cast<quint32>(payload.size()) > maxPayload) {
         qWarning() << "FrameCodec::encode: payload size" << payload.size()
@@ -48,15 +48,15 @@ QByteArray FrameCodec::encode(quint32 type, const QByteArray &payload)
     }
 
     QByteArray frame;
+    // 预分配 header + payload 空间，避免多次 realloc
     frame.reserve(gy::protocol::kHeaderBytes + payload.size());
 
-    // 8 字节帧头：Type(4) + Length(4)，大端序
+    // 8 字节帧头：Type(4) + Length(4)，大端序，与协议规格书一致
     QDataStream stream(&frame, QDataStream::WriteOnly);
     stream.setByteOrder(QDataStream::BigEndian);
     stream << type;
     stream << static_cast<quint32>(payload.size());
 
-    // 追加载荷
     frame.append(payload);
 
     return frame;
@@ -67,12 +67,12 @@ void FrameCodec::feed(const QByteArray &data)
 {
     _buffer.append(data);
 
-    // 循环处理粘包：一次 feed 可能包含多个完整帧
+    // 循环处理粘包：一次 feed 可能包含多个完整帧（TCP 粘包特性）
     while (true) {
         if (_state == State::WaitingHeader) {
-            // 等待帧头（8 字节）
+            // 帧头 8 字节未凑齐，等下一次 readyRead
             if (_buffer.size() < static_cast<int>(gy::protocol::kHeaderBytes)) {
-                break;  // 数据不足，等待更多
+                break;
             }
 
             // 解析帧头（大端序）
@@ -81,7 +81,7 @@ void FrameCodec::feed(const QByteArray &data)
             stream >> _pendingType;
             stream >> _pendingLength;
 
-            // 按 Type 分级检查帧载荷长度
+            // 按 Type 分级检查帧载荷长度，防止恶意帧占用大量内存
             const quint32 maxPayload = gy::protocol::maxPayloadForType(_pendingType);
             if (_pendingLength > maxPayload) {
                 qWarning() << "FrameCodec::feed: payload length" << _pendingLength
@@ -91,7 +91,7 @@ void FrameCodec::feed(const QByteArray &data)
                                        .arg(_pendingLength)
                                        .arg(maxPayload)
                                        .arg(_pendingType, 0, 16));
-                // 清空缓冲区，重置状态
+                // 超限帧无法恢复，清空缓冲区重置到初始状态
                 _buffer.clear();
                 _state = State::WaitingHeader;
                 _pendingType = 0;
@@ -99,25 +99,23 @@ void FrameCodec::feed(const QByteArray &data)
                 break;
             }
 
-            // 移除已解析的帧头
             _buffer.remove(0, gy::protocol::kHeaderBytes);
             _state = State::WaitingPayload;
         }
 
         if (_state == State::WaitingPayload) {
-            // 等待载荷
+            // 载荷字节未凑齐，等下一次 readyRead
             if (_buffer.size() < static_cast<int>(_pendingLength)) {
-                break;  // 数据不足，等待更多
+                break;
             }
 
-            // 提取载荷
             QByteArray payload = _buffer.left(_pendingLength);
             _buffer.remove(0, _pendingLength);
 
-            // 发射信号，交付业务层
+            // 完整帧就绪，通知业务层处理
             emit frameReady(_pendingType, payload);
 
-            // 重置状态，继续处理下一个帧
+            // 重置状态机，继续尝试解析缓冲区中可能剩余的下一个帧
             _state = State::WaitingHeader;
             _pendingType = 0;
             _pendingLength = 0;

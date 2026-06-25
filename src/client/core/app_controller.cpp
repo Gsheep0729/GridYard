@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.cpp
 * @version 6.6.2
-* @date    2026-06-25
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
@@ -10,6 +10,9 @@
 * UI 引擎由 singleton() 在控制器实例缓存后再初始化，避免 QML 单例回调递归创建。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-28
+* * AppController 只向 QML 暴露 Controller/ViewModel 门面
+* * HistoryController 构造改为传入 LocalDataBroker
 * [v6.6.2] GY   2026-06-25
 * * 将 AppController 调整为系统组合根，负责应用层和 UI 层初始化
 * * 消息持久化时同步更新设备最近聊天活动时间
@@ -73,9 +76,7 @@ AppController::AppController(QObject *parent)
     , _transferController{new TransferController{_transfer, this}}
     , _chatController{new ChatController{_chat, this}}
     , _dataBroker{new LocalDataBroker{this}}
-    , _history{new HistoryController{_chat, _transfer, _config, _dataBroker->worker(),
-                                     _dataBroker->messageRepository(),
-                                     _dataBroker->transferHistoryRepository(), this}}
+    , _history{new HistoryController{_chat, _transfer, _config, _dataBroker, this}}
     , _retentionTimer{new QTimer{this}}
 {
     QString storageError;
@@ -84,7 +85,7 @@ AppController::AppController(QObject *parent)
         // 历史库不可用时保留在线收发能力，避免本地磁盘问题影响 P2P 主链路。
         qWarning() << "[Storage] 本地历史不可用:" << storageError;
     }
-    _localHistoryAvailable = _dataBroker->isAvailable();
+    _localHistoryAvailable = _dataBroker->isAvailable();  // 记录降级状态，供 QML 判断是否展示历史入口
 
     // 存储失败只记录降级状态，不影响已完成的网络收发。
     connect(_dataBroker, &LocalDataBroker::operationFailed,
@@ -96,7 +97,7 @@ AppController::AppController(QObject *parent)
     // 发现结果异步写入设备目录，避免 UDP 心跳阻塞主线程。
     connect(_discovery, &DiscoveryService::peerUpdated,
             this, [this](const PeerInfo &peer) {
-                _dataBroker->persistDiscoveredPeer(peer);
+                _dataBroker->persistDiscoveredPeer(peer);  // 设备快照投递到 Worker 线程异步写入
             });
 
     _p2pServer->start();
@@ -108,6 +109,7 @@ AppController::AppController(QObject *parent)
     // 消息收发成功后按顺序确保设备目录和聊天记录均已落库。
     connect(_chat, &ChatManager::messageToPersist,
             this, [this](const MessageRecord &record) {
+                // 先查询对端最新端点信息，设备目录记录可能比消息记录更早写入。
                 const QVariantMap endpoint = _discovery->transferEndpoint(record.peerDeviceId);
                 _dataBroker->persistChatMessage(record, endpoint);
             });
@@ -116,6 +118,7 @@ AppController::AppController(QObject *parent)
 
     connect(_transfer, &TransferSessionManager::transferToPersist,
             this, [this](const TransferRecord &record) {
+                // 传输结束时同步写入设备目录，保证外键引用完整。
                 const QVariantMap endpoint = _discovery->transferEndpoint(record.peerDeviceId);
                 _dataBroker->persistTransferRecord(record, endpoint);
             });
@@ -123,15 +126,15 @@ AppController::AppController(QObject *parent)
     connect(_transfer, &TransferSessionManager::transferHistoryDeleteRequested,
             this, [this](const QStringList &recordIds) {
                 if (recordIds.isEmpty()) {
-                    return;
+                    return;  // 空列表无需提交 Worker 任务
                 }
 
-                _dataBroker->deleteTransfers(recordIds);
+                _dataBroker->deleteTransfers(recordIds);  // 批量删除投递到 Worker 线程
             });
 
     loadRecentTransferHistories();
 
-    _history->cleanupExpiredRecords();
+    _history->cleanupExpiredRecords();  // 启动时立即清理一次过期历史
     _retentionTimer->setInterval(60 * 60 * 1000);  // 历史保留清理间隔：1 小时
     connect(_retentionTimer, &QTimer::timeout,
             _history, &HistoryController::cleanupExpiredRecords);
@@ -249,14 +252,14 @@ void AppController::quit()
         return;
     }
 
-    // 将停止标记排入 Worker 队列尾部，确保退出前不会丢失已提交的历史写入。
+    // 单次触发的排空信号 + QueuedConnection，确保退出发生在事件循环空闲时。
     connect(_dataBroker, &LocalDataBroker::drained,
             this, [] { QCoreApplication::exit(0); },
             static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
-    _dataBroker->beginShutdown();
+    _dataBroker->beginShutdown();  // 通知 Worker 线程排空剩余任务后停止
 
     // 极端情况下 Worker 线程没有及时响应，也不能让托盘进程永久留在后台。
-    QTimer::singleShot(3000, this, [] { QCoreApplication::exit(0); });
+    QTimer::singleShot(3000, this, [] { QCoreApplication::exit(0); });  // 3 秒兜底强制退出
 }
 
 // 验证 QML 调用链路

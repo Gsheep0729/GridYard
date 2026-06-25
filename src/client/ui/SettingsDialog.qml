@@ -44,24 +44,26 @@ Dialog {
     height: Math.min(620, parent ? parent.height - 32 : 620)
     padding: 0
 
-    // 临时存储编辑中的值
+    // 临时存储编辑中的值：打开对话框时从 ConfigManager 复制，保存时写回
     property string _tempDeviceName:  ConfigManager.deviceName
     property string _tempReceivePath: ConfigManager.receivePath
     property bool   _tempAutoAcceptFiles: ConfigManager.autoAcceptFiles
     property int    _tempTcpPort:     ConfigManager.tcpPort
     property int    _tempRetentionDays: ConfigManager.retentionDays
 
+    // 表单校验：设备名非空、接收路径非空、端口在合法范围内
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
                                     && _tempReceivePath.length > 0
                                     && _tempTcpPort >= 1024
                                     && _tempTcpPort <= 65535
+    // 脏标记：任一字段与当前配置不同则视为已修改
     readonly property bool _isDirty: _tempDeviceName.trim() !== ConfigManager.deviceName
                                     || _tempReceivePath !== ConfigManager.receivePath
                                     || _tempAutoAcceptFiles !== ConfigManager.autoAcceptFiles
                                     || _tempTcpPort !== ConfigManager.tcpPort
                                     || _tempRetentionDays !== ConfigManager.retentionDays
     readonly property int kColorDuration: Style.Motion.base
-    readonly property int kEnterDuration: 200
+    readonly property int kEnterDuration: 200  // 弹窗入场动画时长
 
     enter: Transition {
         NumberAnimation {
@@ -73,7 +75,7 @@ Dialog {
         }
     }
 
-    // 打开对话框时重置临时值
+    // 打开对话框时重置临时值为当前配置，确保取消操作不会残留上次编辑状态
     onAboutToShow: {
         _tempDeviceName  = ConfigManager.deviceName
         _tempReceivePath = ConfigManager.receivePath
@@ -147,16 +149,16 @@ Dialog {
     contentItem: ScrollView {
         id: scrollView
         clip: true
-        contentWidth: availableWidth
+        contentWidth: availableWidth  // 内容宽度跟随可用宽度，避免水平滚动
 
         ColumnLayout {
             width: scrollView.availableWidth
             spacing: Style.Space.lg
             Layout.margins: Style.Space.lg
 
-            Item { Layout.preferredHeight: Style.Space.sm }
+            Item { Layout.preferredHeight: Style.Space.sm }  // 顶部留白
 
-            // 设备信息卡片
+            // 设备信息卡片：设备名编辑、校验提示
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: deviceSection.implicitHeight + 32
@@ -205,7 +207,7 @@ Dialog {
                 }
             }
 
-            // 文件接收卡片
+            // 文件接收卡片：接收路径选择、自动接受开关
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: receiveSection.implicitHeight + 32
@@ -395,6 +397,7 @@ Dialog {
         color: Style.Color.surface
         radius: Style.Radius.md
 
+        // 顶部分隔线
         Rectangle {
             anchors.top: parent.top
             width: parent.width
@@ -407,6 +410,7 @@ Dialog {
             anchors.margins: Style.Space.xl
             spacing: Style.Space.md
 
+            // 修改状态提示：脏标记为 true 时显示"修改尚未应用"
             Label {
                 Layout.fillWidth: true
                 text: settingsDialog._isDirty
@@ -430,11 +434,13 @@ Dialog {
                 flat: true
             }
 
+            // 保存按钮：仅在脏标记且校验通过时可用
             Button {
                 text: qsTr("保存更改")
                 enabled: settingsDialog._isDirty && settingsDialog._isValid
                 highlighted: true
                 onClicked: {
+                    // 批量写回 ConfigManager，触发各属性的 NOTIFY 信号
                     ConfigManager.deviceName = settingsDialog._tempDeviceName.trim()
                     ConfigManager.receivePath = settingsDialog._tempReceivePath
                     ConfigManager.autoAcceptFiles = settingsDialog._tempAutoAcceptFiles
@@ -446,16 +452,15 @@ Dialog {
         }
     }
 
-    // 文件夹选择对话框
+    // 文件夹选择对话框：用户选择新接收路径后更新临时变量
     FolderDialog {
         id: folderDialog
         title: qsTr("选择接收路径")
         currentFolder: "file://" + settingsDialog._tempReceivePath
         onAccepted: {
-            // 提取路径字符串
             let path = selectedFolder.toString()
             if (path.startsWith("file://")) {
-                path = path.substring(7)
+                path = path.substring(7)  // 去掉 file:// 协议前缀
             }
             settingsDialog._tempReceivePath = path
         }

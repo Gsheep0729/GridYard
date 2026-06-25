@@ -38,17 +38,17 @@ Dialog {
     title: acceptDialog.isDirectory ? qsTr("接收文件夹") : qsTr("接收文件")
     modal: true
     anchors.centerIn: parent
-    width: 460
+    width: 460  // 固定宽度保证文件信息卡片不会过窄
 
-    // 会话信息
+    // 会话信息（由 TransferSessionManager 的 receiveRequestReceived 信号填充）
     property string sessionId: ""
     property string senderName: ""
     property string fileName: ""
     property real   fileSize: 0
     property int    totalFiles: 1
     property real   totalBytes: 0
-    property bool   isDirectory: false
-    property var    fileList: []
+    property bool   isDirectory: false  // 为 true 时展示目录预览而非单文件大小
+    property var    fileList: []  // 文件夹场景下的根目录条目预览列表
 
     contentItem: ColumnLayout {
         spacing: Style.Space.lg
@@ -63,7 +63,7 @@ Dialog {
             color: Style.Color.textMain
         }
 
-        // 文件信息卡片
+        // 文件信息卡片：文件夹场景显示总文件数和总大小，单文件场景只显示文件大小
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: fileInfoLayout.implicitHeight + 24
@@ -151,12 +151,13 @@ Dialog {
 
                 ListView {
                     Layout.fillWidth: true
+                    // 限制预览高度避免弹窗过长，最多显示 180px 内的条目
                     Layout.preferredHeight: acceptDialog.isDirectory
                                             ? Math.min(contentHeight, 180) : 0
                     visible: acceptDialog.isDirectory
                     clip: true
                     spacing: Style.Space.xs
-                    model: acceptDialog.fileList
+                    model: acceptDialog.fileList  // 根目录条目预览，由 TransferSessionManager 构建
 
                     delegate: RowLayout {
                         id: previewRow

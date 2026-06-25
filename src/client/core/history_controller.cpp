@@ -1,15 +1,17 @@
 /**
 * @file    history_controller.cpp
 * @version 6.6.2
-* @date    2026-06-25
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   本地历史控制器实现
 *
-* 持有 ChatManager、TransferSessionManager 和 DatabaseWorker，
+* 持有 ChatManager、TransferSessionManager 和 LocalDataBroker，
 * 按设备或游标分页加载聊天历史与传输记录，向 QML 暴露
 * 统一的筛选、删除和保留期限设置入口。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-28
+* * 历史查询、删除和清理统一委托 LocalDataBroker，收紧数据层封装
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.4.0] GY   2026-06-25
@@ -20,26 +22,21 @@
 
 #include "chat_manager.h"
 #include "config_manager.h"
-#include "database_worker.h"
-#include "history_repositories.h"
 #include "history_records.h"
+#include "local_data_broker.h"
 #include "transfer_session_manager.h"
 
 #include <QDateTime>
-#include <QMetaObject>
 
 // 构造函数
 HistoryController::HistoryController(ChatManager *chat, TransferSessionManager *transfer,
-                                     ConfigManager *config, DatabaseWorker *worker,
-                                     IMessageRepository *messages,
-                                     ITransferHistoryRepository *transfers, QObject *parent)
+                                     ConfigManager *config, LocalDataBroker *dataBroker,
+                                     QObject *parent)
     : QObject(parent)
     , _chat(chat)
     , _transfer(transfer)
     , _config(config)
-    , _worker(worker)
-    , _messages(messages)
-    , _transferHistory(transfers)
+    , _dataBroker(dataBroker)
 {
     if (_config) {
         connect(_config, &ConfigManager::retentionDaysChanged,
@@ -68,131 +65,123 @@ int HistoryController::retentionDays() const
 // 加载指定设备更早的一页聊天记录
 void HistoryController::loadMoreMessages(const QString &deviceId)
 {
-    if (deviceId.isEmpty() || !_worker || !_messages || _loading) {
+    if (deviceId.isEmpty() || !_dataBroker || _loading) {
         return;
     }
 
     MessageCursor cursor;
     cursor.peerDeviceId = deviceId;
+    // 读取当前内存中已有的消息，取首条作为分页游标
     const QVariantList current = _chat ? _chat->messagesForDevice(deviceId) : QVariantList{};
     if (!current.isEmpty()) {
-        // 使用当前首条消息作为游标，避免分页时重复加载已显示记录。
         const QVariantMap oldest = current.first().toMap();
+        // 使用当前首条消息的时间戳和 ID 作为游标，避免分页时重复加载已显示记录。
         cursor.beforeSentAt = QDateTime::fromString(oldest.value("sentAt").toString(), Qt::ISODateWithMs);
         cursor.beforeMessageId = oldest.value("messageId").toString();
     }
 
     setLoading(true);
-    _worker->submitLoad([this, deviceId, cursor](SqliteDatabaseBroker &, QString *error) {
-        // 聊天历史每次加载 50 条，保持翻页响应速度和内存占用可控。
-        const QList<MessageRecord> records = _messages->loadMessages(cursor, 50, error);
-        const bool succeeded = error->isEmpty();
-        QMetaObject::invokeMethod(this, [this, deviceId, records, succeeded] {
+    // 聊天历史每次加载 50 条，保持翻页响应速度和内存占用可控。
+    _dataBroker->loadMessages(
+        this, cursor, 50,  // 每页 50 条
+        [this, deviceId](const QList<MessageRecord> &records, bool succeeded) {
             if (succeeded && _chat) {
-                _chat->prependHistoryMessages(deviceId, records);
+                _chat->prependHistoryMessages(deviceId, records);  // 在模型头部追加更早消息
             }
             if (!succeeded) {
                 emit operationFailed(tr("加载聊天历史失败"));
             }
+            // 当返回数量不足 50 条时说明已无更多历史，通知 QML 隐藏"加载更多"按钮
             emit messagesLoaded(deviceId, succeeded && records.size() == 50);
-            setLoading(false);
-        }, Qt::QueuedConnection);
-        return succeeded;
-    });
+            setLoading(false);  // 重置加载状态
+        });
 }
 
 // 按筛选条件查询传输历史
 void HistoryController::queryTransfers(const QVariantMap &filter)
 {
-    if (!_worker || !_transferHistory || _loading) {
+    if (!_dataBroker || _loading) {
         return;
     }
 
     setLoading(true);
-    _worker->submitLoad([this, filter](SqliteDatabaseBroker &, QString *error) {
-        TransferQuery query;
-        query.peerDeviceId = filter.value("peerDeviceId").toString();
-        query.status = filter.value("status").toString();
-        const QString before = filter.value("beforeStartedAt").toString();
-        if (!before.isEmpty()) {
-            query.beforeStartedAt = QDateTime::fromString(before, Qt::ISODateWithMs);
-        }
-        // 传输历史一次最多取 200 条，避免历史页打开时阻塞主线程回投。
-        const QList<TransferRecord> records = _transferHistory->queryTransfers(query, 200, error);
-        const bool succeeded = error->isEmpty();
-        QMetaObject::invokeMethod(this, [this, records, succeeded] {
+    TransferQuery query;
+    query.peerDeviceId = filter.value("peerDeviceId").toString();  // 可选：按设备筛选
+    query.status = filter.value("status").toString();  // 可选：按状态筛选（completed/failed/cancelled）
+    const QString before = filter.value("beforeStartedAt").toString();
+    if (!before.isEmpty()) {
+        query.beforeStartedAt = QDateTime::fromString(before, Qt::ISODateWithMs);  // 可选：时间游标分页
+    }
+
+    // 传输历史一次最多取 200 条，避免历史页打开时阻塞主线程回投。
+    _dataBroker->queryTransfers(
+        this, query, 200,  // 单次最多取 200 条
+        [this](const QList<TransferRecord> &records, bool succeeded) {
             if (succeeded) {
                 _transfers.clear();
                 for (const TransferRecord &record : records) {
-                    _transfers.append(transferToVariant(record));
+                    _transfers.append(transferToVariant(record));  // 逐条转换为 QML 可绑定字段
                 }
                 emit transfersChanged();
             } else {
                 emit operationFailed(tr("查询传输历史失败"));
             }
             setLoading(false);
-        }, Qt::QueuedConnection);
-        return succeeded;
-    });
+        });
 }
 
 // 删除单条聊天记录
 void HistoryController::deleteMessage(const QString &deviceId, const QString &messageId)
 {
-    if (deviceId.isEmpty() || messageId.isEmpty() || !_worker || !_messages) {
+    if (deviceId.isEmpty() || messageId.isEmpty() || !_dataBroker) {
         return;
     }
 
-    _worker->submitDelete([this, deviceId, messageId](SqliteDatabaseBroker &, QString *error) {
-        const bool succeeded = _messages->deleteMessage(messageId, error);
-        QMetaObject::invokeMethod(this, [this, deviceId, messageId, succeeded] {
+    _dataBroker->deleteMessage(
+        this, messageId,
+        [this, deviceId, messageId](bool succeeded) {
             if (succeeded && _chat) {
-                _chat->removeMessage(deviceId, messageId);
+                _chat->removeMessage(deviceId, messageId);  // 同步从内存模型移除已删除消息
             }
             if (!succeeded) {
                 emit operationFailed(tr("删除聊天记录失败"));
             }
-        }, Qt::QueuedConnection);
-        return succeeded;
-    });
+        });
 }
 
 // 删除指定设备的整段聊天会话
 void HistoryController::deleteConversation(const QString &deviceId)
 {
-    if (deviceId.isEmpty() || !_worker || !_messages) {
+    if (deviceId.isEmpty() || !_dataBroker) {
         return;
     }
 
-    _worker->submitDelete([this, deviceId](SqliteDatabaseBroker &, QString *error) {
-        const bool succeeded = _messages->deleteConversation(deviceId, error);
-        QMetaObject::invokeMethod(this, [this, deviceId, succeeded] {
+    _dataBroker->deleteConversation(
+        this, deviceId,
+        [this, deviceId](bool succeeded) {
             if (succeeded && _chat) {
-                _chat->clearMessages(deviceId);
+                _chat->clearMessages(deviceId);  // 清空该设备的全部运行期消息
             }
             if (!succeeded) {
                 emit operationFailed(tr("清空会话失败"));
             }
-        }, Qt::QueuedConnection);
-        return succeeded;
-    });
+        });
 }
 
 // 删除单条传输历史
 void HistoryController::deleteTransfer(const QString &recordId)
 {
-    if (recordId.isEmpty() || !_worker || !_transferHistory) {
+    if (recordId.isEmpty() || !_dataBroker) {
         return;
     }
 
-    _worker->submitDelete([this, recordId](SqliteDatabaseBroker &, QString *error) {
-        const bool succeeded = _transferHistory->deleteTransfer(recordId, error);
-        QMetaObject::invokeMethod(this, [this, recordId, succeeded] {
+    _dataBroker->deleteTransfer(
+        this, recordId,
+        [this, recordId](bool succeeded) {
             if (succeeded) {
                 for (int row = 0; row < _transfers.size(); ++row) {
-                    // 本地列表同步删除已持久化删除的记录，避免重新查询整页。
                     if (_transfers.at(row).toMap().value("recordId").toString() == recordId) {
-                        _transfers.removeAt(row);
+                        _transfers.removeAt(row);  // 本地列表同步移除已持久化删除的记录，避免重新查询整页
                         emit transfersChanged();
                         break;
                     }
@@ -200,55 +189,49 @@ void HistoryController::deleteTransfer(const QString &recordId)
             } else {
                 emit operationFailed(tr("删除传输历史失败"));
             }
-        }, Qt::QueuedConnection);
-        return succeeded;
-    });
+        });
 }
 
 // 清空全部聊天记录
 void HistoryController::clearAllMessages()
 {
-    if (!_worker || !_messages) {
+    if (!_dataBroker) {
         return;
     }
 
-    _worker->submitDelete([this](SqliteDatabaseBroker &, QString *error) {
-        const bool succeeded = _messages->clearAllMessages(error);
-        QMetaObject::invokeMethod(this, [this, succeeded] {
+    _dataBroker->clearAllMessages(
+        this,
+        [this](bool succeeded) {
             if (succeeded && _chat) {
                 _chat->clearMessages();
             }
             if (!succeeded) {
                 emit operationFailed(tr("清空聊天记录失败"));
             }
-        }, Qt::QueuedConnection);
-        return succeeded;
-    });
+        });
 }
 
 // 清空全部传输历史
 void HistoryController::clearAllTransfers()
 {
-    if (!_worker || !_transferHistory) {
+    if (!_dataBroker) {
         return;
     }
 
-    _worker->submitDelete([this](SqliteDatabaseBroker &, QString *error) {
-        const bool succeeded = _transferHistory->clearAllTransfers(error);
-        QMetaObject::invokeMethod(this, [this, succeeded] {
+    _dataBroker->clearAllTransfers(
+        this,
+        [this](bool succeeded) {
             if (succeeded) {
                 _transfers.clear();
                 emit transfersChanged();
                 if (_transfer) {
-                    // 清空历史只移除已结束会话展示项，不删除用户本地文件。
+                    // 仅移除已结束会话展示项，不删除用户本地文件，操作比 removeSessionAndDeleteFile 更保守
                     _transfer->clearFinishedSessions(false);
                 }
             } else {
                 emit operationFailed(tr("清空传输历史失败"));
             }
-        }, Qt::QueuedConnection);
-        return succeeded;
-    });
+        });
 }
 
 // 设置历史保留天数并立即执行一次清理
@@ -264,16 +247,13 @@ void HistoryController::setRetentionDays(int days)
 void HistoryController::cleanupExpiredRecords()
 {
     const int days = retentionDays();
-    if (days <= 0 || !_worker || !_messages || !_transferHistory) {
+    if (days <= 0 || !_dataBroker) {
         return;
     }
 
     // 保留期限以 UTC 计算，避免本地时区变化导致历史边界抖动。
     const QDateTime before = QDateTime::currentDateTimeUtc().addDays(-days);
-    _worker->submitDelete([this, before](SqliteDatabaseBroker &, QString *error) {
-        return _messages->deleteExpiredMessages(before, error)
-               && _transferHistory->deleteExpiredTransfers(before, error);
-    });
+    _dataBroker->deleteExpiredRecords(before);
 }
 
 // 设置加载状态并通知 QML

@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.h
 * @version 6.6.2
-* @date    2026-06-25
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
@@ -10,6 +10,8 @@
 * 提供面向发送场景的对端快照查询供其他模块调用。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-28
+* * 移除 QML 暴露宏和 Q_INVOKABLE 标记，QML 通过 PeerDiscoveryViewModel 访问
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.1.0] GY   2026-06-25
@@ -34,7 +36,6 @@
 #include <QTimer>
 #include <QUdpSocket>
 #include <QVariantList>
-#include <QtQml/qqmlregistration.h>
 
 #include "data_types.h"
 
@@ -43,8 +44,6 @@ class TestChatManager;
 
 class DiscoveryService : public QObject {
     Q_OBJECT
-    QML_ANONYMOUS
-    Q_PROPERTY(QVariantList peers READ peers NOTIFY peersChanged)
 
 public:
     explicit DiscoveryService(ConfigManager *config, QObject *parent = nullptr);
@@ -60,7 +59,7 @@ public:
     QVariantMap transferEndpoint(const QString &deviceId) const;
 
     // 立即发送一次广播并清理离线节点
-    Q_INVOKABLE void refresh();
+    void refresh();
 
 signals:
     // 节点列表变化通知

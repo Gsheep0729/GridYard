@@ -155,14 +155,17 @@ void P2pServer::monitorFirstFrame(QTcpSocket *socket)
 // 校验首帧并按 Type 路由连接
 void P2pServer::routeFirstFrame(QTcpSocket *socket)
 {
+    // socket 已被其他处理者接管（parent 变化）时不再处理
     if (!socket || socket->parent() != this) {
         return;
     }
 
+    // 帧头尚未完整到达，等待更多数据触发下一次 readyRead
     if (socket->bytesAvailable() < static_cast<qint64>(gy::protocol::kHeaderBytes)) {
         return;
     }
 
+    // peek 而非 read：帧头字节仍留在缓冲区，后续接管者可从头读取
     const QByteArray header = socket->peek(gy::protocol::kHeaderBytes);
     quint32 type = 0;
     quint32 payloadLength = 0;
@@ -171,6 +174,7 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
         return;
     }
 
+    // 按 Type 分级检查载荷上限，防止恶意帧占用大量内存
     const quint32 maxPayload = gy::protocol::maxPayloadForType(type);
     if (payloadLength > maxPayload) {
         closePendingConnection(socket, tr("首帧载荷超出限制"));
@@ -178,6 +182,7 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
     }
 
     const qint64 frameBytes = static_cast<qint64>(gy::protocol::kHeaderBytes) + payloadLength;
+    // 完整帧尚未到达，继续等待
     if (socket->bytesAvailable() < frameBytes) {
         return;
     }

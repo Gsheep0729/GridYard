@@ -271,23 +271,24 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     // 连接信号
     connect(thread, &QThread::started, worker,
             [worker, host, port, filePath, senderDeviceId, senderName]() {
-        worker->startTransfer(host, port, filePath, senderDeviceId, senderName);
+        worker->startTransfer(host, port, filePath, senderDeviceId, senderName);  // 在工作线程中启动传输
     });
 
     connect(worker, &FileSenderWorker::progressChanged,
             this, [this, sessionId](qint64 bytesSent, qint64 totalBytes) {
-        // 更新会话进度
+        // 遍历会话列表找到匹配的发送会话并更新进度
         for (int i = 0; i < _sessions.size(); ++i) {
             if (_sessions[i]["sessionId"].toString() == sessionId) {
                 const QString previousStatus = _sessions[i]["status"].toString();
                 const int previousProgress = _sessions[i]["progress"].toInt();
                 const qint64 previousTotalBytes = _sessions[i]["totalBytes"].toLongLong();
-                const int progress = totalBytes > 0 ? (bytesSent * 100 / totalBytes) : 0;
+                const int progress = totalBytes > 0 ? (bytesSent * 100 / totalBytes) : 0;  // 百分比计算
 
                 _sessions[i]["status"] = "transferring";
                 _sessions[i]["progress"] = progress;
                 _sessions[i]["bytesTransferred"] = bytesSent;
                 _sessions[i]["totalBytes"] = totalBytes;
+                // 仅在状态、进度或总字节数实际变化时通知 QML，避免文件夹传输任务频繁闪烁
                 if (previousStatus != "transferring"
                     || previousProgress != progress
                     || previousTotalBytes != totalBytes) {
@@ -300,6 +301,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     connect(worker, &FileSenderWorker::transferFinished,
             this, [this, sessionId, thread, worker](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
+        // 先读取当前会话状态，用户手动取消/拒绝的状态不应被 Worker 结果覆盖
         QString currentStatus = "failed";
         for (const QVariantMap &session : std::as_const(_sessions)) {
             if (session["sessionId"].toString() == sessionId) {
@@ -307,13 +309,13 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
                 break;
             }
         }
-        const QString finalStatus = normalizedFinalStatus(success, errorCode, currentStatus);
-        finalizeSession(sessionId, finalStatus, errorCode, errorMsg);
+        const QString finalStatus = normalizedFinalStatus(success, errorCode, currentStatus);  // 归一化最终状态
+        finalizeSession(sessionId, finalStatus, errorCode, errorMsg);  // 生成快照并通知持久化
 
         // 清理 worker 引用
         _sendWorkers.remove(sessionId);
 
-        // 清理线程
+        // 等待工作线程结束后安全销毁 worker 和线程对象
         thread->quit();
         thread->wait();
         worker->deleteLater();
@@ -570,7 +572,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
 
     qDebug() << "[TransferSession] 接收会话已创建，ID:" << sessionId;
 
-    // 连接接收进度信号
+    // 连接接收进度信号（通过 QMetaObject 跨线程投递回主线程）
     connect(worker, &FileReceiverWorker::progressChanged,
             this, [this, sessionId](qint64 bytesReceived, qint64 totalBytes) {
         for (int i = 0; i < _sessions.size(); ++i) {
@@ -584,6 +586,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                 _sessions[i]["progress"] = progress;
                 _sessions[i]["bytesTransferred"] = bytesReceived;
                 _sessions[i]["totalBytes"] = totalBytes;
+                // 仅在可见字段变化时通知 QML，减少高频进度更新导致的不必要刷新
                 if (previousStatus != "transferring"
                     || previousProgress != progress
                     || previousTotalBytes != totalBytes) {
@@ -594,7 +597,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
         }
     });
 
-    // 连接接收完成信号
+    // 连接接收完成信号，生成最终快照并触发持久化
     connect(worker, &FileReceiverWorker::transferFinished,
             this, [this, sessionId, worker](bool success, gy::protocol::ErrorCode errorCode,
                                             const QString &errorMsg, const QString &savedPath) {
@@ -669,12 +672,12 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
         }
         if (!savedPath.isEmpty()) {
             _sessions[i]["localPath"] = savedPath;
-            _sessions[i]["canDeleteLocalFile"] = finalStatus == "completed";
+            _sessions[i]["canDeleteLocalFile"] = finalStatus == "completed";  // 仅接收成功时允许删除本地文件
         }
 
         QString recordId = _sessions[i]["recordId"].toString();
         if (recordId.isEmpty()) {
-            recordId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            recordId = QUuid::createUuid().toString(QUuid::WithoutBraces);  // 首次完成时生成持久化记录 ID
             _sessions[i]["recordId"] = recordId;
         }
 

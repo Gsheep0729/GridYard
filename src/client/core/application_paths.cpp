@@ -18,9 +18,9 @@
 #include <QStandardPaths>
 
 namespace {
-QString testBaseDir;  // 测试环境指定的应用数据根目录
+QString testBaseDir;  // 测试环境覆盖的应用数据根目录，为空时使用系统默认路径
 
-// 创建并返回指定用途的应用数据子目录
+// 确保子目录存在并返回绝对路径
 QString ensureDirectory(const QString &name)
 {
     const QString baseDir = testBaseDir.isEmpty()
@@ -28,8 +28,7 @@ QString ensureDirectory(const QString &name)
         : testBaseDir;
     QDir root(baseDir);
 
-    // 数据目录首次使用时创建，避免调用方分别处理目录存在性
-    root.mkpath(name);
+    root.mkpath(name);  // 数据目录首次使用时创建，避免调用方分别处理目录存在性
     return root.filePath(name);
 }
 }
@@ -46,7 +45,7 @@ QString ApplicationPaths::logDir()
     return ensureDirectory("logs");
 }
 
-// 为测试指定独立的应用数据根目录
+// 为测试指定独立的应用数据根目录，隔离测试和生产环境的磁盘写入
 void ApplicationPaths::coverForTest(const QString &baseDir)
 {
     testBaseDir = QDir(baseDir).absolutePath();

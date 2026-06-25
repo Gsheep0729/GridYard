@@ -39,6 +39,8 @@ import "../utils/Style.js" as Style
 ItemDelegate {
     id: deviceCard
     hoverEnabled: true
+    // 4 个 required property 与 PeerInfo Q_GADGET 的 Q_PROPERTY 名一一对应，
+    // QML 引擎会根据名字自动从 model 项里填值，无需手动绑定。
     required property string deviceId
     required property string deviceName
     required property string ipAddress
@@ -46,12 +48,12 @@ ItemDelegate {
     required property bool   isSelected
 
     readonly property int   kCardHeight: 76
-    readonly property color kOnlineColor:  Style.Color.success
-    readonly property color kOfflineColor: Style.Color.textWeak
-    readonly property color kSelectedColor: Style.Color.primary
-    readonly property color kDropHighlight: Style.Color.primarySoft
-    readonly property int kColorDuration: Style.Motion.base
-    readonly property int kStatusDuration: Style.Motion.slow
+    readonly property color kOnlineColor:  Style.Color.success   // 在线状态圆点颜色
+    readonly property color kOfflineColor: Style.Color.textWeak   // 离线状态圆点颜色
+    readonly property color kSelectedColor: Style.Color.primary   // 选中态指示条颜色
+    readonly property color kDropHighlight: Style.Color.primarySoft  // 拖拽悬停高亮底色
+    readonly property int kColorDuration: Style.Motion.base       // 颜色过渡动画时长
+    readonly property int kStatusDuration: Style.Motion.slow      // 在线状态切换动画时长
 
     signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal fileDropped(string deviceId, string filePath)
@@ -59,28 +61,28 @@ ItemDelegate {
     height: kCardHeight
     background: Rectangle {
         radius: Style.Radius.sm
-        color: deviceCard.hovered   ? Style.Color.surfaceLeft    // 悬停浅灰
+        color: deviceCard.hovered   ? Style.Color.surfaceLeft    // 悬停浅灰反馈
              : Style.Color.transparent    // 默认透明
     }
+    // 点击卡片时向父级传递完整设备信息，由 PeerListView 再向上冒泡到 Main.qml
     onClicked: deviceCard.cardClicked(deviceCard.deviceId,
                                          deviceCard.deviceName,
                                          deviceCard.ipAddress,
                                          deviceCard.isOnline)
-    // 拖拽接收区域
+    // 拖拽接收区域：用户拖文件到卡片上时触发文件传输
     DropArea {
         id: dropArea
         anchors.fill: parent
-        keys: ["text/uri-list"]
+        keys: ["text/uri-list"]  // 接受文件 URI 列表
 
         onDropped: function(drop) {
-            if (!deviceCard.isOnline) return
+            if (!deviceCard.isOnline) return  // 离线设备不接受拖拽
 
             let urls = drop.urls
             for (let i = 0; i < urls.length; i++) {
-                // 转换为字符串并去掉 file:// 前缀
                 let path = urls[i].toString()
                 if (path.startsWith("file://")) {
-                    path = path.substring(7)
+                    path = path.substring(7)  // 去掉 file:// 协议前缀，保留绝对路径
                 }
                 deviceCard.fileDropped(deviceCard.deviceId, path)
             }
@@ -92,7 +94,7 @@ ItemDelegate {
         anchors.margins: Style.Space.md
         spacing: Style.Space.md
 
-        // 设备头像
+        // 设备头像：取设备名首字母作为标识，选中态反色显示
         Rectangle {
             Layout.alignment: Qt.AlignVCenter
             Layout.preferredWidth: 36
@@ -104,6 +106,7 @@ ItemDelegate {
                 text: deviceCard.deviceName.length > 0
                       ? deviceCard.deviceName.charAt(0).toUpperCase()
                       : "?"
+                // 选中时文字反白，未选中时使用次级文字色
                 color: deviceCard.isSelected ? Style.Color.surface : Style.Color.textSecondary
                 font.pixelSize: 14
                 font.bold: true
@@ -136,13 +139,14 @@ ItemDelegate {
             Layout.alignment: Qt.AlignVCenter
             spacing: Style.Space.xs
 
+            // 在线状态圆点：颜色和透明度都带过渡动画
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 8
                 Layout.preferredHeight: 8
                 radius: 4
                 color: deviceCard.isOnline ? deviceCard.kOnlineColor : deviceCard.kOfflineColor
-                opacity: deviceCard.isOnline ? 1 : 0.55
+                opacity: deviceCard.isOnline ? 1 : 0.55  // 离线时降低透明度
 
                 Behavior on color {
                     ColorAnimation {

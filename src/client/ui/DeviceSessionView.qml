@@ -52,9 +52,10 @@ Frame {
    required property string ipAddress
    required property bool isOnline
 
-   property var expandedSessions: ({})
-   property int timelineMode: 0
-   property string chatError: ""
+   property var expandedSessions: ({})  // 记录每个传输任务文件夹展开状态的字典
+   property int timelineMode: 0  // 0=聊天页签, 1=传输页签
+   property string chatError: ""  // 聊天发送失败时的错误提示文字
+   // 发送按钮可用条件：设备在线 + 输入非空 + 不超过 4000 字符限制
    readonly property bool canSendChat: isOnline
                                       && messageInput.text.trim().length > 0
                                       && messageInput.text.length <= 4000
@@ -73,6 +74,7 @@ Frame {
        return expandedSessions[sessionId] === true
    }
 
+   // 使用 Object.assign 浅拷贝再修改，触发 QML 属性绑定更新
    function setSessionExpanded(sessionId: string, expanded: bool): void {
        const next = Object.assign({}, expandedSessions)
        next[sessionId] = expanded
@@ -337,6 +339,7 @@ Frame {
                anchors.leftMargin: Style.Space.sm
                anchors.rightMargin: Style.Space.sm
 
+               // 发送入口按钮：点击弹出文件/文件夹选择下拉菜单
                ToolButton {
                    id: sendButton
                    icon.name: "folder-open"
@@ -363,7 +366,7 @@ Frame {
            }
        }
 
-       // ===== 文本输入 =====
+       // ===== 文本输入区：仅聊天页签显示，高度为 0 时完全隐藏 =====
        Rectangle {
            Layout.fillWidth: true
            Layout.preferredHeight: deviceSessionView.timelineMode === 0 ? 104 : 0
@@ -388,7 +391,7 @@ Frame {
                        anchors.fill: parent
                        anchors.margins: Style.Space.sm
                        enabled: deviceSessionView.isOnline
-                       placeholderText: ""
+                       placeholderText: ""  // 占位提示由下方 Label 实现，避免 TextArea 默认样式冲突
                        font.pixelSize: 14
                        color: Style.Color.textMain
                        wrapMode: TextEdit.Wrap
@@ -400,6 +403,7 @@ Frame {
 
                        background: Item {}
 
+                       // 超过 4000 字符时截断，与协议层 kMaxChatContentLength 保持一致
                        onTextChanged: {
                            if (text.length > 4000) {
                                text = text.slice(0, 4000)
@@ -407,6 +411,7 @@ Frame {
                            deviceSessionView.chatError = ""
                        }
 
+                       // 回车发送（Shift+回车换行），与桌面 IM 习惯一致
                        Keys.onReturnPressed: function(event) {
                            if ((event.modifiers & Qt.ShiftModifier) === 0) {
                                event.accepted = true
@@ -415,6 +420,7 @@ Frame {
                        }
                    }
 
+                   // 输入框占位提示：输入为空时显示，有内容时隐藏
                    Label {
                        anchors.left: messageInput.left
                        anchors.right: messageInput.right
@@ -433,6 +439,7 @@ Frame {
                    Layout.preferredWidth: 44
                    spacing: Style.Space.xs
 
+                   // 发送按钮：输入校验通过时可用
                    ToolButton {
                        icon.name: "mail-send"
                        enabled: deviceSessionView.canSendChat
@@ -442,6 +449,7 @@ Frame {
                        Layout.alignment: Qt.AlignHCenter
                    }
 
+                   // 字符计数器：接近上限时提醒用户
                    Label {
                        text: "%1/4000".arg(messageInput.text.length)
                        color: Style.Color.textWeak
@@ -451,6 +459,7 @@ Frame {
                }
            }
 
+           // 聊天发送错误提示：仅当前设备的发送失败才显示
            Label {
                anchors.left: parent.left
                anchors.leftMargin: Style.Space.md
@@ -464,12 +473,13 @@ Frame {
        }
    }
 
+   // 监听聊天发送失败信号，仅处理当前设备的错误
    Connections {
        target: AppController.chatController
 
        function onSendFailed(targetDeviceId: string, error: int, errorMessage: string): void {
            if (targetDeviceId === deviceSessionView.deviceId) {
-               deviceSessionView.chatError = errorMessage
+               deviceSessionView.chatError = errorMessage  // 在输入框下方显示错误提示
            }
        }
    }

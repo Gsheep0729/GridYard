@@ -1,15 +1,17 @@
 /**
 * @file    transfer_session_manager.h
 * @version 6.6.2
-* @date    2026-06-21
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   传输会话管理器
 *
 * 管理所有进行中的传输会话（发送和接收），维护会话状态和进度。
-* 提供 Q_INVOKABLE 方法供 QML 调用（创建、接受、拒绝、取消、移除会话）。
-* 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
+* 提供创建、接受、拒绝、取消、移除会话等应用层命令。
+* QML 通过 TransferController 门面访问，不直接依赖该内部 Manager。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-28
+* * 移除 QML 属性和 Q_INVOKABLE 标记，QML 通过 TransferController 访问
 * [v6.6.2] GY   2026-06-25
 * * 支持按当前设备清空已结束传输记录
 * [v6.3.0] GY   2026-06-25
@@ -44,7 +46,6 @@
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
-#include <QtQml/qqmlregistration.h>
 
 #include "history_records.h"
 #include "file_receiver_worker.h"
@@ -59,7 +60,6 @@ class P2pServer;
 class TransferSessionManager : public QObject {
 private:
     Q_OBJECT
-    Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
 
 public:
     QVariantList sessions() const;
@@ -67,16 +67,16 @@ public:
     // 初始化（由 AppController 调用）
     void init(ConfigManager *config, DiscoveryService *discovery, P2pServer *p2pServer);
 
-    // Q_INVOKABLE 方法供 QML 调用
-    Q_INVOKABLE void createSendSession(const QString &deviceId, const QString &filePath);
-    Q_INVOKABLE void acceptReceiveSession(const QString &sessionId);
-    Q_INVOKABLE void rejectReceiveSession(const QString &sessionId);
-    Q_INVOKABLE void cancelSession(const QString &sessionId);
-    Q_INVOKABLE void removeSession(const QString &sessionId);
+    // 传输会话命令
+    void createSendSession(const QString &deviceId, const QString &filePath);
+    void acceptReceiveSession(const QString &sessionId);
+    void rejectReceiveSession(const QString &sessionId);
+    void cancelSession(const QString &sessionId);
+    void removeSession(const QString &sessionId);
     // 删除本地文件只允许接收成功记录，避免误删发送源文件
-    Q_INVOKABLE void removeSessionAndDeleteFile(const QString &sessionId);
-    Q_INVOKABLE void clearFinishedSessions(bool deleteReceivedFiles = false,
-                                           const QString &deviceId = {});
+    void removeSessionAndDeleteFile(const QString &sessionId);
+    void clearFinishedSessions(bool deleteReceivedFiles = false,
+                               const QString &deviceId = {});
     // 启动阶段恢复已结束的历史记录
     void restoreFinishedTransfers(const QList<TransferRecord> &records);
 

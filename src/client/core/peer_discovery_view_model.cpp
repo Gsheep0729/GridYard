@@ -20,13 +20,16 @@ PeerDiscoveryViewModel::PeerDiscoveryViewModel(DiscoveryService *discovery, QObj
     , _discovery{discovery}
 {
     if (!_discovery) {
-        return;
+        return;  // 发现服务为空时跳过信号连接，防御性编程
     }
 
+    // 将内部发现服务的信号转发给 QML 视图模型
     connect(_discovery, &DiscoveryService::peersChanged,
             this, &PeerDiscoveryViewModel::peersChanged);
+    // 新设备上线时通知表现层播放发现动画
     connect(_discovery, &DiscoveryService::nodeDiscovered,
             this, &PeerDiscoveryViewModel::nodeDiscovered);
+    // 设备离线时通知表现层更新在线状态指示
     connect(_discovery, &DiscoveryService::nodeExpired,
             this, &PeerDiscoveryViewModel::nodeExpired);
 }

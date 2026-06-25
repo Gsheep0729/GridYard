@@ -20,15 +20,17 @@ ChatController::ChatController(ChatManager *manager, QObject *parent)
     , _manager{manager}
 {
     if (!_manager) {
-        return;
+        return;  // 管理器为空时跳过信号连接，防御性编程
     }
 
+    // 将内部管理器的信号逐个转发给 QML 控制器，隐藏内部实现细节
     connect(_manager, &ChatManager::messagesChanged,
             this, &ChatController::messagesChanged);
     connect(_manager, &ChatManager::sendFailed,
             this, &ChatController::sendFailed);
     connect(_manager, &ChatManager::connectionError,
             this, &ChatController::connectionError);
+    // 收到新消息时通知表现层弹出系统通知
     connect(_manager, &ChatManager::incomingMessageReceived,
             this, &ChatController::incomingMessageReceived);
 }

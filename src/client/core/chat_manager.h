@@ -1,7 +1,7 @@
 /**
 * @file    chat_manager.h
 * @version 6.6.2
-* @date    2026-06-25
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
 *
@@ -9,6 +9,8 @@
 * 已发现在线的设备发起连接，不创建离线待投递队列。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-28
+* * 移除 QML 暴露宏和 Q_INVOKABLE 标记，作为内部聊天管理器使用
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.5.0] GY   2026-06-25
@@ -30,7 +32,6 @@
 #include <QObject>
 #include <QSet>
 #include <QVariantList>
-#include <QtQml/qqmlregistration.h>
 
 class ChatConnection;
 class ChatMessageModel;
@@ -42,7 +43,6 @@ class QTcpSocket;
 class ChatManager : public QObject {
 private:
     Q_OBJECT
-    QML_ANONYMOUS
 
 public:
     explicit ChatManager(QObject *parent = nullptr);
@@ -54,13 +54,13 @@ public:
     // 组装配置、发现服务和入站服务器
     void init(ConfigManager *config, DiscoveryService *discovery, P2pServer *p2pServer);
     // 获取运行期消息快照
-    Q_INVOKABLE QVariantList messagesForDevice(const QString &deviceId) const;
+    QVariantList messagesForDevice(const QString &deviceId) const;
     // 获取设备对应的稳定消息模型
-    Q_INVOKABLE QObject *messageModelForDevice(const QString &deviceId);
+    QObject *messageModelForDevice(const QString &deviceId);
     // 向在线设备发送文本消息
-    Q_INVOKABLE void sendText(const QString &deviceId, const QString &content);
+    void sendText(const QString &deviceId, const QString &content);
     // 清理一个或全部运行期会话
-    Q_INVOKABLE void clearMessages(const QString &deviceId = {});
+    void clearMessages(const QString &deviceId = {});
     // 仅从当前会话模型移除一条已删除的本地历史消息
     void removeMessage(const QString &deviceId, const QString &messageId);
     // 在模型头部恢复一页更早的历史消息

@@ -43,32 +43,31 @@ Frame {
     id: taskCard
 
     required property string sessionId
-    required property string taskType
-    required property string taskName
-    required property string status
-    required property int    progress
+    required property string taskType      // "send" 或 "receive"
+    required property string taskName      // 显示的文件/文件夹名
+    required property string status        // connecting/waiting_confirm/transferring/completed/failed/rejected/cancelled
+    required property int    progress      // 0-100 百分比
     required property var    bytesTransferred
     required property var    totalBytes
     required property bool   isDirectory
-    required property var    fileList
-    required property bool   canDeleteLocalFile
+    required property var    fileList       // 文件夹场景下的根目录预览列表
+    required property bool   canDeleteLocalFile  // 仅接收成功时为 true
     property string createdAt: ""
     property string peerDeviceName: ""
 
-    // 展开状态
-    property bool expanded: false
+    property bool expanded: false  // 文件夹内容是否展开
     signal expansionRequested(bool expanded)
 
-    // 状态颜色
+    // 状态颜色映射：不同阶段使用不同底色引导用户注意力
     readonly property color kRunningColor: Style.Color.primary
     readonly property color kSuccessColor: Style.Color.success
     readonly property color kFailedColor:  Style.Color.error
     readonly property color kWaitingColor: Style.Color.warning
-    readonly property color kFileBgColor:   Style.Color.surface
-    readonly property color kFolderBgColor: Style.Color.surfaceSoft
-    readonly property color kFailedBgColor: Style.Color.errorSoft
-    readonly property int kColorDuration: Style.Motion.base
-    readonly property int kProgressDuration: Style.Motion.slow
+    readonly property color kFileBgColor:   Style.Color.surface       // 普通文件卡片底色
+    readonly property color kFolderBgColor: Style.Color.surfaceSoft   // 文件夹卡片底色，略有区分
+    readonly property color kFailedBgColor: Style.Color.errorSoft     // 失败/取消/拒绝卡片底色
+    readonly property int kColorDuration: Style.Motion.base           // 状态颜色过渡动画时长
+    readonly property int kProgressDuration: Style.Motion.slow        // 进度条平滑动画时长
     readonly property bool canShowFolderPreview: isDirectory && fileList.length > 0
     readonly property bool isFinished: status === "completed" || status === "failed"
                                        || status === "rejected" || status === "cancelled"
@@ -78,7 +77,7 @@ Frame {
     height: implicitHeight
     opacity: 1
 
-    // 状态映射
+    // 状态文本映射：将内部状态字符串转为中文显示
     function statusText(): string {
         switch (status) {
         case "connecting":      return qsTr("连接中...")
@@ -105,6 +104,7 @@ Frame {
         }
     }
 
+    // 卡片背景色：失败/取消/拒绝用警告色底色，文件夹用浅灰底色区分
     function backgroundColor(): color {
         if (status === "failed" || status === "rejected" || status === "cancelled") {
             return kFailedBgColor
@@ -118,6 +118,7 @@ Frame {
         border.color: taskCard.isFinished ? Style.Color.border : taskCard.statusColor()
         border.width: 1
 
+        // 状态切换时边框颜色带过渡动画，避免视觉跳变
         Behavior on border.color {
             ColorAnimation {
                 duration: taskCard.kColorDuration
@@ -137,7 +138,7 @@ Frame {
             Layout.fillWidth: true
             spacing: Style.Space.sm
 
-            // 方向标识（精简）
+            // 方向标识：发送用上箭头，接收用下箭头，颜色区分方向
             Label {
                 text: taskCard.taskType === "send" ? "↑" : "↓"
                 color: taskCard.taskType === "send" ? Style.Color.primary : "#8B5CF6"
@@ -146,6 +147,7 @@ Frame {
                 Layout.alignment: Qt.AlignVCenter
             }
 
+            // 文件类型图标：根据扩展名自动选择
             FileTypeIcon {
                 fileName: taskCard.taskName
                 isDirectory: taskCard.isDirectory
@@ -163,7 +165,7 @@ Frame {
                 Layout.fillWidth: true
             }
 
-            // 展开/收起按钮（仅文件夹显示）
+            // 展开/收起按钮：仅传输中的文件夹任务显示，已完成的文件夹用底部行展开
             Button {
                 icon.name: taskCard.expanded ? "go-down" : "go-next"
                 flat: true
@@ -174,7 +176,7 @@ Frame {
                 padding: 0
             }
 
-            // 状态标签
+            // 状态标签：带颜色背景的小标签，颜色随状态变化
             Rectangle {
                 Layout.preferredWidth: statusLabel.implicitWidth + 12
                 Layout.preferredHeight: statusLabel.implicitHeight + 4
@@ -230,7 +232,7 @@ Frame {
             }
         }
 
-        // 第三行：进度条（仅在传输中或完成时显示）
+        // 第三行：进度条（仅在传输中或完成时显示，完成时固定 100%）
         ProgressBar {
             from: 0
             to: 100
@@ -269,7 +271,7 @@ Frame {
                 visible: taskCard.status === "transferring"
             }
 
-            // 取消按钮
+            // 取消按钮：传输中或等待确认时可用
             Button {
                 text: qsTr("取消")
                 flat: true
@@ -278,7 +280,7 @@ Frame {
             }
         }
 
-        // 完成/失败状态的操作按钮
+        // 已结束状态的操作按钮：移除记录和更多选项（删除本地文件）
         RowLayout {
             Layout.fillWidth: true
             visible: taskCard.isFinished
@@ -326,6 +328,7 @@ Frame {
             }
         }
 
+        // 文件夹内容折叠行：已完成的文件夹任务显示，点击展开/收起
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 30
@@ -341,6 +344,7 @@ Frame {
                 anchors.rightMargin: Style.Space.sm
                 spacing: Style.Space.xs
 
+                // 展开/收起指示箭头
                 Label {
                     text: taskCard.expanded ? "⌄" : "›"
                     font.pixelSize: 14
@@ -356,6 +360,7 @@ Frame {
                     color: Style.Color.textSecondary
                 }
 
+                // 条目数量提示
                 Label {
                     text: qsTr("%1 项").arg(taskCard.fileList.length)
                     font.pixelSize: 11
@@ -370,7 +375,7 @@ Frame {
             }
         }
 
-        // 文件列表（展开时显示）
+        // 文件列表（展开时显示）：限制最大高度避免卡片过长
         ListView {
             Layout.fillWidth: true
             Layout.preferredHeight: taskCard.expanded ? Math.min(contentHeight, 150) : 0
@@ -403,8 +408,8 @@ Frame {
         }
     }
 
+    // 删除本地文件确认弹窗：警告用户操作不可撤销
     Dialog {
-        id: deleteConfirmDialog
         title: qsTr("删除确认")
         modal: true
         anchors.centerIn: Overlay.overlay

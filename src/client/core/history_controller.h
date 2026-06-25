@@ -1,15 +1,17 @@
 /**
 * @file    history_controller.h
 * @version 6.6.2
-* @date    2026-06-25
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   本地聊天与传输历史的 QML 应用层入口
 *
 * 聚合 ChatManager 和 TransferSessionManager 的查询/删除意图，
-* 通过 Repository 端口访问 SQLite，按设备或游标分页加载历史
+* 通过 LocalDataBroker 访问本地历史数据，按设备或游标分页加载历史
 * 并向 QML 提供筛选、删除和保留期限设置入口。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-28
+* * 改为依赖 LocalDataBroker 语义接口，不直接持有 DatabaseWorker 或 Repository
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.4.0] GY   2026-06-25
@@ -25,9 +27,7 @@
 
 class ChatManager;
 class ConfigManager;
-class DatabaseWorker;
-class IMessageRepository;
-class ITransferHistoryRepository;
+class LocalDataBroker;
 class TransferSessionManager;
 
 class HistoryController : public QObject {
@@ -38,9 +38,7 @@ class HistoryController : public QObject {
 
 public:
     explicit HistoryController(ChatManager *chat, TransferSessionManager *transfer,
-                               ConfigManager *config, DatabaseWorker *worker,
-                               IMessageRepository *messages,
-                               ITransferHistoryRepository *transfers,
+                               ConfigManager *config, LocalDataBroker *dataBroker,
                                QObject *parent = nullptr);
 
     // 获取当前传输历史列表
@@ -85,9 +83,7 @@ private:
     ChatManager *_chat = nullptr;  // 聊天运行期模型和清理入口
     TransferSessionManager *_transfer = nullptr;  // 传输运行期模型和清理入口
     ConfigManager *_config = nullptr;  // 历史保留期限配置来源
-    DatabaseWorker *_worker = nullptr;  // 数据库异步任务投递入口
-    IMessageRepository *_messages = nullptr;  // 聊天消息持久化端口
-    ITransferHistoryRepository *_transferHistory = nullptr;  // 传输历史持久化端口
+    LocalDataBroker *_dataBroker = nullptr;  // 本地历史数据访问代管者
     QVariantList _transfers;  // 当前筛选条件下的传输历史视图数据
     bool _loading = false;  // 是否正在执行异步历史查询
 };

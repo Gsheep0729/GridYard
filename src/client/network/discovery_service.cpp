@@ -56,7 +56,8 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     noProxy.setType(QNetworkProxy::NoProxy);
     _socket->setProxy(noProxy);
 
-    // 尝试绑定到发现端口，使用 ShareAddress 允许多进程共享
+    // ShareAddress + ReuseAddressHint 允许多进程共享同一 UDP 端口，
+    // 这样同一台机器上可以同时运行多个 GridYard 实例互相发现
     bool bound = _socket->bind(QHostAddress::AnyIPv4, gy::protocol::kDefaultDiscoveryPort,
                                 QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
 
@@ -115,15 +116,17 @@ QVariantList DiscoveryService::peers() const
     return list;
 }
 
-// 查询可用于发送传输的对端快照
+// 查询可用于发送传输的对端快照；离线设备返回空 map
 QVariantMap DiscoveryService::transferEndpoint(const QString &deviceId) const
 {
     auto it = _peers.find(deviceId);
+    // 只返回仍在线的设备，避免向已超时节点发起连接
     if (it == _peers.end() || !it.value().isOnline) {
         return {};
     }
 
     const PeerInfo &peer = it.value();
+    // 只暴露传输需要的三个字段，不泄露完整 PeerInfo（含 lastSeen 等内部时间戳）
     return {{"deviceName", peer.deviceName}, {"ipAddress", peer.ipAddress},
             {"tcpPort", peer.tcpPort}};
 }
@@ -179,6 +182,7 @@ void DiscoveryService::sendHelloPacket()
 // 处理接收到的 UDP 数据报，解析 JSON 后交给 handleHelloPacket
 void DiscoveryService::onDatagramReceived()
 {
+    // 循环读取所有待处理数据报，避免 readyRead 在高频率广播下被合并
     while (_socket->hasPendingDatagrams()) {
         QByteArray datagram;
         datagram.resize(_socket->pendingDatagramSize());
@@ -189,11 +193,11 @@ void DiscoveryService::onDatagramReceived()
         _socket->readDatagram(datagram.data(), datagram.size(),
                               &sender, &senderPort);
 
-        // 解析 JSON
+        // 只处理合法 JSON 对象，其他格式静默丢弃
         QJsonParseError error;
         QJsonDocument doc = QJsonDocument::fromJson(datagram, &error);
         if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-            continue;  // 无效 JSON，丢弃
+            continue;
         }
 
         handleHelloPacket(doc.object(), sender);

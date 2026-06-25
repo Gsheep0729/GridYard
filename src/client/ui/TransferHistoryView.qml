@@ -22,9 +22,10 @@ import "../utils/Style.js" as Style
 Frame {
     id: root
 
-    property string peerDeviceId: ""
-    property string selectedStatus: ""
+    property string peerDeviceId: ""  // 可选：按设备 ID 筛选，空字符串表示全部设备
+    property string selectedStatus: ""  // 可选：按状态筛选（completed/failed/cancelled/rejected）
 
+    // 按当前筛选条件查询传输历史，每次筛选变化或手动刷新时调用
     function refresh(): void {
         AppController.historyController.queryTransfers({
             "peerDeviceId": root.peerDeviceId,
@@ -32,7 +33,7 @@ Frame {
         })
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: refresh()  // 组件加载时自动查询第一页
 
     ColumnLayout {
         anchors.fill: parent
@@ -50,6 +51,7 @@ Frame {
 
             Item { Layout.fillWidth: true }
 
+            // 状态筛选下拉框：将显示文本映射为查询状态值
             ComboBox {
                 id: statusFilter
                 model: [qsTr("全部"), qsTr("完成"), qsTr("失败"), qsTr("取消"), qsTr("拒绝")]
@@ -59,23 +61,27 @@ Frame {
                 }
             }
 
+            // 手动刷新按钮
             ToolButton {
                 text: qsTr("刷新")
                 onClicked: root.refresh()
             }
 
+            // 清空全部历史按钮：弹出确认对话框
             ToolButton {
                 text: qsTr("清空历史")
                 onClicked: clearDialog.open()
             }
         }
 
+        // 加载指示器：异步查询进行中时显示
         BusyIndicator {
             Layout.alignment: Qt.AlignHCenter
             running: AppController.historyController.loading
             visible: running
         }
 
+        // 历史记录列表：绑定 HistoryController.transfers
         ListView {
             id: historyList
             Layout.fillWidth: true
@@ -151,6 +157,7 @@ Frame {
                 }
             }
 
+            // 空列表提示：查询无结果且加载完成时显示
             Label {
                 anchors.centerIn: parent
                 visible: historyList.count === 0 && !AppController.historyController.loading
@@ -160,6 +167,7 @@ Frame {
         }
     }
 
+    // 清空确认弹窗：仅删除本地历史记录，不影响已接收文件或发送源文件
     Dialog {
         id: clearDialog
         modal: true

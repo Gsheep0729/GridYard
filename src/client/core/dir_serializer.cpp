@@ -37,13 +37,14 @@ QList<FileItem> DirSerializer::serialize(const QString &path)
     }
 
     if (info.isFile()) {
+        // 单文件场景：直接生成一个 FileItem 条目
         FileItem item;
-        item.relativePath = info.fileName();
+        item.relativePath = info.fileName();  // 单文件的相对路径即文件名本身
         item.sizeBytes = info.size();
         item.sha256 = computeSha256(path);
         result.append(item);
     } else if (info.isDir()) {
-        traverseDir(path, QString(), result);
+        traverseDir(path, QString(), result);  // 目录场景：递归遍历所有子条目
     }
 
     return result;
@@ -59,10 +60,10 @@ QString DirSerializer::computeSha256(const QString &filePath)
 
     QCryptographicHash hash(QCryptographicHash::Sha256);
     if (!hash.addData(&file)) {
-        return QString();
+        return QString();  // 读取失败返回空字符串，调用方需处理校验缺失场景
     }
 
-    return hash.result().toHex();
+    return hash.result().toHex();  // 返回 hex 编码的哈希值，便于协议 JSON 传输
 }
 
 // 递归遍历目录，收集文件信息
@@ -71,6 +72,7 @@ void DirSerializer::traverseDir(const QString &basePath,
                                 QList<FileItem> &result)
 {
     QDir dir(basePath + (currentPath.isEmpty() ? QString() : "/" + currentPath));
+    // 同时列出文件和子目录，排除 . 和 .. 避免无限递归
     QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
 
     // 先记录空目录（如果当前目录为空）
@@ -83,6 +85,7 @@ void DirSerializer::traverseDir(const QString &basePath,
     }
 
     for (const QFileInfo &entry : entries) {
+        // 拼接相对路径：根层级直接用文件名，子层级拼接父路径前缀
         QString relPath = currentPath.isEmpty()
             ? entry.fileName()
             : currentPath + "/" + entry.fileName();
@@ -94,7 +97,7 @@ void DirSerializer::traverseDir(const QString &basePath,
             item.sha256 = computeSha256(entry.absoluteFilePath());
             result.append(item);
         } else if (entry.isDir()) {
-            traverseDir(basePath, relPath, result);
+            traverseDir(basePath, relPath, result);  // 递归进入子目录
         }
     }
 }

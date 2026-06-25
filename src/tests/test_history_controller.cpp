@@ -1,11 +1,13 @@
 /**
  * @file    test_history_controller.cpp
- * @version 6.4.0
- * @date    2026-06-25
+ * @version 6.6.2
+ * @date    2026-06-28
  * @author  GY
  * @brief   HistoryController 本地历史视图与保留清理测试
  *
  * Change Log:
+ * [v6.6.2] GY 2026-06-28
+ * * 测试改为通过 LocalDataBroker 访问历史数据，避免直接组装 DatabaseWorker 和 Repository
  * [v6.4.0] GY 2026-06-25
  * * 新增本地历史控制器测试
  */
@@ -15,10 +17,10 @@
 #include "application_paths.h"
 #include "chat_manager.h"
 #include "config_manager.h"
-#include "database_worker.h"
 #include "history_controller.h"
 #include "history_records.h"
 #include "history_repositories.h"
+#include "local_data_broker.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
 #include "sqlite_message_repository.h"
@@ -28,7 +30,6 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
-#include <QThread>
 
 #include <memory>
 
@@ -53,6 +54,7 @@ private slots:
 
 private:
     std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
+    std::unique_ptr<LocalDataBroker> openDataBroker(const QString &relativePath);
     void seedDevice(SqliteDatabaseBroker &database, const QString &deviceId, const QString &name);
     void seedMessage(SqliteMessageRepository &repository, const QString &deviceId, const QString &msgId,
                      const QDateTime &sentAt, const QString &content = "test");
@@ -92,14 +94,9 @@ void TestHistoryController::testChatPaginationCursorAdvances()
     }
 
     ChatManager chat;
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteTransferHistoryRepository transferRepository(database.get());
-    HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("cursor-advance.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     QSignalSpy spy1(&controller, &HistoryController::messagesLoaded);
     controller.loadMoreMessages("peer-A");
@@ -116,8 +113,6 @@ void TestHistoryController::testChatPaginationCursorAdvances()
 
     QCOMPARE(chat.messagesForDevice("peer-A").size(), 10);
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testChatPaginationNoDuplicates()
@@ -132,14 +127,9 @@ void TestHistoryController::testChatPaginationNoDuplicates()
     seedMessage(messageRepository, "peer-B", "dup-002", base.addSecs(60), "second");
 
     ChatManager chat;
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteTransferHistoryRepository transferRepository(database.get());
-    HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("no-dup.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     QSignalSpy spy(&controller, &HistoryController::messagesLoaded);
     controller.loadMoreMessages("peer-B");
@@ -152,8 +142,6 @@ void TestHistoryController::testChatPaginationNoDuplicates()
     QVERIFY(spy2.wait(3000));
     QCOMPARE(chat.messagesForDevice("peer-B").size(), 2);
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testTransferFilterByDevice()
@@ -168,14 +156,9 @@ void TestHistoryController::testTransferFilterByDevice()
     seedTransfer(transferRepository, "s-c1", "peer-C", "completed", base);
     seedTransfer(transferRepository, "s-d1", "peer-D", "completed", base.addSecs(60));
 
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteMessageRepository messageRepository(database.get());
-    HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("filter-device.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(nullptr, nullptr, nullptr, dataBroker.get());
 
     QSignalSpy spy(&controller, &HistoryController::transfersChanged);
     QVariantMap filter;
@@ -188,8 +171,6 @@ void TestHistoryController::testTransferFilterByDevice()
     QCOMPARE(transfers.first().toMap().value("peerDeviceId").toString(),
              QStringLiteral("peer-C"));
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testTransferFilterByStatus()
@@ -204,14 +185,9 @@ void TestHistoryController::testTransferFilterByStatus()
     seedTransfer(transferRepository, "s-e2", "peer-E", "failed", base.addSecs(60));
     seedTransfer(transferRepository, "s-e3", "peer-E", "cancelled", base.addSecs(120));
 
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteMessageRepository messageRepository(database.get());
-    HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("filter-status.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(nullptr, nullptr, nullptr, dataBroker.get());
 
     QSignalSpy spy(&controller, &HistoryController::transfersChanged);
     QVariantMap filter;
@@ -224,8 +200,6 @@ void TestHistoryController::testTransferFilterByStatus()
     QCOMPARE(transfers.first().toMap().value("status").toString(),
              QStringLiteral("failed"));
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testDeleteMessageOnlyAffectsTarget()
@@ -258,14 +232,9 @@ void TestHistoryController::testDeleteMessageOnlyAffectsTarget()
 
     QCOMPARE(chat.messagesForDevice("peer-F").size(), 2);
 
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteTransferHistoryRepository transferRepository(database.get());
-    HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("del-msg.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     controller.deleteMessage("peer-F", "del-002");
     QTest::qWait(500);
@@ -273,8 +242,6 @@ void TestHistoryController::testDeleteMessageOnlyAffectsTarget()
     QCOMPARE(chat.messagesForDevice("peer-F").size(), 1);
     QCOMPARE(messageRowCount(*database), 1);
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testDeleteConversationOnlyAffectsTarget()
@@ -313,14 +280,9 @@ void TestHistoryController::testDeleteConversationOnlyAffectsTarget()
     mh.createdAt = base.addSecs(60);
     chat.prependHistoryMessages("peer-H", {mh});
 
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteTransferHistoryRepository transferRepository(database.get());
-    HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("del-conv.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     controller.deleteConversation("peer-G");
     QTest::qWait(500);
@@ -328,8 +290,6 @@ void TestHistoryController::testDeleteConversationOnlyAffectsTarget()
     QVERIFY(chat.messagesForDevice("peer-G").isEmpty());
     QCOMPARE(chat.messagesForDevice("peer-H").size(), 1);
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testDeleteTransferOnlyAffectsTarget()
@@ -343,14 +303,9 @@ void TestHistoryController::testDeleteTransferOnlyAffectsTarget()
     seedTransfer(transferRepository, "s-i1", "peer-I", "completed", base);
     seedTransfer(transferRepository, "s-i2", "peer-I", "failed", base.addSecs(60));
 
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteMessageRepository messageRepository(database.get());
-    HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("del-transfer.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(nullptr, nullptr, nullptr, dataBroker.get());
 
     QSignalSpy spy(&controller, &HistoryController::transfersChanged);
     controller.queryTransfers();
@@ -363,8 +318,6 @@ void TestHistoryController::testDeleteTransferOnlyAffectsTarget()
     QCOMPARE(controller.transfers().size(), 1);
     QCOMPARE(transferRowCount(*database), 1);
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testClearAllMessagesPreservesDevices()
@@ -378,14 +331,9 @@ void TestHistoryController::testClearAllMessagesPreservesDevices()
     seedMessage(messageRepository, "peer-J", "cj-001", base);
 
     ChatManager chat;
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteTransferHistoryRepository transferRepository(database.get());
-    HistoryController controller(&chat, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("clear-msg.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     controller.clearAllMessages();
     QTest::qWait(500);
@@ -393,8 +341,6 @@ void TestHistoryController::testClearAllMessagesPreservesDevices()
     QCOMPARE(messageRowCount(*database), 0);
     QCOMPARE(deviceRowCount(*database), 1);
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testClearAllTransfersPreservesDevices()
@@ -407,14 +353,9 @@ void TestHistoryController::testClearAllTransfersPreservesDevices()
     const QDateTime base = QDateTime::fromString("2026-06-25T18:00:00.000Z", Qt::ISODateWithMs);
     seedTransfer(transferRepository, "s-k1", "peer-K", "completed", base);
 
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
-    SqliteMessageRepository messageRepository(database.get());
-    HistoryController controller(nullptr, nullptr, nullptr, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("clear-transfer.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(nullptr, nullptr, nullptr, dataBroker.get());
 
     controller.clearAllTransfers();
     QTest::qWait(500);
@@ -422,8 +363,6 @@ void TestHistoryController::testClearAllTransfersPreservesDevices()
     QCOMPARE(transferRowCount(*database), 0);
     QCOMPARE(deviceRowCount(*database), 1);
 
-    workerThread.quit();
-    workerThread.wait();
 }
 
 void TestHistoryController::testRetentionDaysCleansExpired()
@@ -447,14 +386,10 @@ void TestHistoryController::testRetentionDaysCleansExpired()
     ConfigManager *config = ConfigManager::create(nullptr, nullptr);
     config->setRetentionDays(7);
 
-    DatabaseWorker worker(database.get());
-    QThread workerThread;
-    worker.moveToThread(&workerThread);
-    workerThread.start();
-
     ChatManager chat;
-    HistoryController controller(&chat, nullptr, config, &worker,
-                                 &messageRepository, &transferRepository);
+    auto dataBroker = openDataBroker("retention.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(&chat, nullptr, config, dataBroker.get());
 
     controller.cleanupExpiredRecords();
     QTest::qWait(500);
@@ -463,8 +398,6 @@ void TestHistoryController::testRetentionDaysCleansExpired()
     QCOMPARE(transferRowCount(*database), 1);
     QCOMPARE(deviceRowCount(*database), 1);
 
-    workerThread.quit();
-    workerThread.wait();
     delete config;
     qunsetenv("GRIDYARD_CONFIG");
     qunsetenv("GRIDYARD_NAME");
@@ -503,6 +436,17 @@ std::unique_ptr<SqliteDatabaseBroker> TestHistoryController::openDatabase(
         return nullptr;
     }
     return database;
+}
+
+std::unique_ptr<LocalDataBroker> TestHistoryController::openDataBroker(const QString &relativePath)
+{
+    auto dataBroker = std::make_unique<LocalDataBroker>();
+    QString error;
+    if (!dataBroker->initialize(_temporaryDir.path() + "/" + relativePath, &error)) {
+        qWarning() << error;
+        return nullptr;
+    }
+    return dataBroker;
 }
 
 void TestHistoryController::seedDevice(SqliteDatabaseBroker &database,

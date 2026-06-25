@@ -34,24 +34,24 @@ DatabaseWorker::DatabaseWorker(SqliteDatabaseBroker *database)
 DatabaseWorker::~DatabaseWorker()
 {
     if (_database) {
-        // Worker 在所属数据库线程析构，清理该线程专属 SQLite 连接
+        // Worker 在所属数据库线程析构时清理该线程专属 SQLite 连接，
+        // 避免 QSqlDatabase 全局连接表泄漏
         _database->closeConnectionForCurrentThread();
     }
 }
 
-// 提交保存类任务
+// 保存、加载和删除三类入口当前统一走 submitTask，
+// 语义区分便于未来按类别限流或统计
 void DatabaseWorker::submitSave(const DatabaseTask &task)
 {
     submitTask(task);
 }
 
-// 提交加载类任务
 void DatabaseWorker::submitLoad(const DatabaseTask &task)
 {
     submitTask(task);
 }
 
-// 提交删除类任务
 void DatabaseWorker::submitDelete(const DatabaseTask &task)
 {
     submitTask(task);

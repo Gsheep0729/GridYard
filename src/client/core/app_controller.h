@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
 * @version 6.6.2
-* @date    2026-06-25
+* @date    2026-06-28
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -13,6 +13,9 @@
 * 不直接暴露内部 Manager、Service 或上下文属性。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-28
+* * 通过 Controller/ViewModel 门面暴露 QML API，隐藏内部 Manager 与 Service
+* * HistoryController 改为依赖 LocalDataBroker，避免数据层端口泄漏
 * [v6.6.2] GY   2026-06-25
 * * 将 AppController 调整为系统组合根，接管 UI 引擎初始化
 * * 同步文件头版本与当前主版本
