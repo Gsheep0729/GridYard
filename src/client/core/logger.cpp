@@ -1,14 +1,16 @@
 /**
 * @file    logger.cpp
-* @version 6.0.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   运行日志工具实现
 *
 * 使用 qInstallMessageHandler 拦截 Qt 日志输出，同时写入控制台和文件。
 * 日志文件按日期自动命名，支持跨天自动切换。线程安全（QMutex）。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.0.0] GY   2026-06-25
 * * 日志默认目录迁移到应用数据目录
 * [v4.16.1] GY   2026-06-21

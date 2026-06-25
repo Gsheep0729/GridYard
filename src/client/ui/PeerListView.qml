@@ -2,7 +2,7 @@
  * @file    PeerListView.qml
  * @version 6.6.2
  * @date    2026-06-24
- * @author  GridYard Team
+ * @author  GY
  * @brief   在线设备列表组件
  *
  * 绑定 AppController.discovery.peers 显示发现的其他设备。
@@ -95,36 +95,28 @@ Rectangle {
                     ColorAnimation { duration: Style.Motion.base }
                 }
 
-                TextInput {
+                TextField {
                     id: searchInput
                     anchors.fill: parent
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
-                    verticalAlignment: TextInput.AlignVCenter
+                    verticalAlignment: Text.AlignVCenter
+                    placeholderText: qsTr("搜索")
                     font.pixelSize: 13
                     color: Style.Color.textMain
                     clip: true
+                    background: Item {}
 
                     onActiveFocusChanged: searchBox._activeFocus = activeFocus
                 }
 
-                Label {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    verticalAlignment: Text.AlignVCenter
-                    text: qsTr("搜索")
-                    font.pixelSize: 13
-                    color: Style.Color.textWeak
-                    visible: searchInput.text.length === 0 && !searchBox._activeFocus
+                HoverHandler {
+                    cursorShape: Qt.IBeamCursor
+                    onHoveredChanged: searchBox._hovered = hovered
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.IBeamCursor
-                    onEntered: searchBox._hovered = true
-                    onExited: searchBox._hovered = false
-                    onClicked: searchInput.forceActiveFocus()
+                TapHandler {
+                    onTapped: searchInput.forceActiveFocus()
                 }
             }
             // 刷新附近设备按钮

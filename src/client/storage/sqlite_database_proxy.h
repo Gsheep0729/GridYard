@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_database_proxy.h
-* @version 6.6.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 连接、参数与迁移管理
 *
 * 每个线程按唯一连接名取得自己的数据库连接，禁止跨线程传递连接。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.6.0] GY 2026-06-25
 * * 增加损坏数据库备份重建和异常验收支撑
 * [v6.0.0] GY 2026-06-25

@@ -2,7 +2,7 @@
 * @file    test_storage_message.cpp
 * @version 6.2.0
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 聊天消息 Proxy 测试
 *
 * 覆盖单条往返、幂等性、游标分页、中文/多行/emoji 内容、

@@ -1,8 +1,8 @@
 /**
 * @file    discovery_service.h
-* @version 6.1.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   局域网设备发现服务
 *
 * 通过 UDP 广播实现局域网内设备自动发现。每 5 秒发送 Hello 包，
@@ -10,6 +10,8 @@
 * 提供面向发送场景的对端快照查询供其他模块调用。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.1.0] GY   2026-06-25
 * * 新增 peerUpdated 信号供应用层异步持久化设备目录
 * [v5.1.0] FengChunlin   2026-06-24

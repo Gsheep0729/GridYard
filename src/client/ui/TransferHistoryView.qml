@@ -1,3 +1,17 @@
+/**
+ * @file    TransferHistoryView.qml
+ * @version 6.6.2
+ * @date    2026-06-25
+ * @author  GY
+ * @brief   当前设备的传输历史视图
+ *
+ * 展示当前设备的传输历史筛选、刷新、删除和清空入口。
+ *
+ * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 补齐文件头注释，说明组件职责
+ */
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

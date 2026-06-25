@@ -10,7 +10,7 @@ set(CMAKE_CXX_MODULE_STD ON)
 project(GridYard VERSION 6.6.2 LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Network QuickControls2 Sql)
-qt_standard_project_setup(REQUIRES 6.9)
+qt_standard_project_setup(REQUIRES 6.10)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

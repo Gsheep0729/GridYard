@@ -1,8 +1,8 @@
 /**
 * @file    protocol.h
-* @version 4.16.3
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
 *
 * 全局唯一的协议常量定义入口。所有 Type 码、帧头字段、Payload 字段名
@@ -11,6 +11,8 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.3] GY   2026-06-23
 * * 新增 P2P 在线聊天 Type 码和文本消息协议字段常量
 * [v4.15.0] FengChunlin   2026-06-16

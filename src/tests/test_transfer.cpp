@@ -1,7 +1,7 @@
 /**
 * @file    test_transfer.cpp
 * @date    2026-06-05
-* @author  GridYard Team
+* @author  GY
 * @brief   文件传输功能测试
 *
 * 测试 GridYard 文件传输的各个功能模块。

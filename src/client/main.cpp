@@ -2,13 +2,13 @@
 * @file    main.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   GridYard 客户端程序入口
 *
 * 启动 QQmlApplicationEngine，通过 loadFromModule 加载
 * cqnu.gridyard.client 模块的 Main 根 QML。所有 C++ 类型通过
-* QML_ELEMENT + qt_add_qml_module 路径自动注册，全程不使用
-* setContextProperty。自定义值类型（PeerInfo 等）在此统一
+* QML_ELEMENT + qt_add_qml_module 路径自动注册，不走上下文属性。
+* 自定义值类型（PeerInfo 等）在此统一
 * qRegisterMetaType 注册，供跨线程 QueuedConnection 使用。
 *
 * 支持命令行参数（本机回环测试用）：
@@ -171,6 +171,10 @@ int main(int argc, char *argv[]) {
     );
 
     engine.loadFromModule("cqnu.gridyard.client", "Main");
+    // QML 根对象创建失败时直接退出，避免进入无窗口事件循环
+    if (engine.rootObjects().isEmpty()) {
+        return -1;
+    }
 
     return app.exec();
 }

@@ -2,7 +2,7 @@
  * @file    DeviceSessionView.qml
  * @version 6.6.2
  * @date    2026-06-24
- * @author  GridYard Team
+ * @author  GY
  * @brief   当前设备的文件传输会话页
  *
  * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
@@ -464,7 +464,7 @@ Frame {
    Connections {
        target: AppController.chat
 
-       function onSendFailed(targetDeviceId, error, errorMessage) {
+       function onSendFailed(targetDeviceId: string, error: int, errorMessage: string): void {
            if (targetDeviceId === deviceSessionView.deviceId) {
                deviceSessionView.chatError = errorMessage
            }

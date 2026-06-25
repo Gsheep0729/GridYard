@@ -2,7 +2,7 @@
 * @file    transfer_session_manager.cpp
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   传输会话管理器实现
 *
 * 管理发送和接收会话的生命周期，包括创建、接受、拒绝、取消、移除。

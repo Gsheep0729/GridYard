@@ -1,13 +1,15 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 4.16.0
+ * @version 6.6.2
  * @date    2026-06-17
- * @author  GridYard Team
+ * @author  GY
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 使用 Style.js 统一样式常量，为 Stage 5 会话页铺路
  * [v4.15.2] DuRuoxian   2026-06-17

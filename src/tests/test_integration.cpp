@@ -1,7 +1,7 @@
 /**
 * @file    test_integration.cpp
 * @date    2026-06-05
-* @author  GridYard Team
+* @author  GY
 * @brief   集成测试 - 单机多实例模拟
 *
 * 在同一台机器上启动多个实例，模拟多设备传输场景。
@@ -142,7 +142,7 @@ void TestIntegration::testConfigIsolation()
     // 验证配置隔离
     QCOMPARE(mgr1->deviceName(), QString("Device1"));
     QCOMPARE(mgr2->deviceName(), QString("Device2"));
-    // 注意：deviceId 可能相同因为使用了相同的配置文件路径
+    // 使用相同配置文件路径时，deviceId 可能相同
     // 这里只验证设备名不同
     QVERIFY(mgr1->deviceName() != mgr2->deviceName());
 

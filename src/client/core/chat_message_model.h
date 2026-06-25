@@ -1,14 +1,16 @@
 /**
 * @file    chat_message_model.h
-* @version 5.2.0
+* @version 6.6.2
 * @date    2026-06-24
-* @author  GridYard Team
+* @author  GY
 * @brief   在线聊天内存消息列表模型
 *
 * 为单个设备会话保存运行期消息，并向 QML 提供稳定角色。模型只承担
 * 列表通知与状态变更，不负责网络、协议解析或消息持久化。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.2.0] DuRuoxian   2026-06-24
 * * 新增 Stage 5 聊天消息列表模型
 */

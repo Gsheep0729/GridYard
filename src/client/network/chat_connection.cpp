@@ -1,14 +1,16 @@
 /**
 * @file    chat_connection.cpp
-* @version 5.1.0
+* @version 6.6.2
 * @date    2026-06-24
-* @author  GridYard Team
+* @author  GY
 * @brief   单条在线聊天 TCP 连接实现
 *
 * 连接建立后连续解析 ChatText 帧，并将待发送消息按原顺序写入 socket。
 * 发生协议错误、网络错误或断开时只清理本连接的待写数据。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.1.0] FengChunlin   2026-06-24
 * * 实现 Stage 5 聊天连接收发和断线处理
 */

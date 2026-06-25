@@ -1,14 +1,16 @@
 /**
 * @file    chat_connection.h
-* @version 5.1.0
+* @version 6.6.2
 * @date    2026-06-24
-* @author  GridYard Team
+* @author  GY
 * @brief   单条在线聊天 TCP 连接
 *
 * 封装聊天连接的 socket、TLV 编解码和待写消息队列。连接对象只处理
 * 字节流与连接状态，不维护设备会话或界面消息状态。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.1.0] FengChunlin   2026-06-24
 * * 新增 Stage 5 聊天连接收发和断线处理
 */

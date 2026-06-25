@@ -2,7 +2,7 @@
 * @file    test_chat_manager.cpp
 * @version 6.5.0
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   在线聊天连接与内存会话测试
 *
 * 覆盖在线发送、离线拒绝、入站去重、按需重连和消息持久化。

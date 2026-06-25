@@ -1,8 +1,8 @@
 /**
 * @file    history_controller.h
-* @version 6.4.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   本地聊天与传输历史的 QML 应用层入口
 *
 * 聚合 ChatManager 和 TransferSessionManager 的查询/删除意图，
@@ -10,6 +10,8 @@
 * 并向 QML 提供筛选、删除和保留期限设置入口。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.4.0] GY   2026-06-25
 * * 新增本地历史视图控制器，接入聊天和传输历史的查询与删除
 */

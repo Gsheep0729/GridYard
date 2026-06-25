@@ -2,7 +2,7 @@
 * @file    test_storage_device.cpp
 * @version 6.1.0
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 设备目录 Proxy 测试
 *
 * 覆盖设备 upsert 幂等、聊天/传输活动时间更新、最近设备排序、

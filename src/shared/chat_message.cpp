@@ -1,14 +1,16 @@
 /**
 * @file    chat_message.cpp
-* @version 4.16.3
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   在线聊天消息 JSON 编解码实现
 *
 * 负责将 ChatMessage 转换为紧凑 JSON，并在接收端统一校验 JSON 结构、
 * UUID、时间和文本限制。该文件不处理 socket、连接状态或界面状态。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.3] GY   2026-06-23
 * * 实现 Stage 5 在线聊天消息 JSON 编解码和字段校验
 */

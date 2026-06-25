@@ -1,8 +1,8 @@
 /**
  * @file    DeviceCard.qml
- * @version 4.16.3
+ * @version 6.6.2
  * @date    2026-06-24
- * @author  GridYard Team
+ * @author  GY
  * @brief   在线设备列表项 delegate
  *
  * 全部 4 个 property 都声明为 required：当本组件作为 delegate
@@ -12,6 +12,8 @@
  * 支持拖拽文件到卡片触发传输。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
  * [v4.16.3] FengChunlin   2026-06-24
  * * 调整设备列表项的头像、在线状态和选中状态表现
  * [v4.16.0] DuRuoxian   2026-06-18

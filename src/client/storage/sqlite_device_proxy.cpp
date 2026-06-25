@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_device_proxy.cpp
-* @version 6.1.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 设备目录 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.1.0] GY   2026-06-25
 * * 新增设备目录 SQLite Proxy
 */
