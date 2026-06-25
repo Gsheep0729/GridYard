@@ -48,7 +48,7 @@
 #include <QTimer>
 #include <QUuid>
 
-// 超时时间：30 秒
+// 传输超时时间：30 秒，超过该时间没有网络进展则判定失败
 static constexpr int kTimeoutMs = 30000;
 
 // 构造函数，初始化 TCP socket、FrameCodec 和超时定时器
@@ -104,7 +104,6 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _senderName = senderName;
     _sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
-    // 序列化文件列表
     _fileList = gy::DirSerializer::serialize(path);
     const QFileInfo rootInfo{path};
     _isDirectory = rootInfo.isDir();
@@ -112,6 +111,7 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _emptyDirectories.clear();
 
     for (qsizetype i = _fileList.size(); i-- > 0;) {
+        // 空目录只作为请求元数据发送，不参与后续 DataChunk 发送状态机。
         if (_fileList[i].relativePath.endsWith('/')) {
             _emptyDirectories.prepend(_fileList.takeAt(i).relativePath);
         }
@@ -150,6 +150,7 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     // 连接到接收端
     qDebug() << "[FileSender] 正在连接到" << host << ":" << port;
     _socket->connectToHost(host, port);
+    // 连接建立最多等待 5 秒，避免离线设备导致发送线程长时间卡住。
     if (!_socket->waitForConnected(5000)) {
         qWarning() << "[FileSender] 连接失败:" << _socket->errorString();
         emit transferFinished(false, gy::protocol::ErrorCode::ConnectionTimeout, tr("连接超时: %1").arg(_socket->errorString()));
@@ -158,7 +159,7 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
 
     qDebug() << "[FileSender] 连接成功";
 
-    // 优化 socket buffer
+    // 扩大收发缓冲到 4MB，配合分块发送降低大文件吞吐波动。
     _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
     _socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
 
@@ -392,7 +393,7 @@ void FileSenderWorker::sendNextChunk()
         return;
     }
 
-    // 构建 chunk 元数据（20 字节）
+    // 构建 20 字节 chunk 元数据：fileIndex(4) + offset(8) + size(4) + isLast(4)。
     QByteArray metadata;
     QDataStream stream(&metadata, QDataStream::WriteOnly);
     stream.setByteOrder(QDataStream::BigEndian);

@@ -128,8 +128,6 @@ private:
     DiscoveryService *_discovery = nullptr; // 在线设备与发送端点查询服务
     P2pServer        *_p2pServer = nullptr; // 入站传输请求来源
 
-    // 会话列表
-    QList<QVariantMap> _sessions;
-    // 发送方 worker 映射（sessionId -> worker）
-    QHash<QString, FileSenderWorker*> _sendWorkers;
+    QList<QVariantMap> _sessions;  // QML 绑定的发送、接收和历史会话列表
+    QHash<QString, FileSenderWorker*> _sendWorkers;  // 发送方 worker 映射（sessionId -> worker）
 };

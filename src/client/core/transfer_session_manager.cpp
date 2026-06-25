@@ -116,6 +116,7 @@ QPair<int, qint64> transferStatsForPath(const QString &path)
     int fileCount = 0;
     qint64 totalBytes = 0;
     for (const auto &item : items) {
+        // 目录占位项只用于恢复层级，不计入实际文件数量和传输字节数。
         if (item.relativePath.endsWith('/')) {
             continue;
         }
@@ -125,6 +126,7 @@ QPair<int, qint64> transferStatsForPath(const QString &path)
     return {fileCount, totalBytes};
 }
 
+// 从会话字段读取 UTC 时间
 QDateTime sessionTime(const QVariantMap &session, const QString &key)
 {
     return QDateTime::fromString(session.value(key).toString(), Qt::ISODateWithMs);
@@ -137,6 +139,7 @@ QVariantList buildRootPreview(const QStringList &paths)
     QSet<QString> seen;
 
     for (const QString &path : paths) {
+        // 只展示根层条目，深层文件夹折叠为它所属的顶层目录。
         const QString cleanPath = path.endsWith('/') ? path.chopped(1) : path;
         const QStringList parts = cleanPath.split('/', Qt::SkipEmptyParts);
         if (parts.isEmpty()) {
@@ -625,6 +628,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
              << "来自" << senderName << "文件" << fileName;
 }
 
+// 将已完成传输历史恢复到会话列表
 void TransferSessionManager::restoreFinishedTransfers(const QList<TransferRecord> &records)
 {
     bool changed = false;

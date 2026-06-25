@@ -201,6 +201,7 @@ bool SqliteMessageProxy::deleteConversation(const QString &deviceId, QString *er
         errorMessage);
 }
 
+// 删除单条聊天消息
 bool SqliteMessageProxy::deleteMessage(const QString &messageId, QString *errorMessage)
 {
     if (!_database) {
@@ -253,6 +254,7 @@ bool SqliteMessageProxy::deleteExpiredMessages(const QDateTime &before, QString 
         errorMessage);
 }
 
+// 清空全部聊天消息和会话
 bool SqliteMessageProxy::clearAllMessages(QString *errorMessage)
 {
     if (!_database) {

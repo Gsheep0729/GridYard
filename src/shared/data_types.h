@@ -41,9 +41,9 @@ class PeerInfo {
 public:
     QString  deviceId;      // UUID，首次启动生成
     QString  deviceName;    // 用户自定义名或 hostname
-    QString  ipAddress;
-    quint16  tcpPort = 0;
-    bool     isOnline = false;
+    QString  ipAddress;     // 对端最近一次广播来源地址
+    quint16  tcpPort = 0;   // 对端 TCP 监听端口
+    bool     isOnline = false;  // 是否仍处于发现心跳有效期内
     quint16  protocolVersion = 0;  // 对端协议版本
     QDateTime lastSeen;     // 最后心跳时间
 
@@ -61,7 +61,7 @@ class FileEntry {
 
 public:
     QString relativePath;   // 相对路径（含目录结构）
-    qint64  fileSize = 0;
+    qint64  fileSize = 0;   // 文件字节数
     QString sha256;         // 文件哈希（传输完成后校验用）
 };
 
@@ -80,10 +80,10 @@ class TransferSession {
 public:
     QString sessionId;      // 会话唯一 ID
     QString peerDeviceId;   // 对端设备 ID
-    int     fileCount = 0;
-    qint64  totalBytes = 0;
-    qint64  sentBytes = 0;
-    bool    isActive = false;
+    int     fileCount = 0;  // 会话包含的真实文件数量
+    qint64  totalBytes = 0; // 会话总字节数
+    qint64  sentBytes = 0;  // 已发送或已接收字节数
+    bool    isActive = false;  // 会话是否仍在传输中
 };
 
 Q_DECLARE_METATYPE(TransferSession)

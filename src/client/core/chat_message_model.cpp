@@ -77,6 +77,7 @@ void ChatMessageModel::appendMessage(const QVariantMap &message)
     emit countChanged();
 }
 
+// 在当前首条消息前插入一页更早的历史消息
 void ChatMessageModel::prependMessages(const QList<QVariantMap> &messages)
 {
     if (messages.isEmpty()) {
@@ -84,6 +85,7 @@ void ChatMessageModel::prependMessages(const QList<QVariantMap> &messages)
     }
 
     beginInsertRows({}, 0, messages.size() - 1);
+    // 调用方传入旧到新的页面；倒序 prepend 后仍保持模型时间正序。
     for (auto it = messages.crbegin(); it != messages.crend(); ++it) {
         _messages.prepend(*it);
     }
@@ -112,6 +114,7 @@ bool ChatMessageModel::updateMessageStatus(const QString &messageId, int status)
     return false;
 }
 
+// 从模型中移除指定消息
 bool ChatMessageModel::removeMessage(const QString &messageId)
 {
     for (int row = 0; row < _messages.size(); ++row) {
