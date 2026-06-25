@@ -1,8 +1,8 @@
 /**
 * @file    data_types.h
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   跨模块共享数据类型定义（值类型 / POD）
 *
 * 含 PeerInfo（局域网在线节点描述）、FileEntry（文件元数据）、
@@ -11,6 +11,8 @@
 * QObject 的身份语义不适合。QML 端通过 Q_PROPERTY MEMBER 反射访问。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 优化封装性，补充 Tell, Don't Ask 语义化方法注释
 * [v0.2.0] FengChunlin   2026-04-24
@@ -41,9 +43,9 @@ class PeerInfo {
 public:
     QString  deviceId;      // UUID，首次启动生成
     QString  deviceName;    // 用户自定义名或 hostname
-    QString  ipAddress;
-    quint16  tcpPort = 0;
-    bool     isOnline = false;
+    QString  ipAddress;     // 对端最近一次广播来源地址
+    quint16  tcpPort = 0;   // 对端 TCP 监听端口
+    bool     isOnline = false;  // 是否仍处于发现心跳有效期内
     quint16  protocolVersion = 0;  // 对端协议版本
     QDateTime lastSeen;     // 最后心跳时间
 
@@ -61,7 +63,7 @@ class FileEntry {
 
 public:
     QString relativePath;   // 相对路径（含目录结构）
-    qint64  fileSize = 0;
+    qint64  fileSize = 0;   // 文件字节数
     QString sha256;         // 文件哈希（传输完成后校验用）
 };
 
@@ -80,10 +82,10 @@ class TransferSession {
 public:
     QString sessionId;      // 会话唯一 ID
     QString peerDeviceId;   // 对端设备 ID
-    int     fileCount = 0;
-    qint64  totalBytes = 0;
-    qint64  sentBytes = 0;
-    bool    isActive = false;
+    int     fileCount = 0;  // 会话包含的真实文件数量
+    qint64  totalBytes = 0; // 会话总字节数
+    qint64  sentBytes = 0;  // 已发送或已接收字节数
+    bool    isActive = false;  // 会话是否仍在传输中
 };
 
 Q_DECLARE_METATYPE(TransferSession)

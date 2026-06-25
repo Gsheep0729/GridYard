@@ -1,8 +1,8 @@
 /**
 * @file    config_manager.cpp
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   应用配置管理器实现
 *
 * 实现配置的读取、写入和持久化。使用 QSettings 存储设备名、
@@ -10,6 +10,8 @@
 * GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 新增 isMyDevice()、fillHelloPayload()、fillSenderInfo() 实现
 * [v4.11.0] FengChunlin   2026-06-13
@@ -235,6 +237,7 @@ void ConfigManager::setTcpPort(quint16 port)
     emit tcpPortChanged();
 }
 
+// 设置历史保留天数并持久化
 void ConfigManager::setRetentionDays(int days)
 {
     days = std::max(0, days);

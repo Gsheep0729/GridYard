@@ -1,13 +1,15 @@
 /**
  * @file    FileTypeIcon.qml
- * @version 4.13.1
+ * @version 6.6.2
  * @date    2026-06-15
- * @author  GridYard Team
+ * @author  GY
  * @brief   根据文件类型显示项目内置图标
  *
  * 根据文件名选择项目内置图标，避免依赖系统图标主题。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
  * [v4.13.1] GY   2026-06-15
  * * 初始版本，支持常见文件类型和文件夹图标
  */

@@ -1,14 +1,16 @@
 /**
  * @file    AcceptDialog.qml
- * @version 4.16.0
+ * @version 6.6.2
  * @date    2026-06-17
- * @author  GridYard Team
+ * @author  GY
  * @brief   接收确认弹窗
  *
  * 显示发送方设备名、文件名、文件大小。
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 使用 Style.js 统一样式常量
  * [v4.15.2] DuRuoxian   2026-06-17

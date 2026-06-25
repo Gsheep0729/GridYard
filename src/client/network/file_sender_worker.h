@@ -1,8 +1,8 @@
 /**
 * @file    file_sender_worker.h
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
 * 运行在独立后台线程中，负责建立 TCP 连接、发送传输握手请求、
@@ -10,6 +10,8 @@
 * 支持多文件/目录传输、SHA-256 校验、取消操作和超时检测。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 补充传输状态成员的职责注释
 * [v4.15.1] FengChunlin   2026-06-16

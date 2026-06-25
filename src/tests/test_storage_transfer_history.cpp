@@ -2,7 +2,7 @@
 * @file    test_storage_transfer_history.cpp
 * @version 6.3.0
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 传输历史 Proxy 测试
 *
 * Change Log:

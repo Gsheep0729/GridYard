@@ -1,14 +1,16 @@
 /**
 * @file    chat_message_model.cpp
-* @version 5.2.0
+* @version 6.6.2
 * @date    2026-06-24
-* @author  GridYard Team
+* @author  GY
 * @brief   在线聊天内存消息列表模型实现
 *
 * 使用 beginInsertRows 和 dataChanged 向 QML 通知最小变化范围，避免
 * 每次收到消息都替换整个会话列表。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.2.0] DuRuoxian   2026-06-24
 * * 实现 Stage 5 聊天消息列表模型
 */
@@ -77,6 +79,7 @@ void ChatMessageModel::appendMessage(const QVariantMap &message)
     emit countChanged();
 }
 
+// 在当前首条消息前插入一页更早的历史消息
 void ChatMessageModel::prependMessages(const QList<QVariantMap> &messages)
 {
     if (messages.isEmpty()) {
@@ -84,6 +87,7 @@ void ChatMessageModel::prependMessages(const QList<QVariantMap> &messages)
     }
 
     beginInsertRows({}, 0, messages.size() - 1);
+    // 调用方传入旧到新的页面；倒序 prepend 后仍保持模型时间正序。
     for (auto it = messages.crbegin(); it != messages.crend(); ++it) {
         _messages.prepend(*it);
     }
@@ -112,6 +116,7 @@ bool ChatMessageModel::updateMessageStatus(const QString &messageId, int status)
     return false;
 }
 
+// 从模型中移除指定消息
 bool ChatMessageModel::removeMessage(const QString &messageId)
 {
     for (int row = 0; row < _messages.size(); ++row) {

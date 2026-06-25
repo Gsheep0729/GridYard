@@ -1,8 +1,8 @@
 /**
 * @file    chat_manager.cpp
-* @version 6.5.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   在线聊天连接与内存会话管理器实现
 *
 * 发送路径先检查发现结果，再复用或建立 TCP 连接。接收路径按发送方
@@ -11,6 +11,8 @@
 * 由 AppController 异步提交持久化任务。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.5.0] GY   2026-06-25
 * * 收到远端消息后发布受限长度的通知预览
 * [v6.2.0] GY   2026-06-25
@@ -137,6 +139,7 @@ void ChatManager::clearMessages(const QString &deviceId)
     }
 }
 
+// 从内存模型中移除指定消息
 void ChatManager::removeMessage(const QString &deviceId, const QString &messageId)
 {
     ChatMessageModel *model = _models.value(deviceId);
@@ -222,6 +225,7 @@ void ChatManager::onMessageReceived(ChatConnection *connection, const gy::ChatMe
     }
 
     if (appendMessage(deviceId, message, false, MessageStatus::Sent)) {
+        // 通知预览只取前 20 个字符，避免系统通知泄露完整聊天内容。
         const QString preview = message.content.simplified().left(20);
         emit incomingMessageReceived(deviceId, message.fromName, preview);
     }

@@ -1,14 +1,16 @@
 /**
 * @file    chat_connection.cpp
-* @version 5.1.0
+* @version 6.6.2
 * @date    2026-06-24
-* @author  GridYard Team
+* @author  GY
 * @brief   单条在线聊天 TCP 连接实现
 *
 * 连接建立后连续解析 ChatText 帧，并将待发送消息按原顺序写入 socket。
 * 发生协议错误、网络错误或断开时只清理本连接的待写数据。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.1.0] FengChunlin   2026-06-24
 * * 实现 Stage 5 聊天连接收发和断线处理
 */
@@ -169,6 +171,7 @@ void ChatConnection::bindSocket(QTcpSocket *socket)
 {
     _socket = socket;
     _socket->setParent(this);
+    // 聊天复用 TCP 通道，调大缓冲可兼容首帧分流后已积压的数据。
     _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
     _socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
 
@@ -193,6 +196,7 @@ void ChatConnection::writePendingFrames()
         const PendingFrame pending = _pendingFrames.takeFirst();
         const qint64 written = _socket->write(pending.frame);
         if (written != pending.frame.size()) {
+            // Qt 写入短帧表示本地 socket 缓冲异常，剩余待写消息必须统一失败。
             const QString errorMessage = _socket->errorString().isEmpty()
                 ? tr("聊天消息写入失败")
                 : _socket->errorString();

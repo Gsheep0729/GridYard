@@ -1,8 +1,8 @@
 /**
 * @file    p2p_server.h
-* @version 5.0.0
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   P2P 文件传输服务器
 *
 * 监听 TCP 端口（默认 35100），先按首个完整 TLV 帧分流连接。
@@ -10,6 +10,8 @@
 * 两种业务共用端口但不共享状态机。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.0.0] FengChunlin   2026-06-23
 * * 按首个完整 TLV 帧分流文件传输和在线聊天连接
 * [v4.16.1] GY   2026-06-21

@@ -1,8 +1,8 @@
 /**
 * @file    p2p_server.cpp
-* @version 5.0.0
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   P2P 文件传输服务器实现
 *
 * 首帧路由阶段只窥视 socket 中的完整 TLV 帧，不读取其字节。
@@ -10,6 +10,8 @@
 * 保证目标处理者能自行解析完整首帧。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.0.0] FengChunlin   2026-06-23
 * * 新增首帧路由和聊天连接交接逻辑
 * [v4.16.1] GY   2026-06-21
@@ -127,7 +129,7 @@ void P2pServer::onNewConnection()
 
         socket->setParent(this);
 
-        // 优化 socket buffer
+        // 扩大收发缓冲到 4MB，减少大文件传输时系统调用和窗口抖动。
         socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
         socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
 
@@ -180,6 +182,7 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
         return;
     }
 
+    // 这里只 peek 校验首帧，不能 read；后续接管者还要从 socket 读取完整首帧。
     const QByteArray firstFrame = socket->peek(frameBytes);
     FrameCodec codec;
     quint32 decodedType = 0;
@@ -208,6 +211,7 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
     disconnect(socket, &QTcpSocket::disconnected, this, nullptr);
 
     if (type == gy::protocol::kTypeTransferReq) {
+        // 文件接收 Worker 会在线程启动后重新读取保留在 socket 缓冲区里的首帧。
         startFileReceiver(socket);
         return;
     }
@@ -221,6 +225,7 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
 
         emit chatConnectionReceived(socket);
         if (socket->parent() == this) {
+            // 没有处理者接管 parent 时必须关闭，避免悬挂的入站连接泄漏。
             closePendingConnection(socket, tr("没有聊天连接处理者"));
         }
         return;

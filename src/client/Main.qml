@@ -2,7 +2,7 @@
 * @file    Main.qml
 * @version 6.6.2
 * @date    2026-06-24
-* @author  GridYard Team
+* @author  GY
 * @brief   GridYard 客户端根窗口
 *
 * 标题通过 AppController.applicationName/Version 绑定，
@@ -383,12 +383,12 @@ ApplicationWindow {
                 font.bold: true
             }
 
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                onEntered: avatarBtn._hovered = true
-                onExited: avatarBtn._hovered = false
-                onClicked: deviceInfoPopup.open()
+            HoverHandler {
+                onHoveredChanged: avatarBtn._hovered = hovered
+            }
+
+            TapHandler {
+                onTapped: deviceInfoPopup.open()
             }
         }
 
@@ -453,14 +453,18 @@ ApplicationWindow {
                 }
             }
 
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                onEntered: menuBtn._hovered = true
-                onExited: { menuBtn._hovered = false; menuBtn._pressed = false }
-                onPressed: menuBtn._pressed = true
-                onReleased: menuBtn._pressed = false
-                onClicked: menuPopup.open()
+            HoverHandler {
+                onHoveredChanged: {
+                    menuBtn._hovered = hovered
+                    if (!hovered) {
+                        menuBtn._pressed = false
+                    }
+                }
+            }
+
+            TapHandler {
+                onPressedChanged: menuBtn._pressed = pressed
+                onTapped: menuPopup.open()
             }
         }
     }
@@ -625,31 +629,31 @@ ApplicationWindow {
             trayIcon.showMessage(qsTr("传输请求"),
                                  qsTr("%1 想发送 %2 个文件").arg(senderName).arg(totalFiles))
         }
-        function onTransferCompleted(sessionId, fileName, filePath) {
+        function onTransferCompleted(sessionId: string, fileName: string, filePath: string): void {
             completeDialog._fileName = fileName
             completeDialog._filePath = filePath
             completeDialog.open()
             trayIcon.showMessage(qsTr("传输完成"), qsTr("已完成一项文件传输"))
         }
-        function onErrorOccurred(message) { errorLabel.text = message; errorPopup.open() }
-        function onMessageOccurred(message) { successLabel.text = message; successPopup.open() }
+        function onErrorOccurred(message: string): void { errorLabel.text = message; errorPopup.open() }
+        function onMessageOccurred(message: string): void { successLabel.text = message; successPopup.open() }
     }
 
     Connections {
         target: AppController.discovery
-        function onPeersChanged() { mainWindow.refreshSelectedDevice() }
+        function onPeersChanged(): void { mainWindow.refreshSelectedDevice() }
     }
 
     Connections {
         target: AppController.chat
-        function onIncomingMessageReceived(deviceId, senderName, preview) {
+        function onIncomingMessageReceived(deviceId: string, senderName: string, preview: string): void {
             trayIcon.showMessage(senderName, preview)
         }
     }
 
     Connections {
         target: AppController
-        function onLocalHistoryOperationFailed() {
+        function onLocalHistoryOperationFailed(): void {
             errorLabel.text = qsTr("本地保存失败，历史可能缺失")
             errorPopup.open()
             trayIcon.showMessage(qsTr("本地历史"), errorLabel.text)

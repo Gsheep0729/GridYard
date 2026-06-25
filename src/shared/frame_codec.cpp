@@ -1,14 +1,16 @@
 /**
 * @file    frame_codec.cpp
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   TLV 帧编解码器实现
 *
 * 实现 encode() 编码和 feed() 解码状态机。编码时按 Type 分级检查
 * 载荷大小，解码时处理粘包/半包，完整帧通过 frameReady 信号交付。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
 * * 优化封装性，补充注释
 * [v4.15.0] FengChunlin   2026-06-16

@@ -1,8 +1,8 @@
 /**
 * @file    file_receiver_worker.h
-* @version 5.0.0
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
 * 由 P2pServer 为每个入站连接创建，运行在独立后台线程中。
@@ -11,6 +11,8 @@
 * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.0.0] FengChunlin   2026-06-23
 * * 适配首帧路由后保留的 socket 缓冲数据
 * [v4.16.1] GY   2026-06-21
@@ -136,8 +138,7 @@ private:
     int     _totalFiles = 0;         // 请求声明的文件总数
     qint64  _totalBytes = 0;         // 请求声明的文件总字节数
 
-    // 文件列表（含 sha256）
-    QList<gy::FileItem> _fileList;
+    QList<gy::FileItem> _fileList;        // 待接收文件列表（含 sha256）
 
     // 当前文件信息
     int     _currentFileIndex = 0;      // 当前接收文件在列表中的索引

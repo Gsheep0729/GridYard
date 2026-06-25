@@ -1,16 +1,18 @@
 /**
  * @file    TransferPanel.qml
- * @version 4.16.0
+ * @version 6.6.2
  * @date    2026-06-18
- * @author  GridYard Team
+ * @author  GY
  * @brief   传输面板
  *
  * 显示所有进行中的传输任务，每个任务显示进度条、速度、取消按钮。
  * 绑定 TransferSessionManager.sessions。
- * 注意：Main.qml 已迁移到 DeviceSessionView 内嵌 ListView，本组件保留作为
- * 独立传输面板的备选实现，便于后续在多窗口或调试场景复用。
+ * Main.qml 已迁移到 DeviceSessionView 内嵌 ListView，本组件保留作为独立
+ * 传输面板的备选实现，便于后续在多窗口或调试场景复用。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 同步接入 Style.js 样式常量，统一颜色 / 圆角 / 间距 / 动画时长
  * [v4.15.2] DuRuoxian   2026-06-17

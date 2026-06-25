@@ -1,14 +1,16 @@
 /**
 * @file    database_worker.h
-* @version 6.5.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 异步任务执行线程
 *
 * Worker 持有专用线程中的任务队列，任务只访问该线程自己的数据库连接，
 * 不会阻塞网络收发或 QML 主线程。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.5.0] GY 2026-06-25
 * * 支持退出前排空已提交的存储任务
 * [v6.0.0] GY 2026-06-25

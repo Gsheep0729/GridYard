@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_transfer_history_proxy.cpp
-* @version 6.3.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 传输历史 Repository 实现
 *
 * 只保存最终状态快照，不保存发送源绝对路径、文件内容或调试堆栈。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.3.0] GY 2026-06-25
 * * 新增传输历史 SQLite Proxy
 */
@@ -22,17 +24,20 @@
 #include <QVariant>
 
 namespace {
+// 将 UTC 时间转换为 SQLite 使用的 ISO 文本
 QString sqlTime(const QDateTime &time)
 {
     return time.toUTC().toString(Qt::ISODateWithMs);
 }
 }
 
+// 构造传输历史 Repository
 SqliteTransferHistoryProxy::SqliteTransferHistoryProxy(SqliteDatabaseProxy *database)
     : _database(database)
 {
 }
 
+// 幂等保存结束态传输记录
 bool SqliteTransferHistoryProxy::upsertFinishedTransfer(const TransferRecord &record,
                                                         QString *errorMessage)
 {
@@ -116,6 +121,7 @@ QList<TransferRecord> SqliteTransferHistoryProxy::queryTransfers(const TransferQ
         return records;
     }
 
+    // 筛选条件按需拼接，参数值仍使用 bindValue，避免把用户文本拼进 SQL。
     QString statement =
         "SELECT record_id, session_id, peer_device_id, peer_name, direction, display_name, "
         "is_directory, file_count, total_bytes, status, started_at, finished_at, error_code, "
@@ -156,6 +162,7 @@ QList<TransferRecord> SqliteTransferHistoryProxy::queryTransfers(const TransferQ
     }
 
     while (sqlQuery.next()) {
+        // 存储层负责字段映射和类型转换，应用层只处理 TransferRecord。
         TransferRecord record;
         record.recordId = sqlQuery.value(0).toString();
         record.sessionId = sqlQuery.value(1).toString();
@@ -177,6 +184,7 @@ QList<TransferRecord> SqliteTransferHistoryProxy::queryTransfers(const TransferQ
     return records;
 }
 
+// 删除单条传输历史
 bool SqliteTransferHistoryProxy::deleteTransfer(const QString &recordId, QString *errorMessage)
 {
     if (!_database) {
@@ -216,6 +224,7 @@ bool SqliteTransferHistoryProxy::deleteExpiredTransfers(const QDateTime &before,
     return _database->runInTransaction(
         [&before](QSqlDatabase &database, QString *taskError) {
             QSqlQuery query(database);
+            // 保留边界时刻记录，清理只删除严格早于保留期限的历史。
             query.prepare("DELETE FROM transfer_history WHERE started_at < ?");
             query.addBindValue(sqlTime(before));
             if (query.exec()) {
@@ -229,6 +238,7 @@ bool SqliteTransferHistoryProxy::deleteExpiredTransfers(const QDateTime &before,
         errorMessage);
 }
 
+// 清空全部传输历史
 bool SqliteTransferHistoryProxy::clearAllTransfers(QString *errorMessage)
 {
     if (!_database) {
@@ -241,6 +251,7 @@ bool SqliteTransferHistoryProxy::clearAllTransfers(QString *errorMessage)
     return _database->runInTransaction(
         [](QSqlDatabase &database, QString *taskError) {
             QSqlQuery query(database);
+            // 清空历史只删除数据库记录，不触碰已接收或已发送的本地文件。
             if (query.exec("DELETE FROM transfer_history")) {
                 return true;
             }

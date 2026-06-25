@@ -2,7 +2,7 @@
 * @file    transfer_session_manager.h
 * @version 6.6.2
 * @date    2026-06-21
-* @author  GridYard Team
+* @author  GY
 * @brief   传输会话管理器
 *
 * 管理所有进行中的传输会话（发送和接收），维护会话状态和进度。
@@ -128,8 +128,6 @@ private:
     DiscoveryService *_discovery = nullptr; // 在线设备与发送端点查询服务
     P2pServer        *_p2pServer = nullptr; // 入站传输请求来源
 
-    // 会话列表
-    QList<QVariantMap> _sessions;
-    // 发送方 worker 映射（sessionId -> worker）
-    QHash<QString, FileSenderWorker*> _sendWorkers;
+    QList<QVariantMap> _sessions;  // QML 绑定的发送、接收和历史会话列表
+    QHash<QString, FileSenderWorker*> _sendWorkers;  // 发送方 worker 映射（sessionId -> worker）
 };

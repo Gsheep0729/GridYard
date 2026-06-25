@@ -1,3 +1,6 @@
+# GridYard 顶层构建入口。
+# 这里统一设置 C++23/Qt 工程基线，打开 IDE target 分组，并按 shared、client、tests
+# 三个子目录组织构建；具体源文件列表由各子目录自己的 CMakeLists 维护。
 cmake_minimum_required(VERSION 4.2.3)
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
 # cmake_minimum_required(VERSION 4.3.2)
@@ -7,7 +10,9 @@ set(CMAKE_CXX_MODULE_STD ON)
 project(GridYard VERSION 6.6.2 LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Network QuickControls2 Sql)
-qt_standard_project_setup(REQUIRES 6.9)
+qt_standard_project_setup(REQUIRES 6.10)
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # ---- 子模块引入 --------------------------------------------------------
 add_subdirectory(shared)

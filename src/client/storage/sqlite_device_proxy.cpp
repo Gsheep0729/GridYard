@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_device_proxy.cpp
-* @version 6.1.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 设备目录 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.1.0] GY   2026-06-25
 * * 新增设备目录 SQLite Proxy
 */
@@ -20,7 +22,7 @@
 #include <QSqlQuery>
 
 namespace {
-constexpr qint64 kDiscoveryWriteIntervalMs = 30000; // 相同发现快照最短写入间隔
+constexpr qint64 kDiscoveryWriteIntervalMs = 30000; // 相同发现快照最短写入间隔：30 秒
 
 // 将 UTC 时间转换为 SQLite 使用的 ISO 文本
 QString sqlTime(const QDateTime &time) { return time.toUTC().toString(Qt::ISODateWithMs); }
@@ -40,6 +42,7 @@ bool SqliteDeviceProxy::upsertPeer(const PeerRecord &record, QString *errorMessa
 
     const auto existing = _recentWrites.constFind(record.deviceId);
     if (existing != _recentWrites.cend()) {
+        // 设备心跳频率高，未变化的发现快照只保留内存时间，减少无意义磁盘写入。
         const bool unchanged = existing->deviceName == record.deviceName &&
                                existing->lastIpAddress == record.lastIpAddress &&
                                existing->lastTcpPort == record.lastTcpPort;
@@ -52,6 +55,7 @@ bool SqliteDeviceProxy::upsertPeer(const PeerRecord &record, QString *errorMessa
     const bool saved = _database->runInTransaction(
         [&record](QSqlDatabase &database, QString *taskError) {
             QSqlQuery query(database);
+            // first_seen_at 只在首次插入时写入，后续发现只刷新可变快照字段。
             query.prepare("INSERT INTO peer_devices(device_id, device_name, last_ip_address, "
                           "last_tcp_port, first_seen_at, last_seen_at) VALUES(?, ?, ?, ?, ?, "
                           "?) ON CONFLICT(device_id) DO UPDATE SET "
@@ -127,6 +131,7 @@ QList<PeerRecord> SqliteDeviceProxy::recentPeers(int limit, QString *errorMessag
     if (!database.isValid())
         return records;
     QSqlQuery query(database);
+    // 最近活动优先于发现时间，确保有聊天或传输的设备排在普通心跳设备前。
     query.prepare("SELECT device_id, device_name, last_ip_address, last_tcp_port, "
                   "first_seen_at, last_seen_at, last_chat_at, last_transfer_at FROM "
                   "peer_devices ORDER BY COALESCE(last_chat_at, last_transfer_at, "
@@ -138,6 +143,7 @@ QList<PeerRecord> SqliteDeviceProxy::recentPeers(int limit, QString *errorMessag
         return records;
     }
     while (query.next()) {
+        // 存储层完成行到领域值对象的映射，调用方不接触 QSqlQuery。
         PeerRecord record;
         record.deviceId = query.value(0).toString();
         record.deviceName = query.value(1).toString();

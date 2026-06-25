@@ -2,7 +2,7 @@
  * @file    test_history_controller.cpp
  * @version 6.4.0
  * @date    2026-06-25
- * @author  GridYard Team
+ * @author  GY
  * @brief   HistoryController 本地历史视图与保留清理测试
  *
  * Change Log:

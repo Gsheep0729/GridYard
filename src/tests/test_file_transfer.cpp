@@ -2,7 +2,7 @@
 * @file    test_file_transfer.cpp
 * @version 6.3.0
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
@@ -810,7 +810,7 @@ void TestFileTransfer::testConnectionLost()
 void TestFileTransfer::testTransferTimeout()
 {
     // 验证超时机制存在
-    // 注意：真正的超时测试需要等待 30 秒，这里只验证机制正确性
+    // 真正的超时测试需要等待 30 秒，这里只验证机制正确性
     FileSenderWorker sender;
 
     // 验证 sender 有超时处理能力

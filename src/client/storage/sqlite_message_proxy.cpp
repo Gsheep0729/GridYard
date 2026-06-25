@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_message_proxy.cpp
-* @version 6.2.0
+* @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   SQLite 聊天消息 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；消息写入前先确保会话行存在。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v6.2.0] GY 2026-06-25
 * * 新增聊天消息 SQLite Proxy
 */
@@ -201,6 +203,7 @@ bool SqliteMessageProxy::deleteConversation(const QString &deviceId, QString *er
         errorMessage);
 }
 
+// 删除单条聊天消息
 bool SqliteMessageProxy::deleteMessage(const QString &messageId, QString *errorMessage)
 {
     if (!_database) {
@@ -253,6 +256,7 @@ bool SqliteMessageProxy::deleteExpiredMessages(const QDateTime &before, QString 
         errorMessage);
 }
 
+// 清空全部聊天消息和会话
 bool SqliteMessageProxy::clearAllMessages(QString *errorMessage)
 {
     if (!_database) {

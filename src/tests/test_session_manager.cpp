@@ -2,7 +2,7 @@
 * @file    test_session_manager.cpp
 * @version 6.3.0
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
 * 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复

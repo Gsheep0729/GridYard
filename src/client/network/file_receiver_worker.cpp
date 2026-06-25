@@ -1,8 +1,8 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 5.0.0
+* @version 6.6.2
 * @date    2026-06-23
-* @author  GridYard Team
+* @author  GY
 * @brief   文件接收 Worker 实现
 *
 * 实现完整的文件接收流程：解析传输请求、通知 UI 确认、接收数据块、
@@ -10,6 +10,8 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
 * [v5.0.0] FengChunlin   2026-06-23
 * * 初始化后主动处理首帧路由保留的 socket 缓冲数据
 * [v4.16.1] GY   2026-06-21
@@ -61,7 +63,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-// 超时时间：30 秒
+// 接收超时时间：30 秒，超过该时间没有网络进展则判定失败
 static constexpr int kTimeoutMs = 30000;
 
 namespace {
@@ -94,6 +96,7 @@ QString uniqueTargetPath(const QString &path, bool directory)
         : info.completeBaseName();
 
     for (int index = 1; ; ++index) {
+        // 使用桌面常见的 "name (n)" 形式，避免覆盖已有接收文件。
         const QString candidate = QString("%1/%2 (%3)%4")
                                       .arg(parentPath, baseName)
                                       .arg(index)
@@ -204,6 +207,7 @@ void FileReceiverWorker::acceptTransfer()
         }
 
         for (const QString &relativePath : _emptyDirectories) {
+            // 空目录没有 DataChunk，必须在正式收块前提前创建。
             if (!QDir().mkpath(_destinationRoot + "/" + QDir::cleanPath(relativePath))) {
                 failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建目录: %1").arg(relativePath));
                 return;
@@ -498,7 +502,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         return;
     }
 
-    // 解析 20 字节元数据
+    // 20 字节元数据：fileIndex(4) + offset(8) + size(4) + isLast(4)。
     if (payload.size() < 20) {
         qWarning() << "[FileReceiver] 数据块过小:" << payload.size() << "字节";
         return;
@@ -591,6 +595,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         sendChunkAck(verified, verified ? gy::protocol::ErrorCode::Success : gy::protocol::ErrorCode::Sha256Mismatch, errorMsg);
 
         if (!verified) {
+            // 校验失败的文件不能保留到接收目录，避免用户误用损坏内容。
             QFile::remove(_file.fileName());
             _timeoutTimer->stop();
             _transferActive = false;
@@ -737,6 +742,7 @@ QVariantMap FileReceiverWorker::receiveRequestSnapshot() const
         QVariantList preview;
         QSet<QString> seen;
         for (const auto &item : _fileList) {
+            // 确认弹窗只展示顶层入口，深层路径折叠到所属根目录。
             const QString cleanPath = item.relativePath.endsWith('/') ? item.relativePath.chopped(1) : item.relativePath;
             const QStringList parts = cleanPath.split('/', Qt::SkipEmptyParts);
             if (parts.isEmpty()) continue;

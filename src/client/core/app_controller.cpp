@@ -2,7 +2,7 @@
 * @file    app_controller.cpp
 * @version 6.6.2
 * @date    2026-06-25
-* @author  GridYard Team
+* @author  GY
 * @brief   应用全局控制器实现
 *
 * 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、
@@ -173,6 +173,7 @@ AppController::AppController(QObject *parent)
 
                 _storageWorker->submitDelete(
                     [this, recordIds](SqliteDatabaseProxy &, QString *errorMessage) {
+                        // 批量删除保持在同一存储任务中，避免界面侧频繁触发数据库队列。
                         for (const QString &recordId : recordIds) {
                             if (!_transferRepository->deleteTransfer(recordId, errorMessage)) {
                                 return false;
@@ -185,7 +186,7 @@ AppController::AppController(QObject *parent)
     loadRecentTransferHistories();
 
     _history->cleanupExpiredRecords();
-    _retentionTimer->setInterval(60 * 60 * 1000);
+    _retentionTimer->setInterval(60 * 60 * 1000);  // 历史保留清理间隔：1 小时
     connect(_retentionTimer, &QTimer::timeout,
             _history, &HistoryController::cleanupExpiredRecords);
     _retentionTimer->start();
@@ -319,6 +320,7 @@ void AppController::loadRecentChatHistories()
         });
 }
 
+// 在存储线程读取最近传输历史并回投到主线程恢复模型
 void AppController::loadRecentTransferHistories()
 {
     if (!_storage->isAvailable() || !_transferRepository) {
@@ -334,6 +336,7 @@ void AppController::loadRecentTransferHistories()
                 return false;
             }
 
+            // 传输模型属于主线程，恢复历史时必须回投到 AppController 所在线程。
             QMetaObject::invokeMethod(this, [this, records] {
                 _transfer->restoreFinishedTransfers(records);
             }, Qt::QueuedConnection);

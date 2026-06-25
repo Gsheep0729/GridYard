@@ -4,6 +4,9 @@
 
 当前版本：v6.6.2
 
+| 项目版本 | v6.6.2 |
+| :--- | :--- |
+
 当前阶段：Stage 6 本地数据层交付已完成到 v6.6.2；下一轮工作聚焦持续测试、功能问题验证和代码注释规范审查，不启动 Stage 7 服务端漫游。
 
 GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
@@ -105,7 +108,7 @@ mkdir -p /tmp/gridyard-runtime
 - 持续执行构建、全量测试和静态检查，确认功能修复没有引入回归。
 - 手工验证设备发现搜索和刷新、设备卡片排版、聊天/传输页签无遮挡、发送文件或文件夹后自动切到传输页。
 - 验证聊天历史和传输历史在稳定 `--config` 下跨重启恢复，确认清空记录只影响当前设备。
-- 审查生产代码注释规范：文件头、函数说明、关键行内注释和成员变量用途说明保持一致；测试代码只保留必要注释。
+- 审查生产代码注释要求，保持文件头、函数说明、关键行内注释和成员变量用途说明一致；测试代码只保留必要注释。
 - 若发现问题，先定位根因和影响范围，再做最小修复，并同步受影响的文档与开发心得。
 
 ---
@@ -123,15 +126,15 @@ graph TD
         APP["AppController（QML 单例）<br/>TransferSessionManager · ChatManager"]
     end
     subgraph 领域层["领域层 · 协议 + 网络 + 业务规则"]
-        DOMAIN["DiscoveryService · P2pServer<br/>FileSender/ReceiverWorker · ChatConnection<br/>FrameCodec · DirSerializer"]
+        DOM["DiscoveryService · P2pServer<br/>FileSender/ReceiverWorker · ChatConnection<br/>FrameCodec · DirSerializer"]
     end
     subgraph 数据管理层["数据管理层 · 配置 + 日志 + 持久化"]
         DATA["ConfigManager · Logger<br/>SqliteDatabaseProxy · Repository Proxy"]
     end
 
     UI -->|"属性绑定 / 信号上报"| APP
-    APP -->|"接口调用 / 事件回调"| DOMAIN
-    DOMAIN -->|"数据读写"| DATA
+    APP -->|"接口调用 / 事件回调"| DOM
+    DOM -->|"数据读写"| DATA
 ```
 
 **分层约束**
@@ -147,16 +150,16 @@ graph TD
 graph LR
     subgraph 客户端模块
         QML["QML 模块<br/>appGridYard"]
-        DOMAIN_LIB["gy_domain<br/>（INTERFACE）"]
+        DOM_LIB["gy_domain<br/>（INTERFACE）"]
         STORAGE_LIB["gy_storage<br/>（STATIC）"]
         SHARED_LIB["gy_shared<br/>（STATIC）"]
     end
 
-    QML --> DOMAIN_LIB
+    QML --> DOM_LIB
     QML --> SHARED_LIB
-    STORAGE_LIB --> DOMAIN_LIB
+    STORAGE_LIB --> DOM_LIB
     STORAGE_LIB -.->|"PRIVATE"| QTSQL["Qt6::Sql"]
-    DOMAIN_LIB --> SHARED_LIB
+    DOM_LIB --> SHARED_LIB
 
     style QTSQL fill:#f96,stroke:#333
 ```
@@ -270,15 +273,16 @@ GridYard/
 │   │   └── 测试与部署/                   # 测试与打包指南
 │   ├── plan/                            # 阶段开发计划
 │   └── api-docs/                        # 模块 API 文档
-├── scripts/                             # 辅助脚本
 └── src/
     ├── CMakeLists.txt                   # 顶层 CMake
     ├── shared/                          # 共用静态库 gy_shared
+    │   ├── CMakeLists.txt
     │   ├── protocol.h                   # TLV 协议 Type 码与常量
     │   ├── data_types.h                 # PeerInfo / FileEntry / TransferSession
     │   ├── chat_message.{h,cpp}         # 聊天消息 JSON 编解码
     │   └── frame_codec.{h,cpp}          # TLV 帧编解码（粘包状态机）
     ├── client/
+    │   ├── CMakeLists.txt               # 客户端 QML 模块与 IDE 分组
     │   ├── main.cpp                     # 程序入口
     │   ├── Main.qml                     # QML 根窗口
     │   ├── core/                        # 应用逻辑层
@@ -298,9 +302,11 @@ GridYard/
     │   │   ├── file_sender_worker.{h,cpp}  # 发送 Worker（后台线程）
     │   │   └── file_receiver_worker.{h,cpp}# 接收 Worker（后台线程）
     │   ├── domain/                      # 领域层（Repository 端口）
+    │   │   ├── CMakeLists.txt
     │   │   ├── history_records.h        # PeerRecord / MessageRecord / TransferRecord
     │   │   └── history_repositories.h   # IDevice/Message/TransferHistory Repository
     │   ├── storage/                     # 基础设施层（SQLite Proxy）
+    │   │   ├── CMakeLists.txt
     │   │   ├── sqlite_database_proxy.{h,cpp}  # 连接、WAL、事务
     │   │   ├── sqlite_device_proxy.{h,cpp}    # 设备目录 Data Mapper
     │   │   ├── sqlite_message_proxy.{h,cpp}   # 聊天消息 Data Mapper
@@ -315,13 +321,22 @@ GridYard/
     │   │   ├── SettingsDialog.qml
     │   │   ├── AcceptDialog.qml
     │   │   ├── TransferPanel.qml
+    │   │   ├── TransferHistoryView.qml
     │   │   ├── TransferTaskCard.qml
     │   │   └── FileTypeIcon.qml
+    │   ├── icons/                       # 文件类型与应用图标资源
+    │   │   ├── gridyard.png
+    │   │   ├── folder.svg
+    │   │   └── file-*.svg
+    │   ├── images/                      # 预留图片资源
     │   └── utils/                       # QML 工具模块
     │       ├── Style.js                 # 样式常量
     │       └── FormatUtils.js           # 格式化工具
+    ├── scripts/                         # 辅助脚本
+    │   └── for_md.py                    # 代码归档工具
     ├── server/                          # V2 服务端（规划中）
     └── tests/                           # 单元测试与集成测试
+        ├── CMakeLists.txt
         ├── test_frame_codec.cpp
         ├── test_chat_message.cpp
         ├── test_chat_manager.cpp

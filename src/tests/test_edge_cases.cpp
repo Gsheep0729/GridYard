@@ -1,7 +1,7 @@
 /**
 * @file    test_edge_cases.cpp
 * @date    2026-06-04
-* @author  GridYard Team
+* @author  GY
 * @brief   边缘场景测试
 *
 * 测试用例：零字节文件 / 特殊字符文件名 / 文件名超长
