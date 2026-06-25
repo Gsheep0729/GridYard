@@ -6,11 +6,12 @@
 * @brief   GridYard 客户端根窗口
 *
 * 标题通过 AppController.applicationName/Version 绑定，
-* 关窗触发 AppController.quit()。
+* 关窗时由用户选择隐藏到后台或退出程序。
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
 * [v6.5.0] GY   2026-06-25
+* * 关闭窗口时增加隐藏后台/退出程序确认，修复托盘后台无法退出
 * * 接入系统托盘、后台运行与非阻塞通知
 * [v4.16.3] FengChunlin   2026-06-24
 * * 调整主窗口为三栏会话布局，增加本机信息和菜单入口
@@ -55,25 +56,36 @@ ApplicationWindow {
     color: Style.Color.pageBg
 
     onClosing: function(close) {
-        if (!trayIcon.available) {
-            AppController.quit()
+        if (_allowWindowClose) {
             return
         }
         close.accepted = false
-        mainWindow.hide()
-        trayIcon.showMessage(qsTr("GridYard"), qsTr("应用仍在后台运行"))
+        closeChoiceDialog.open()
     }
 
     property string _targetDeviceId: ""
     property string _targetDeviceName: ""
     property string _targetIpAddress: ""
     property bool _targetIsOnline: false
+    property bool _allowWindowClose: false
     readonly property int kPopupEnterDuration: 180
 
     function showMainWindow(): void {
         mainWindow.show()
         mainWindow.raise()
         mainWindow.requestActivate()
+    }
+
+    function hideToTray(): void {
+        mainWindow.hide()
+        if (trayIcon.available) {
+            trayIcon.showMessage(qsTr("GridYard"), qsTr("应用仍在后台运行"))
+        }
+    }
+
+    function requestApplicationQuit(): void {
+        _allowWindowClose = true
+        AppController.quit()
     }
 
     Platform.SystemTrayIcon {
@@ -88,12 +100,12 @@ ApplicationWindow {
             }
             Platform.MenuItem {
                 text: qsTr("隐藏到托盘")
-                onTriggered: mainWindow.hide()
+                onTriggered: mainWindow.hideToTray()
             }
             Platform.MenuSeparator {}
             Platform.MenuItem {
                 text: qsTr("退出")
-                onTriggered: AppController.quit()
+                onTriggered: mainWindow.requestApplicationQuit()
             }
         }
         onActivated: function(reason) {
@@ -123,6 +135,56 @@ ApplicationWindow {
             }
         }
         _targetIsOnline = false
+    }
+
+    Dialog {
+        id: closeChoiceDialog
+        title: qsTr("关闭 GridYard")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(420, parent ? parent.width - 48 : 420)
+        padding: 20
+
+        ColumnLayout {
+            spacing: 14
+            anchors.fill: parent
+
+            Label {
+                text: trayIcon.available
+                      ? qsTr("要将 GridYard 隐藏到后台继续接收消息和传输，还是直接退出程序？")
+                      : qsTr("当前系统托盘不可用，是否退出 GridYard？")
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+        }
+
+        footer: RowLayout {
+            spacing: 10
+            anchors.margins: 16
+
+            Button {
+                visible: trayIcon.available
+                text: qsTr("隐藏到后台")
+                onClicked: {
+                    closeChoiceDialog.close()
+                    mainWindow.hideToTray()
+                }
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            Button {
+                text: qsTr("退出程序")
+                onClicked: {
+                    closeChoiceDialog.close()
+                    mainWindow.requestApplicationQuit()
+                }
+            }
+            Button {
+                text: qsTr("取消")
+                onClicked: closeChoiceDialog.close()
+            }
+        }
     }
 
     //对话框
