@@ -1,6 +1,6 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 6.2.0
+* @version 6.5.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话测试
@@ -8,6 +8,8 @@
 * 覆盖在线发送、离线拒绝、入站去重、按需重连和消息持久化。
 *
 * Change Log:
+* [v6.5.0] GY   2026-06-25
+* * 验证入站消息通知预览与重复帧不重复通知
 * [v6.2.0] GY   2026-06-25
 * * 新增聊天消息持久化集成测试
 * [v5.2.0] GY   2026-06-24
@@ -176,6 +178,7 @@ void TestChatManager::testIncomingMessageDeduplicated()
     const gy::ChatMessage message = createPeerMessage(
         "c8f3b2a1-4d5e-6f7a-8b9c-0d1e2f3a4b5c", "重复消息测试");
     _manager->clearMessages(message.fromDeviceId);
+    QSignalSpy notificationSpy(_manager, &ChatManager::incomingMessageReceived);
     const QByteArray frame = encodeMessageFrame(message);
 
     QTcpSocket peer;
@@ -184,6 +187,10 @@ void TestChatManager::testIncomingMessageDeduplicated()
     QVERIFY(peer.write(frame) == frame.size());
     QVERIFY(peer.waitForBytesWritten(1000));
     QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(message.fromDeviceId).size(), 1, 3000);
+    QCOMPARE(notificationSpy.count(), 1);
+    QCOMPARE(notificationSpy.first().at(0).toString(), message.fromDeviceId);
+    QCOMPARE(notificationSpy.first().at(1).toString(), message.fromName);
+    QCOMPARE(notificationSpy.first().at(2).toString(), message.content.simplified().left(20));
 
     auto *model = qobject_cast<ChatMessageModel *>(
         _manager->messageModelForDevice(message.fromDeviceId));
@@ -198,6 +205,7 @@ void TestChatManager::testIncomingMessageDeduplicated()
     QVERIFY(peer.waitForBytesWritten(1000));
     QTest::qWait(100);
     QCOMPARE(_manager->messagesForDevice(message.fromDeviceId).size(), 1);
+    QCOMPARE(notificationSpy.count(), 1);
 
     peer.disconnectFromHost();
     peer.waitForDisconnected(1000);

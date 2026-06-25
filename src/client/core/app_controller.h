@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 6.3.0
+* @version 6.5.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -11,6 +11,8 @@
 * 禁止使用 setContextProperty 暴露 C++ 对象。
 *
 * Change Log:
+* [v6.5.0] GY   2026-06-25
+* * 向表现层发布本地历史可用性与异步保存失败状态
 * [v6.3.0] GY   2026-06-25
 * * 接入传输历史持久化与启动恢复
 * [v6.2.0] GY   2026-06-25
@@ -67,6 +69,7 @@ private:
     Q_PROPERTY(TransferSessionManager* transfer READ transfer     CONSTANT)
     Q_PROPERTY(ChatManager* chat READ chat                         CONSTANT)
     Q_PROPERTY(HistoryController* history READ history             CONSTANT)
+    Q_PROPERTY(bool localHistoryAvailable READ localHistoryAvailable CONSTANT)
 
 public:
     virtual ~AppController() override;
@@ -86,6 +89,7 @@ public:
     // 获取在线聊天管理器
     ChatManager *chat() const;
     HistoryController *history() const;
+    bool localHistoryAvailable() const;
 
     // 退出应用
     Q_INVOKABLE void quit();
@@ -94,6 +98,7 @@ public:
 
 signals:
     void appReady();
+    void localHistoryOperationFailed();
 
 private:
     explicit AppController(QObject *parent = nullptr);
@@ -118,4 +123,6 @@ private:
     DatabaseWorker *_storageWorker = nullptr;  // 串行执行存储任务的 Worker
     HistoryController *_history = nullptr;  // 本地历史查询、清理与 QML 操作入口
     QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
+    bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
+    bool _quitRequested = false;  // 防止托盘退出动作重复请求排空同一任务队列
 };

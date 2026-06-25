@@ -1,6 +1,6 @@
 /**
 * @file    chat_manager.h
-* @version 6.2.0
+* @version 6.5.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
@@ -9,6 +9,8 @@
 * 已发现在线的设备发起连接，不创建离线待投递队列。
 *
 * Change Log:
+* [v6.5.0] GY   2026-06-25
+* * 收到远端消息后发布受限长度的通知预览
 * [v6.2.0] GY   2026-06-25
 * * 接入聊天消息持久化，消息成功收发后异步提交数据库存储
 * [v5.2.0] DuRuoxian   2026-06-24
@@ -68,6 +70,9 @@ signals:
                     const QString &errorMessage);
     void connectionError(const QString &deviceId, gy::ChatMessageError error,
                          const QString &errorMessage);
+    // 收到有效远端消息后通知表现层，预览内容已截断避免通知泄露全文。
+    void incomingMessageReceived(const QString &deviceId, const QString &senderName,
+                                 const QString &preview);
     // 成功收发后请求应用层异步持久化消息
     void messageToPersist(const MessageRecord &record);
 

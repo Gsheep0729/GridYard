@@ -1,11 +1,13 @@
 /**
 * @file    database_worker.cpp
-* @version 6.0.0
+* @version 6.5.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 异步任务执行线程实现
 *
 * Change Log:
+* [v6.5.0] GY 2026-06-25
+* * 支持退出前排空已提交的存储任务
 * [v6.0.0] GY 2026-06-25
 * * 新增数据库串行任务 Worker
 */
@@ -44,8 +46,20 @@ void DatabaseWorker::submitDelete(const DatabaseTask &task)
     submitTask(task);
 }
 
+void DatabaseWorker::beginShutdown()
+{
+    // 此方法通过 QueuedConnection 投递到 Worker 线程；按事件队列 FIFO 语义，
+    // 执行到这里时它之前提交的数据库任务已经全部处理完成。
+    _acceptingTasks.store(false);
+    emit drained();
+}
+
 void DatabaseWorker::submitTask(const DatabaseTask &task)
 {
+    if (!_acceptingTasks.load()) {
+        return;
+    }
+
     // 调用方通过 QueuedConnection 投递，任务在 Worker 所在线程串行执行
     QMetaObject::invokeMethod(this, [this, task] {
         executeTask(task);

@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.cpp
-* @version 6.3.0
+* @version 6.5.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   应用全局控制器实现
@@ -9,6 +9,8 @@
 * TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
 *
 * Change Log:
+* [v6.5.0] GY   2026-06-25
+* * 向表现层发布本地历史可用性与异步保存失败状态
 * [v6.3.0] GY   2026-06-25
 * * 接入传输历史持久化与启动恢复
 * [v6.2.0] GY   2026-06-25
@@ -71,6 +73,7 @@ AppController::AppController(QObject *parent)
         // 历史库不可用时保留在线收发能力，避免本地磁盘问题影响 P2P 主链路。
         qWarning() << "[Storage] 本地历史不可用:" << storageError;
     }
+    _localHistoryAvailable = _storage->isAvailable();
 
     // Worker 没有 parent，才能移动到存储线程并由 finished 安全回收。
     _storageWorker->moveToThread(_storageThread);
@@ -83,6 +86,7 @@ AppController::AppController(QObject *parent)
             this, [this](bool succeeded, const QString &) {
                 if (!succeeded) {
                     qWarning() << "[Storage] 存储任务失败，当前操作未写入本地历史";
+                    emit localHistoryOperationFailed();
                 }
             });
 
@@ -234,11 +238,30 @@ HistoryController *AppController::history() const
     return _history;
 }
 
+bool AppController::localHistoryAvailable() const
+{
+    return _localHistoryAvailable;
+}
+
 // 请求退出应用
 void AppController::quit()
 {
+    if (_quitRequested) {
+        return;
+    }
+    _quitRequested = true;
     qDebug() << "AppController::quit invoked from QML";
-    QCoreApplication::quit();
+
+    if (!_storageThread || !_storageThread->isRunning() || !_storageWorker) {
+        QCoreApplication::quit();
+        return;
+    }
+
+    // 将停止标记排入 Worker 队列尾部，确保退出前不会丢失已提交的历史写入。
+    connect(_storageWorker, &DatabaseWorker::drained,
+            this, [] { QCoreApplication::quit(); }, Qt::SingleShotConnection);
+    QMetaObject::invokeMethod(_storageWorker, &DatabaseWorker::beginShutdown,
+                              Qt::QueuedConnection);
 }
 
 // 验证 QML 调用链路
