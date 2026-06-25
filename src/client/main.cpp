@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 6.6.0
+* @version 6.6.1
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   GridYard 客户端程序入口
@@ -17,6 +17,8 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v6.6.1] GY   2026-06-25
+* * 修复托盘退出确认与聊天输入框占位提示显示问题
 * [v6.6.0] GY   2026-06-25
 * * 完成本地数据层异常验收和交付收口版本同步
 * [v6.5.0] GY   2026-06-25
@@ -112,7 +114,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("6.6.0");
+    QGuiApplication::setApplicationVersion("6.6.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 
