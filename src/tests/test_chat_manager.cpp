@@ -1,14 +1,17 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 5.2.0
-* @date    2026-06-24
+* @version 6.5.0
+* @date    2026-06-25
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话测试
 *
-* 覆盖在线发送、离线拒绝、入站去重和连接断开后的按需重连。测试直接
-* 使用本地 TCP 服务验证 ChatManager，不依赖 QML 页面或持久化存储。
+* 覆盖在线发送、离线拒绝、入站去重、按需重连和消息持久化。
 *
 * Change Log:
+* [v6.5.0] GY   2026-06-25
+* * 验证入站消息通知预览与重复帧不重复通知
+* [v6.2.0] GY   2026-06-25
+* * 新增聊天消息持久化集成测试
 * [v5.2.0] GY   2026-06-24
 * * 验证聊天消息模型角色与行数据
 * [v5.1.0] GY   2026-06-24
@@ -19,7 +22,9 @@
 
 #include <QDateTime>
 #include <QHostAddress>
+#include <QMetaObject>
 #include <QSignalSpy>
+#include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -30,10 +35,15 @@
 #include "config_manager.h"
 #include "discovery_service.h"
 #include "frame_codec.h"
+#include "history_records.h"
 #include "p2p_server.h"
 #include "protocol.h"
+#include "sqlite_database_proxy.h"
+#include "sqlite_device_proxy.h"
+#include "sqlite_message_proxy.h"
 
 class TestChatManager : public QObject {
+private:
     Q_OBJECT
 
 private slots:
@@ -43,6 +53,7 @@ private slots:
     void testOnlineSendAndReconnect();
     void testIncomingMessageDeduplicated();
     void testInvalidFollowUpFrameRejected();
+    void testMessagesPersisted();
 
 private:
     void addOnlinePeer(const QString &deviceId, quint16 port);
@@ -167,6 +178,7 @@ void TestChatManager::testIncomingMessageDeduplicated()
     const gy::ChatMessage message = createPeerMessage(
         "c8f3b2a1-4d5e-6f7a-8b9c-0d1e2f3a4b5c", "重复消息测试");
     _manager->clearMessages(message.fromDeviceId);
+    QSignalSpy notificationSpy(_manager, &ChatManager::incomingMessageReceived);
     const QByteArray frame = encodeMessageFrame(message);
 
     QTcpSocket peer;
@@ -175,6 +187,10 @@ void TestChatManager::testIncomingMessageDeduplicated()
     QVERIFY(peer.write(frame) == frame.size());
     QVERIFY(peer.waitForBytesWritten(1000));
     QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(message.fromDeviceId).size(), 1, 3000);
+    QCOMPARE(notificationSpy.count(), 1);
+    QCOMPARE(notificationSpy.first().at(0).toString(), message.fromDeviceId);
+    QCOMPARE(notificationSpy.first().at(1).toString(), message.fromName);
+    QCOMPARE(notificationSpy.first().at(2).toString(), message.content.simplified().left(20));
 
     auto *model = qobject_cast<ChatMessageModel *>(
         _manager->messageModelForDevice(message.fromDeviceId));
@@ -189,6 +205,7 @@ void TestChatManager::testIncomingMessageDeduplicated()
     QVERIFY(peer.waitForBytesWritten(1000));
     QTest::qWait(100);
     QCOMPARE(_manager->messagesForDevice(message.fromDeviceId).size(), 1);
+    QCOMPARE(notificationSpy.count(), 1);
 
     peer.disconnectFromHost();
     peer.waitForDisconnected(1000);
@@ -215,6 +232,70 @@ void TestChatManager::testInvalidFollowUpFrameRejected()
     QVERIFY(peer.waitForBytesWritten(1000));
     QVERIFY(disconnectedSpy.wait(3000));
     QCOMPARE(_manager->messagesForDevice(message.fromDeviceId).size(), 1);
+}
+
+void TestChatManager::testMessagesPersisted()
+{
+    SqliteDatabaseProxy database;
+    QString errorMessage;
+    QVERIFY2(database.initialize(_tempDir->path() + "/chat-history.sqlite", &errorMessage),
+             qPrintable(errorMessage));
+    SqliteDeviceProxy deviceRepository(&database);
+    SqliteMessageProxy messageRepository(&database);
+
+    bool persisted = true;
+    int persistedCount = 0;
+    const QMetaObject::Connection persistenceConnection = connect(
+        _manager, &ChatManager::messageToPersist,
+        this, [&](const MessageRecord &record) {
+            PeerRecord peer;
+            peer.deviceId = record.peerDeviceId;
+            peer.deviceName = record.senderName;
+            peer.firstSeenAt = record.sentAt;
+            peer.lastSeenAt = record.sentAt;
+            persisted = deviceRepository.upsertPeer(peer, &errorMessage)
+                        && messageRepository.saveMessage(record, &errorMessage);
+            ++persistedCount;
+        });
+
+    QTcpServer peerServer;
+    QVERIFY(peerServer.listen(QHostAddress::LocalHost, 0));
+    const QString deviceId = "storage-peer";
+    addOnlinePeer(deviceId, peerServer.serverPort());
+
+    _manager->sendText(deviceId, "持久化出站消息");
+    QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
+    QTcpSocket *peerSocket = peerServer.nextPendingConnection();
+    QVERIFY(peerSocket != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 3000);
+    QVERIFY2(persisted, qPrintable(errorMessage));
+
+    gy::ChatMessage incoming = createPeerMessage(
+        "9c4c6d2a-1f2b-47d6-8f25-0d5be1e8e36b", "持久化入站消息");
+    incoming.fromDeviceId = deviceId;
+    incoming.fromName = "StoragePeer";
+    const QByteArray incomingFrame = encodeMessageFrame(incoming);
+    QVERIFY(peerSocket->write(incomingFrame) == incomingFrame.size());
+    QVERIFY(peerSocket->waitForBytesWritten(1000));
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 2, 3000);
+    QVERIFY2(persisted, qPrintable(errorMessage));
+
+    MessageCursor cursor;
+    cursor.peerDeviceId = deviceId;
+    const QList<MessageRecord> messages = messageRepository.loadMessages(cursor, 50, &errorMessage);
+    QVERIFY2(errorMessage.isEmpty(), qPrintable(errorMessage));
+    QCOMPARE(messages.size(), 2);
+
+    QStringList contents;
+    for (const MessageRecord &record : messages) {
+        contents.append(record.content);
+    }
+    QVERIFY(contents.contains("持久化出站消息"));
+    QVERIFY(contents.contains("持久化入站消息"));
+
+    disconnect(persistenceConnection);
+    peerSocket->disconnectFromHost();
+    peerSocket->deleteLater();
 }
 
 // 将测试用对端放入发现服务的在线端点表

@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 4.16.0
+ * @version 6.5.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v6.5.0] GY   2026-06-25
+ * * 显示本地历史不可用状态
  * [v4.16.0] DuRuoxian   2026-06-18
  * * 使用 Style.js 统一样式常量
  * [v4.15.2] DuRuoxian   2026-06-17
@@ -45,6 +47,7 @@ Dialog {
     property string _tempReceivePath: ConfigManager.receivePath
     property bool   _tempAutoAcceptFiles: ConfigManager.autoAcceptFiles
     property int    _tempTcpPort:     ConfigManager.tcpPort
+    property int    _tempRetentionDays: ConfigManager.retentionDays
 
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
                                     && _tempReceivePath.length > 0
@@ -54,6 +57,7 @@ Dialog {
                                     || _tempReceivePath !== ConfigManager.receivePath
                                     || _tempAutoAcceptFiles !== ConfigManager.autoAcceptFiles
                                     || _tempTcpPort !== ConfigManager.tcpPort
+                                    || _tempRetentionDays !== ConfigManager.retentionDays
     readonly property int kColorDuration: Style.Motion.base
     readonly property int kEnterDuration: 200
 
@@ -73,6 +77,7 @@ Dialog {
         _tempReceivePath = ConfigManager.receivePath
         _tempAutoAcceptFiles = ConfigManager.autoAcceptFiles
         _tempTcpPort     = ConfigManager.tcpPort
+        _tempRetentionDays = ConfigManager.retentionDays
     }
 
     background: Rectangle {
@@ -286,6 +291,47 @@ Dialog {
             // 网络设置卡片
             Rectangle {
                 Layout.fillWidth: true
+                implicitHeight: historySection.implicitHeight + 32
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
+                border.width: 1
+
+                RowLayout {
+                    id: historySection
+                    anchors.fill: parent
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.lg
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Label {
+                            text: qsTr("历史保留期限")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+                        Label {
+                            text: qsTr("到期后自动删除本机聊天和传输历史，不影响文件。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    ComboBox {
+                        id: retentionSelector
+                        model: [qsTr("永久保留"), qsTr("7 天"), qsTr("30 天"), qsTr("90 天")]
+                        currentIndex: [0, 7, 30, 90].indexOf(settingsDialog._tempRetentionDays)
+                        onActivated: settingsDialog._tempRetentionDays = [0, 7, 30, 90][currentIndex]
+                    }
+                }
+            }
+
+            // 网络设置卡片
+            Rectangle {
+                Layout.fillWidth: true
                 implicitHeight: networkSection.implicitHeight + 32
                 color: Style.Color.surface
                 radius: Style.Radius.lg
@@ -330,6 +376,15 @@ Dialog {
             }
 
             Item { Layout.preferredHeight: Style.Space.sm }
+
+            Label {
+                Layout.fillWidth: true
+                visible: !AppController.localHistoryAvailable
+                text: qsTr("本地历史不可用，聊天和传输仍可正常使用。")
+                color: Style.Color.warning
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+            }
         }
     }
 
@@ -382,6 +437,7 @@ Dialog {
                     ConfigManager.receivePath = settingsDialog._tempReceivePath
                     ConfigManager.autoAcceptFiles = settingsDialog._tempAutoAcceptFiles
                     ConfigManager.tcpPort = settingsDialog._tempTcpPort
+                    AppController.history.setRetentionDays(settingsDialog._tempRetentionDays)
                     settingsDialog.accept()
                 }
             }

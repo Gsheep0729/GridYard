@@ -26,6 +26,8 @@ qt_add_qml_module(appGridYard
         core/chat_manager.cpp
         core/chat_message_model.h
         core/chat_message_model.cpp
+        core/history_controller.h
+        core/history_controller.cpp
         core/config_manager.h
         core/config_manager.cpp
         core/dir_serializer.h
@@ -48,6 +50,7 @@ qt_add_qml_module(appGridYard
         ui/SettingsDialog.qml
         ui/AcceptDialog.qml
         ui/TransferPanel.qml
+        ui/TransferHistoryView.qml
         ui/TransferTaskCard.qml
         ui/DeviceSessionView.qml
         ui/ChatView.qml

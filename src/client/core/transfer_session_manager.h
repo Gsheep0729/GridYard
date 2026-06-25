@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,10 @@
 * 通过 AppController 暴露给 QML，不使用 QML_SINGLETON。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 支持按当前设备清空已结束传输记录
+* [v6.3.0] GY   2026-06-25
+* * 发射结束态传输快照并支持启动恢复历史记录
 * [v4.16.1] FengChunlin   2026-06-21
 * * 接收请求和完成结果改为跨线程值传递，删除 Worker 状态读取函数
 * [v4.14.0] GY   2026-06-15
@@ -37,10 +41,12 @@
 #pragma once
 
 #include <QObject>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+#include "history_records.h"
 #include "file_receiver_worker.h"
 
 class QQmlEngine;
@@ -51,6 +57,7 @@ class FileSenderWorker;
 class P2pServer;
 
 class TransferSessionManager : public QObject {
+private:
     Q_OBJECT
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
 
@@ -68,7 +75,10 @@ public:
     Q_INVOKABLE void removeSession(const QString &sessionId);
     // 删除本地文件只允许接收成功记录，避免误删发送源文件
     Q_INVOKABLE void removeSessionAndDeleteFile(const QString &sessionId);
-    Q_INVOKABLE void clearFinishedSessions(bool deleteReceivedFiles = false);
+    Q_INVOKABLE void clearFinishedSessions(bool deleteReceivedFiles = false,
+                                           const QString &deviceId = {});
+    // 启动阶段恢复已结束的历史记录
+    void restoreFinishedTransfers(const QList<TransferRecord> &records);
 
 signals:
     void sessionsChanged();
@@ -90,6 +100,10 @@ signals:
     void errorOccurred(const QString &message);
     // 成功提示（显示给用户）
     void messageOccurred(const QString &message);
+    // 最终状态快照，供应用层异步持久化
+    void transferToPersist(const TransferRecord &record);
+    // 用户移除历史记录后同步删除持久化行
+    void transferHistoryDeleteRequested(const QStringList &recordIds);
 
 private slots:
     // 处理新的传输请求
@@ -101,6 +115,12 @@ public:
     TransferSessionManager &operator=(const TransferSessionManager &) = delete;
 
 private:
+    // 将运行期会话收敛为可持久化的最终快照
+    void finalizeSession(const QString &sessionId, const QString &finalStatus,
+                         gy::protocol::ErrorCode errorCode, const QString &errorMessage,
+                         const QString &savedPath = {});
+    // 将一条历史记录恢复成 QML 可消费的会话项
+    QVariantMap sessionFromRecord(const TransferRecord &record) const;
     // 删除失败时保留记录，便于用户重新处理
     bool deleteReceivedFile(const QVariantMap &session);
 

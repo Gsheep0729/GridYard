@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 4.16.1
+* @version 6.6.2
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
@@ -10,6 +10,10 @@
 * 使用委托模式从 ConfigManager 和 FileReceiverWorker 获取信息。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 支持按当前设备清空已结束传输记录
+* [v6.3.0] GY   2026-06-25
+* * 生成结束态传输快照并支持恢复历史记录
 * [v4.16.1] FengChunlin   2026-06-21
 * * 接收请求和完成结果改为跨线程值传递，删除 Worker 状态读取函数
 * [v4.15.0] FengChunlin   2026-06-16
@@ -45,6 +49,7 @@
 
 #include "transfer_session_manager.h"
 #include "config_manager.h"
+#include "dir_serializer.h"
 #include "discovery_service.h"
 #include "file_receiver_worker.h"
 #include "file_sender_worker.h"
@@ -62,6 +67,9 @@ Q_DECLARE_METATYPE(FileReceiverWorker*)
 #include <QUuid>
 #include <QDateTime>
 
+#include <algorithm>
+#include <utility>
+
 namespace {
 
 // 判断会话状态是否为已结束（完成、失败、拒绝、取消）
@@ -69,6 +77,57 @@ bool isFinishedStatus(const QString &status)
 {
     return status == "completed" || status == "failed"
            || status == "rejected" || status == "cancelled";
+}
+
+// 根据 Worker 结果归一化最终状态，避免取消和拒绝被错误折叠成 failed
+QString normalizedFinalStatus(bool success, gy::protocol::ErrorCode errorCode,
+                              const QString &currentStatus)
+{
+    if (currentStatus == "cancelled") {
+        return "cancelled";
+    }
+    if (currentStatus == "rejected") {
+        return "rejected";
+    }
+    if (success) {
+        return "completed";
+    }
+    if (errorCode == gy::protocol::ErrorCode::UserRejected) {
+        return "rejected";
+    }
+    if (errorCode == gy::protocol::ErrorCode::UserCancelled) {
+        return "cancelled";
+    }
+    return "failed";
+}
+
+// 统计发送任务中的真实文件数和总字节数，为早失败场景保留完整历史快照
+QPair<int, qint64> transferStatsForPath(const QString &path)
+{
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        return {0, 0};
+    }
+    if (!info.isDir()) {
+        return {1, info.size()};
+    }
+
+    const auto items = gy::DirSerializer::serialize(path);
+    int fileCount = 0;
+    qint64 totalBytes = 0;
+    for (const auto &item : items) {
+        if (item.relativePath.endsWith('/')) {
+            continue;
+        }
+        ++fileCount;
+        totalBytes += item.sizeBytes;
+    }
+    return {fileCount, totalBytes};
+}
+
+QDateTime sessionTime(const QVariantMap &session, const QString &key)
+{
+    return QDateTime::fromString(session.value(key).toString(), Qt::ISODateWithMs);
 }
 
 // 构建文件夹根目录预览（只显示顶层文件和目录）
@@ -147,6 +206,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
         port = _config->tcpPort();
     }
     const QString peerName = endpoint["deviceName"].toString();
+    const auto [fileCount, totalBytes] = transferStatsForPath(filePath);
 
     qDebug() << "[TransferSession] 目标设备信息:";
     qDebug() << "  设备名:" << peerName;
@@ -164,11 +224,12 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session["filePath"]  = filePath;
     session["fileName"]  = QFileInfo{filePath}.fileName();
     session["isDirectory"] = QFileInfo{filePath}.isDir();
+    session["fileCount"] = fileCount;
     session["status"]    = "connecting";
     session["progress"]  = 0;
     session["bytesTransferred"] = 0;
-    session["totalBytes"] = 0;
-    session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    session["totalBytes"] = totalBytes;
+    session["createdAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     session["fileList"]  = QVariantList{};
     session["localPath"] = "";
     session["canDeleteLocalFile"] = false;
@@ -236,26 +297,15 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     connect(worker, &FileSenderWorker::transferFinished,
             this, [this, sessionId, thread, worker](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
-        // 更新会话状态
-        for (int i = 0; i < _sessions.size(); ++i) {
-            if (_sessions[i]["sessionId"].toString() == sessionId) {
-                _sessions[i]["status"] = success ? "completed" : "failed";
-                _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
-                _sessions[i]["errorMsg"] = errorMsg;
-                _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
-                emit sessionsChanged();
-
-                // 通知用户传输结果
-                if (success) {
-                    QString fileName = _sessions[i]["filePath"].toString();
-                    QFileInfo info(fileName);
-                    emit messageOccurred(tr("文件 \"%1\" 发送成功").arg(info.fileName()));
-                } else {
-                    emit errorOccurred(tr("发送失败：%1").arg(errorMsg));
-                }
+        QString currentStatus = "failed";
+        for (const QVariantMap &session : std::as_const(_sessions)) {
+            if (session["sessionId"].toString() == sessionId) {
+                currentStatus = session["status"].toString();
                 break;
             }
         }
+        const QString finalStatus = normalizedFinalStatus(success, errorCode, currentStatus);
+        finalizeSession(sessionId, finalStatus, errorCode, errorMsg);
 
         // 清理 worker 引用
         _sendWorkers.remove(sessionId);
@@ -361,8 +411,12 @@ void TransferSessionManager::removeSession(const QString &sessionId)
 
             // 只允许移除已完成、失败、取消的会话
             if (isFinishedStatus(status)) {
+                const QString recordId = _sessions[i]["recordId"].toString();
                 _sessions.removeAt(i);
                 emit sessionsChanged();
+                if (!recordId.isEmpty()) {
+                    emit transferHistoryDeleteRequested({recordId});
+                }
                 qDebug() << "TransferSessionManager: 移除会话" << sessionId;
             } else {
                 qWarning() << "TransferSessionManager: 无法移除进行中的会话" << sessionId;
@@ -384,22 +438,30 @@ void TransferSessionManager::removeSessionAndDeleteFile(const QString &sessionId
             return;
         }
 
+        const QString recordId = _sessions[i]["recordId"].toString();
         _sessions.removeAt(i);
         emit sessionsChanged();
+        if (!recordId.isEmpty()) {
+            emit transferHistoryDeleteRequested({recordId});
+        }
         emit messageOccurred(tr("已删除本地文件并移除传输记录"));
         return;
     }
 }
 
 // 清空所有已结束的传输记录（可选删除已接收文件）
-void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles)
+void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles, const QString &deviceId)
 {
     int removedCount = 0;
     int deletedCount = 0;
+    QStringList recordIds;
 
     // 倒序移除，避免删除元素后改变后续索引
     for (int i = _sessions.size() - 1; i >= 0; --i) {
         if (!isFinishedStatus(_sessions[i]["status"].toString())) {
+            continue;
+        }
+        if (!deviceId.isEmpty() && _sessions[i]["deviceId"].toString() != deviceId) {
             continue;
         }
 
@@ -410,12 +472,19 @@ void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles)
             ++deletedCount;
         }
 
+        const QString recordId = _sessions[i]["recordId"].toString();
+        if (!recordId.isEmpty()) {
+            recordIds.append(recordId);
+        }
         _sessions.removeAt(i);
         ++removedCount;
     }
 
     if (removedCount > 0) {
         emit sessionsChanged();
+        if (!recordIds.isEmpty()) {
+            emit transferHistoryDeleteRequested(recordIds);
+        }
         emit messageOccurred(deleteReceivedFiles
                              ? tr("已清理 %1 条记录并删除 %2 个本地项目")
                                    .arg(removedCount).arg(deletedCount)
@@ -488,7 +557,8 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     session["progress"]  = 0;
     session["bytesTransferred"] = 0;
     session["worker"]    = QVariant::fromValue(worker);
-    session["createdAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    session["createdAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    session["fileCount"] = totalFiles;
     session["localPath"] = "";
     session["canDeleteLocalFile"] = false;
 
@@ -526,38 +596,15 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
             this, [this, sessionId, worker](bool success, gy::protocol::ErrorCode errorCode,
                                             const QString &errorMsg, const QString &savedPath) {
         qDebug() << "[TransferSession] 接收传输完成，成功:" << success << "错误:" << errorMsg;
-
-        for (int i = 0; i < _sessions.size(); ++i) {
-            if (_sessions[i]["sessionId"].toString() == sessionId) {
-                // 如果已经是 cancelled 状态，不覆盖
-                if (_sessions[i]["status"].toString() == "cancelled") {
-                    qDebug() << "[TransferSession] 会话已取消，跳过状态更新";
-                    break;
-                }
-
-                _sessions[i]["status"] = success ? "completed" : "failed";
-                _sessions[i]["progress"] = success ? 100 : _sessions[i]["progress"].toInt();
-                _sessions[i]["errorMsg"] = errorMsg;
-                _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
-                if (success) {
-                    _sessions[i]["localPath"] = savedPath;
-                    _sessions[i]["canDeleteLocalFile"] = !savedPath.isEmpty();
-                }
-                emit sessionsChanged();
-
-                if (success) {
-                    // 接收成功时通知 UI 打开文件夹
-                    if (_config) {
-                        emit transferCompleted(sessionId, _sessions[i]["fileName"].toString(),
-                                               _config->receivePath());
-                    }
-                    emit messageOccurred(tr("文件 \"%1\" 接收成功").arg(_sessions[i]["fileName"].toString()));
-                } else {
-                    emit errorOccurred(tr("接收失败：%1").arg(errorMsg));
-                }
+        QString currentStatus = "failed";
+        for (const QVariantMap &session : std::as_const(_sessions)) {
+            if (session["sessionId"].toString() == sessionId) {
+                currentStatus = session["status"].toString();
                 break;
             }
         }
+        const QString finalStatus = normalizedFinalStatus(success, errorCode, currentStatus);
+        finalizeSession(sessionId, finalStatus, errorCode, errorMsg, savedPath);
 
         worker->deleteLater();
     });
@@ -576,4 +623,115 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
 
     qDebug() << "TransferSessionManager: 收到接收请求" << sessionId
              << "来自" << senderName << "文件" << fileName;
+}
+
+void TransferSessionManager::restoreFinishedTransfers(const QList<TransferRecord> &records)
+{
+    bool changed = false;
+    for (auto it = records.crbegin(); it != records.crend(); ++it) {
+        const bool exists = std::any_of(_sessions.cbegin(), _sessions.cend(),
+                                        [&it](const QVariantMap &session) {
+                                            return session["sessionId"].toString() == it->sessionId;
+                                        });
+        if (exists) {
+            continue;
+        }
+        _sessions.append(sessionFromRecord(*it));
+        changed = true;
+    }
+
+    if (changed) {
+        emit sessionsChanged();
+    }
+}
+
+void TransferSessionManager::finalizeSession(const QString &sessionId, const QString &finalStatus,
+                                             gy::protocol::ErrorCode errorCode,
+                                             const QString &errorMessage,
+                                             const QString &savedPath)
+{
+    for (int i = 0; i < _sessions.size(); ++i) {
+        if (_sessions[i]["sessionId"].toString() != sessionId) {
+            continue;
+        }
+
+        _sessions[i]["status"] = finalStatus;
+        _sessions[i]["progress"] = finalStatus == "completed" ? 100 : _sessions[i]["progress"].toInt();
+        _sessions[i]["errorMsg"] = errorMessage;
+        _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
+        if (finalStatus == "completed") {
+            _sessions[i]["bytesTransferred"] = _sessions[i]["totalBytes"];
+        }
+        if (!savedPath.isEmpty()) {
+            _sessions[i]["localPath"] = savedPath;
+            _sessions[i]["canDeleteLocalFile"] = finalStatus == "completed";
+        }
+
+        QString recordId = _sessions[i]["recordId"].toString();
+        if (recordId.isEmpty()) {
+            recordId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            _sessions[i]["recordId"] = recordId;
+        }
+
+        emit sessionsChanged();
+
+        if (finalStatus == "completed") {
+            if (_sessions[i]["type"].toString() == "receive" && _config) {
+                emit transferCompleted(sessionId, _sessions[i]["fileName"].toString(),
+                                       _config->receivePath());
+            }
+            emit messageOccurred(_sessions[i]["type"].toString() == "send"
+                                     ? tr("文件 \"%1\" 发送成功").arg(_sessions[i]["fileName"].toString())
+                                     : tr("文件 \"%1\" 接收成功").arg(_sessions[i]["fileName"].toString()));
+        } else if (_sessions[i]["type"].toString() == "send") {
+            emit errorOccurred(tr("发送失败：%1").arg(errorMessage));
+        } else {
+            emit errorOccurred(tr("接收失败：%1").arg(errorMessage));
+        }
+
+        TransferRecord record;
+        record.recordId = recordId;
+        record.sessionId = _sessions[i]["sessionId"].toString();
+        record.peerDeviceId = _sessions[i]["deviceId"].toString();
+        record.peerName = _sessions[i]["peerDeviceName"].toString();
+        record.direction = _sessions[i]["type"].toString() == "send"
+                               ? RecordDirection::Outgoing
+                               : RecordDirection::Incoming;
+        record.displayName = _sessions[i]["fileName"].toString();
+        record.isDirectory = _sessions[i]["isDirectory"].toBool();
+        record.fileCount = _sessions[i]["fileCount"].toInt();
+        record.totalBytes = _sessions[i]["totalBytes"].toLongLong();
+        record.status = finalStatus;
+        record.startedAt = sessionTime(_sessions[i], "createdAt");
+        record.finishedAt = QDateTime::currentDateTimeUtc();
+        record.errorCode = finalStatus == "completed" ? 0 : static_cast<int>(errorCode);
+        record.errorMessage = finalStatus == "completed" ? QString{} : errorMessage;
+        emit transferToPersist(record);
+        return;
+    }
+}
+
+QVariantMap TransferSessionManager::sessionFromRecord(const TransferRecord &record) const
+{
+    QVariantMap session;
+    session["recordId"] = record.recordId;
+    session["sessionId"] = record.sessionId;
+    session["type"] = record.direction == RecordDirection::Outgoing ? "send" : "receive";
+    session["deviceId"] = record.peerDeviceId;
+    session["peerDeviceName"] = record.peerName;
+    session["filePath"] = "";
+    session["fileName"] = record.displayName;
+    session["isDirectory"] = record.isDirectory;
+    session["fileCount"] = record.fileCount;
+    session["status"] = record.status;
+    session["progress"] = record.status == "completed" ? 100 : 0;
+    session["bytesTransferred"] = record.status == "completed" ? record.totalBytes : 0;
+    session["totalBytes"] = record.totalBytes;
+    session["createdAt"] = record.startedAt.toUTC().toString(Qt::ISODateWithMs);
+    session["fileList"] = QVariantList{};
+    session["localPath"] = "";
+    session["canDeleteLocalFile"] = false;
+    session["errorCode"] = record.errorCode;
+    session["errorMsg"] = record.errorMessage;
+    return session;
 }

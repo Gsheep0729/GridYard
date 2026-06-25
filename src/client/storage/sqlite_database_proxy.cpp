@@ -1,11 +1,13 @@
 /**
 * @file    sqlite_database_proxy.cpp
-* @version 6.0.0
+* @version 6.6.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理实现
 *
 * Change Log:
+* [v6.6.0] GY 2026-06-25
+* * 增加损坏数据库备份重建和异常验收支撑
 * [v6.0.0] GY 2026-06-25
 * * 新增 SQLite 数据库代理基础
 */
@@ -13,12 +15,16 @@
 
 #include "migration_runner.h"
 
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QThread>
+
+#include <utility>
 
 // 构造函数
 SqliteDatabaseProxy::SqliteDatabaseProxy()
@@ -35,28 +41,15 @@ SqliteDatabaseProxy::SqliteDatabaseProxy(DriverProvider driverProvider)
 // 析构函数，关闭并移除初始化线程的命名连接
 SqliteDatabaseProxy::~SqliteDatabaseProxy()
 {
-    if (_mainConnectionName.isEmpty() || !QSqlDatabase::contains(_mainConnectionName)) {
-        return;
-    }
-
-    // 移除连接前先释放 QSqlDatabase 值，避免 Qt 输出仍在使用的连接警告
-    QSqlDatabase database = QSqlDatabase::database(_mainConnectionName, false);
-    database.close();
-    database = {};
-    QSqlDatabase::removeDatabase(_mainConnectionName);
+    closeMainConnection();
 }
 
 // 打开数据库、配置连接参数并执行迁移
 bool SqliteDatabaseProxy::initialize(const QString &databasePath, QString *errorMessage)
 {
     _available = false;
-
-    // 重复初始化时先释放旧连接，确保数据库路径和连接名称保持一致
-    if (!_mainConnectionName.isEmpty() && QSqlDatabase::contains(_mainConnectionName)) {
-        QSqlDatabase oldDatabase = QSqlDatabase::database(_mainConnectionName, false);
-        oldDatabase.close();
-        oldDatabase = {};
-        QSqlDatabase::removeDatabase(_mainConnectionName);
+    if (errorMessage) {
+        errorMessage->clear();
     }
 
     if (!_driverProvider().contains("QSQLITE")) {
@@ -75,22 +68,78 @@ bool SqliteDatabaseProxy::initialize(const QString &databasePath, QString *error
         return false;
     }
 
+    closeMainConnection();  // 重复初始化前先释放旧主连接，避免复用旧文件句柄
     _databasePath = fileInfo.absoluteFilePath();
+    const bool existingDatabase = QFileInfo::exists(_databasePath);
     _mainConnectionName = QString("gridyard-storage-main-%1")
         .arg(reinterpret_cast<quintptr>(this));
+
+    if (openMainConnection(errorMessage)) {
+        _available = true;
+        qInfo() << "[Storage] 数据库迁移完成，版本" << schemaVersion();
+        return true;
+    }
+
+    const QString firstError = errorMessage ? *errorMessage : QString{};
+    qWarning() << "[Storage] 数据库初始化失败";
+    closeMainConnection();  // 备份损坏库前必须释放 SQLite 文件句柄
+
+    if (existingDatabase && isCorruptionError(firstError)) {
+        QString backupError;
+        if (!backupCorruptDatabase(&backupError)) {
+            if (errorMessage) {
+                *errorMessage = backupError;
+            }
+            return false;
+        }
+
+        if (errorMessage) {
+            errorMessage->clear();
+        }
+        if (openMainConnection(errorMessage)) {
+            _available = true;
+            qWarning() << "[Storage] 已备份损坏数据库并重建本地历史库";
+            qInfo() << "[Storage] 数据库迁移完成，版本" << schemaVersion();
+            return true;
+        }
+        qWarning() << "[Storage] 损坏数据库重建失败";
+    }
+
+    closeMainConnection();
+    return false;
+}
+
+// 打开主连接并完成参数配置与迁移
+bool SqliteDatabaseProxy::openMainConnection(QString *errorMessage)
+{
     QSqlDatabase database = QSqlDatabase::addDatabase("QSQLITE", _mainConnectionName);
     database.setDatabaseName(_databasePath);
 
-    if (!database.open() || !configureConnection(database, errorMessage)
-        || !MigrationRunner::migrate(database, errorMessage)) {
-        qWarning() << "[Storage] 数据库初始化失败";
-        database.close();
+    if (!database.open()) {
+        if (errorMessage) {
+            *errorMessage = database.lastError().text();
+        }
         return false;
     }
 
-    _available = true;
-    qInfo() << "[Storage] 数据库迁移完成，版本" << schemaVersion();
-    return true;
+    if (!configureConnection(database, errorMessage)) {
+        return false;
+    }
+    return MigrationRunner::migrate(database, errorMessage);
+}
+
+// 关闭并移除初始化线程的主连接
+void SqliteDatabaseProxy::closeMainConnection()
+{
+    if (_mainConnectionName.isEmpty() || !QSqlDatabase::contains(_mainConnectionName)) {
+        return;
+    }
+
+    // 移除连接前先释放 QSqlDatabase 值，避免 Qt 输出仍在使用的连接警告
+    QSqlDatabase database = QSqlDatabase::database(_mainConnectionName, false);
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(_mainConnectionName);
 }
 
 // 返回当前线程独占的数据库连接
@@ -197,6 +246,41 @@ bool SqliteDatabaseProxy::configureConnection(QSqlDatabase &database, QString *e
         return false;
     }
     return true;
+}
+
+// 将损坏数据库备份到同目录的 .corrupt 时间戳文件
+bool SqliteDatabaseProxy::backupCorruptDatabase(QString *errorMessage) const
+{
+    const QString timestamp = QDateTime::currentDateTimeUtc().toString("yyyyMMddHHmmsszzz");
+    const QString backupPath = _databasePath + ".corrupt-" + timestamp;
+    if (!QFile::rename(_databasePath, backupPath)) {
+        if (errorMessage) {
+            *errorMessage = "无法备份损坏数据库";
+        }
+        return false;
+    }
+
+    const QStringList sidecars = {"-wal", "-shm"};
+    for (const QString &suffix : sidecars) {
+        const QString sidecarPath = _databasePath + suffix;
+        if (!QFileInfo::exists(sidecarPath)) {
+            continue;
+        }
+        // WAL/SHM 属于同一个 SQLite 文件组，能备份则一起保留供事后排查。
+        QFile::rename(sidecarPath, backupPath + suffix);
+    }
+
+    return true;
+}
+
+// 判断底层错误是否属于 SQLite 文件损坏
+bool SqliteDatabaseProxy::isCorruptionError(const QString &errorMessage)
+{
+    const QString normalized = errorMessage.toLower();
+    return normalized.contains("file is not a database")
+           || normalized.contains("database disk image is malformed")
+           || normalized.contains("not a database")
+           || normalized.contains("malformed");
 }
 
 // 根据当前线程生成唯一连接名称

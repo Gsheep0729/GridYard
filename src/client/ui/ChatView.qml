@@ -1,6 +1,6 @@
 /**
  * @file    ChatView.qml
- * @version 5.2.0
+ * @version 6.6.2
  * @date    2026-06-24
  * @author  GridYard Team
  * @brief   设备会话的在线聊天消息视图
@@ -9,6 +9,8 @@
  * 滚动行为。此组件不处理网络发送、协议解析或消息持久化。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 选中设备且消息模型为空时主动加载本地历史第一页
  * [v5.2.0] GY   2026-06-24
  * * 新增 Stage 5 聊天消息气泡视图
  */
@@ -28,6 +30,17 @@ Item {
                                ? AppController.chat.messageModelForDevice(deviceId)
                                : null
 
+    onDeviceIdChanged: Qt.callLater(chatView.loadInitialHistory)
+    onMessageModelChanged: Qt.callLater(chatView.loadInitialHistory)
+    Component.onCompleted: Qt.callLater(chatView.loadInitialHistory)
+
+    function loadInitialHistory(): void {
+        if (deviceId.length === 0 || messageList.count > 0 || AppController.history.loading) {
+            return
+        }
+        AppController.history.loadMoreMessages(deviceId)
+    }
+
     function scrollToLatest(): void {
         if (messageList.count > 0) {
             messageList.positionViewAtEnd()
@@ -46,6 +59,9 @@ Item {
 
         onContentYChanged: {
             followLatest = contentY + height >= contentHeight - Style.Space.lg
+            if (contentY <= 0 && messageList.count > 0 && !AppController.history.loading) {
+                AppController.history.loadMoreMessages(chatView.deviceId)
+            }
         }
 
         onCountChanged: {
@@ -136,7 +152,7 @@ Item {
             spacing: Style.Space.sm
 
             Label {
-                text: qsTr("本次运行还没有聊天消息")
+                text: qsTr("还没有聊天记录")
                 color: Style.Color.textWeak
                 font.pixelSize: 16
                 font.bold: true
@@ -144,7 +160,7 @@ Item {
             }
 
             Label {
-                text: qsTr("消息不会在应用重启后保留")
+                text: qsTr("发送消息后将在本机历史中保留")
                 color: Style.Color.textMuted
                 font.pixelSize: 13
                 Layout.alignment: Qt.AlignHCenter

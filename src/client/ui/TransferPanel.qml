@@ -41,6 +41,7 @@ Frame {
     id: transferPanel
 
     property var expandedSessions: ({})
+    property int viewMode: 0
 
     function isSessionExpanded(sessionId: string): bool {
         return expandedSessions[sessionId] === true
@@ -112,12 +113,21 @@ Frame {
             }
         }
 
+        TabBar {
+            Layout.fillWidth: true
+            currentIndex: transferPanel.viewMode
+            onCurrentIndexChanged: transferPanel.viewMode = currentIndex
+            TabButton { text: qsTr("任务") }
+            TabButton { text: qsTr("历史") }
+        }
+
         // 任务列表
         ListView {
             id: listView
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            visible: transferPanel.viewMode === 0
             spacing: Style.Space.sm
 
             model: AppController.transfer.sessions
@@ -173,6 +183,12 @@ Frame {
                 font.pixelSize: 14
                 visible: listView.count === 0
             }
+        }
+
+        TransferHistoryView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: transferPanel.viewMode === 1
         }
     }
 

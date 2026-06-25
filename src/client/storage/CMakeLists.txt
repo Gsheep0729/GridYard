@@ -5,6 +5,10 @@ add_library(gy_storage STATIC
     sqlite_database_proxy.cpp
     sqlite_device_proxy.h
     sqlite_device_proxy.cpp
+    sqlite_message_proxy.h
+    sqlite_message_proxy.cpp
+    sqlite_transfer_history_proxy.h
+    sqlite_transfer_history_proxy.cpp
     database_worker.h
     database_worker.cpp
 )

@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_database_proxy.h
-* @version 6.0.0
+* @version 6.6.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理
@@ -8,6 +8,8 @@
 * 每个线程按唯一连接名取得自己的数据库连接，禁止跨线程传递连接。
 *
 * Change Log:
+* [v6.6.0] GY 2026-06-25
+* * 增加损坏数据库备份重建和异常验收支撑
 * [v6.0.0] GY 2026-06-25
 * * 新增 SQLite 数据库代理基础
 */
@@ -47,8 +49,16 @@ public:
     bool isAvailable() const;
 
 private:
+    // 打开主连接并完成参数配置与迁移
+    bool openMainConnection(QString *errorMessage);
+    // 关闭并移除初始化线程的主连接
+    void closeMainConnection();
     // 应用所有线程都需要的 SQLite 连接参数
     bool configureConnection(QSqlDatabase &database, QString *errorMessage) const;
+    // 将损坏数据库备份到同目录的 .corrupt 时间戳文件
+    bool backupCorruptDatabase(QString *errorMessage) const;
+    // 判断底层错误是否属于 SQLite 文件损坏
+    static bool isCorruptionError(const QString &errorMessage);
     // 根据当前线程生成唯一连接名称
     QString connectionNameForCurrentThread() const;
 

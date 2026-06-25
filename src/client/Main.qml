@@ -1,15 +1,21 @@
 /**
 * @file    Main.qml
-* @version 4.16.3
+* @version 6.6.2
 * @date    2026-06-24
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
 *
 * 标题通过 AppController.applicationName/Version 绑定，
-* 关窗触发 AppController.quit()。
+* 关窗时由用户选择隐藏到后台或退出程序。
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 约束主窗口最小尺寸并限制侧栏设备名宽度，避免整体布局压缩遮挡
+* * 创建传输任务后自动切换到当前设备的传输页
+* [v6.5.0] GY   2026-06-25
+* * 关闭窗口时增加隐藏后台/退出程序确认，修复托盘后台无法退出
+* * 接入系统托盘、后台运行与非阻塞通知
 * [v4.16.3] FengChunlin   2026-06-24
 * * 调整主窗口为三栏会话布局，增加本机信息和菜单入口
 * [v4.16.2] DuRuoxian   2026-06-22
@@ -38,6 +44,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import Qt.labs.platform as Platform
 import cqnu.gridyard.client 1.0
 import "utils/Style.js" as Style
 
@@ -46,18 +53,73 @@ ApplicationWindow {
 
     width:   980
     height:  725
+    minimumWidth: 860
+    minimumHeight: 620
     visible: true
     title:   "%1 v%2".arg(AppController.applicationName)
                      .arg(AppController.applicationVersion)
     color: Style.Color.pageBg
 
-    onClosing: AppController.quit()
+    onClosing: function(close) {
+        if (_allowWindowClose) {
+            return
+        }
+        close.accepted = false
+        closeChoiceDialog.open()
+    }
 
     property string _targetDeviceId: ""
     property string _targetDeviceName: ""
     property string _targetIpAddress: ""
     property bool _targetIsOnline: false
+    property bool _allowWindowClose: false
     readonly property int kPopupEnterDuration: 180
+
+    function showMainWindow(): void {
+        mainWindow.show()
+        mainWindow.raise()
+        mainWindow.requestActivate()
+    }
+
+    function hideToTray(): void {
+        mainWindow.hide()
+        if (trayIcon.available) {
+            trayIcon.showMessage(qsTr("GridYard"), qsTr("应用仍在后台运行"))
+        }
+    }
+
+    function requestApplicationQuit(): void {
+        _allowWindowClose = true
+        AppController.quit()
+    }
+
+    Platform.SystemTrayIcon {
+        id: trayIcon
+        visible: true
+        tooltip: qsTr("GridYard")
+        icon.source: "qrc:/qt/qml/cqnu/gridyard/client/icons/gridyard.png"
+        menu: Platform.Menu {
+            Platform.MenuItem {
+                text: qsTr("显示主窗口")
+                onTriggered: mainWindow.showMainWindow()
+            }
+            Platform.MenuItem {
+                text: qsTr("隐藏到托盘")
+                onTriggered: mainWindow.hideToTray()
+            }
+            Platform.MenuSeparator {}
+            Platform.MenuItem {
+                text: qsTr("退出")
+                onTriggered: mainWindow.requestApplicationQuit()
+            }
+        }
+        onActivated: function(reason) {
+            if (reason === Platform.SystemTrayIcon.Trigger
+                    || reason === Platform.SystemTrayIcon.DoubleClick) {
+                mainWindow.showMainWindow()
+            }
+        }
+    }
 
     function selectDevice(deviceId: string, deviceName: string,
                           ipAddress: string, isOnline: bool): void {
@@ -80,6 +142,63 @@ ApplicationWindow {
         _targetIsOnline = false
     }
 
+    function showTransferTimeline(): void {
+        if (_targetDeviceId.length === 0) {
+            return
+        }
+        sessionView.timelineMode = 1
+    }
+
+    Dialog {
+        id: closeChoiceDialog
+        title: qsTr("关闭 GridYard")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(420, parent ? parent.width - 48 : 420)
+        padding: 20
+
+        ColumnLayout {
+            spacing: 14
+            anchors.fill: parent
+
+            Label {
+                text: trayIcon.available
+                      ? qsTr("要将 GridYard 隐藏到后台继续接收消息和传输，还是直接退出程序？")
+                      : qsTr("当前系统托盘不可用，是否退出 GridYard？")
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+        }
+
+        footer: RowLayout {
+            spacing: 10
+            anchors.margins: 16
+
+            Button {
+                visible: trayIcon.available
+                text: qsTr("隐藏到后台")
+                onClicked: {
+                    closeChoiceDialog.close()
+                    mainWindow.hideToTray()
+                }
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            Button {
+                text: qsTr("退出程序")
+                onClicked: {
+                    closeChoiceDialog.close()
+                    mainWindow.requestApplicationQuit()
+                }
+            }
+            Button {
+                text: qsTr("取消")
+                onClicked: closeChoiceDialog.close()
+            }
+        }
+    }
+
     //对话框
 
     FileDialog {
@@ -94,6 +213,7 @@ ApplicationWindow {
                 if (path.startsWith("file://")) path = path.substring(7)
                 AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
             }
+            mainWindow.showTransferTimeline()
         }
     }
 
@@ -104,6 +224,7 @@ ApplicationWindow {
             let path = selectedFolder.toString()
             if (path.startsWith("file://")) path = path.substring(7)
             AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
+            mainWindow.showTransferTimeline()
         }
     }
 
@@ -276,10 +397,12 @@ ApplicationWindow {
             anchors.top: avatarBtn.bottom
             anchors.topMargin: 8
             anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 10
             text: ConfigManager.deviceName
             font.pixelSize: 10
             color: Style.Color.textSecondary
             elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
         }
 
         // 菜单按钮（底部）
@@ -366,6 +489,7 @@ ApplicationWindow {
                 }
             }
             AppController.transfer.createSendSession(deviceId, filePath)
+            mainWindow.showTransferTimeline()
         }
     }
 
@@ -417,6 +541,8 @@ ApplicationWindow {
 
         // 设备会话页
         DeviceSessionView {
+            id: sessionView
+
             anchors.fill: parent
             visible: mainWindow._targetDeviceId.length > 0
             deviceId: mainWindow._targetDeviceId
@@ -430,6 +556,7 @@ ApplicationWindow {
             onSendFolderRequested: folderDialog.open()
             onFileDropped: function(filePath) {
                 AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
+                mainWindow.showTransferTimeline()
             }
         }
     }
@@ -485,6 +612,7 @@ ApplicationWindow {
                     break
                 }
             }
+            mainWindow.showTransferTimeline()
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName
             acceptDialog.fileName = fileName
@@ -494,11 +622,14 @@ ApplicationWindow {
             acceptDialog.isDirectory = isDirectory
             acceptDialog.fileList = fileList
             acceptDialog.open()
+            trayIcon.showMessage(qsTr("传输请求"),
+                                 qsTr("%1 想发送 %2 个文件").arg(senderName).arg(totalFiles))
         }
         function onTransferCompleted(sessionId, fileName, filePath) {
             completeDialog._fileName = fileName
             completeDialog._filePath = filePath
             completeDialog.open()
+            trayIcon.showMessage(qsTr("传输完成"), qsTr("已完成一项文件传输"))
         }
         function onErrorOccurred(message) { errorLabel.text = message; errorPopup.open() }
         function onMessageOccurred(message) { successLabel.text = message; successPopup.open() }
@@ -509,12 +640,28 @@ ApplicationWindow {
         function onPeersChanged() { mainWindow.refreshSelectedDevice() }
     }
 
+    Connections {
+        target: AppController.chat
+        function onIncomingMessageReceived(deviceId, senderName, preview) {
+            trayIcon.showMessage(senderName, preview)
+        }
+    }
+
+    Connections {
+        target: AppController
+        function onLocalHistoryOperationFailed() {
+            errorLabel.text = qsTr("本地保存失败，历史可能缺失")
+            errorPopup.open()
+            trayIcon.showMessage(qsTr("本地历史"), errorLabel.text)
+        }
+    }
+
     Popup {
         id: errorPopup
         anchors.centerIn: parent
         width: 300
         height: errorLabel.implicitHeight + 48
-        modal: true
+        modal: false
         closePolicy: Popup.CloseOnPressOutside
 
         enter: Transition {
@@ -549,7 +696,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 300
         height: successLabel.implicitHeight + 48
-        modal: true
+        modal: false
         closePolicy: Popup.CloseOnPressOutside
 
         enter: Transition {

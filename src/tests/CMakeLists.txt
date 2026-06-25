@@ -28,6 +28,30 @@ target_include_directories(test_storage_device PRIVATE
 target_compile_features(test_storage_device PRIVATE cxx_std_23)
 add_test(NAME test_storage_device COMMAND test_storage_device)
 
+# --- 聊天消息 Proxy 测试 ---
+qt_add_executable(test_storage_message test_storage_message.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_message PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_message PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_message PRIVATE cxx_std_23)
+add_test(NAME test_storage_message COMMAND test_storage_message)
+
+# --- 传输历史 Proxy 测试 ---
+qt_add_executable(test_storage_transfer_history test_storage_transfer_history.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_transfer_history PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_transfer_history PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_transfer_history PRIVATE cxx_std_23)
+add_test(NAME test_storage_transfer_history COMMAND test_storage_transfer_history)
+
 # --- FrameCodec 单测 ---
 qt_add_executable(test_frame_codec test_frame_codec.cpp)
 target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)
@@ -51,14 +75,59 @@ qt_add_executable(test_chat_manager test_chat_manager.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
 )
-target_link_libraries(test_chat_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_link_libraries(test_chat_manager PRIVATE
+    gy_shared
+    gy_storage
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Qml
+    Qt6::Sql
+)
 target_include_directories(test_chat_manager PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
     ${CMAKE_SOURCE_DIR}/shared
+    ${CMAKE_SOURCE_DIR}/client/domain
 )
 target_compile_features(test_chat_manager PRIVATE cxx_std_23)
 add_test(NAME test_chat_manager COMMAND test_chat_manager)
+
+# --- HistoryController 本地历史视图测试 ---
+qt_add_executable(test_history_controller test_history_controller.cpp
+    ${CLIENT_CORE_DIR}/chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_message_model.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_NET_DIR}/chat_connection.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_CORE_DIR}/history_controller.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_history_controller PRIVATE
+    gy_shared
+    gy_storage
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Sql
+)
+target_include_directories(test_history_controller PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/shared
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
+target_compile_features(test_history_controller PRIVATE cxx_std_23)
+add_test(NAME test_history_controller COMMAND test_history_controller)
 
 # --- 边缘场景测试 ---
 qt_add_executable(test_edge_cases test_edge_cases.cpp
@@ -113,6 +182,7 @@ target_link_libraries(test_file_transfer PRIVATE gy_shared Qt6::Test Qt6::Core Q
 target_include_directories(test_file_transfer PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/domain
     ${CMAKE_SOURCE_DIR}/shared
 )
 target_compile_features(test_file_transfer PRIVATE cxx_std_23)
@@ -129,7 +199,11 @@ qt_add_executable(test_session_manager test_session_manager.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
 )
 target_link_libraries(test_session_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
-target_include_directories(test_session_manager PRIVATE ${CLIENT_CORE_DIR} ${CLIENT_NET_DIR})
+target_include_directories(test_session_manager PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
 target_compile_features(test_session_manager PRIVATE cxx_std_23)
 add_test(NAME test_session_manager COMMAND test_session_manager)
 
@@ -147,6 +221,7 @@ target_link_libraries(test_integration PRIVATE gy_shared Qt6::Test Qt6::Core Qt6
 target_include_directories(test_integration PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/domain
     ${CMAKE_SOURCE_DIR}/shared
 )
 target_compile_features(test_integration PRIVATE cxx_std_23)
