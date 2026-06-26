@@ -1,14 +1,16 @@
 /**
  * @file    PeerListView.qml
- * @version 6.6.2
- * @date    2026-06-24
+ * @version 6.7.0
+ * @date    2026-06-28
  * @author  GridYard Team
- * @brief   在线设备列表组件
+ * @brief   设备列表组件
  *
- * 绑定 AppController.peerDiscoveryViewModel.peers 显示发现的其他设备。
+ * 绑定 AppController.peerDiscoveryViewModel.peers 显示在线和历史设备。
  * 支持手动刷新。
  *
  * Change Log:
+ * [v6.7.0] GY   2026-06-28
+ * * 设备列表支持显示离线历史设备
  * [v6.6.2] GY   2026-06-25
  * * 搜索栏接入设备过滤，右侧入口改为刷新附近设备列表
  * [v4.16.3] FengChunlin   2026-06-24
@@ -122,26 +124,26 @@ Rectangle {
                     onTapped: searchInput.forceActiveFocus()
                 }
             }
-            // 刷新附近设备按钮
+            // 刷新设备按钮：同时刷新在线发现和本地历史设备
             ToolButton {
                 id: refreshPeersButton
                 width: 25; height: 25
                 icon.name: "view-refresh"
-                ToolTip.text: qsTr("刷新附近设备列表")
+                ToolTip.text: qsTr("刷新设备列表")
                 ToolTip.visible: hovered
                 onClicked: AppController.peerDiscoveryViewModel.refresh()
             }
         }
     }
 
-    // 附近设备标题：显示"附近设备"文字
+    // 设备标题：在线和历史设备统一展示
     Label {
         id: deviceTitle
         anchors.left: parent.left
         anchors.leftMargin: 16
         anchors.top: searchArea.bottom
         anchors.topMargin: 4
-        text: qsTr("附近设备")
+        text: qsTr("设备")
         font.pixelSize: 13
         font.bold: true
         color: Style.Color.textSecondary

@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 6.7.0
+* @version 6.8.0
 * @date    2026-06-28
 * @author  GY
 * @brief   GridYard 客户端程序入口
@@ -17,7 +17,10 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v6.8.0] GY   2026-06-28
+* * 运行时数据目录改为可执行文件同级策略，配置文件路径上提一级
 * [v6.7.0] GY   2026-06-28
+* * 取消 --port 自动生成 /tmp 临时配置文件
 * * 应用版本号更新到 6.7.0
 * [v6.6.3] GY   2026-06-28
 * * 提升 core 和 ui 分组源码行内注释密度，同步版本号
@@ -89,7 +92,6 @@
 */
 
 #include <QCommandLineParser>
-#include <QDir>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQuickStyle>
@@ -121,7 +123,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("6.7.0");
+    QGuiApplication::setApplicationVersion("6.8.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 
@@ -151,11 +153,6 @@ int main(int argc, char *argv[]) {
     }
     if (parser.isSet(configOption)) {
         qputenv("GRIDYARD_CONFIG", parser.value(configOption).toUtf8());
-    } else if (parser.isSet(portOption)) {
-        // 如果指定了端口但没有指定配置文件，自动使用不同的配置文件
-        // 这样每个实例会有不同的 deviceId
-        QString autoConfig = QDir::tempPath() + "/gridyard_config_" + parser.value(portOption) + ".ini";
-        qputenv("GRIDYARD_CONFIG", autoConfig.toUtf8());
     }
     if (parser.isSet(nameOption)) {
         qputenv("GRIDYARD_NAME", parser.value(nameOption).toUtf8());

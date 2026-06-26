@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 6.6.2
+ * @version 6.7.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v6.7.0] GY   2026-06-28
+ * * 增加清除缓存入口，删除配置、历史数据库和日志后退出
  * [v6.6.2] GY   2026-06-25
  * * 同步文件头版本与当前主版本
  * [v6.5.0] GY   2026-06-25
@@ -379,6 +381,49 @@ Dialog {
                 }
             }
 
+            // 清除缓存卡片
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: cacheSection.implicitHeight + 32
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
+                border.width: 1
+
+                RowLayout {
+                    id: cacheSection
+                    anchors.fill: parent
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.lg
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.Space.xs
+
+                        Label {
+                            text: qsTr("清除缓存")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("删除配置文件、本地历史数据库和运行日志。应用会退出，下次启动重新生成设备身份。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                        }
+                    }
+
+                    Button {
+                        text: qsTr("清除缓存")
+                        highlighted: true
+                        onClicked: clearCacheDialog.open()
+                    }
+                }
+            }
+
             Item { Layout.preferredHeight: Style.Space.sm }
 
             Label {
@@ -463,6 +508,39 @@ Dialog {
                 path = path.substring(7)  // 去掉 file:// 协议前缀
             }
             settingsDialog._tempReceivePath = path
+        }
+    }
+
+    Dialog {
+        id: clearCacheDialog
+        title: qsTr("清除缓存")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(420, settingsDialog.width - 48)
+        padding: Style.Space.lg
+
+        contentItem: Label {
+            text: qsTr("将删除配置文件、聊天和传输历史数据库、运行日志。此操作不可撤销，应用会立即退出。")
+            color: Style.Color.textMain
+            wrapMode: Text.Wrap
+            font.pixelSize: 14
+        }
+
+        footer: DialogButtonBox {
+            Button {
+                text: qsTr("取消")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+            Button {
+                text: qsTr("清除并退出")
+                highlighted: true
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+        }
+
+        onAccepted: {
+            settingsDialog.close()
+            AppController.clearLocalCache()
         }
     }
 }

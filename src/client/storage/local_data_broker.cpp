@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.cpp
-* @version 6.6.2
+* @version 6.7.0
 * @date    2026-06-28
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
@@ -9,6 +9,9 @@
 * 避免 AppController 直接持有数据管理层细节。
 *
 * Change Log:
+* [v6.7.0] GY   2026-06-28
+* * 增加显式关闭存储线程入口，支持清除本地缓存前释放数据库连接
+* * 增加最近设备目录异步加载入口
 * [v6.6.2] GY   2026-06-28
 * * 收拢 HistoryController 所需的历史查询、删除、清空和过期清理操作
 * [v6.6.2] GY   2026-06-27
@@ -43,11 +46,7 @@ LocalDataBroker::LocalDataBroker(QObject *parent)
 // 析构函数
 LocalDataBroker::~LocalDataBroker()
 {
-    if (_storageThread && _storageThread->isRunning()) {
-        // 等待已入队任务结束，防止 Worker 继续访问即将销毁的 Repository。
-        _storageThread->quit();
-        _storageThread->wait();
-    }
+    closeStorage();
 }
 
 // 初始化数据库和存储任务线程
@@ -229,6 +228,31 @@ void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
         });
 }
 
+// 异步加载最近设备目录
+void LocalDataBroker::loadRecentPeers(QObject *receiver, int limit,
+                                      const PeersCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitLoad(
+        [this, receiver, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            const QList<PeerRecord> records = _deviceRepository->recentPeers(limit, errorMessage);
+            const bool succeeded = errorMessage->isEmpty();
+            QMetaObject::invokeMethod(receiver, [callback, records, succeeded] {
+                callback(records, succeeded);
+            }, Qt::QueuedConnection);
+            return succeeded;
+        });
+}
+
 // 异步加载指定会话的一页聊天历史
 void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &cursor, int limit,
                                    const MessagesCallback &callback)
@@ -392,4 +416,21 @@ void LocalDataBroker::beginShutdown()
     // 执行到它时说明之前提交的所有任务均已处理完成
     QMetaObject::invokeMethod(_storageWorker, &DatabaseWorker::beginShutdown,
                               Qt::QueuedConnection);
+}
+
+// 关闭存储线程并释放数据库连接
+void LocalDataBroker::closeStorage()
+{
+    if (_storageThread && _storageThread->isRunning()) {
+        // 等待已入队任务结束，防止 Worker 继续访问即将销毁的 Repository。
+        _storageThread->quit();
+        _storageThread->wait();
+    }
+
+    _storageWorker = nullptr;
+    _storageThread = nullptr;
+    _transferRepository.reset();
+    _messageRepository.reset();
+    _deviceRepository.reset();
+    _storage.reset();
 }

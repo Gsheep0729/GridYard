@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 6.6.2
+* @version 6.7.0
 * @date    2026-06-28
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -13,6 +13,8 @@
 * 不直接暴露内部 Manager、Service 或上下文属性。
 *
 * Change Log:
+* [v6.7.0] GY   2026-06-28
+* * 增加清除本地缓存入口，用于删除配置、历史数据库和日志
 * [v6.6.2] GY   2026-06-28
 * * 通过 Controller/ViewModel 门面暴露 QML API，隐藏内部 Manager 与 Service
 * * HistoryController 改为依赖 LocalDataBroker，避免数据层端口泄漏
@@ -105,6 +107,8 @@ public:
 
     // 退出应用
     Q_INVOKABLE void quit();
+    // 清除本地缓存并退出应用
+    Q_INVOKABLE void clearLocalCache();
     // 验证 QML 调用链路
     Q_INVOKABLE void test();
 
@@ -123,6 +127,8 @@ private:
     void loadRecentTransferHistories();
     // 初始化 QML UI 层
     void initializeUi();
+    // 删除本地持久化文件和目录
+    void removeLocalCacheFiles();
 
     ConfigManager           *_config    = nullptr;  // 本机身份与配置来源
     DiscoveryService        *_discovery = nullptr;  // 在线设备发现服务
@@ -138,6 +144,8 @@ private:
     QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
     bool _quitRequested = false;  // 防止托盘退出动作重复请求排空同一任务队列
+    bool _cacheClearRequested = false;  // 防止重复触发清除缓存流程
+    bool _cacheClearFinished = false;  // 防止正常排空和超时兜底重复删除缓存
     bool _uiInitialized = false;  // 防止 QML 单例回调期间重复加载界面
     bool _uiReady = false;  // QML 根对象是否已成功创建
 };

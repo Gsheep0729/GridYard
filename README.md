@@ -2,9 +2,9 @@
 
 > 局域网 P2P 文件传输与即时通讯桌面应用，全程零公网流量。
 
-当前版本：v6.7.0
+当前版本：v6.8.0
 
-| 项目版本 | v6.7.0 |
+| 项目版本 | v6.8.0 |
 | :--- | :--- |
 
 GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
@@ -74,22 +74,20 @@ ctest --test-dir src/build-ninja --output-on-failure
 ### 本机双实例测试
 
 ```bash
-mkdir -p /tmp/gridyard-runtime
-
 # 实例 A（接收端）
 ./src/build-ninja/client/appGridYard \
-  --config /tmp/gridyard-runtime/device-a.ini \
+  --config ~/gridyard_alice.ini \
   --port 35100 \
   --name "接收端" &
 
 # 实例 B（发送端）
 ./src/build-ninja/client/appGridYard \
-  --config /tmp/gridyard-runtime/device-b.ini \
+  --config ~/gridyard_bob.ini \
   --port 35101 \
   --name "发送端" &
 ```
 
-本地历史按对端 `device_id` 归属。双实例测试时应显式指定不同且稳定的 `--config` 文件；只传 `--port` 会启用按端口隔离的临时配置，临时文件被清理后会生成新的 `device_id`，旧历史仍在数据库中但不会挂到新设备卡片下。
+`--config` 必须指定主目录下的稳定路径（如 `~/gridyard_alice.ini`），配置文件会在首次运行时自动创建。不要省略 `--config`，否则程序会使用 `/tmp/gridyard_config_<port>.ini` 作为临时配置，系统清理 `/tmp` 后 `device_id` 会重新生成，旧历史记录虽然仍在数据库中但无法挂到新设备卡片下，表现为"历史丢失"。
 
 **命令行参数**
 
@@ -97,17 +95,29 @@ mkdir -p /tmp/gridyard-runtime
 |:-----|:-----|:-------|
 | `--port <port>` | TCP 监听端口 | 35100 |
 | `--name <name>` | 设备显示名称 | 系统主机名 |
-| `--config <path>` | 配置文件路径 | 系统默认路径 |
+| `--config <path>` | 配置文件路径 | 见下方"运行时数据目录" |
 
----
+### 运行时数据目录
 
-## 下一轮验证重点
+程序运行时会自动创建子目录，存放配置、数据库和日志文件。这些数据都是缓存性质，删除后不影响程序编译和重新启动，但会丢失设备 ID、聊天记录和传输历史。
 
-- 持续执行构建、全量测试和静态检查，确认功能修复没有引入回归。
-- 手工验证设备发现搜索和刷新、设备卡片排版、聊天/传输页签无遮挡、发送文件或文件夹后自动切到传输页。
-- 验证聊天历史和传输历史在稳定 `--config` 下跨重启恢复，确认清空记录只影响当前设备。
-- 审查生产代码注释要求，保持文件头、函数说明、关键行内注释和成员变量用途说明一致；测试代码只保留必要注释。
-- 若发现问题，先定位根因和影响范围，再做最小修复，并同步受影响的文档与开发心得。
+| 数据 | 位置规则 | 文件说明 |
+|:-----|:---------|:---------|
+| 配置文件 | 可执行文件上一级目录的 `config/` 子目录 | `gridyard.ini`：设备 ID、设备名、TCP 端口、接收路径等 |
+| 数据库 | 可执行文件同级的 `database/` 子目录 | `gridyard.db`：聊天记录、传输历史、设备目录（SQLite WAL 模式） |
+| 日志 | 可执行文件同级的 `logs/` 子目录 | `gridyard_YYYYMMDD.log`：运行日志，按日期自动切换 |
+
+示例（开发构建目录为 `src/build-ninja`，AppImage 放在 `/root/GridYard/`）：
+
+| 数据 | 开发构建路径 | AppImage 路径 |
+|:-----|:------------|:--------------|
+| 配置文件 | `src/build-ninja/config/gridyard.ini` | `/root/GridYard/config/gridyard.ini` |
+| 数据库 | `src/build-ninja/client/database/gridyard.db` | `/root/GridYard/database/gridyard.db` |
+| 日志 | `src/build-ninja/client/logs/gridyard_YYYYMMDD.log` | `/root/GridYard/logs/gridyard_YYYYMMDD.log` |
+
+开发构建时配置文件会提升到 `client/` 的上一级目录，避免混入源码子目录。AppImage 没有这一层，配置、数据库和日志都在 AppImage 同级目录下。
+
+使用 `--config` 参数时，配置文件路径以命令行指定的为准，数据库和日志仍在上述目录下。
 
 ---
 

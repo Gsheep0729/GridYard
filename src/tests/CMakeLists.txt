@@ -72,6 +72,7 @@ qt_add_executable(test_chat_manager test_chat_manager.cpp
     ${CLIENT_CORE_DIR}/chat_message_model.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_NET_DIR}/chat_connection.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
@@ -153,6 +154,7 @@ add_test(NAME test_transfer COMMAND test_transfer)
 qt_add_executable(test_config_manager test_config_manager.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
 )
 target_link_libraries(test_config_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
 target_include_directories(test_config_manager PRIVATE ${CLIENT_CORE_DIR})
@@ -163,6 +165,7 @@ add_test(NAME test_config_manager COMMAND test_config_manager)
 qt_add_executable(test_discovery test_discovery.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
 )
 target_link_libraries(test_discovery PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
@@ -174,6 +177,7 @@ add_test(NAME test_discovery COMMAND test_discovery)
 qt_add_executable(test_file_transfer test_file_transfer.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
@@ -194,6 +198,7 @@ add_test(NAME test_file_transfer COMMAND test_file_transfer)
 qt_add_executable(test_session_manager test_session_manager.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
@@ -213,6 +218,7 @@ add_test(NAME test_session_manager COMMAND test_session_manager)
 qt_add_executable(test_integration test_integration.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp

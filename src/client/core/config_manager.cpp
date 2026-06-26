@@ -25,6 +25,7 @@
 */
 
 #include "config_manager.h"
+#include "application_paths.h"
 #include "protocol.h"
 
 #include <algorithm>
@@ -41,16 +42,22 @@
 // 静态成员变量定义
 QPointer<ConfigManager> ConfigManager::s_instance;
 
+// 获取当前生效的配置文件路径：优先 GRIDYARD_CONFIG 环境变量，其次应用数据目录
+static QString resolveConfigPath()
+{
+    const QString envPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    if (!envPath.isEmpty()) {
+        return envPath;
+    }
+    return ApplicationPaths::configDir() + "/gridyard.ini";
+}
+
 // 构造函数：从 QSettings 加载配置，支持环境变量覆盖
 ConfigManager::ConfigManager(QObject *parent)
     : QObject{parent}
 {
-    // 检查是否有自定义配置文件路径
-    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-
-    // 创建 QSettings 对象
-    // 如果指定了配置文件路径，直接使用该文件；否则使用系统默认路径
-    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    // 创建 QSettings 对象，配置文件统一存放在可执行文件同级的 config/ 子目录
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
 
     // 设备名：优先使用命令行参数，否则读配置，否则用主机名
     QString envName = qEnvironmentVariable("GRIDYARD_NAME");
@@ -181,8 +188,7 @@ void ConfigManager::setDeviceName(const QString &name)
     _deviceName = name;
 
     // 持久化到 QSettings
-    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
     settings.setValue("device/name", name);
 
     // 清除环境变量影响，确保下次启动时使用 QSettings 中的值
@@ -203,8 +209,7 @@ void ConfigManager::setReceivePath(const QString &path)
     // 确保目录存在
     QDir().mkpath(path);
 
-    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
     settings.setValue("device/receivePath", path);
 
     emit receivePathChanged();
@@ -217,8 +222,7 @@ void ConfigManager::setAutoAcceptFiles(bool enabled)
 
     _autoAcceptFiles = enabled;
 
-    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
     settings.setValue("device/autoAcceptFiles", enabled);
 
     emit autoAcceptFilesChanged();
@@ -231,8 +235,7 @@ void ConfigManager::setTcpPort(quint16 port)
 
     _tcpPort = port;
 
-    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
     settings.setValue("network/tcpPort", port);
 
     emit tcpPortChanged();
@@ -245,8 +248,7 @@ void ConfigManager::setRetentionDays(int days)
     if (_retentionDays == days) return;
 
     _retentionDays = days;
-    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
     settings.setValue("history/retentionDays", days);
     emit retentionDaysChanged();
 }
@@ -254,8 +256,7 @@ void ConfigManager::setRetentionDays(int days)
 // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
 void ConfigManager::ensureDeviceId()
 {
-    QString configPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    QSettings settings(configPath.isEmpty() ? QSettings() : QSettings(configPath, QSettings::IniFormat));
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
     _deviceId = settings.value("device/id").toString();
 
     // 首次运行时生成 UUID 并持久化，确保设备标识跨会话稳定

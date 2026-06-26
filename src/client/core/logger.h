@@ -1,6 +1,6 @@
 /**
 * @file    logger.h
-* @version 6.6.2
+* @version 6.7.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   运行日志工具（拦截 Qt 日志输出到文件）
@@ -11,6 +11,8 @@
 * 存放在应用数据目录 logs/ 文件夹下。线程安全。
 *
 * Change Log:
+* [v6.7.0] GY   2026-06-28
+* * 增加日志系统显式关闭入口，支持清除缓存前释放日志文件
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.0.0] GY   2026-06-25
@@ -38,13 +40,14 @@ public:
 
     // 初始化日志系统，logDir 为空则使用应用数据目录
     void init(const QString &logDir = QString());
+    // 关闭日志文件并恢复默认 Qt 消息处理器
+    void shutdown();
 
 private:
     explicit Logger(QObject *parent = nullptr);
-    // 析构函数
     virtual ~Logger() override;
 
-    // Qt 消息处理回调
+    // Qt 全局消息处理回调，qDebug/qWarning/qCritical/qInfo 均由此入口拦截
     static void messageHandler(QtMsgType type,
                                const QMessageLogContext &ctx,
                                const QString &msg);

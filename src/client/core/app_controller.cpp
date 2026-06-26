@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.cpp
-* @version 6.6.2
+* @version 6.7.0
 * @date    2026-06-28
 * @author  GridYard Team
 * @brief   应用全局控制器实现
@@ -10,6 +10,9 @@
 * UI 引擎由 singleton() 在控制器实例缓存后再初始化，避免 QML 单例回调递归创建。
 *
 * Change Log:
+* [v6.7.0] GY   2026-06-28
+* * 增加清除本地缓存入口，用于删除配置、历史数据库和日志
+* * 启动时为设备列表加载本地历史设备目录
 * [v6.6.2] GY   2026-06-28
 * * AppController 只向 QML 暴露 Controller/ViewModel 门面
 * * HistoryController 构造改为传入 LocalDataBroker
@@ -46,6 +49,7 @@
 #include "history_records.h"
 #include "history_controller.h"
 #include "local_data_broker.h"
+#include "logger.h"
 #include "p2p_server.h"
 #include "peer_discovery_view_model.h"
 #include "transfer_controller.h"
@@ -53,6 +57,9 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
@@ -61,6 +68,37 @@
 namespace {
 
 QPointer<AppController> s_appController;
+
+QString activeConfigPath()
+{
+    const QString envPath = qEnvironmentVariable("GRIDYARD_CONFIG");
+    return envPath.isEmpty() ? ApplicationPaths::configDir() + "/gridyard.ini" : envPath;
+}
+
+void removeFileIfExists(const QString &path)
+{
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        return;
+    }
+    if (!QFile::remove(path)) {
+        qWarning() << "[Cache] 删除文件失败:" << path;
+    }
+}
+
+void removeDirectoryIfExists(const QString &path)
+{
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QDir dir{path};
+    if (!dir.exists()) {
+        return;
+    }
+    if (!dir.removeRecursively()) {
+        qWarning() << "[Cache] 删除目录失败:" << path;
+    }
+}
 
 }
 
@@ -86,6 +124,7 @@ AppController::AppController(QObject *parent)
         qWarning() << "[Storage] 本地历史不可用:" << storageError;
     }
     _localHistoryAvailable = _dataBroker->isAvailable();  // 记录降级状态，供 QML 判断是否展示历史入口
+    _peerDiscoveryViewModel->initDataBroker(_dataBroker);  // 启动时加载本地历史设备目录
 
     // 存储失败只记录降级状态，不影响已完成的网络收发。
     connect(_dataBroker, &LocalDataBroker::operationFailed,
@@ -262,10 +301,56 @@ void AppController::quit()
     QTimer::singleShot(3000, this, [] { QCoreApplication::exit(0); });  // 3 秒兜底强制退出
 }
 
+// 清除配置、历史数据库和日志后退出应用
+void AppController::clearLocalCache()
+{
+    if (_cacheClearRequested) {
+        return;
+    }
+    _cacheClearRequested = true;
+    _quitRequested = true;
+    qInfo() << "[Cache] 开始清除本地缓存";
+
+    auto finishClear = [this] {
+        if (_cacheClearFinished) {
+            return;
+        }
+        _cacheClearFinished = true;
+        if (_dataBroker) {
+            _dataBroker->closeStorage();
+        }
+        removeLocalCacheFiles();
+        QCoreApplication::exit(0);
+    };
+
+    if (!_dataBroker) {
+        finishClear();
+        return;
+    }
+
+    connect(_dataBroker, &LocalDataBroker::drained,
+            this, finishClear,
+            static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
+    _dataBroker->beginShutdown();
+
+    // 存储线程异常无响应时仍执行清理，避免用户无法退出清除流程。
+    QTimer::singleShot(3000, this, finishClear);
+}
+
 // 验证 QML 调用链路
 void AppController::test()
 {
     qDebug() << "AppController::test() invoked from QML - C++↔QML 通信正常";
+}
+
+// 删除本地持久化文件和目录
+void AppController::removeLocalCacheFiles()
+{
+    Logger::instance()->shutdown();  // 释放当前日志文件句柄后再删除 logs 目录
+    removeFileIfExists(activeConfigPath());
+    removeDirectoryIfExists(ApplicationPaths::configDir());
+    removeDirectoryIfExists(ApplicationPaths::databaseDir());
+    removeDirectoryIfExists(ApplicationPaths::logDir());
 }
 
 // 在存储线程读取最近历史并回投到主线程恢复模型

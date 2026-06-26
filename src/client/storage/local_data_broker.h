@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.h
-* @version 6.6.2
+* @version 6.7.0
 * @date    2026-06-28
 * @author  GridYard Team
 * @brief   本地数据层代管者
@@ -9,6 +9,9 @@
 * 并向应用层提供本地历史持久化、查询、删除和启动恢复入口。
 *
 * Change Log:
+* [v6.7.0] GY   2026-06-28
+* * 增加显式关闭存储线程入口，支持清除本地缓存前释放数据库连接
+* * 增加最近设备目录异步加载入口
 * [v6.6.2] GY   2026-06-28
 * * 移除 worker/repository getter，改为提供历史查询、删除和清理语义接口
 * [v6.6.2] GY   2026-06-27
@@ -45,6 +48,7 @@ private:
 public:
     using ChatHistoriesCallback = std::function<void(const QHash<QString, QList<MessageRecord>> &)>;
     using TransferHistoriesCallback = std::function<void(const QList<TransferRecord> &)>;
+    using PeersCallback = std::function<void(const QList<PeerRecord> &, bool)>;
     using MessagesCallback = std::function<void(const QList<MessageRecord> &, bool)>;
     using TransfersCallback = std::function<void(const QList<TransferRecord> &, bool)>;
     using OperationCallback = std::function<void(bool)>;
@@ -69,6 +73,8 @@ public:
     void loadRecentChatHistories(QObject *receiver, const ChatHistoriesCallback &callback);
     // 异步加载最近传输历史
     void loadRecentTransferHistories(QObject *receiver, const TransferHistoriesCallback &callback);
+    // 异步加载最近设备目录
+    void loadRecentPeers(QObject *receiver, int limit, const PeersCallback &callback);
     // 异步加载指定会话的一页聊天历史
     void loadMessages(QObject *receiver, const MessageCursor &cursor, int limit,
                       const MessagesCallback &callback);
@@ -92,6 +98,8 @@ public:
     void deleteExpiredRecords(const QDateTime &before);
     // 开始排空存储队列并停止接受新任务
     void beginShutdown();
+    // 关闭存储线程并释放数据库连接
+    void closeStorage();
 
 signals:
     void operationFailed();
