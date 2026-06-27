@@ -1,17 +1,19 @@
 /**
 * @file    app_controller.h
-* @version 6.6.2
-* @date    2026-06-25
-* @author  GY
-* @brief   应用全局控制器（QML 单例）
-*
-* 按四层架构要求，AppController 是中介者单例，负责组装和持有
-* DiscoveryService、TransferSessionManager、P2pServer 等下层模块。
-* QML 通过 AppController.discovery.peers 等路径触达业务对象，
-* 不使用上下文属性直接暴露 C++ 对象。
-*
-* Change Log:
-* [v6.6.2] GY   2026-06-25
+ * @version 6.7.0
+ * @date    2026-06-27
+ * @author  FCL
+ * @brief   应用全局控制器（QML 单例）
+ *
+ * 按四层架构要求，AppController 是中介者单例，负责组装和持有
+ * DiscoveryService、TransferSessionManager、P2pServer 等下层模块。
+ * QML 通过 AppController.deviceList 等路径触达业务对象，
+ * 不使用上下文属性直接暴露 C++ 对象。
+ *
+ * Change Log:
+ * [v6.7.0] FCL   2026-06-27
+ * * 新增 deviceList 属性合并在线发现设备和离线历史设备
+ * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.5.0] GY   2026-06-25
 * * 向表现层发布本地历史可用性与异步保存失败状态
@@ -72,6 +74,7 @@ private:
     Q_PROPERTY(ChatManager* chat READ chat                         CONSTANT)
     Q_PROPERTY(HistoryController* history READ history             CONSTANT)
     Q_PROPERTY(bool localHistoryAvailable READ localHistoryAvailable CONSTANT)
+    Q_PROPERTY(QVariantList deviceList READ deviceList NOTIFY deviceListChanged)
 
 public:
     virtual ~AppController() override;
@@ -92,6 +95,7 @@ public:
     ChatManager *chat() const;
     HistoryController *history() const;
     bool localHistoryAvailable() const;
+    QVariantList deviceList() const;
 
     // 退出应用
     Q_INVOKABLE void quit();
@@ -101,6 +105,7 @@ public:
 signals:
     void appReady();
     void localHistoryOperationFailed();
+    void deviceListChanged();
 
 private:
     explicit AppController(QObject *parent = nullptr);
@@ -111,6 +116,8 @@ private:
     void loadRecentChatHistories();
     // 异步恢复最近传输历史
     void loadRecentTransferHistories();
+    // 从数据库加载离线设备目录缓存
+    void loadOfflineDeviceCache();
 
     ConfigManager           *_config    = nullptr;  // 本机身份与配置来源
     DiscoveryService        *_discovery = nullptr;  // 在线设备发现服务
@@ -125,6 +132,7 @@ private:
     DatabaseWorker *_storageWorker = nullptr;  // 串行执行存储任务的 Worker
     HistoryController *_history = nullptr;  // 本地历史查询、清理与 QML 操作入口
     QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
+    QVariantList _offlineDeviceCache;  // 离线设备目录缓存，按 deviceId 去重
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
     bool _quitRequested = false;  // 防止托盘退出动作重复请求排空同一任务队列
 };

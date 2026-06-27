@@ -1,16 +1,19 @@
 /**
 * @file    Main.qml
-* @version 6.6.2
-* @date    2026-06-24
-* @author  GY
-* @brief   GridYard 客户端根窗口
-*
-* 标题通过 AppController.applicationName/Version 绑定，
-* 关窗时由用户选择隐藏到后台或退出程序。
-* 左侧显示在线设备列表，右侧显示设备会话页。
-*
-* Change Log:
-* [v6.6.2] GY   2026-06-25
+ * @version 6.7.0
+ * @date    2026-06-27
+ * @author  FCL
+ * @brief   GridYard 客户端根窗口
+ *
+ * 标题通过 AppController.applicationName/Version 绑定，
+ * 关窗时由用户选择隐藏到后台或退出程序。
+ * 左侧显示设备列表（在线发现 + 离线历史），右侧显示设备会话页。
+ *
+ *  Change Log:
+  * [v6.7.0] FCL   2026-06-27
+ *  * 移除传输页签切换，聊天和传输合并为统一界面
+ *  * 接收请求查找发送方改用 deviceList 而非仅 discovery.peers
+ * [v6.6.2] GY   2026-06-25
 * * 约束主窗口最小尺寸并限制侧栏设备名宽度，避免整体布局压缩遮挡
 * * 创建传输任务后自动切换到当前设备的传输页
 * [v6.5.0] GY   2026-06-25
@@ -142,13 +145,6 @@ ApplicationWindow {
         _targetIsOnline = false
     }
 
-    function showTransferTimeline(): void {
-        if (_targetDeviceId.length === 0) {
-            return
-        }
-        sessionView.timelineMode = 1
-    }
-
     Dialog {
         id: closeChoiceDialog
         title: qsTr("关闭 GridYard")
@@ -213,7 +209,6 @@ ApplicationWindow {
                 if (path.startsWith("file://")) path = path.substring(7)
                 AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
             }
-            mainWindow.showTransferTimeline()
         }
     }
 
@@ -224,7 +219,6 @@ ApplicationWindow {
             let path = selectedFolder.toString()
             if (path.startsWith("file://")) path = path.substring(7)
             AppController.transfer.createSendSession(mainWindow._targetDeviceId, path)
-            mainWindow.showTransferTimeline()
         }
     }
 
@@ -493,7 +487,6 @@ ApplicationWindow {
                 }
             }
             AppController.transfer.createSendSession(deviceId, filePath)
-            mainWindow.showTransferTimeline()
         }
     }
 
@@ -560,8 +553,7 @@ ApplicationWindow {
             onSendFolderRequested: folderDialog.open()
             onFileDropped: function(filePath) {
                 AppController.transfer.createSendSession(mainWindow._targetDeviceId, filePath)
-                mainWindow.showTransferTimeline()
-            }
+                }
         }
     }
 
@@ -608,7 +600,9 @@ ApplicationWindow {
         function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
                                           fileSize, totalFiles, totalBytes,
                                           isDirectory, fileList) {
-            const peers = AppController.discovery.peers
+            console.log("[Main] receiveRequestReceived signal 已触发, sessionId:", sessionId,
+                        "sender:", senderName, "file:", fileName)
+            const peers = AppController.deviceList
             for (let i = 0; i < peers.length; i++) {
                 if (peers[i].deviceId === senderDeviceId) {
                     mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
@@ -616,7 +610,6 @@ ApplicationWindow {
                     break
                 }
             }
-            mainWindow.showTransferTimeline()
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName
             acceptDialog.fileName = fileName

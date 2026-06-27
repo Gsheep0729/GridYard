@@ -1,15 +1,18 @@
 /**
 * @file    app_controller.cpp
-* @version 6.6.2
-* @date    2026-06-25
-* @author  GY
-* @brief   应用全局控制器实现
-*
-* 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、
-* TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
-*
-* Change Log:
-* [v6.6.2] GY   2026-06-25
+ * @version 6.7.0
+ * @date    2026-06-27
+ * @author  FCL
+ * @brief   应用全局控制器实现
+ *
+ * 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、
+ * TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
+ *
+ * Change Log:
+ * [v6.7.0] FCL   2026-06-27
+ * * 实现 deviceList 合并在线和离线设备，并在构造期加载离线缓存
+ * * 传输持久化完成后主动刷新历史列表，确保 UI 即时更新
+ * [v6.6.2] GY   2026-06-25
 * * 消息持久化时同步更新设备最近聊天活动时间
 * [v6.5.0] GY   2026-06-25
 * * 为托盘退出增加存储排空超时兜底，避免后台进程无法关闭
@@ -50,6 +53,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaObject>
+#include <QSet>
 #include <QThread>
 #include <QTimer>
 
@@ -117,6 +121,10 @@ AppController::AppController(QObject *parent)
 
     _chat->init(_config, _discovery, _p2pServer);
 
+    // 在线设备列表变化时同步更新设备目录视图
+    connect(_discovery, &DiscoveryService::peersChanged,
+            this, &AppController::deviceListChanged);
+
     // 消息收发成功后按顺序确保设备目录和聊天记录均已落库。
     connect(_chat, &ChatManager::messageToPersist,
             this, [this](const MessageRecord &record) {
@@ -139,6 +147,7 @@ AppController::AppController(QObject *parent)
             });
 
     loadRecentChatHistories();
+    loadOfflineDeviceCache();
 
     connect(_transfer, &TransferSessionManager::transferToPersist,
             this, [this](const TransferRecord &record) {
@@ -163,6 +172,8 @@ AppController::AppController(QObject *parent)
                                                                           errorMessage)
                                && _transferRepository->upsertFinishedTransfer(record, errorMessage);
                     });
+                // 写入完成后刷新历史列表，确保 UI 能立即看到新传输记录
+                _history->queryTransfers({{"peerDeviceId", record.peerDeviceId}});
             });
 
     connect(_transfer, &TransferSessionManager::transferHistoryDeleteRequested,
@@ -339,6 +350,60 @@ void AppController::loadRecentTransferHistories()
             // 传输模型属于主线程，恢复历史时必须回投到 AppController 所在线程。
             QMetaObject::invokeMethod(this, [this, records] {
                 _transfer->restoreFinishedTransfers(records);
+            }, Qt::QueuedConnection);
+            return true;
+        });
+}
+
+// 合并在线节点和离线设备目录，按 deviceId 去重
+QVariantList AppController::deviceList() const
+{
+    QVariantList list;
+    const QVariantList onlinePeers = _discovery->peers();
+    list = onlinePeers;
+
+    QSet<QString> onlineIds;
+    for (const QVariant &v : onlinePeers) {
+        onlineIds.insert(v.toMap().value("deviceId").toString());
+    }
+
+    for (const QVariant &v : _offlineDeviceCache) {
+        const QString id = v.toMap().value("deviceId").toString();
+        if (!onlineIds.contains(id)) {
+            list.append(v);
+        }
+    }
+
+    return list;
+}
+
+// 从数据库读取最近设备目录，缓存供 deviceList 合并
+void AppController::loadOfflineDeviceCache()
+{
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        return;
+    }
+
+    _storageWorker->submitLoad(
+        [this](SqliteDatabaseProxy &, QString *errorMessage) {
+            const QList<PeerRecord> records = _deviceRepository->recentPeers(50, errorMessage);
+            if (!errorMessage->isEmpty()) {
+                return false;
+            }
+
+            QVariantList cache;
+            for (const PeerRecord &r : records) {
+                QVariantMap device;
+                device["deviceId"]   = r.deviceId;
+                device["deviceName"] = r.deviceName;
+                device["ipAddress"]  = r.lastIpAddress;
+                device["isOnline"]   = false;
+                cache.append(device);
+            }
+
+            QMetaObject::invokeMethod(this, [this, cache] {
+                _offlineDeviceCache = cache;
+                emit deviceListChanged();
             }, Qt::QueuedConnection);
             return true;
         });

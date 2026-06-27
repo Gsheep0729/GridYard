@@ -1,14 +1,16 @@
 /**
  * @file    PeerListView.qml
- * @version 6.6.2
- * @date    2026-06-24
- * @author  GY
- * @brief   在线设备列表组件
+ * @version 6.7.0
+ * @date    2026-06-27
+ * @author  FCL
+ * @brief   设备列表组件
  *
- * 绑定 AppController.discovery.peers 显示发现的其他设备。
- * 支持手动刷新。
+ * 绑定 AppController.deviceList 合并显示在线发现设备和离线历史设备。
+ * 支持搜索过滤和手动刷新。
  *
  * Change Log:
+ * [v6.7.0] FCL   2026-06-27
+ * * 改用 deviceList 合并在线和离线设备，支持离线查看历史
  * [v6.6.2] GY   2026-06-25
  * * 搜索栏接入设备过滤，右侧入口改为刷新附近设备列表
  * [v4.16.3] FengChunlin   2026-06-24
@@ -37,7 +39,7 @@ Rectangle {
     readonly property int kDeviceCardHeight: 76
     readonly property string _searchKeyword: searchInput.text.trim().toLowerCase()
     readonly property int _filteredCount: {
-        const peers = AppController.discovery.peers
+        const peers = AppController.deviceList
         if (_searchKeyword.length === 0) {
             return peers.length
         }
@@ -161,7 +163,7 @@ Rectangle {
         anchors.top: deviceTitle.bottom
         anchors.bottom: parent.bottom
         clip: true
-        model: AppController.discovery.peers
+        model: AppController.deviceList
         delegate: Item {
             id: peerDelegate
 

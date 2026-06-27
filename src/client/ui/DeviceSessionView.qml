@@ -1,13 +1,17 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 6.6.2
- * @date    2026-06-24
- * @author  GY
- * @brief   当前设备的文件传输会话页
+ * @version 6.7.0
+ * @date    2026-06-27
+ * @author  FCL
+ * @brief   当前设备的统一会话页
  *
- * 按设备筛选传输任务，并提供文件、文件夹和拖拽发送入口。
+ * 标题栏下方为统一对话历史（ChatView），底部为工具栏和文本输入栏。
+ * 聊天消息和传输历史在同一时间线中展示，不再分页签切换。
  *
  * Change Log:
+ * [v6.7.0] FCL   2026-06-27
+ * * 移除页签切换，合并聊天和传输为统一对话历史
+ * * 工具栏和文本输入区分离为独立区域
  * [v6.6.2] GY   2026-06-25
  * * 整理会话页标题栏、页签、内容区和底部输入区尺寸，避免控件遮挡
  * * 清空记录限定当前设备，发送入口改为文件夹图标下拉菜单
@@ -52,44 +56,21 @@ Frame {
    required property string ipAddress
    required property bool isOnline
 
-   property var expandedSessions: ({})
-   property int timelineMode: 0
    property string chatError: ""
    readonly property bool canSendChat: isOnline
                                       && messageInput.text.trim().length > 0
                                       && messageInput.text.length <= 4000
 
-   function sendChatMessage(): void {
-       if (!canSendChat) {
-           return
-       }
-       AppController.chat.sendText(deviceId, messageInput.text)
-       messageInput.clear()
-       chatError = ""
-   }
+    function sendChatMessage(): void {
+        if (!canSendChat) {
+            return
+        }
+        AppController.chat.sendText(deviceId, messageInput.text)
+        messageInput.clear()
+        chatError = ""
+    }
 
-   function isSessionExpanded(sessionId: string): bool {
-       return expandedSessions[sessionId] === true
-   }
-
-   function setSessionExpanded(sessionId: string, expanded: bool): void {
-       const next = Object.assign({}, expandedSessions)
-       next[sessionId] = expanded
-       expandedSessions = next
-   }
-
-   property int filteredCount: {
-       let count = 0
-       const sessions = AppController.transfer.sessions
-       for (let i = 0; i < sessions.length; i++) {
-           if (sessions[i].deviceId === deviceSessionView.deviceId) {
-               count++
-           }
-       }
-       return count
-   }
-
-   property int finishedCount: {
+    property int finishedCount: {
        let count = 0
        const sessions = AppController.transfer.sessions
        for (let i = 0; i < sessions.length; i++) {
@@ -185,283 +166,183 @@ Frame {
            color: Style.Color.border
        }
 
-       TabBar {
-           id: timelineTabs
-           Layout.fillWidth: true
-           Layout.preferredHeight: 44
-           currentIndex: deviceSessionView.timelineMode
-           background: Rectangle {
-               color: Style.Color.surface
-           }
+        // ===== 对话历史 =====
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
 
-           onCurrentIndexChanged: deviceSessionView.timelineMode = currentIndex
+            ChatView {
+                id: chatView
+                anchors.fill: parent
+                deviceId: deviceSessionView.deviceId
+            }
 
-           TabButton {
-               text: qsTr("聊天")
-               height: timelineTabs.height
-               font.pixelSize: 14
-           }
+            DropArea {
+                anchors.fill: parent
+                keys: ["text/uri-list"]
 
-           TabButton {
-               text: qsTr("传输")
-               height: timelineTabs.height
-               font.pixelSize: 14
-           }
-       }
+                onDropped: function(drop) {
+                    if (!deviceSessionView.isOnline) {
+                        return
+                    }
+                    const urls = drop.urls
+                    for (let i = 0; i < urls.length; i++) {
+                        let path = urls[i].toString()
+                        if (path.startsWith("file://")) {
+                            path = path.substring(7)
+                        }
+                        deviceSessionView.fileDropped(path)
+                    }
+                }
+            }
+        }
 
-       // ===== 记录浏览 =====
-       StackLayout {
-           Layout.fillWidth: true
-           Layout.fillHeight: true
-           currentIndex: deviceSessionView.timelineMode
+        // 分隔线
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Style.Color.border
+        }
 
-           ChatView {
-               deviceId: deviceSessionView.deviceId
-           }
+        // ===== 工具栏 =====
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+            color: Style.Color.surface
 
-           Item {
-               ListView {
-                   id: sessionList
-                   anchors.fill: parent
-                   anchors.margins: Style.Space.md
-                   clip: true
-                   spacing: Style.Space.sm
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Style.Space.sm
+                anchors.rightMargin: Style.Space.sm
 
-                   model: AppController.transfer.sessions
+                ToolButton {
+                    id: sendButton
+                    icon.name: "folder-open"
+                    enabled: deviceSessionView.isOnline
+                    ToolTip.text: qsTr("发送文件或文件夹")
+                    ToolTip.visible: hovered
+                    onClicked: sendMenu.open()
 
-                   delegate: Item {
-                       id: sessionDelegate
+                    Menu {
+                        id: sendMenu
+                        y: -sendMenu.height
 
-                       required property string sessionId
-                       required property string type
-                       required property string deviceId
-                       required property string fileName
-                       required property string status
-                       required property int progress
-                       required property real bytesTransferred
-                       required property real totalBytes
-                       required property string createdAt
-                       required property string peerDeviceName
-                       required property bool isDirectory
-                       required property list<string> fileList
-                       required property bool canDeleteLocalFile
+                        MenuItem {
+                            text: qsTr("发送文件")
+                            onTriggered: deviceSessionView.sendFileRequested()
+                        }
+                        MenuItem {
+                            text: qsTr("发送文件夹")
+                            onTriggered: deviceSessionView.sendFolderRequested()
+                        }
+                    }
+                }
 
-                       width: sessionList.width
-                       visible: deviceId === deviceSessionView.deviceId
-                       height: visible ? taskCard.height : 0
+                Item { Layout.fillWidth: true }
+            }
+        }
 
-                       TransferTaskCard {
-                           id: taskCard
+        // ===== 文本输入 =====
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 96
+            color: Style.Color.surface
 
-                           width: sessionDelegate.width
-                           sessionId: sessionDelegate.sessionId
-                           taskType: sessionDelegate.type
-                           taskName: sessionDelegate.fileName
-                           status: sessionDelegate.status
-                           progress: sessionDelegate.progress
-                           bytesTransferred: sessionDelegate.bytesTransferred
-                           totalBytes: sessionDelegate.totalBytes
-                           createdAt: sessionDelegate.createdAt
-                           peerDeviceName: sessionDelegate.peerDeviceName
-                           isDirectory: sessionDelegate.isDirectory
-                           fileList: sessionDelegate.fileList
-                           canDeleteLocalFile: sessionDelegate.canDeleteLocalFile
-                           expanded: deviceSessionView.isSessionExpanded(sessionDelegate.sessionId)
-                           onExpansionRequested: function(expanded) {
-                               deviceSessionView.setSessionExpanded(sessionDelegate.sessionId, expanded)
-                           }
-                       }
-                   }
-               }
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: Style.Space.sm
+                spacing: Style.Space.sm
 
-               ColumnLayout {
-                   anchors.centerIn: parent
-                   visible: deviceSessionView.filteredCount === 0
-                   spacing: Style.Space.md
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: Style.Radius.sm
+                    color: deviceSessionView.isOnline ? Style.Color.window : Style.Color.surfaceSoft
+                    border.color: Style.Color.border
+                    border.width: 1
 
-                   Label {
-                       text: qsTr("还没有传输记录")
-                       color: Style.Color.textWeak
-                       font.pixelSize: 20
-                       font.bold: true
-                       Layout.alignment: Qt.AlignHCenter
-                   }
+                    TextArea {
+                        id: messageInput
+                        anchors.fill: parent
+                        anchors.margins: Style.Space.sm
+                        enabled: deviceSessionView.isOnline
+                        placeholderText: ""
+                        font.pixelSize: 14
+                        color: Style.Color.textMain
+                        wrapMode: TextEdit.Wrap
+                        selectByMouse: true
+                        leftPadding: 0
+                        rightPadding: 0
+                        topPadding: 0
+                        bottomPadding: 0
 
-                   Label {
-                       text: qsTr("从下方菜单发送文件或文件夹")
-                       color: Style.Color.textMuted
-                       horizontalAlignment: Text.AlignHCenter
-                       font.pixelSize: 13
-                   }
-               }
+                        background: Item {}
 
-               DropArea {
-                   anchors.fill: parent
-                   keys: ["text/uri-list"]
+                        onTextChanged: {
+                            if (text.length > 4000) {
+                                text = text.slice(0, 4000)
+                            }
+                            deviceSessionView.chatError = ""
+                        }
 
-                   onDropped: function(drop) {
-                       if (!deviceSessionView.isOnline) {
-                           return
-                       }
-                       const urls = drop.urls
-                       for (let i = 0; i < urls.length; i++) {
-                           let path = urls[i].toString()
-                           if (path.startsWith("file://")) {
-                               path = path.substring(7)
-                           }
-                           deviceSessionView.fileDropped(path)
-                       }
-                   }
-               }
-           }
-       }
+                        Keys.onReturnPressed: function(event) {
+                            if ((event.modifiers & Qt.ShiftModifier) === 0) {
+                                event.accepted = true
+                                deviceSessionView.sendChatMessage()
+                            }
+                        }
+                    }
 
-       // 分隔线
-       Rectangle {
-           Layout.fillWidth: true
-           Layout.preferredHeight: 1
-           color: Style.Color.border
-       }
+                    Label {
+                        anchors.left: messageInput.left
+                        anchors.right: messageInput.right
+                        anchors.top: messageInput.top
+                        visible: messageInput.text.length === 0
+                        text: deviceSessionView.isOnline
+                              ? qsTr("输入消息") : qsTr("设备离线，无法发送")
+                        color: deviceSessionView.isOnline ? Style.Color.textWeak : Style.Color.error
+                        font.pixelSize: 14
+                        elide: Text.ElideRight
+                    }
+                }
 
-       // ===== 文件操作工具栏 =====
-       Rectangle {
-           Layout.fillWidth: true
-           Layout.preferredHeight: 40
-           color: Style.Color.surface
+                ColumnLayout {
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: 44
+                    spacing: Style.Space.xs
 
-           RowLayout {
-               anchors.fill: parent
-               anchors.leftMargin: Style.Space.sm
-               anchors.rightMargin: Style.Space.sm
+                    ToolButton {
+                        icon.name: "mail-send"
+                        enabled: deviceSessionView.canSendChat
+                        ToolTip.text: qsTr("发送消息")
+                        ToolTip.visible: hovered
+                        onClicked: deviceSessionView.sendChatMessage()
+                        Layout.alignment: Qt.AlignHCenter
+                    }
 
-               ToolButton {
-                   id: sendButton
-                   icon.name: "folder-open"
-                   ToolTip.text: qsTr("发送文件或文件夹")
-                   ToolTip.visible: hovered
-                   onClicked: sendMenu.open()
+                    Label {
+                        text: "%1/4000".arg(messageInput.text.length)
+                        color: Style.Color.textWeak
+                        font.pixelSize: 10
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                }
+            }
 
-                   Menu {
-                       id: sendMenu
-                       y: sendButton.height
+            Label {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.Space.md
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 2
+                text: deviceSessionView.chatError
+                color: Style.Color.error
+                font.pixelSize: 11
+                visible: text.length > 0
+            }
+        }
+    }
 
-                       MenuItem {
-                           text: qsTr("发送文件")
-                           onTriggered: deviceSessionView.sendFileRequested()
-                       }
-                       MenuItem {
-                           text: qsTr("发送文件夹")
-                           onTriggered: deviceSessionView.sendFolderRequested()
-                       }
-                   }
-               }
-
-               Item { Layout.fillWidth: true }
-           }
-       }
-
-       // ===== 文本输入 =====
-       Rectangle {
-           Layout.fillWidth: true
-           Layout.preferredHeight: deviceSessionView.timelineMode === 0 ? 104 : 0
-           visible: deviceSessionView.timelineMode === 0
-           color: Style.Color.surface
-
-           RowLayout {
-               anchors.fill: parent
-               anchors.margins: Style.Space.sm
-               spacing: Style.Space.sm
-
-               Rectangle {
-                   Layout.fillWidth: true
-                   Layout.fillHeight: true
-                   radius: Style.Radius.sm
-                   color: deviceSessionView.isOnline ? Style.Color.window : Style.Color.surfaceSoft
-                   border.color: Style.Color.border
-                   border.width: 1
-
-                   TextArea {
-                       id: messageInput
-                       anchors.fill: parent
-                       anchors.margins: Style.Space.sm
-                       enabled: deviceSessionView.isOnline
-                       placeholderText: ""
-                       font.pixelSize: 14
-                       color: Style.Color.textMain
-                       wrapMode: TextEdit.Wrap
-                       selectByMouse: true
-                       leftPadding: 0
-                       rightPadding: 0
-                       topPadding: 0
-                       bottomPadding: 0
-
-                       background: Item {}
-
-                       onTextChanged: {
-                           if (text.length > 4000) {
-                               text = text.slice(0, 4000)
-                           }
-                           deviceSessionView.chatError = ""
-                       }
-
-                       Keys.onReturnPressed: function(event) {
-                           if ((event.modifiers & Qt.ShiftModifier) === 0) {
-                               event.accepted = true
-                               deviceSessionView.sendChatMessage()
-                           }
-                       }
-                   }
-
-                   Label {
-                       anchors.left: messageInput.left
-                       anchors.right: messageInput.right
-                       anchors.top: messageInput.top
-                       visible: messageInput.text.length === 0
-                       text: deviceSessionView.isOnline
-                             ? qsTr("输入消息") : qsTr("设备离线，无法发送")
-                       color: deviceSessionView.isOnline ? Style.Color.textWeak : Style.Color.error
-                       font.pixelSize: 14
-                       elide: Text.ElideRight
-                   }
-               }
-
-               ColumnLayout {
-                   Layout.fillHeight: true
-                   Layout.preferredWidth: 44
-                   spacing: Style.Space.xs
-
-                   ToolButton {
-                       icon.name: "mail-send"
-                       enabled: deviceSessionView.canSendChat
-                       ToolTip.text: qsTr("发送消息")
-                       ToolTip.visible: hovered
-                       onClicked: deviceSessionView.sendChatMessage()
-                       Layout.alignment: Qt.AlignHCenter
-                   }
-
-                   Label {
-                       text: "%1/4000".arg(messageInput.text.length)
-                       color: Style.Color.textWeak
-                       font.pixelSize: 10
-                       Layout.alignment: Qt.AlignHCenter
-                   }
-               }
-           }
-
-           Label {
-               anchors.left: parent.left
-               anchors.leftMargin: Style.Space.md
-               anchors.bottom: parent.bottom
-               anchors.bottomMargin: 2
-               text: deviceSessionView.chatError
-               color: Style.Color.error
-               font.pixelSize: 11
-               visible: text.length > 0
-           }
-       }
-   }
-
-   Connections {
+    Connections {
        target: AppController.chat
 
        function onSendFailed(targetDeviceId: string, error: int, errorMessage: string): void {

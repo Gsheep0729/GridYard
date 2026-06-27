@@ -613,10 +613,12 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     });
 
     if (_config && _config->autoAcceptFiles()) {
-        qDebug() << "[TransferSession] 自动接受接收请求:" << sessionId;
+        qDebug() << "[TransferSession] 自动接受接收请求（autoAcceptFiles=true）:" << sessionId;
         acceptReceiveSession(sessionId);
         emit messageOccurred(tr("已自动接受 \"%1\"，正在保存").arg(fileName));
     } else {
+        qDebug() << "[TransferSession] 弹出接收确认弹窗，autoAcceptFiles="
+                 << (_config ? _config->autoAcceptFiles() : false) << "sessionId:" << sessionId;
         // 通知 QML 弹窗确认
         const QVariantList previewFiles = _sessions.last()["fileList"].toList();
         emit receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
