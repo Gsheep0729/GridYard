@@ -2,9 +2,9 @@
 
 | 字段 | 内容 |
 | :--- | :--- |
-| 文档版本 | v1.0 |
-| 日期 | 2026-06-25 |
-| 适用版本 | v6.6.2 |
+| 文档版本 | v1.1 |
+| 日期 | 2026-06-28 |
+| 适用版本 | v6.7.0 |
 | 适用范围 | `src/` 下的 CMake 构建脚本与 IDE 文件分组 |
 
 ## 1. 目标
@@ -43,8 +43,8 @@ ctest --test-dir build-ninja --output-on-failure
 | :--- | :--- | :--- | :--- |
 | `src/shared/` | `gy_shared` | STATIC | TLV 协议常量、共享数据类型、聊天消息编解码、帧编解码 |
 | `src/client/domain/` | `gy_domain` | INTERFACE | 本地历史相关值类型和 Repository 接口 |
-| `src/client/storage/` | `gy_storage` | STATIC | SQLite 连接、迁移、设备目录、消息和传输历史持久化 |
-| `src/client/` | `appGridYard` | EXECUTABLE + QML module | 桌面客户端入口、QML 模块、应用控制器、网络与界面 |
+| `src/client/storage/` | `gy_storage` | STATIC | SQLite 连接、迁移、设备目录、消息和传输历史持久化、数据层编排 |
+| `src/client/` | `appGridYard` | EXECUTABLE + QML module | 桌面客户端入口、QML 模块、应用控制器、Controller/ViewModel 门面、网络与界面 |
 | `src/tests/` | 多个 test target | EXECUTABLE | 单元测试和集成测试 |
 
 target 名保留 `gy_` 前缀，是为了避免和系统库、Qt 模块或未来服务端 target 重名。阅读源码时仍按目录理解即可：`shared` 是共享协议层，`domain` 是领域接口层，`storage` 是 SQLite 持久化层。
@@ -95,8 +95,8 @@ qt_add_qml_module(appGridYard
 
 | 分组 | 内容 |
 | :--- | :--- |
-| `SOURCES` | `main.cpp`、`core/*.h/.cpp`、`network/*.h/.cpp` |
-| `QML_FILES` | `Main.qml`、`ui/*.qml`、`utils/*.js` |
+| `SOURCES` | `main.cpp`、`core/*.h/.cpp`（含 Controller/ViewModel 门面）、`network/*.h/.cpp` |
+| `QML_FILES` | `Main.qml`、`ui/*.qml`（含 `ConversationTimelineView.qml`）、`utils/*.js` |
 | `RESOURCES` | `icons/*.svg`、`icons/gridyard.png` |
 
 `utils/FormatUtils.js` 和 `utils/Style.js` 设置了 `QT_QML_SKIP_QMLDIR_ENTRY TRUE`，表示它们作为内部 JavaScript 工具文件打包，不作为可直接 import 的 QML 类型暴露。
@@ -112,8 +112,11 @@ client/entry
 
 client/core
 ├── app_controller.*
+├── chat_controller.*
 ├── chat_manager.*
 ├── history_controller.*
+├── peer_discovery_view_model.*
+├── transfer_controller.*
 └── ...
 
 client/network
@@ -124,6 +127,7 @@ client/network
 
 client/ui
 ├── DeviceSessionView.qml
+├── ConversationTimelineView.qml
 ├── ChatView.qml
 ├── TransferHistoryView.qml
 └── ...
@@ -145,13 +149,13 @@ client/icons
 | 新增内容 | 放置目录 | CMake 修改位置 |
 | :--- | :--- | :--- |
 | 共享协议、共享值类型、帧编解码辅助 | `src/shared/` | `src/shared/CMakeLists.txt` 的 `GRIDYARD_SHARED_SOURCES` |
-| 应用控制器、模型、业务编排 | `src/client/core/` | `src/client/CMakeLists.txt` 的 `GRIDYARD_CLIENT_CORE_SOURCES` |
+| 应用控制器、模型、Controller/ViewModel 门面、业务编排 | `src/client/core/` | `src/client/CMakeLists.txt` 的 `GRIDYARD_CLIENT_CORE_SOURCES` |
 | UDP/TCP、连接对象、传输 Worker | `src/client/network/` | `src/client/CMakeLists.txt` 的 `GRIDYARD_CLIENT_NETWORK_SOURCES` |
 | QML 页面或组件 | `src/client/ui/` | `src/client/CMakeLists.txt` 的 `GRIDYARD_CLIENT_QML_UI_FILES` |
 | QML 内部 JavaScript 工具 | `src/client/utils/` | `src/client/CMakeLists.txt` 的 `GRIDYARD_CLIENT_UTIL_FILES` |
 | 图标和轻量资源 | `src/client/icons/` | `src/client/CMakeLists.txt` 的 `GRIDYARD_CLIENT_ICON_RESOURCES` |
 | 领域记录和 Repository 接口 | `src/client/domain/` | 通常只需放入目录；若新增编译单元，再调整对应 CMake |
-| SQLite Proxy、migration、数据库 Worker | `src/client/storage/` | `src/client/storage/CMakeLists.txt` 的 `GRIDYARD_STORAGE_SOURCES` |
+| SQLite Broker、migration、数据库 Worker、数据层代管者 | `src/client/storage/` | `src/client/storage/CMakeLists.txt` 的 `GRIDYARD_STORAGE_SOURCES` |
 | 测试用例 | `src/tests/` | `src/tests/CMakeLists.txt` 新增对应 test target |
 
 新增 C++ 文件后需要同时确认：

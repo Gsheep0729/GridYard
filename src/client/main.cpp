@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 6.8.0
+* @version 6.8.1
 * @date    2026-06-28
 * @author  GY
 * @brief   GridYard 客户端程序入口
@@ -17,6 +17,8 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v6.8.1] GY   2026-06-28
+* * 补充源码行内注释，移除无效平台主题配置函数，版本同步到 v6.8.1
 * [v6.8.0] GY   2026-06-28
 * * 运行时数据目录改为可执行文件同级策略，配置文件路径上提一级
 * [v6.7.0] GY   2026-06-28
@@ -100,31 +102,14 @@
 #include "data_types.h"
 #include "logger.h"
 
-namespace {
-
-// 配置 Linux 桌面环境下 Qt 平台主题，使 KDE 使用原生文件选择器
-void configurePlatformTheme()
-{
-#ifdef Q_OS_LINUX
-    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP");
-    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORMTHEME")
-        && desktop.contains("KDE", Qt::CaseInsensitive)) {
-        qputenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
-    }
-#endif
-}
-
-}
-
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
-    configurePlatformTheme();
-
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("6.8.0");
+    QGuiApplication::setApplicationVersion("6.8.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
+    // 统一设置窗口图标，覆盖任务栏和窗口标题栏
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 
     // 命令行参数解析

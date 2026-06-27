@@ -2,10 +2,10 @@
 
 | 字段 | 内容 |
 | :--- | :--- |
-| 设计版本 | v1.1 |
-| 日期 | 2026-06-25 |
+| 设计版本 | v1.2 |
+| 日期 | 2026-06-28 |
 | 适用阶段 | Stage 6 本地数据层与体验打磨 |
-| 当前状态 | 阶段 A~F 已实现，阶段 G 交付收尾中 |
+| 当前状态 | 阶段 A~G 已验收完成，v6.7.0 补充 LocalDataBroker 代管层与 Repository 命名对齐 |
 
 ## 1. 目标与边界
 
@@ -40,7 +40,7 @@ Stage 6 采用适合桌面客户端的轻量 DDD，而不是为简单 CRUD 引�
 | 应用层 | `client/core/` | 编排保存、加载、清理和错误降级 | SQL 拼接、直接操作 `QSqlQuery` |
 | 领域层 | `client/domain/` | `PeerRecord`、`MessageRecord`、`TransferRecord`、游标和状态规则 | Qt Sql、QML、网络 socket |
 | 持久化端口 | `client/domain/` | `IDeviceRepository`、`IMessageRepository`、`ITransferHistoryRepository` | SQLite 类型、SQL 文本 |
-| 基础设施层 | `client/storage/` | `SqliteDatabaseProxy`、各 Repository Proxy、migration、行映射 | UI 逻辑、P2P 状态机 |
+| 基础设施层 | `client/storage/` | `SqliteDatabaseBroker`、各 Repository、`LocalDataBroker`、migration、行映射 | UI 逻辑、P2P 状态机 |
 
 领域记录使用稳定 UUID、`device_id` 和 UTC 时间值，不直接复用 `QVariantMap`。`ChatManager` 与 `TransferSessionManager` 保持现有运行时职责，应用服务负责把它们的最终事件转换为领域记录。
 
@@ -50,17 +50,19 @@ Stage 6 采用适合桌面客户端的轻量 DDD，而不是为简单 CRUD 引�
 QML 页面
     │ 属性绑定、用户操作
     ▼
-AppController / HistoryController（应用层）
-    │ 调用持久化端口，发布模型和降级状态
+AppController / Controller 门面 / HistoryController（应用层）
+    │ 通过 LocalDataBroker 编排持久化、查询和清理
     ▼
 领域记录与 Repository 接口（领域层）
     │ 无 SQL、无 Qt Sql 依赖
     ▼
-SqliteDeviceProxy / SqliteMessageProxy / SqliteTransferHistoryProxy
+SqliteDeviceRepository / SqliteMessageRepository / SqliteTransferHistoryRepository
     │ 数据映射、预编译 SQL、事务
     ▼
-SqliteDatabaseProxy / MigrationRunner
+SqliteDatabaseBroker / MigrationRunner
     │ 连接生命周期、事务、版本迁移
+    ▼
+DatabaseWorker（专用线程串行执行存储任务）
     ▼
 SQLite 数据库文件
 ```
@@ -88,7 +90,7 @@ QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
 
 ### 3.2 连接生命周期
 
-- `SqliteDatabaseProxy` 负责打开数据库、设置连接参数和运行 migration。
+- `SqliteDatabaseBroker` 负责打开数据库、设置连接参数和运行 migration。
 - 每个线程使用独立的命名 `QSqlDatabase` 连接；连接不能跨线程传递。
 - UI 线程只持有列表模型和结果值，不直接执行耗时查询或批量删除。
 - 写入和分页查询在专用数据库 Worker 线程中执行；结果通过值类型信号回到应用线程。
@@ -109,7 +111,7 @@ WAL 降低读写互相阻塞的概率；`busy_timeout` 只处理短暂锁竞争�
 
 ### 3.4 应用数据目录与运行日志
 
-数据库和运行日志需要共享同一套应用数据路径规则，但不应互相依赖。新增位于 `client/core/` 的 `ApplicationPaths` 只负责基于 `QStandardPaths::AppDataLocation` 提供数据库目录、日志目录和测试覆盖路径；`Logger` 与 `SqliteDatabaseProxy` 都依赖它，`ApplicationPaths` 不依赖 Qt Sql。
+数据库和运行日志需要共享同一套应用数据路径规则，但不应互相依赖。新增位于 `client/core/` 的 `ApplicationPaths` 只负责基于 `QStandardPaths::AppDataLocation` 提供数据库目录、日志目录和测试覆盖路径；`Logger` 与 `SqliteDatabaseBroker` 都依赖它，`ApplicationPaths` 不依赖 Qt Sql。
 
 Stage 6 需要把当前 Logger 的构建目录相对路径迁移到应用数据目录下的 `logs/`。迁移时保留可选的显式目录参数，便于测试和开发环境覆盖。数据库文件与日志文件必须分目录保存，不能把日志写入数据库目录根部。
 
@@ -163,7 +165,7 @@ target_link_libraries(appGridYard PRIVATE gy_storage)
 
 ### 4.3 QSQLITE 驱动与打包
 
-编译链接 `Qt6::Sql` 不代表运行环境一定具备 SQLite 驱动。`SqliteDatabaseProxy::initialize()` 必须检查 `QSqlDatabase::drivers()` 包含 `QSQLITE`；缺失时记录 `[Storage]` 错误，向应用层报告历史不可用并进入无历史模式。
+编译链接 `Qt6::Sql` 不代表运行环境一定具备 SQLite 驱动。`SqliteDatabaseBroker::initialize()` 必须检查 `QSqlDatabase::drivers()` 包含 `QSQLITE`；缺失时记录 `[Storage]` 错误，向应用层报告历史不可用并进入无历史模式。
 
 Linux 开发环境需安装 Qt SQLite 驱动包。AppImage、deb 和 pacman 打包验收必须检查 Qt 插件目录中存在 `sqldrivers/libqsqlite.so`，并在干净环境运行时验证驱动可用。不能只以“编译成功”判断数据库功能可发布。
 
@@ -291,56 +293,88 @@ IMessageRepository
 ITransferHistoryRepository
 ```
 
-接口参数和返回值使用 `PeerRecord`、`MessageRecord`、`TransferRecord`、`MessagePage` 与 `TransferPage` 等领域值类型。基础设施层分别由 `SqliteDeviceProxy`、`SqliteMessageProxy`、`SqliteTransferHistoryProxy` 实现。测试可使用内存实现替代接口，不需要连接 SQLite。
+接口参数和返回值使用 `PeerRecord`、`MessageRecord`、`TransferRecord`、`MessageCursor` 与 `TransferQuery` 等领域值类型。基础设施层分别由 `SqliteDeviceRepository`、`SqliteMessageRepository`、`SqliteTransferHistoryRepository` 实现。应用层通过 `LocalDataBroker` 编排存储任务，不直接持有 Repository 或 `DatabaseWorker`。测试可使用内存实现替代接口，不需要连接 SQLite。
 
-### 5.2 SqliteDatabaseProxy
+### 5.2 LocalDataBroker
+
+`LocalDataBroker` 收拢 `SqliteDatabaseBroker`、三个 Repository 和 `DatabaseWorker` 的创建与生命周期管理。应用层（`AppController`、`HistoryController`）通过 `LocalDataBroker` 提供的语义化方法访问本地历史，避免数据管理层细节泄漏到应用层。
+
+```text
+bool initialize(const QString &databasePath, QString *errorMessage)
+bool isAvailable() const
+void persistDiscoveredPeer(const PeerInfo &peer)
+void persistChatMessage(const MessageRecord &record, const QVariantMap &endpoint)
+void persistTransferRecord(const TransferRecord &record, const QVariantMap &endpoint)
+void loadRecentChatHistories(QObject *receiver, const ChatHistoriesCallback &callback)
+void loadRecentTransferHistories(QObject *receiver, const TransferHistoriesCallback &callback)
+void loadRecentPeers(QObject *receiver, int limit, const PeersCallback &callback)
+void loadMessages(QObject *receiver, const MessageCursor &cursor, int limit, const MessagesCallback &callback)
+void queryTransfers(QObject *receiver, const TransferQuery &query, int limit, const TransfersCallback &callback)
+void deleteMessage(QObject *receiver, const QString &messageId, const OperationCallback &callback)
+void deleteConversation(QObject *receiver, const QString &deviceId, const OperationCallback &callback)
+void deleteTransfer(QObject *receiver, const QString &recordId, const OperationCallback &callback)
+void clearAllMessages(QObject *receiver, const OperationCallback &callback)
+void clearAllTransfers(QObject *receiver, const OperationCallback &callback)
+void deleteExpiredRecords(const QDateTime &before)
+void beginShutdown()
+void closeStorage()
+```
+
+`LocalDataBroker` 在专用存储线程中持有 `DatabaseWorker`，所有数据库操作通过 `submitSave`/`submitLoad`/`submitDelete` 串行执行。回调通过 `QObject` 生命周期保护确保接收方销毁后不会悬挂。
+
+### 5.3 SqliteDatabaseBroker
 
 职责：初始化路径、创建命名连接、执行参数设置、migration 与健康检查。它不包含聊天或传输业务 SQL，也不向 QML 或应用层暴露任意 SQL 执行能力。
 
 ```text
 bool initialize(const QString &databasePath, QString *errorMessage)
 QSqlDatabase connectionForWorkerThread(QString *errorMessage)
+void closeConnectionForCurrentThread()
 bool runInTransaction(const TransactionTask &task, QString *errorMessage)
 int schemaVersion() const
+bool isAvailable() const
 ```
 
 `runInTransaction()` 只在基础设施层内部为跨表操作使用。例如保存消息时先确保设备与会话存在，再插入消息并更新会话时间；应用层不手动提交事务。
 
-### 5.3 SqliteDeviceProxy
+### 5.4 SqliteDeviceRepository
 
 职责：写入发现到的设备快照、读取最近联系设备、在聊天或传输完成时更新时间字段。
 
 ```text
-upsertPeer(const PeerSnapshot &peer)
-markChatActivity(const QString &deviceId, const QDateTime &time)
-markTransferActivity(const QString &deviceId, const QDateTime &time)
-recentPeers(int limit)
+upsertPeer(const PeerRecord &record, QString *errorMessage)
+markChatActivity(const QString &deviceId, const QDateTime &time, QString *errorMessage)
+markTransferActivity(const QString &deviceId, const QDateTime &time, QString *errorMessage)
+recentPeers(int limit, QString *errorMessage)
 ```
 
 设备发现频繁更新时应做节流：名称、地址和端口未变化且距离上次持久化不足设定间隔时不写库。实际业务成功或收到消息时必须更新活动时间。
 
-### 5.4 SqliteMessageProxy
+### 5.5 SqliteMessageRepository
 
 职责：以 `message_id` 幂等写入消息、按设备分页加载、删除和保留清理。消息写入失败不能撤销已经完成的网络发送，只记录日志并向界面报告“本地保存失败”。
 
 ```text
-saveMessage(const PersistedMessage &message)
-loadMessages(const QString &deviceId, const MessageCursor &cursor, int limit)
-deleteConversation(const QString &deviceId)
-deleteExpiredMessages(const QDateTime &before)
+saveMessage(const MessageRecord &record, QString *errorMessage)
+loadMessages(const MessageCursor &cursor, int limit, QString *errorMessage)
+deleteMessage(const QString &messageId, QString *errorMessage)
+deleteConversation(const QString &deviceId, QString *errorMessage)
+deleteExpiredMessages(const QDateTime &before, QString *errorMessage)
+clearAllMessages(QString *errorMessage)
 ```
 
 启动恢复时先加载最近一页消息并填充 `ChatMessageModel`；向上滚动时按游标继续加载，避免一次性读取全部历史。
 
-### 5.5 SqliteTransferHistoryProxy
+### 5.6 SqliteTransferHistoryRepository
 
 职责：在传输进入最终状态时幂等写入或更新历史，并提供筛选、删除和保留清理。
 
 ```text
-upsertFinishedTransfer(const PersistedTransferRecord &record)
-queryTransfers(const TransferQuery &query, const PageCursor &cursor, int limit)
-deleteTransfer(const QString &recordId)
-deleteExpiredTransfers(const QDateTime &before)
+upsertFinishedTransfer(const TransferRecord &record, QString *errorMessage)
+queryTransfers(const TransferQuery &query, int limit, QString *errorMessage)
+deleteTransfer(const QString &recordId, QString *errorMessage)
+deleteExpiredTransfers(const QDateTime &before, QString *errorMessage)
+clearAllTransfers(QString *errorMessage)
 ```
 
 进行中的传输仍由 `TransferSessionManager` 管理。数据库只保存最终或需要跨重启展示的状态，避免把高频进度更新写入 SQLite。

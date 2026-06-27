@@ -1,7 +1,7 @@
 /**
  * @file    SettingsDialog.qml
- * @version 6.7.0
- * @date    2026-06-17
+ * @version 6.8.1
+ * @date    2026-06-28
  * @author  GridYard Team
  * @brief   设置对话框
  *
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v6.8.1] GY   2026-06-28
+ * * 补充 localPathFromUrl 函数行内注释
  * [v6.7.0] GY   2026-06-28
  * * 增加清除缓存入口，删除配置、历史数据库和日志后退出
  * [v6.6.2] GY   2026-06-25
@@ -84,6 +86,20 @@ Dialog {
         _tempAutoAcceptFiles = ConfigManager.autoAcceptFiles
         _tempTcpPort     = ConfigManager.tcpPort
         _tempRetentionDays = ConfigManager.retentionDays
+    }
+
+    // 将 FolderDialog 返回的 URL 转成本地路径，保留中文和空格等字符
+    // FolderDialog.selectedFolder 是 URL 格式（file:///...），中文和空格会被 percent-encode
+    function localPathFromUrl(fileUrl: url): string {
+        const text = fileUrl.toString()
+        if (text.startsWith("file:///")) {
+            const path = Qt.platform.os === "windows" ? text.substring(8) : text.substring(7)
+            return decodeURIComponent(path)
+        }
+        if (text.startsWith("file://")) {
+            return "//" + decodeURIComponent(text.substring(7))
+        }
+        return decodeURIComponent(text)
     }
 
     background: Rectangle {
@@ -503,11 +519,7 @@ Dialog {
         title: qsTr("选择接收路径")
         currentFolder: "file://" + settingsDialog._tempReceivePath
         onAccepted: {
-            let path = selectedFolder.toString()
-            if (path.startsWith("file://")) {
-                path = path.substring(7)  // 去掉 file:// 协议前缀
-            }
-            settingsDialog._tempReceivePath = path
+            settingsDialog._tempReceivePath = settingsDialog.localPathFromUrl(selectedFolder)
         }
     }
 

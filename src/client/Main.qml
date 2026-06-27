@@ -1,6 +1,6 @@
 /**
 * @file    Main.qml
-* @version 6.7.0
+* @version 6.8.1
 * @date    2026-06-28
 * @author  GridYard Team
 * @brief   GridYard 客户端根窗口
@@ -10,6 +10,8 @@
 * 左侧显示在线设备列表，右侧显示设备会话页。
 *
 * Change Log:
+* [v6.8.1] GY   2026-06-28
+* * 补充 localPathFromUrl 和文件选择弹窗的行内注释
 * [v6.7.0] GY   2026-06-28
 * * 关闭按钮触发时短暂置顶主窗口，确保立即回到桌面最上层
 * * 关闭确认弹窗打开后重试恢复并聚焦主窗口
@@ -211,6 +213,21 @@ ApplicationWindow {
         _targetIsOnline = false
     }
 
+    // 将 FileDialog/FolderDialog 返回的 URL 转成本地路径
+    // Qt.labs.platform 的 selectedFolder 带 file:// 前缀且对中文/空格做 percent-encode，
+    // 直接截断会残留编码字符，必须先 decode
+    function localPathFromUrl(fileUrl: url): string {
+        const text = fileUrl.toString()
+        if (text.startsWith("file:///")) {
+            const path = Qt.platform.os === "windows" ? text.substring(8) : text.substring(7)
+            return decodeURIComponent(path)
+        }
+        if (text.startsWith("file://")) {
+            return "//" + decodeURIComponent(text.substring(7))
+        }
+        return decodeURIComponent(text)
+    }
+
     Dialog {
         id: closeChoiceDialog
         title: qsTr("关闭 GridYard")
@@ -270,22 +287,22 @@ ApplicationWindow {
         fileMode: FileDialog.OpenFiles
         nameFilters: [qsTr("所有文件 (*)")]
         onAccepted: {
+            // selectedFiles 返回 URL 列表，逐个转成本地绝对路径后发起发送
             let urls = fileDialog.selectedFiles
             for (let i = 0; i < urls.length; i++) {
-                let path = urls[i].toString()
-                if (path.startsWith("file://")) path = path.substring(7)
+                let path = mainWindow.localPathFromUrl(urls[i])
                 AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
             }
         }
     }
 
-    // 文件夹选择弹窗：选中后去掉 file:// 前缀再创建发送会话
+    // 文件夹选择弹窗：选中后转换为本地路径再创建发送会话
     FolderDialog {
         id: folderDialog
         title: qsTr("选择要发送的文件夹")
         onAccepted: {
-            let path = selectedFolder.toString()
-            if (path.startsWith("file://")) path = path.substring(7)
+            // selectedFolder 也是 URL 格式，需要转成本地路径
+            let path = mainWindow.localPathFromUrl(selectedFolder)
             AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
         }
     }

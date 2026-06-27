@@ -26,19 +26,18 @@
 QML (表现层)
     ↓ 通过 AppController 单例访问
 AppController (应用逻辑层)
-    ↓ 持有
-    ├── ConfigManager (配置管理)
-    ├── DiscoveryService (设备发现)
-    ├── TransferSessionManager (传输管理)
+    ↓ 暴露 Controller/ViewModel 门面
+    ├── PeerDiscoveryViewModel ← 持有 DiscoveryService
+    ├── TransferController ← 持有 TransferSessionManager
     │       ↓ 使用
     │       ├── FileSenderWorker (发送)
     │       ├── FileReceiverWorker (接收)
     │       └── DirSerializer (目录遍历)
-    ├── ChatManager (在线聊天)
+    ├── ChatController ← 持有 ChatManager
     │       ↓ 使用
     │       ├── ChatConnection (单条 TCP 连接)
     │       └── ChatMessageModel (消息列表模型)
-    ├── HistoryController (本地历史)
+    ├── HistoryController ← 通过 LocalDataBroker 访问
     │       ↓ 使用
     │       ├── IMessageRepository (聊天记录端口)
     │       └── ITransferHistoryRepository (传输历史端口)
@@ -59,10 +58,10 @@ AppController (应用逻辑层)
 ### QML 调用入口
 
 ```qml
-AppController.discovery.refresh()
-AppController.transfer.createSendSession(deviceId, filePath)
-AppController.chat.sendText(deviceId, content)
-AppController.history.loadMoreMessages(deviceId)
+AppController.peerDiscoveryViewModel.refresh()
+AppController.transferController.createSendSession(deviceId, filePath)
+AppController.chatController.sendText(deviceId, content)
+AppController.historyController.loadMoreMessages(deviceId)
 ConfigManager.openFolder(ConfigManager.receivePath)
 ```
 
@@ -85,9 +84,9 @@ ConfigManager.openFolder(ConfigManager.receivePath)
 | 层级 | 模块 | 文档 |
 |------|------|------|
 | 表现层 | Main.qml、DeviceCard、PeerListView、DeviceSessionView、ChatView、AcceptDialog、SettingsDialog、TransferTaskCard | 05-UI组件模块 |
-| 应用逻辑层 | AppController、TransferSessionManager、ChatManager、HistoryController | 03-应用与配置模块、02-传输管理模块、07-在线聊天模块、08-本地数据层模块 |
+| 应用逻辑层 | AppController、PeerDiscoveryViewModel、TransferController、ChatController、TransferSessionManager、ChatManager、HistoryController | 03-应用与配置模块、02-传输管理模块、07-在线聊天模块、08-本地数据层模块 |
 | 领域层 | DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker、ChatConnection、FrameCodec、protocol.h、Repository 端口和值对象 | 01-设备发现模块、02-传输管理模块、04-协议与编解码模块、07-在线聊天模块、08-本地数据层模块 |
-| 数据管理层 | ConfigManager、Logger、SqliteDatabaseProxy、SqliteDeviceProxy、SqliteMessageProxy、SqliteTransferHistoryProxy | 03-应用与配置模块、08-本地数据层模块 |
+| 数据管理层 | ConfigManager、Logger、LocalDataBroker、SqliteDatabaseBroker、SqliteDeviceRepository、SqliteMessageRepository、SqliteTransferHistoryRepository | 03-应用与配置模块、08-本地数据层模块 |
 
 ---
 

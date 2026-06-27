@@ -120,6 +120,7 @@ target_compile_features(appGridYard PRIVATE cxx_std_23)
 target_link_libraries(appGridYard PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::QuickDialogs2  # 原生文件/文件夹选择对话框
     Qt6::Network
     gy_shared
     gy_storage
