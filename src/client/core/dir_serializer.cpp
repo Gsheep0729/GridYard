@@ -1,12 +1,19 @@
 /**
 * @file    dir_serializer.cpp
-* @version 4.10.0
-* @date    2026-06-13
-* @author  GridYard Team
-* @brief   DirSerializer 实现
+* @version 6.6.2
+* @date    2026-06-21
+* @author  GY
+* @brief   目录序列化工具实现
+*
+* 实现递归遍历目录、计算文件 SHA-256 哈希值、生成 FileItem 列表。
+* 用于传输前的文件清单生成，支持多层目录结构和空文件夹。
 *
 * Change Log:
-* [v4.1.0] FengChunlin   2026-06-04
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
+* [v4.16.1] GY   2026-06-21
+* * 优化封装性，补充注释
+* [v0.4.1] GY   2026-05-23
 * * Stage 4：初始实现
 */
 
@@ -19,6 +26,7 @@
 
 namespace gy {
 
+// 遍历路径（文件或目录），返回 FileItem 列表
 QList<FileItem> DirSerializer::serialize(const QString &path)
 {
     QList<FileItem> result;
@@ -41,6 +49,7 @@ QList<FileItem> DirSerializer::serialize(const QString &path)
     return result;
 }
 
+// 计算单个文件的 SHA-256 哈希值
 QString DirSerializer::computeSha256(const QString &filePath)
 {
     QFile file(filePath);
@@ -56,6 +65,7 @@ QString DirSerializer::computeSha256(const QString &filePath)
     return hash.result().toHex();
 }
 
+// 递归遍历目录，收集文件信息
 void DirSerializer::traverseDir(const QString &basePath,
                                 const QString &currentPath,
                                 QList<FileItem> &result)

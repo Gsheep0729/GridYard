@@ -1,13 +1,35 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 4.12.1
-* @date    2026-06-14
-* @author  GridYard Team
+* @version 6.3.0
+* @date    2026-06-25
+* @author  GY
 * @brief   文件传输完整流程测试
 *
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v6.3.0] GY   2026-06-25
+* * 新增结束态传输快照信号测试
+* [v5.0.0] GY   2026-06-24
+* * 新增首帧路由的聊天连接和未知 Type 测试
+* [v4.16.1] GY   2026-06-21
+* * 改用接收请求快照和完成结果验证文件接收流程
+* [v4.15.1] FengChunlin   2026-06-17
+* * 新增 testProtocolVersionMismatch：主版本不兼容时接收端拒绝并断开
+* * 新增 testMalformedTransferRequest：无效 JSON、缺字段、数量不一致均被拒绝
+* * 新增 testInvalidFilePath：../ 路径、绝对路径、负数大小均被拒绝
+* * 补充 #include "frame_codec.h"
+* [v4.15.0] GY   2026-06-17
+* * 适配 transferFinished 信号添加 ErrorCode 参数
+* * 适配接收侧后台化线程模型
+* * testConnectionLost 改用系统分配端口，减少端口复用导致的失败
+* * testConnectionLost 等待接收线程退出后再结束用例
+* [v4.14.0] GY   2026-06-15
+* * 验证移除接收记录时删除实际保存文件且不影响发送源文件
+* [v4.13.2] FengChunlin   2026-06-15
+* * 验证接收确认的文件夹名、总大小和根目录预览
+* [v4.13.1] FengChunlin   2026-06-15
+* * 验证文件夹接收请求显示名和相对路径列表
 * [v4.12.1] FengChunlin   2026-06-14
 * * 增加多文件夹、零字节文件和大型文件端到端传输回归测试
 * [v4.11.0] GY   2026-06-13
@@ -29,6 +51,8 @@
 
 #include "file_sender_worker.h"
 #include "file_receiver_worker.h"
+#include "chat_message.h"
+#include "frame_codec.h"
 #include "p2p_server.h"
 #include "config_manager.h"
 #include "discovery_service.h"
@@ -51,11 +75,21 @@ private slots:
     void testEmptyDirectoryTransferEndToEnd();
     void testLargeFileTransferEndToEnd();
     void testAutoAcceptAndSave();
+    void testPersistFinishedReceiveSession();
+    void testPersistCancelledReceiveSession();
+    void testReceiveFolderPreview();
     void testCancelTransfer();
+    void testConnectionLost();
+    void testTransferTimeout();
     void testLargeFileTransfer();
     void testSha256Verification();
     void testZeroByteFileTransfer();
     void testSpecialCharFileName();
+    void testProtocolVersionMismatch();
+    void testMalformedTransferRequest();
+    void testInvalidFilePath();
+    void testChatConnectionRouting();
+    void testUnsupportedFirstFrameRejected();
 
 private:
     void createTestFile(const QString &path, const QByteArray &content);
@@ -69,6 +103,7 @@ private:
     quint16 _testPort = 0;
 };
 
+// 测试套件初始化：创建临时目录、配置管理器和随机端口
 void TestFileTransfer::initTestCase()
 {
     _sendDir = new QTemporaryDir();
@@ -86,6 +121,7 @@ void TestFileTransfer::initTestCase()
     _testPort = 35100 + (QDateTime::currentMSecsSinceEpoch() % 1000);
 }
 
+// 测试套件清理：释放临时目录和配置资源
 void TestFileTransfer::cleanupTestCase()
 {
     delete _config;
@@ -96,6 +132,7 @@ void TestFileTransfer::cleanupTestCase()
     qunsetenv("GRIDYARD_NAME");
 }
 
+// 在指定路径创建包含给定内容的测试文件
 void TestFileTransfer::createTestFile(const QString &path, const QByteArray &content)
 {
     QFile file(path);
@@ -104,6 +141,7 @@ void TestFileTransfer::createTestFile(const QString &path, const QByteArray &con
     file.close();
 }
 
+// 在指定路径创建包含若干文件的测试目录
 void TestFileTransfer::createTestDirectory(const QString &basePath, int fileCount)
 {
     QDir dir(basePath);
@@ -115,6 +153,7 @@ void TestFileTransfer::createTestDirectory(const QString &basePath, int fileCoun
     }
 }
 
+// 等待信号 spy 收到信号或超时
 bool TestFileTransfer::waitForTransfer(QSignalSpy &spy, int timeout)
 {
     if (spy.isEmpty()) {
@@ -123,6 +162,7 @@ bool TestFileTransfer::waitForTransfer(QSignalSpy &spy, int timeout)
     return true;
 }
 
+// 将发送 Worker 移回主线程并安全退出发送线程
 void TestFileTransfer::stopSenderThread(FileSenderWorker &sender, QThread &thread)
 {
     QThread *mainThread = QCoreApplication::instance()->thread();
@@ -133,6 +173,7 @@ void TestFileTransfer::stopSenderThread(FileSenderWorker &sender, QThread &threa
     thread.wait();
 }
 
+// 验证单文件传输流程及发送方设备信息传递
 void TestFileTransfer::testSingleFileTransfer()
 {
     // 创建测试文件
@@ -149,12 +190,16 @@ void TestFileTransfer::testSingleFileTransfer()
     connect(&server, &P2pServer::transferRequestReceived,
             this, [&receivedSenderDeviceId, &receivedSenderName](
                                         FileReceiverWorker *worker,
-                                        const QString &senderDeviceId,
-                                        const QString &senderName,
-                                        const QString &, qint64, int, qint64) {
+                                        const QVariantMap &request) {
+        const QString senderDeviceId = request["senderDeviceId"].toString();
+        const QString senderName = request["senderName"].toString();
+        qDebug() << "[Test] 收到传输请求信号，senderDeviceId:" << senderDeviceId;
         receivedSenderDeviceId = senderDeviceId;
         receivedSenderName = senderName;
-        worker->rejectTransfer("测试完成");
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker]() {
+            worker->rejectTransfer("测试完成");
+        }, Qt::QueuedConnection);
     });
 
     // 创建发送 Worker
@@ -182,6 +227,7 @@ void TestFileTransfer::testSingleFileTransfer()
     stopSenderThread(sender, senderThread);
 }
 
+// 验证多文件序列化时文件数量和信息完整性
 void TestFileTransfer::testMultiFileTransfer()
 {
     // 创建多个测试文件
@@ -204,6 +250,7 @@ void TestFileTransfer::testMultiFileTransfer()
     }
 }
 
+// 验证目录序列化正确处理子文件数量和信息
 void TestFileTransfer::testDirectoryTransfer()
 {
     // 创建测试目录
@@ -222,6 +269,7 @@ void TestFileTransfer::testDirectoryTransfer()
     }
 }
 
+// 验证含嵌套目录的文件夹端到端传输完整性
 void TestFileTransfer::testDirectoryTransferEndToEnd()
 {
     const QString sourcePath = _sendDir->path() + "/folder_e2e";
@@ -237,17 +285,25 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
 
     bool receiverFinished = false;
     bool receiverSuccess = false;
+    QString receiverDisplayName;
+    QStringList receiverFilePaths;
     connect(&server, &P2pServer::transferRequestReceived, this,
-            [this, &receiverFinished, &receiverSuccess](
-                FileReceiverWorker *worker, const QString &, const QString &,
-                const QString &, qint64, int, qint64) {
-        worker->setReceivePath(_recvDir->path());
+            [this, &receiverFinished, &receiverSuccess,
+             &receiverDisplayName, &receiverFilePaths](
+                FileReceiverWorker *worker, const QVariantMap &request) {
+        receiverDisplayName = request["fileName"].toString();
+        receiverFilePaths = request["sourcePaths"].toStringList();
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
-        worker->acceptTransfer();
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
     });
 
     FileSenderWorker sender;
@@ -270,10 +326,14 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
     QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/second.txt"));
     QVERIFY(QFile::exists(_recvDir->path() + "/folder_e2e/nested/zz_empty.txt"));
     QVERIFY(QDir(_recvDir->path() + "/folder_e2e/nested/empty").exists());
+    QCOMPARE(receiverDisplayName, QString("folder_e2e"));
+    QVERIFY(receiverFilePaths.contains("nested/content.txt"));
+    QVERIFY(receiverFilePaths.contains("nested/empty/"));
 
     stopSenderThread(sender, senderThread);
 }
 
+// 验证空文件夹端到端传输后目录结构保留
 void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
 {
     const QString sourcePath = _sendDir->path() + "/empty_folder_e2e";
@@ -288,15 +348,18 @@ void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
     bool receiverSuccess = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
             [this, &receiverFinished, &receiverSuccess](
-                FileReceiverWorker *worker, const QString &, const QString &,
-                const QString &, qint64, int, qint64) {
-        worker->setReceivePath(_recvDir->path());
+                FileReceiverWorker *worker, const QVariantMap &) {
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
-        worker->acceptTransfer();
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
     });
 
     FileSenderWorker sender;
@@ -337,15 +400,18 @@ void TestFileTransfer::testLargeFileTransferEndToEnd()
     bool receiverSuccess = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
             [this, &receiverFinished, &receiverSuccess](
-                FileReceiverWorker *worker, const QString &, const QString &,
-                const QString &, qint64, int, qint64) {
-        worker->setReceivePath(_recvDir->path());
+                FileReceiverWorker *worker, const QVariantMap &) {
         connect(worker, &FileReceiverWorker::transferFinished, this,
-                [&receiverFinished, &receiverSuccess](bool success, const QString &) {
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
             receiverFinished = true;
             receiverSuccess = success;
         });
-        worker->acceptTransfer();
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
     });
 
     FileSenderWorker sender;
@@ -409,24 +475,346 @@ void TestFileTransfer::testAutoAcceptAndSave()
     QVERIFY(waitForTransfer(senderSpy));
     QVERIFY(senderSpy.first().at(0).toBool());
     QCOMPARE(requestSpy.count(), 0);
-    QVERIFY(QFile::exists(_recvDir->path() + "/auto_accept.txt"));
+    const QString receivedPath = _recvDir->path() + "/auto_accept.txt";
+    QVERIFY(QFile::exists(receivedPath));
+
+    const QVariantList sessions = manager.sessions();
+    QCOMPARE(sessions.size(), 1);
+    const QVariantMap receivedSession = sessions.first().toMap();
+    QCOMPARE(receivedSession["localPath"].toString(), receivedPath);
+    QVERIFY(receivedSession["canDeleteLocalFile"].toBool());
+
+    manager.removeSessionAndDeleteFile(receivedSession["sessionId"].toString());
+    QVERIFY(manager.sessions().isEmpty());
+    QVERIFY(!QFile::exists(receivedPath));
+    QVERIFY(QFile::exists(sendPath));
+
+    stopSenderThread(sender, senderThread);
+
+    const QString clearSendPath = _sendDir->path() + "/auto_clear.txt";
+    createTestFile(clearSendPath, "clear finished sessions");
+    completedSpy.clear();
+
+    FileSenderWorker clearSender;
+    QSignalSpy clearSenderSpy(&clearSender, &FileSenderWorker::transferFinished);
+    QThread clearSenderThread;
+    clearSender.moveToThread(&clearSenderThread);
+    clearSenderThread.start();
+    QMetaObject::invokeMethod(&clearSender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, clearSendPath),
+                              Q_ARG(QString, "auto-sender-id"),
+                              Q_ARG(QString, "AutoSender"));
+
+    QVERIFY(waitForTransfer(completedSpy));
+    QVERIFY(waitForTransfer(clearSenderSpy));
+    QVERIFY(clearSenderSpy.first().at(0).toBool());
+
+    const QString clearReceivedPath = _recvDir->path() + "/auto_clear.txt";
+    QVERIFY(QFile::exists(clearReceivedPath));
+    manager.clearFinishedSessions(true);
+    QVERIFY(manager.sessions().isEmpty());
+    QVERIFY(!QFile::exists(clearReceivedPath));
+    QVERIFY(QFile::exists(clearSendPath));
+
+    stopSenderThread(clearSender, clearSenderThread);
+    _config->setAutoAcceptFiles(false);
+}
+
+void TestFileTransfer::testPersistFinishedReceiveSession()
+{
+    const QString sendPath = _sendDir->path() + "/persist_receive.txt";
+    createTestFile(sendPath, "persist receive");
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setAutoAcceptFiles(true);
+    _config->setTcpPort(++_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    int persistedCount = 0;
+    TransferRecord persistedRecord;
+    connect(&manager, &TransferSessionManager::transferToPersist, this,
+            [&persistedCount, &persistedRecord](const TransferRecord &record) {
+                ++persistedCount;
+                persistedRecord = record;
+            });
+
+    QSignalSpy completedSpy(&manager, &TransferSessionManager::transferCompleted);
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "persist-sender-id"),
+                              Q_ARG(QString, "PersistSender"));
+
+    QVERIFY(waitForTransfer(completedSpy));
+    QVERIFY(waitForTransfer(senderSpy));
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 10000);
+    QCOMPARE(persistedRecord.peerDeviceId, QStringLiteral("persist-sender-id"));
+    QCOMPARE(persistedRecord.peerName, QStringLiteral("PersistSender"));
+    QCOMPARE(persistedRecord.direction, RecordDirection::Incoming);
+    QCOMPARE(persistedRecord.displayName, QStringLiteral("persist_receive.txt"));
+    QCOMPARE(persistedRecord.status, QStringLiteral("completed"));
+    QCOMPARE(persistedRecord.totalBytes, QFileInfo(sendPath).size());
+    QCOMPARE(persistedRecord.errorCode, 0);
+    QVERIFY(persistedRecord.errorMessage.isEmpty());
 
     stopSenderThread(sender, senderThread);
     _config->setAutoAcceptFiles(false);
 }
 
+void TestFileTransfer::testPersistCancelledReceiveSession()
+{
+    const QString sendPath = _sendDir->path() + "/persist_cancel.txt";
+    createTestFile(sendPath, "persist cancel");
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setAutoAcceptFiles(false);
+    _config->setTcpPort(++_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    int persistedCount = 0;
+    TransferRecord persistedRecord;
+    connect(&manager, &TransferSessionManager::transferToPersist, this,
+            [&persistedCount, &persistedRecord](const TransferRecord &record) {
+                ++persistedCount;
+                persistedRecord = record;
+            });
+
+    QSignalSpy requestSpy(&manager, &TransferSessionManager::receiveRequestReceived);
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "cancel-sender-id"),
+                              Q_ARG(QString, "CancelSender"));
+
+    QVERIFY(waitForTransfer(requestSpy));
+    manager.cancelSession(requestSpy.first().at(0).toString());
+    QVERIFY(waitForTransfer(senderSpy));
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 10000);
+    QCOMPARE(persistedRecord.peerDeviceId, QStringLiteral("cancel-sender-id"));
+    QCOMPARE(persistedRecord.direction, RecordDirection::Incoming);
+    QCOMPARE(persistedRecord.status, QStringLiteral("cancelled"));
+    QVERIFY(persistedRecord.errorCode != 0);
+    QVERIFY(!persistedRecord.errorMessage.isEmpty());
+
+    stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testReceiveFolderPreview()
+{
+    const QString sourcePath = _sendDir->path() + "/preview_folder";
+    QVERIFY(QDir().mkpath(sourcePath + "/nested"));
+    createTestFile(sourcePath + "/root.txt", "root");
+    createTestFile(sourcePath + "/nested/child.png", "child");
+
+    _config->setAutoAcceptFiles(false);
+    _config->setTcpPort(++_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    QSignalSpy requestSpy(&manager, &TransferSessionManager::receiveRequestReceived);
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sourcePath),
+                              Q_ARG(QString, "preview-sender-id"),
+                              Q_ARG(QString, "PreviewSender"));
+
+    QVERIFY(waitForTransfer(requestSpy));
+    const QList<QVariant> request = requestSpy.first();
+    QCOMPARE(request.size(), 9);
+    QCOMPARE(request.at(3).toString(), QString("preview_folder"));
+    QCOMPARE(request.at(5).toInt(), 2);
+    QCOMPARE(request.at(6).toLongLong(), qint64(9));
+    QVERIFY(request.at(7).toBool());
+
+    const QVariantList preview = request.at(8).toList();
+    QCOMPARE(preview.size(), 2);
+    QVERIFY(preview.contains(QString("root.txt")));
+    QVERIFY(preview.contains(QString("nested/")));
+
+    manager.rejectReceiveSession(request.at(0).toString());
+    QVERIFY(waitForTransfer(senderSpy));
+    stopSenderThread(sender, senderThread);
+}
+
 void TestFileTransfer::testCancelTransfer()
 {
-    // 创建大文件
-    QString sendPath = _sendDir->path() + "/large_file.bin";
-    QFile file(sendPath);
-    QVERIFY(file.open(QIODevice::WriteOnly));
-    file.write(QByteArray(10 * 1024 * 1024, 'A')); // 10MB
-    file.close();
+    // 创建大文件（500MB）确保传输不会立即完成
+    const QString sendPath = _sendDir->path() + "/cancel_test.bin";
+    QFile sourceFile(sendPath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write(QByteArray(500 * 1024 * 1024, 'A'));
+    sourceFile.close();
 
-    // 验证文件创建成功
-    QVERIFY(QFile::exists(sendPath));
-    QCOMPARE(QFileInfo(sendPath).size(), 10 * 1024 * 1024);
+    _config->setReceivePath(_recvDir->path());
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool receiverFinished = false;
+    bool receiverSuccess = true;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [this, &receiverFinished, &receiverSuccess](
+                FileReceiverWorker *worker, const QVariantMap &) {
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &receiverSuccess](bool success, gy::protocol::ErrorCode,
+                                                      const QString &, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+        });
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "cancel-sender-id"),
+                              Q_ARG(QString, "CancelSender"));
+
+    // 等待传输开始后取消
+    QTest::qWait(200);
+    QMetaObject::invokeMethod(&sender, "cancel", Qt::QueuedConnection);
+
+    // 验证发送端收到取消结果
+    QVERIFY(waitForTransfer(senderSpy, 10000));
+    QVERIFY(!senderSpy.first().at(0).toBool());
+
+    stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testConnectionLost()
+{
+    // 创建大文件（500MB）确保传输不会立即完成
+    const QString sendPath = _sendDir->path() + "/conn_lost.bin";
+    QFile sourceFile(sendPath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write(QByteArray(500 * 1024 * 1024, 'C'));
+    sourceFile.close();
+
+    _config->setReceivePath(_recvDir->path());
+
+    // 使用原始 QTcpServer 模拟连接断开
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::AnyIPv4, 0));
+    const quint16 serverPort = server.serverPort();
+    QVERIFY(serverPort != 0);
+
+    bool receiverFinished = false;
+    bool receiverSuccess = true;
+    bool receiverThreadFinished = false;
+    connect(&server, &QTcpServer::newConnection, this,
+            [this, &server, &receiverFinished, &receiverSuccess, &receiverThreadFinished]() {
+        QTcpSocket *socket = server.nextPendingConnection();
+        if (!socket) return;
+
+        // 创建后台线程处理接收
+        auto *thread = new QThread{this};
+        auto *worker = new FileReceiverWorker{socket};
+        worker->moveToThread(thread);
+
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &receiverSuccess, thread](bool success, gy::protocol::ErrorCode,
+                                                              const QString &, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+            thread->quit();
+        });
+        connect(thread, &QThread::started, worker, &FileReceiverWorker::initialize);
+        connect(worker, &FileReceiverWorker::transferRequestReceived, this,
+                [worker, this](const QVariantMap &) {
+            QMetaObject::invokeMethod(worker, [worker, this]() {
+                worker->setReceivePath(_recvDir->path());
+                worker->acceptTransfer();
+            }, Qt::QueuedConnection);
+        });
+        connect(thread, &QThread::finished, this, [&receiverThreadFinished]() {
+            receiverThreadFinished = true;
+        });
+        connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+        connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+
+        thread->start();
+
+        // 传输开始后断开连接
+        QTimer::singleShot(100, socket, &QTcpSocket::disconnectFromHost);
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, serverPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "connlost-sender-id"),
+                              Q_ARG(QString, "ConnLostSender"));
+
+    // 验证发送端收到连接断开错误
+    QVERIFY(waitForTransfer(senderSpy, 10000));
+    QVERIFY(!senderSpy.first().at(0).toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 5000);
+    QVERIFY(!receiverSuccess);
+    QTRY_VERIFY_WITH_TIMEOUT(receiverThreadFinished, 5000);
+
+    stopSenderThread(sender, senderThread);
+}
+
+void TestFileTransfer::testTransferTimeout()
+{
+    // 验证超时机制存在
+    // 真正的超时测试需要等待 30 秒，这里只验证机制正确性
+    FileSenderWorker sender;
+
+    // 验证 sender 有超时处理能力
+    QVERIFY(sender.metaObject()->indexOfSlot("onTimeout()") >= 0);
 }
 
 void TestFileTransfer::testLargeFileTransfer()
@@ -499,6 +887,366 @@ void TestFileTransfer::testSpecialCharFileName()
     // 测试序列化
     auto items = DirSerializer::serialize(_sendDir->path());
     QVERIFY(items.size() >= specialNames.size());
+}
+
+void TestFileTransfer::testProtocolVersionMismatch()
+{
+    // 构造一个主版本号不同的 TransferReq，发送到接收端，应被拒绝
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool rejected = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&rejected](FileReceiverWorker *, const QVariantMap &) {
+        // 不应该收到请求（应被版本检查拒绝）
+        rejected = true;
+    });
+
+    // 手动连接到接收端并发送错误版本的帧
+    QTcpSocket socket;
+    socket.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(socket.waitForConnected(5000));
+
+    // 构造主版本号为 99 的 TransferReq
+    QJsonObject json;
+    json["session_id"] = "test-mismatch";
+    json["sender_device_id"] = "bad-sender";
+    json["sender_name"] = "BadSender";
+    json["is_directory"] = false;
+    json["root_name"] = "test.txt";
+    json["total_files"] = 0;
+    json["total_bytes"] = 0;
+    json["protocol_version"] = static_cast<int>(99 << 8);  // 主版本 99
+    json["files"] = QJsonArray();
+
+    QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+    socket.write(frame);
+    socket.flush();
+
+    // 等待一小段时间，验证没有收到请求（被版本拒绝）
+    QTest::qWait(500);
+    QVERIFY(!rejected);
+
+    // 验证连接被关闭（接收端断开）
+    if (socket.state() != QAbstractSocket::UnconnectedState) {
+        socket.waitForDisconnected(2000);
+    }
+    QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+}
+
+void TestFileTransfer::testMalformedTransferRequest()
+{
+    // 发送畸形 JSON 到接收端，应被拒绝且不崩溃
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool rejected = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&rejected](FileReceiverWorker *, const QVariantMap &) {
+        rejected = true;
+    });
+
+    // 测试 1：发送无效 JSON
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QByteArray badJson = "{invalid json!!!";
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, badJson);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 2：发送缺少必需字段的 JSON
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject json;
+        json["session_id"] = "test-missing";
+        // 缺少 sender_device_id, sender_name, total_files, files 等
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 3：发送 total_files 与 files 数组不一致
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject json;
+        json["session_id"] = "test-mismatch-count";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 2;  // 声称 2 个文件
+        json["total_bytes"] = 0;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray();  // 实际 0 个
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 验证从未收到请求
+    QVERIFY(!rejected);
+}
+
+void TestFileTransfer::testInvalidFilePath()
+{
+    // 发送包含危险路径的 TransferReq，应被拒绝
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool rejected = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&rejected](FileReceiverWorker *, const QVariantMap &) {
+        rejected = true;
+    });
+
+    // 测试 1：../ 路径
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject fileObj;
+        fileObj["file_index"] = 0;
+        fileObj["relative_path"] = "../etc/passwd";
+        fileObj["size_bytes"] = 100;
+        fileObj["sha256"] = "abc";
+
+        QJsonObject json;
+        json["session_id"] = "test-bad-path";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 1;
+        json["total_bytes"] = 100;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray{fileObj};
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 2：绝对路径
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject fileObj;
+        fileObj["file_index"] = 0;
+        fileObj["relative_path"] = "/etc/passwd";
+        fileObj["size_bytes"] = 100;
+        fileObj["sha256"] = "abc";
+
+        QJsonObject json;
+        json["session_id"] = "test-abs-path";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 1;
+        json["total_bytes"] = 100;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray{fileObj};
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 测试 3：负数大小
+    {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        QVERIFY(socket.waitForConnected(5000));
+
+        QJsonObject fileObj;
+        fileObj["file_index"] = 0;
+        fileObj["relative_path"] = "test.txt";
+        fileObj["size_bytes"] = -1;
+        fileObj["sha256"] = "abc";
+
+        QJsonObject json;
+        json["session_id"] = "test-neg-size";
+        json["sender_device_id"] = "test-sender";
+        json["sender_name"] = "TestSender";
+        json["is_directory"] = false;
+        json["root_name"] = "test.txt";
+        json["total_files"] = 1;
+        json["total_bytes"] = -1;
+        json["protocol_version"] = gy::protocol::kProtocolVersion;
+        json["files"] = QJsonArray{fileObj};
+        json["empty_directories"] = QJsonArray();
+
+        QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        socket.write(frame);
+        socket.flush();
+
+        QTest::qWait(200);
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.waitForDisconnected(2000);
+        }
+        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    }
+
+    // 验证从未收到请求
+    QVERIFY(!rejected);
+}
+
+void TestFileTransfer::testChatConnectionRouting()
+{
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    QTcpSocket *routedSocket = nullptr;
+    QByteArray routedData;
+    bool transferRequestReceived = false;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&transferRequestReceived](FileReceiverWorker *, const QVariantMap &) {
+        transferRequestReceived = true;
+    });
+    connect(&server, &P2pServer::chatConnectionReceived, this,
+            [this, &routedSocket, &routedData](QTcpSocket *socket) {
+        routedSocket = socket;
+        socket->setParent(this);
+        routedData = socket->readAll();
+    });
+
+    gy::ChatMessage message;
+    message.messageId = "c8f3b2a1-4d5e-6f7a-8b9c-0d1e2f3a4b5c";
+    message.fromDeviceId = "chat-sender-id";
+    message.fromName = "ChatSender";
+    message.content = "首帧路由测试";
+    message.sentAt = QDateTime::currentDateTimeUtc();
+
+    QByteArray payload;
+    QVERIFY(gy::ChatMessageCodec::encode(message, &payload));
+    const QByteArray frame = FrameCodec::encode(gy::protocol::kTypeChatText, payload);
+    QVERIFY(!frame.isEmpty());
+
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(client.waitForConnected(5000));
+
+    QVERIFY(client.write(frame.left(gy::protocol::kHeaderBytes)) > 0);
+    QVERIFY(client.waitForBytesWritten(1000));
+    QTest::qWait(100);
+    QVERIFY(routedSocket == nullptr);
+
+    QVERIFY(client.write(frame.mid(gy::protocol::kHeaderBytes)) > 0);
+    QVERIFY(client.waitForBytesWritten(1000));
+    QTRY_VERIFY_WITH_TIMEOUT(routedSocket != nullptr, 3000);
+    QCOMPARE(routedData, frame);
+    QVERIFY(!transferRequestReceived);
+
+    FrameCodec codec;
+    QSignalSpy frameSpy(&codec, &FrameCodec::frameReady);
+    codec.feed(routedData);
+    QCOMPARE(frameSpy.count(), 1);
+    QCOMPARE(frameSpy.first().at(0).toUInt(), gy::protocol::kTypeChatText);
+    QCOMPARE(frameSpy.first().at(1).toByteArray(), payload);
+
+    client.disconnectFromHost();
+    client.waitForDisconnected(1000);
+}
+
+void TestFileTransfer::testUnsupportedFirstFrameRejected()
+{
+    _config->setTcpPort(++_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool chatConnectionReceived = false;
+    bool transferRequestReceived = false;
+    connect(&server, &P2pServer::chatConnectionReceived, this,
+            [&chatConnectionReceived](QTcpSocket *socket) {
+        chatConnectionReceived = true;
+        socket->setParent(nullptr);
+        socket->deleteLater();
+    });
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&transferRequestReceived](FileReceiverWorker *, const QVariantMap &) {
+        transferRequestReceived = true;
+    });
+
+    QTcpSocket client;
+    QSignalSpy disconnectedSpy(&client, &QTcpSocket::disconnected);
+    client.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(client.waitForConnected(5000));
+
+    const QByteArray frame = FrameCodec::encode(0x0503, "{}");
+    QVERIFY(client.write(frame) > 0);
+    QVERIFY(client.waitForBytesWritten(1000));
+    QVERIFY(disconnectedSpy.wait(3000));
+    QVERIFY(!chatConnectionReceived);
+    QVERIFY(!transferRequestReceived);
+
+    QTcpSocket invalidChatClient;
+    QSignalSpy invalidChatDisconnectedSpy(&invalidChatClient, &QTcpSocket::disconnected);
+    invalidChatClient.connectToHost(QHostAddress::LocalHost, _testPort);
+    QVERIFY(invalidChatClient.waitForConnected(5000));
+
+    const QByteArray invalidChatFrame = FrameCodec::encode(gy::protocol::kTypeChatText, "{}");
+    QVERIFY(invalidChatClient.write(invalidChatFrame) > 0);
+    QVERIFY(invalidChatClient.waitForBytesWritten(1000));
+    QVERIFY(invalidChatDisconnectedSpy.wait(3000));
+    QVERIFY(!chatConnectionReceived);
+    QVERIFY(!transferRequestReceived);
 }
 
 QTEST_MAIN(TestFileTransfer)

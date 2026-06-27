@@ -1,19 +1,28 @@
 /**
 * @file    discovery_service.h
-* @version 4.10.0
-* @date    2026-06-13
-* @author  GridYard Team
+* @version 6.6.2
+* @date    2026-06-25
+* @author  GY
 * @brief   局域网设备发现服务
 *
-* 通过 UDP 广播实现局域网内设备自动发现。
-* 每 5 秒发送 Hello 包，维护在线节点表，15 秒无心跳自动剔除。
+* 通过 UDP 广播实现局域网内设备自动发现。每 5 秒发送 Hello 包，
+* 维护在线节点表（QHash<QString, PeerInfo>），15 秒无心跳自动剔除。
+* 提供面向发送场景的对端快照查询供其他模块调用。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
+* [v6.1.0] GY   2026-06-25
+* * 新增 peerUpdated 信号供应用层异步持久化设备目录
+* [v5.1.0] FengChunlin   2026-06-24
+* * 接入 ChatManager 处理入站聊天连接
+* [v4.16.1] GY   2026-06-21
+* * 提供 transferEndpoint() 对端快照查询，避免拆分读取节点字段
 * [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
-* [v0.3.0] FengChunlin   2026-06-03
+* [v0.3.0] FengChunlin   2026-05-19
 * * 添加 refresh() 方法
-* [v0.2.0] FengChunlin   2026-06-02
+* [v0.2.0] FengChunlin   2026-04-27
 * * Stage 2：初始版本
 */
 
@@ -30,6 +39,7 @@
 #include "data_types.h"
 
 class ConfigManager;
+class TestChatManager;
 
 class DiscoveryService : public QObject {
     Q_OBJECT
@@ -46,8 +56,8 @@ public:
     // 获取当前在线节点列表（供 QML 绑定）
     QVariantList peers() const;
 
-    // 根据 deviceId 获取设备信息
-    PeerInfo peerInfo(const QString &deviceId) const;
+    // 查询可用于发送传输的对端快照；目标不存在或离线时返回空 map
+    QVariantMap transferEndpoint(const QString &deviceId) const;
 
     // 立即发送一次广播并清理离线节点
     Q_INVOKABLE void refresh();
@@ -57,6 +67,8 @@ signals:
     void peersChanged();
     // 新节点发现
     void nodeDiscovered(const QString &deviceId);
+    // 设备首次发现或元数据变化后的完整快照
+    void peerUpdated(const PeerInfo &peer);
     // 节点离线
     void nodeExpired(const QString &deviceId);
 
@@ -69,6 +81,8 @@ private slots:
     void pruneOfflineNodes();
 
 private:
+    friend class TestChatManager;
+
     // 构建 Hello 包 JSON 内容
     QByteArray buildHelloPayload() const;
     // 处理收到的 Hello 包
@@ -78,10 +92,10 @@ private:
     // 通知 QML 列表变化
     void notifyPeersChanged();
 
-    ConfigManager *_config = nullptr;
-    QUdpSocket    *_socket = nullptr;
-    QTimer        *_broadcastTimer = nullptr;
-    QTimer        *_pruneTimer = nullptr;
+    ConfigManager *_config = nullptr;          // 本机身份和网络配置来源
+    QUdpSocket    *_socket = nullptr;          // UDP 广播收发 socket
+    QTimer        *_broadcastTimer = nullptr;  // 周期发送 Hello 广播
+    QTimer        *_pruneTimer = nullptr;      // 周期清理过期节点
 
     // 节点表：deviceId -> PeerInfo
     QHash<QString, PeerInfo> _peers;

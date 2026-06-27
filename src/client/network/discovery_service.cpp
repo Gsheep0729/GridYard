@@ -1,16 +1,28 @@
 /**
 * @file    discovery_service.cpp
-* @version 4.10.0
-* @date    2026-06-13
-* @author  GridYard Team
-* @brief   DiscoveryService 实现
+* @version 6.6.2
+* @date    2026-06-25
+* @author  GY
+* @brief   局域网设备发现服务实现
+*
+* 实现 UDP 广播发送、接收、节点管理等功能。每 5 秒发送 Hello 包，
+* 接收到其他设备的广播后更新在线节点表。支持协议版本兼容性检查
+* 和多网卡广播。
 *
 * Change Log:
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
+* [v6.1.0] GY   2026-06-25
+* * 设备首次发现或元数据变化时发射 peerUpdated 信号
+* [v4.16.1] GY   2026-06-21
+* * 提供 transferEndpoint() 对端快照查询，避免拆分读取节点字段
+* [v4.15.0] FengChunlin   2026-06-16
+* * 协议版本不兼容处理：主版本不一致标记不兼容，次版本差异安全降级
 * [v4.7.1] FengChunlin   2026-06-05
 * * 修复文件传输使用真实 IP 地址
-* [v0.3.0] FengChunlin   2026-06-03
+* [v0.3.0] FengChunlin   2026-05-19
 * * 添加 refresh() 方法实现
-* [v0.2.0] FengChunlin   2026-06-02
+* [v0.2.0] FengChunlin   2026-04-27
 * * Stage 2：初始版本
 */
 
@@ -24,13 +36,14 @@
 #include <QNetworkInterface>
 #include <QNetworkProxy>
 
-// 心跳间隔（秒）
+// 心跳间隔：5 秒，兼顾发现速度和局域网广播噪声
 static constexpr int kBroadcastIntervalSec = 5;
-// 节点超时时间（秒）
+// 节点超时时间：15 秒，允许丢失两次心跳后再判离线
 static constexpr int kNodeTimeoutSec = 15;
-// 清理检查间隔（秒）
+// 清理检查间隔：3 秒，让离线状态不会长时间滞后
 static constexpr int kPruneIntervalSec = 3;
 
+// 构造函数，初始化 UDP socket、广播定时器和清理定时器
 DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     : QObject{parent}
     , _config{config}
@@ -75,22 +88,21 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     connect(_config, &ConfigManager::deviceNameChanged,
             this,    &DiscoveryService::sendHelloPacket);
 
-    // 初始化广播定时器
     _broadcastTimer = new QTimer(this);
     connect(_broadcastTimer, &QTimer::timeout,
             this,            &DiscoveryService::sendHelloPacket);
     _broadcastTimer->start(kBroadcastIntervalSec * 1000);
 
-    // 初始化清理定时器
     _pruneTimer = new QTimer(this);
     connect(_pruneTimer, &QTimer::timeout,
             this,        &DiscoveryService::pruneOfflineNodes);
     _pruneTimer->start(kPruneIntervalSec * 1000);
 
-    // 延迟发送第一次 Hello，确保 socket 已绑定
+    // 延迟 200ms 发送第一次 Hello，确保 socket 绑定和事件循环都已就绪。
     QTimer::singleShot(200, this, &DiscoveryService::sendHelloPacket);
 }
 
+// 获取所有在线设备列表，转换为 QVariantList 供 QML 使用
 QVariantList DiscoveryService::peers() const
 {
     QVariantList list;
@@ -103,11 +115,20 @@ QVariantList DiscoveryService::peers() const
     return list;
 }
 
-PeerInfo DiscoveryService::peerInfo(const QString &deviceId) const
+// 查询可用于发送传输的对端快照
+QVariantMap DiscoveryService::transferEndpoint(const QString &deviceId) const
 {
-    return _peers.value(deviceId, PeerInfo{});
+    auto it = _peers.find(deviceId);
+    if (it == _peers.end() || !it.value().isOnline) {
+        return {};
+    }
+
+    const PeerInfo &peer = it.value();
+    return {{"deviceName", peer.deviceName}, {"ipAddress", peer.ipAddress},
+            {"tcpPort", peer.tcpPort}};
 }
 
+// 向所有激活网卡的广播地址发送 Hello 包
 void DiscoveryService::sendHelloPacket()
 {
     // 检查 socket 是否已绑定
@@ -146,7 +167,7 @@ void DiscoveryService::sendHelloPacket()
                 sentCount++;
             }
 
-            // 如果本地端口不是默认端口，也发送到本地端口（确保绑定到备用端口的实例也能收到）
+            // 备用端口用于单机多实例测试，默认端口失败时仍能互相发现。
             if (_socket->localPort() != gy::protocol::kDefaultDiscoveryPort) {
                 _socket->writeDatagram(data, entry.broadcast(), _socket->localPort());
             }
@@ -155,6 +176,7 @@ void DiscoveryService::sendHelloPacket()
     qDebug() << "DiscoveryService: 广播发送完成，共发送到" << sentCount << "个网卡";
 }
 
+// 处理接收到的 UDP 数据报，解析 JSON 后交给 handleHelloPacket
 void DiscoveryService::onDatagramReceived()
 {
     while (_socket->hasPendingDatagrams()) {
@@ -178,6 +200,7 @@ void DiscoveryService::onDatagramReceived()
     }
 }
 
+// 清理超时未响应的离线节点
 void DiscoveryService::pruneOfflineNodes()
 {
     const QDateTime threshold = QDateTime::currentDateTimeUtc().addSecs(-kNodeTimeoutSec);
@@ -202,23 +225,26 @@ void DiscoveryService::pruneOfflineNodes()
     }
 }
 
+// 构建 Hello 广播的 JSON 负载（设备信息 + 协议版本）
 QByteArray DiscoveryService::buildHelloPayload() const
 {
     QJsonObject json;
-    json["device_id"]   = _config->deviceId();
-    json["device_name"] = _config->deviceName();
+    // 委托 ConfigManager 填充设备信息（Tell, Don't Ask）
+    _config->fillHelloPayload(json);
     json["app_version"] = QCoreApplication::applicationVersion();
-    json["tcp_port"]    = _config->tcpPort();
+    json["version"]     = gy::protocol::kProtocolVersion;
 
     return QJsonDocument(json).toJson(QJsonDocument::Compact);
 }
 
+// 解析收到的 Hello 包，进行版本兼容性检查后更新在线设备表
 void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAddress &sender)
 {
     // 提取字段
     const QString deviceId   = json["device_id"].toString();
     const QString deviceName = json["device_name"].toString();
     const quint16 tcpPort    = static_cast<quint16>(json["tcp_port"].toInt());
+    const quint16 version    = static_cast<quint16>(json["version"].toInt());
 
     // 过滤无效数据
     if (deviceId.isEmpty()) {
@@ -226,16 +252,40 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
         return;
     }
 
-    // 本机过滤：忽略自己发出的广播
-    if (deviceId == _config->deviceId()) {
+    // 本机过滤：忽略自己发出的广播（委托 ConfigManager 判断）
+    if (_config->isMyDevice(deviceId)) {
         qDebug() << "DiscoveryService: 忽略自己的广播，deviceId:" << deviceId;
         return;
+    }
+
+    // 协议版本兼容性检查：主版本不一致标记不兼容，次版本差异安全降级
+    if (version > 0) {
+        quint8 localMajor = gy::protocol::majorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMajor = gy::protocol::majorVersion(version);
+        quint8 localMinor = gy::protocol::minorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMinor = gy::protocol::minorVersion(version);
+
+        if (senderMajor != localMajor) {
+            // 主版本不一致，不加入在线列表
+            qWarning() << "DiscoveryService: 设备" << deviceId
+                       << "主版本不兼容，本地:" << localMajor << "对端:" << senderMajor
+                       << "，忽略该设备";
+            return;
+        }
+
+        if (senderMinor != localMinor) {
+            // 次版本差异，安全降级（记录警告但继续）
+            qWarning() << "DiscoveryService: 设备" << deviceId
+                       << "次版本不同，本地:" << localMinor << "对端:" << senderMinor
+                       << "，安全降级处理";
+        }
     }
 
     qDebug() << "DiscoveryService: 收到设备广播，deviceId:" << deviceId
              << "name:" << deviceName
              << "ip:" << sender.toString()
-             << "tcpPort:" << tcpPort;
+             << "tcpPort:" << tcpPort
+             << "version:" << version;
 
     // 构建 PeerInfo
     PeerInfo info;
@@ -244,11 +294,13 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
     info.ipAddress  = sender.toString();
     info.tcpPort    = tcpPort;
     info.isOnline   = true;
+    info.protocolVersion = version;
     info.lastSeen   = QDateTime::currentDateTimeUtc();
 
     updatePeer(deviceId, info);
 }
 
+// 更新或新增在线设备信息，新设备时发射 nodeDiscovered 信号
 void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 {
     const bool isNew = !_peers.contains(deviceId);
@@ -266,6 +318,9 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 
     _peers.insert(deviceId, info);
 
+    // 应用层据此异步更新本地设备目录，发现服务不直接依赖 storage
+    emit peerUpdated(info);
+
     if (isNew) {
         qDebug() << "DiscoveryService: 发现新设备" << deviceId << info.deviceName;
         emit nodeDiscovered(deviceId);
@@ -274,11 +329,13 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
     notifyPeersChanged();
 }
 
+// 通知 QML 层设备列表已变化
 void DiscoveryService::notifyPeersChanged()
 {
     emit peersChanged();
 }
 
+// 手动刷新：清空设备列表并重新广播发现
 void DiscoveryService::refresh()
 {
     qDebug() << "DiscoveryService: 手动刷新，清空设备列表并重新发现";

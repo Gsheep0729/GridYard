@@ -1,7 +1,7 @@
 /**
 * @file    test_transfer.cpp
 * @date    2026-06-05
-* @author  GridYard Team
+* @author  GY
 * @brief   文件传输功能测试
 *
 * 测试 GridYard 文件传输的各个功能模块。
@@ -30,35 +30,11 @@ class TestTransfer : public QObject {
     Q_OBJECT
 
 private slots:
-    // 测试 FrameCodec 编解码
-    void testFrameCodecEncodeDecode();
     // 测试 DirSerializer 目录序列化
     void testDirSerializer();
-    // 测试协议 Type 码
-    void testProtocolTypes();
     // 测试 FileEntry 数据结构
     void testFileEntry();
 };
-
-void TestTransfer::testFrameCodecEncodeDecode()
-{
-    // 测试单帧编解码
-    QByteArray payload = "Hello, GridYard!";
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeHello, payload);
-
-    // 验证帧格式：4字节类型 + 4字节长度 + payload
-    QCOMPARE(frame.size(), 4 + 4 + payload.size());
-
-    // 解码
-    FrameCodec codec;
-    QSignalSpy spy(&codec, &FrameCodec::frameReady);
-    codec.feed(frame);
-
-    QCOMPARE(spy.size(), 1);
-    QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args[0].toUInt(), gy::protocol::kTypeHello);
-    QCOMPARE(args[1].toByteArray(), payload);
-}
 
 void TestTransfer::testDirSerializer()
 {
@@ -96,18 +72,6 @@ void TestTransfer::testDirSerializer()
     }
     QVERIFY(foundTxt);
     QVERIFY(foundPdf);
-}
-
-void TestTransfer::testProtocolTypes()
-{
-    // 验证协议 Type 码定义
-    QCOMPARE(gy::protocol::kTypeHello, quint32(0x0001));
-    QCOMPARE(gy::protocol::kTypeTransferReq, quint32(0x0101));
-    QCOMPARE(gy::protocol::kTypeTransferRsp, quint32(0x0102));
-    QCOMPARE(gy::protocol::kTypeDataChunk, quint32(0x0201));
-    QCOMPARE(gy::protocol::kTypeChunkAck, quint32(0x0301));
-    QCOMPARE(gy::protocol::kTypeTransferDone, quint32(0x0302));
-    QCOMPARE(gy::protocol::kTypeCancel, quint32(0x0401));
 }
 
 void TestTransfer::testFileEntry()

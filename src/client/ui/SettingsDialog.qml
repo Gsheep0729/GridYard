@@ -1,14 +1,22 @@
 /**
  * @file    SettingsDialog.qml
- * @version 4.12.0
- * @date    2026-06-14
- * @author  GridYard Team
+ * @version 6.6.2
+ * @date    2026-06-17
+ * @author  GY
  * @brief   设置对话框
  *
  * 编辑设备名、选择接收路径、修改 TCP 端口。
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v6.6.2] GY   2026-06-25
+ * * 同步文件头版本与当前主版本
+ * [v6.5.0] GY   2026-06-25
+ * * 显示本地历史不可用状态
+ * [v4.16.0] DuRuoxian   2026-06-18
+ * * 使用 Style.js 统一样式常量
+ * [v4.15.2] DuRuoxian   2026-06-17
+ * * 优化设置弹窗页眉、分组卡片和底部保存状态
  * [v4.12.0] DuRuoxian   2026-06-14
  * * 增加设置状态和对话框进入过渡
  * [v4.11.0] GY   2026-06-13
@@ -24,6 +32,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
+import "../utils/Style.js" as Style
 
 Dialog {
     id: settingsDialog
@@ -40,6 +49,7 @@ Dialog {
     property string _tempReceivePath: ConfigManager.receivePath
     property bool   _tempAutoAcceptFiles: ConfigManager.autoAcceptFiles
     property int    _tempTcpPort:     ConfigManager.tcpPort
+    property int    _tempRetentionDays: ConfigManager.retentionDays
 
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
                                     && _tempReceivePath.length > 0
@@ -49,7 +59,8 @@ Dialog {
                                     || _tempReceivePath !== ConfigManager.receivePath
                                     || _tempAutoAcceptFiles !== ConfigManager.autoAcceptFiles
                                     || _tempTcpPort !== ConfigManager.tcpPort
-    readonly property int kColorDuration: 160
+                                    || _tempRetentionDays !== ConfigManager.retentionDays
+    readonly property int kColorDuration: Style.Motion.base
     readonly property int kEnterDuration: 200
 
     enter: Transition {
@@ -68,59 +79,68 @@ Dialog {
         _tempReceivePath = ConfigManager.receivePath
         _tempAutoAcceptFiles = ConfigManager.autoAcceptFiles
         _tempTcpPort     = ConfigManager.tcpPort
+        _tempRetentionDays = ConfigManager.retentionDays
     }
 
     background: Rectangle {
-        color: "#F5F7FA"
-        radius: 10
-        border.color: "#D8DEE6"
+        color: Style.Color.pageBg
+        radius: Style.Radius.md
+        border.color: Style.Color.border
     }
 
     header: Rectangle {
-        implicitHeight: 96
-        color: "#FFFFFF"
-        radius: 10
+        implicitHeight: 100
+        color: Style.Color.surface
+        radius: Style.Radius.md
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 20
-            spacing: 14
+            anchors.margins: 24
+            spacing: Style.Space.lg
 
             Rectangle {
-                Layout.preferredWidth: 52
-                Layout.preferredHeight: 52
-                radius: 26
-                color: "#4A90D9"
+                Layout.preferredWidth: 56
+                Layout.preferredHeight: 56
+                radius: 28
+                color: Style.Color.primary
 
                 Label {
                     anchors.centerIn: parent
                     text: settingsDialog._tempDeviceName.trim().length > 0
-                          ? settingsDialog._tempDeviceName.trim().charAt(0)
+                          ? settingsDialog._tempDeviceName.trim().charAt(0).toUpperCase()
                           : "?"
-                    color: "#FFFFFF"
-                    font.pixelSize: 22
+                    color: Style.Color.surface
+                    font.pixelSize: 24
                     font.bold: true
                 }
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 3
+                spacing: Style.Space.xs
 
                 Label {
-                    text: qsTr("本机设置")
+                    text: qsTr("偏好设置")
                     font.pixelSize: 20
                     font.bold: true
+                    color: Style.Color.textMain
                 }
 
                 Label {
                     text: qsTr("%1 · %2").arg(ConfigManager.localIp).arg(ConfigManager.deviceId)
-                    color: "#6B7280"
+                    color: Style.Color.textMuted
                     font.pixelSize: 12
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
                 }
             }
+        }
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: Style.Color.border
         }
     }
 
@@ -131,37 +151,37 @@ Dialog {
 
         ColumnLayout {
             width: scrollView.availableWidth
-            spacing: 12
+            spacing: Style.Space.lg
+            Layout.margins: Style.Space.lg
 
-            Item {
-                Layout.preferredHeight: 4
-            }
+            Item { Layout.preferredHeight: Style.Space.sm }
 
+            // 设备信息卡片
             Rectangle {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
                 implicitHeight: deviceSection.implicitHeight + 32
-                color: "#FFFFFF"
-                radius: 8
-                border.color: "#E4E8EE"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
+                border.width: 1
 
                 ColumnLayout {
                     id: deviceSection
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 8
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.md
 
                     Label {
-                        text: qsTr("设备信息")
+                        text: qsTr("设备身份")
                         font.pixelSize: 15
                         font.bold: true
+                        color: Style.Color.textMain
                     }
 
                     Label {
-                        text: qsTr("其他设备会通过这个名称识别你，修改后会实时同步。")
-                        color: "#6B7280"
-                        font.pixelSize: 12
+                        text: qsTr("设置一个易于识别的名称，以便在局域网中发现。")
+                        color: Style.Color.textMuted
+                        font.pixelSize: 13
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
                     }
@@ -178,42 +198,44 @@ Dialog {
                     Label {
                         visible: settingsDialog._tempDeviceName.trim().length === 0
                         text: qsTr("设备名称不能为空")
-                        color: "#C62828"
+                        color: Style.Color.error
                         font.pixelSize: 11
+                        font.bold: true
                     }
                 }
             }
 
+            // 文件接收卡片
             Rectangle {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
                 implicitHeight: receiveSection.implicitHeight + 32
-                color: "#FFFFFF"
-                radius: 8
-                border.color: "#E4E8EE"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
+                border.width: 1
 
                 ColumnLayout {
                     id: receiveSection
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 10
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.md
 
                     Label {
-                        text: qsTr("文件接收")
+                        text: qsTr("存储与接收")
                         font.pixelSize: 15
                         font.bold: true
+                        color: Style.Color.textMain
                     }
 
                     Label {
-                        text: qsTr("接收完成的文件会保存到以下目录。")
-                        color: "#6B7280"
-                        font.pixelSize: 12
+                        text: qsTr("配置文件保存路径及自动化接收行为。")
+                        color: Style.Color.textMuted
+                        font.pixelSize: 13
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: Style.Space.sm
 
                         TextField {
                             id: receivePathField
@@ -221,31 +243,40 @@ Dialog {
                             text: settingsDialog._tempReceivePath
                             readOnly: true
                             selectByMouse: true
+                            font.pixelSize: 13
                         }
 
                         Button {
-                            text: qsTr("选择目录")
+                            text: qsTr("更改目录")
                             onClicked: folderDialog.open()
                         }
                     }
 
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Style.Color.borderSoft
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 16
+                        spacing: Style.Space.lg
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 3
+                            spacing: Style.Space.xs
 
                             Label {
-                                text: qsTr("自动接收并保存")
+                                text: qsTr("自动接受文件")
                                 font.bold: true
+                                font.pixelSize: 14
+                                color: Style.Color.textSecondary
                             }
 
                             Label {
                                 Layout.fillWidth: true
-                                text: qsTr("开启后跳过接收确认，文件将直接保存到上述目录。")
-                                color: "#6B7280"
+                                text: qsTr("跳过确认弹窗，直接保存文件。")
+                                color: Style.Color.textWeak
                                 font.pixelSize: 12
                                 wrapMode: Text.Wrap
                             }
@@ -259,36 +290,77 @@ Dialog {
                 }
             }
 
+            // 网络设置卡片
             Rectangle {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.bottomMargin: 4
+                implicitHeight: historySection.implicitHeight + 32
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
+                border.width: 1
+
+                RowLayout {
+                    id: historySection
+                    anchors.fill: parent
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.lg
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Label {
+                            text: qsTr("历史保留期限")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+                        Label {
+                            text: qsTr("到期后自动删除本机聊天和传输历史，不影响文件。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    ComboBox {
+                        id: retentionSelector
+                        model: [qsTr("永久保留"), qsTr("7 天"), qsTr("30 天"), qsTr("90 天")]
+                        currentIndex: [0, 7, 30, 90].indexOf(settingsDialog._tempRetentionDays)
+                        onActivated: settingsDialog._tempRetentionDays = [0, 7, 30, 90][currentIndex]
+                    }
+                }
+            }
+
+            // 网络设置卡片
+            Rectangle {
+                Layout.fillWidth: true
                 implicitHeight: networkSection.implicitHeight + 32
-                color: "#FFFFFF"
-                radius: 8
-                border.color: "#E4E8EE"
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
+                border.width: 1
 
                 RowLayout {
                     id: networkSection
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 16
+                    anchors.margins: Style.Space.lg
+                    spacing: 24
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 5
+                        spacing: Style.Space.xs
 
                         Label {
-                            text: qsTr("网络连接")
+                            text: qsTr("传输服务")
                             font.pixelSize: 15
                             font.bold: true
+                            color: Style.Color.textMain
                         }
 
                         Label {
-                            text: qsTr("TCP 端口用于局域网设备建立文件传输连接。")
-                            color: "#6B7280"
-                            font.pixelSize: 12
+                            text: qsTr("TCP 端口用于局域网设备间的数据通信。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -304,26 +376,45 @@ Dialog {
                     }
                 }
             }
+
+            Item { Layout.preferredHeight: Style.Space.sm }
+
+            Label {
+                Layout.fillWidth: true
+                visible: !AppController.localHistoryAvailable
+                text: qsTr("本地历史不可用，聊天和传输仍可正常使用。")
+                color: Style.Color.warning
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+            }
         }
     }
 
     footer: Rectangle {
-        implicitHeight: 68
-        color: "#FFFFFF"
-        radius: 10
+        implicitHeight: 72
+        color: Style.Color.surface
+        radius: Style.Radius.md
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: Style.Color.border
+        }
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 10
+            anchors.margins: Style.Space.xl
+            spacing: Style.Space.md
 
             Label {
                 Layout.fillWidth: true
                 text: settingsDialog._isDirty
-                      ? qsTr("有尚未保存的修改")
-                      : qsTr("所有设置均已保存")
-                color: settingsDialog._isDirty ? "#B26A00" : "#6B7280"
-                font.pixelSize: 12
+                      ? qsTr("修改尚未应用")
+                      : qsTr("设置已是最新")
+                color: settingsDialog._isDirty ? Style.Color.warning : Style.Color.textWeak
+                font.pixelSize: 13
+                font.bold: settingsDialog._isDirty
 
                 Behavior on color {
                     ColorAnimation {
@@ -336,10 +427,11 @@ Dialog {
             Button {
                 text: qsTr("取消")
                 onClicked: settingsDialog.reject()
+                flat: true
             }
 
             Button {
-                text: qsTr("保存设置")
+                text: qsTr("保存更改")
                 enabled: settingsDialog._isDirty && settingsDialog._isValid
                 highlighted: true
                 onClicked: {
@@ -347,6 +439,7 @@ Dialog {
                     ConfigManager.receivePath = settingsDialog._tempReceivePath
                     ConfigManager.autoAcceptFiles = settingsDialog._tempAutoAcceptFiles
                     ConfigManager.tcpPort = settingsDialog._tempTcpPort
+                    AppController.history.setRetentionDays(settingsDialog._tempRetentionDays)
                     settingsDialog.accept()
                 }
             }

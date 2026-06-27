@@ -1,21 +1,26 @@
 /**
 * @file    config_manager.h
-* @version 4.11.0
-* @date    2026-06-13
-* @author  GridYard Team
+* @version 6.6.2
+* @date    2026-06-21
+* @author  GY
 * @brief   应用配置管理器（QML 单例）
 *
-* 使用 QSettings 管理设备名、接收路径、TCP 端口等配置。
+* 使用 QSettings 管理设备名、接收路径、TCP 端口、自动接收等配置。
 * 首次启动生成 UUID 并持久化，确保设备标识跨会话稳定。
+* 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
-* [v4.11.0] GY   2026-06-13
+* [v6.6.2] GY   2026-06-25
+* * 同步文件头版本与当前主版本
+* [v4.16.1] GY   2026-06-21
+* * 新增 isMyDevice()、fillHelloPayload()、fillSenderInfo() 语义化方法
+* [v4.11.0] FengChunlin   2026-06-13
 * * 新增自动接收并保存文件配置
-* [v4.8.1] GY   2026-06-08
+* [v4.8.1] GY   2026-06-09
 * * 修复设备名称更新不及时问题，单例模式实现
-* [v0.3.0] GY   2026-06-03
+* [v0.3.0] FengChunlin   2026-05-19
 * * 添加 localIp 属性、refreshLocalIp()、openFolder() 方法
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] GY   2026-04-26
 * * Stage 2：初始版本
 */
 
@@ -39,11 +44,13 @@ class ConfigManager : public QObject {
     Q_PROPERTY(QString  receivePath READ receivePath WRITE setReceivePath NOTIFY receivePathChanged)
     Q_PROPERTY(bool     autoAcceptFiles READ autoAcceptFiles WRITE setAutoAcceptFiles NOTIFY autoAcceptFilesChanged)
     Q_PROPERTY(quint16  tcpPort     READ tcpPort     WRITE setTcpPort     NOTIFY tcpPortChanged)
+    Q_PROPERTY(int retentionDays READ retentionDays WRITE setRetentionDays NOTIFY retentionDaysChanged)
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
 
-    ~ConfigManager() override;
+    // 析构函数
+    virtual ~ConfigManager() override;
 
     QString  deviceId()    const;
     QString  deviceName()  const;
@@ -51,14 +58,23 @@ public:
     QString  receivePath() const;
     bool     autoAcceptFiles() const;
     quint16  tcpPort()     const;
+    int retentionDays() const;
 
     void setDeviceName(const QString &name);
     void setReceivePath(const QString &path);
     void setAutoAcceptFiles(bool enabled);
     void setTcpPort(quint16 port);
+    void setRetentionDays(int days);
 
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
+
+    // 语义化方法：判断是否是本机设备
+    bool isMyDevice(const QString &deviceId) const;
+    // 语义化方法：填充 Hello 包数据（委托模式）
+    void fillHelloPayload(QJsonObject &json) const;
+    // 语义化方法：填充发送方信息到会话
+    void fillSenderInfo(QVariantMap &session) const;
 
 signals:
     void deviceIdChanged();
@@ -67,6 +83,7 @@ signals:
     void receivePathChanged();
     void autoAcceptFilesChanged();
     void tcpPortChanged();
+    void retentionDaysChanged();
 
 private:
     explicit ConfigManager(QObject *parent = nullptr);
@@ -82,10 +99,11 @@ private:
     // 全局实例指针（用于单例模式）
     static QPointer<ConfigManager> s_instance;
 
-    QString _deviceId;
-    QString _deviceName;
-    QString _localIp;
-    QString _receivePath;
-    bool    _autoAcceptFiles = false;
-    quint16 _tcpPort = 0;
+    QString _deviceId;                // 持久化的本机设备 UUID
+    QString _deviceName;              // 用户设置的本机显示名称
+    QString _localIp;                 // 当前选取的本机 IPv4 地址
+    QString _receivePath;             // 接收文件的本地保存目录
+    bool    _autoAcceptFiles = false; // 是否跳过接收确认直接保存
+    quint16 _tcpPort = 0;             // TCP P2P 服务监听端口
+    int _retentionDays = 0;           // 本地历史保留天数，0 表示永久保留
 };

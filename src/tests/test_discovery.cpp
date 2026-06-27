@@ -1,12 +1,15 @@
 /**
 * @file    test_discovery.cpp
-* @date    2026-06-05
-* @author  GridYard Team
+* @version 4.16.1
+* @date    2026-06-21
+* @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
 * 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()
 *
 * Change Log:
+* [v4.16.1] GY   2026-06-21
+* * 改为验证不存在设备不会返回发送端点快照
 * [v1.0] GY   2026-06-05
 * * 初始版本
 */
@@ -101,24 +104,34 @@ void TestDiscovery::testNodeDiscovery()
     waitForSignal(spy1, 3000);
     waitForSignal(spy2, 3000);
 
-    // 验证节点列表
+    // 验证至少有一个节点被发现（UDP 广播在同一机器上应该可靠）
+    QVERIFY2(spy1.count() > 0 || spy2.count() > 0,
+             "至少一个实例应该发现另一个实例");
+
+    // 验证 peers 列表不为空
     QVariantList peers1 = _discovery1->peers();
     QVariantList peers2 = _discovery2->peers();
-
-    // 至少应该发现对方（可能需要等待）
-    // 注意：UDP 广播可能因网络环境失败，这里只验证不崩溃
-    Q_UNUSED(peers1);
-    Q_UNUSED(peers2);
+    QVERIFY2(!peers1.isEmpty() || !peers2.isEmpty(),
+             "至少一个实例的 peers 列表应该非空");
 }
 
 void TestDiscovery::testNodeExpiry()
 {
-    // 监听节点过期信号
-    QSignalSpy spy(_discovery1, &DiscoveryService::nodeExpired);
+    // 先刷新让节点上线
+    _discovery1->refresh();
+    _discovery2->refresh();
+    QTest::qWait(1000);
 
-    // 等待一段时间让节点过期（默认 15 秒）
+    // 验证节点已上线
+    QVERIFY(!_discovery1->peers().isEmpty());
+
+    // 监听节点过期信号
+    QSignalSpy spy1(_discovery1, &DiscoveryService::nodeExpired);
+
+    // 节点过期需要 15 秒超时 + 3 秒清理间隔，完整流程约 18 秒
     // 为了测试速度，这里只验证信号连接正确
-    Q_UNUSED(spy);
+    // 完整的过期测试需要在手动测试中进行
+    QVERIFY(spy1.isValid());
 }
 
 void TestDiscovery::testRefresh()
@@ -159,10 +172,8 @@ void TestDiscovery::testMultipleNodes()
 
 void TestDiscovery::testPeerInfo()
 {
-    // 测试 peerInfo() 方法
-    // 使用一个不存在的 deviceId
-    PeerInfo info = _discovery1->peerInfo("non_existent_device");
-    QVERIFY(info.deviceId.isEmpty());
+    // 不存在或离线设备不应提供发送端点
+    QVERIFY(_discovery1->transferEndpoint("non_existent_device").isEmpty());
 }
 
 QTEST_MAIN(TestDiscovery)

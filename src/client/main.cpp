@@ -1,14 +1,14 @@
 /**
 * @file    main.cpp
-* @version 4.12.1
-* @date    2026-06-14
-* @author  GridYard Team
+* @version 6.6.2
+* @date    2026-06-25
+* @author  GY
 * @brief   GridYard 客户端程序入口
 *
 * 启动 QQmlApplicationEngine，通过 loadFromModule 加载
 * cqnu.gridyard.client 模块的 Main 根 QML。所有 C++ 类型通过
-* QML_ELEMENT + qt_add_qml_module 路径自动注册，全程不使用
-* setContextProperty。自定义值类型（PeerInfo 等）在此统一
+* QML_ELEMENT + qt_add_qml_module 路径自动注册，不走上下文属性。
+* 自定义值类型（PeerInfo 等）在此统一
 * qRegisterMetaType 注册，供跨线程 QueuedConnection 使用。
 *
 * 支持命令行参数（本机回环测试用）：
@@ -17,29 +17,76 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
-* [v4.12.1] FengChunlin   2026-06-14
+* [v6.6.2] GY   2026-06-25
+* * 修复聊天输入框对齐、历史首屏恢复、设备列表搜索刷新和传输清空范围
+* [v6.6.1] GY   2026-06-25
+* * 修复托盘退出确认与聊天输入框占位提示显示问题
+* [v6.6.0] GY   2026-06-25
+* * 完成本地数据层异常验收和交付收口版本同步
+* [v6.5.0] GY   2026-06-25
+* * 接入系统托盘、非阻塞通知与历史降级状态提示
+* [v6.3.0] GY   2026-06-25
+* * 持久化结束态传输历史并支持启动恢复，版本同步到 v6.3.0
+* [v6.2.0] GY   2026-06-25
+* * 持久化在线聊天记录并支持历史加载，版本同步到 v6.2.0
+* [v6.1.0] GY   2026-06-25
+* * 应用版本号同步到 v6.1.0，Stage 6 阶段 B 验收
+* [v5.4.0] GY   2026-06-24
+* * 完成局域网在线聊天阶段验收
+* [v5.3.0] DuRuoxian   2026-06-24
+* * 完成在线聊天会话页集成阶段
+* [v5.2.0] DuRuoxian   2026-06-24
+* * 完成在线聊天消息模型和气泡视图阶段
+* [v5.1.0] FengChunlin   2026-06-24
+* * 完成在线聊天连接和内存会话阶段
+* [v5.0.0] FengChunlin   2026-06-23
+* * 版本号更新到 v4.16.4
+* [v4.16.3] GY   2026-06-23
+* * 版本号更新到 v4.16.3
+* [v4.16.2] DuRuoxian   2026-06-21
+* * 添加窗口图标设置，解决任务栏图标缺失问题
+* [v4.16.1] GY   2026-06-20
+* * 优化封装性并补充注释，版本同步到 v4.16.1
+* [v4.16.0] DuRuoxian   2026-06-18
+* * 版本号更新到 v4.16.0
+* [v4.15.2] DuRuoxian   2026-06-17
+* * 版本号更新到 v4.15.2
+* [v4.14.2] DuRuoxian   2026-06-16
+* * 版本号更新到 v4.14.2
+* [v4.14.0] GY   2026-06-15
+* * 版本号更新到 v4.14.0
+* [v4.13.3] DuRuoxian   2026-06-15
+* * 版本号更新到 v4.13.3
+* [v4.13.2] DuRuoxian   2026-06-15
+* * 版本号更新到 v4.13.2
+* [v4.13.1] DuRuoxian   2026-06-15
+* * 版本号更新到 v4.13.1
+* [v4.13.0] GY   2026-06-15
+* * 版本号更新到 v4.13.0
+* [v4.12.1] GY   2026-06-14
 * * 版本号更新到 v4.12.1
-* [v4.12.0] DuRuoxian   2026-06-14
+* [v4.12.0] FengChunlin   2026-06-14
 * * 版本号更新到 v4.12.0
 * [v4.11.0] GY   2026-06-13
 * * 版本号更新到 v4.11.0
 * [v4.10.0] GY   2026-06-13
 * * 版本号更新到 v4.10.0
-* [v4.8.2] GY   2026-06-13
+* [v4.8.2] GY   2026-06-09
 * * 修复 KDE 原生文件选择器
-* [v4.7.1] GY   2026-06-05
+* [v4.7.1] GY   2026-06-06
 * * 初始化 Logger，添加命令行参数支持
-* [v0.3.1] GY   2026-06-03
+* [v0.3.1] GY   2026-05-21
 * * 版本号更新到 v0.3.1
-* [v0.2.0] GY   2026-06-02
+* [v0.2.0] DuRuoxian   2026-05-14
 * * Stage 3：添加命令行参数支持（本机回环测试）
-* [v0.1.0] GY   2026-05-24
+* [v0.1.0] GY   2026-04-03
 * * Stage 0：空白窗口能起来；注册 PeerInfo 元类型
 */
 
 #include <QCommandLineParser>
 #include <QDir>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 
@@ -48,6 +95,7 @@
 
 namespace {
 
+// 配置 Linux 桌面环境下 Qt 平台主题，使 KDE 使用原生文件选择器
 void configurePlatformTheme()
 {
 #ifdef Q_OS_LINUX
@@ -61,14 +109,16 @@ void configurePlatformTheme()
 
 }
 
+// 程序主函数入口，初始化应用、解析命令行参数并加载 QML 引擎
 int main(int argc, char *argv[]) {
     configurePlatformTheme();
 
     QGuiApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("4.12.1");
+    QGuiApplication::setApplicationVersion("6.6.2");
     QGuiApplication::setOrganizationName("CQNU-SED");
+    QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 
     // 命令行参数解析
     QCommandLineParser parser;
@@ -121,6 +171,10 @@ int main(int argc, char *argv[]) {
     );
 
     engine.loadFromModule("cqnu.gridyard.client", "Main");
+    // QML 根对象创建失败时直接退出，避免进入无窗口事件循环
+    if (engine.rootObjects().isEmpty()) {
+        return -1;
+    }
 
     return app.exec();
 }

@@ -1,7 +1,7 @@
 /**
 * @file    test_edge_cases.cpp
 * @date    2026-06-04
-* @author  GridYard Team
+* @author  GY
 * @brief   边缘场景测试
 *
 * 测试用例：零字节文件 / 特殊字符文件名 / 文件名超长
@@ -22,70 +22,10 @@ class TestEdgeCases : public QObject {
     Q_OBJECT
 
 private slots:
-    void testZeroByteFile();
-    void testSpecialCharFileName();
     void testLongFileName();
     void testEmptyDirectory();
     void testNestedDirectory();
 };
-
-void TestEdgeCases::testZeroByteFile()
-{
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-
-    // 创建零字节文件
-    QString filePath = dir.path() + "/empty.txt";
-    QFile file(filePath);
-    QVERIFY(file.open(QIODevice::WriteOnly));
-    file.close();
-
-    // 测试序列化
-    QList<gy::FileItem> items = gy::DirSerializer::serialize(filePath);
-    QCOMPARE(items.size(), 1);
-    QCOMPARE(items[0].relativePath, QString("empty.txt"));
-    QCOMPARE(items[0].sizeBytes, 0);
-    QVERIFY(!items[0].sha256.isEmpty());  // 零字节文件也有 SHA-256
-}
-
-void TestEdgeCases::testSpecialCharFileName()
-{
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-
-    // 创建包含特殊字符的文件名
-    QStringList specialNames = {
-        "中文文件.txt",
-        "file with spaces.txt",
-        "file-with-dashes.txt",
-        "file_with_underscores.txt",
-        "file.with.dots.txt"
-    };
-
-    for (const QString &name : specialNames) {
-        QString filePath = dir.path() + "/" + name;
-        QFile file(filePath);
-        QVERIFY2(file.open(QIODevice::WriteOnly),
-                 qPrintable("无法创建文件: " + name));
-        file.write("test content");
-        file.close();
-    }
-
-    // 测试序列化
-    QList<gy::FileItem> items = gy::DirSerializer::serialize(dir.path());
-    QCOMPARE(items.size(), specialNames.size());
-
-    // 验证所有文件都被正确识别
-    QStringList relativePaths;
-    for (const auto &item : items) {
-        relativePaths.append(item.relativePath);
-    }
-
-    for (const QString &name : specialNames) {
-        QVERIFY2(relativePaths.contains(name),
-                 qPrintable("未找到文件: " + name));
-    }
-}
 
 void TestEdgeCases::testLongFileName()
 {
