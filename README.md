@@ -65,13 +65,7 @@ cmake --build src/build-ninja -j
 ./src/build-ninja/client/appGridYard
 ```
 
-### 运行测试
-
-```bash
-ctest --test-dir src/build-ninja --output-on-failure
-```
-
-### 本机双实例测试
+### 多实例运行示例
 
 ```bash
 # 实例 A（接收端）
@@ -87,7 +81,7 @@ ctest --test-dir src/build-ninja --output-on-failure
   --name "发送端" &
 ```
 
-默认启动时，配置文件会写入系统配置目录。单机双实例测试时建议显式指定两份不同的稳定配置文件（如 `~/gridyard_alice.ini` 和 `~/gridyard_bob.ini`），避免两个实例共用同一份设备身份。
+默认启动时，配置文件会写入系统配置目录。需要在同一台机器上启动多个实例时，建议显式指定两份不同的稳定配置文件（如 `~/gridyard_alice.ini` 和 `~/gridyard_bob.ini`），避免两个实例共用同一份设备身份。
 
 **命令行参数**
 
@@ -119,7 +113,7 @@ AppImage 和压缩包运行时也使用上述系统目录，不在发布包同�
 
 使用 `--config` 参数时，配置文件路径以命令行指定的为准，数据库和日志仍在系统应用数据目录下。
 
-**v6.8.1 最终发布验证**
+**v6.8.1 最终发布验证记录**
 
 | 测试项 | 结果 |
 |:------|:-----|
@@ -296,9 +290,11 @@ GridYard/
 │   ├── dev-manual/
 │   │   ├── 规格与设计/                   # 技术规格、架构设计
 │   │   ├── 开发心得/                     # 踩坑记录、开发手册
-│   │   └── 测试与部署/                   # 测试与打包指南
-│   ├── plan/                            # 阶段开发计划
-│   └── api-docs/                        # 模块 API 文档
+│   │   └── 测试与部署/                   # AppImage 与压缩包打包指南
+│   ├── delivery/                        # PPT、演示视频等课程交付材料入口
+│   ├── api-docs/                        # 模块 API 文档
+│   ├── CQNU.png                         # 学校标识
+│   └── 团队分工说明.md
 └── src/
     ├── CMakeLists.txt                   # 顶层 CMake
     ├── shared/                          # 共用静态库 gy_shared
@@ -361,24 +357,7 @@ GridYard/
     │       └── FormatUtils.js           # 格式化工具
     ├── scripts/                         # 辅助脚本
     │   └── for_md.py                    # 代码归档工具
-    ├── server/                          # V2 服务端（规划中）
-    └── tests/                           # 单元测试与集成测试
-        ├── CMakeLists.txt
-        ├── test_frame_codec.cpp
-        ├── test_chat_message.cpp
-        ├── test_chat_manager.cpp
-        ├── test_discovery.cpp
-        ├── test_file_transfer.cpp
-        ├── test_session_manager.cpp
-        ├── test_transfer.cpp
-        ├── test_config_manager.cpp
-        ├── test_edge_cases.cpp
-        ├── test_integration.cpp
-        ├── test_storage_database.cpp
-        ├── test_storage_device.cpp
-        ├── test_storage_message.cpp
-        ├── test_storage_transfer_history.cpp
-        └── test_history_controller.cpp
+    └── server/                          # V2 服务端（规划中）
 ```
 
 ---
@@ -420,6 +399,8 @@ GridYard/
 | 架构设计 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md` |
 | 业务逻辑 | `doc/dev-manual/规格与设计/GridYard业务逻辑说明.md` |
 | 开发心得 | `doc/dev-manual/开发心得/开发心得_从架构设计到踩坑记录.md` |
+| 打包指南 | `doc/dev-manual/测试与部署/打包指南_Linux_AppImage.md` |
+| 发布交付材料 | `doc/delivery/` |
 | Stage 6 数据层设计 | `doc/dev-manual/规格与设计/GridYard_Stage6_本地数据层设计.md` |
 | 模块 API 文档 | `doc/api-docs/` |
 | UML 图 | `doc/diagrams/` |
