@@ -10,6 +10,8 @@
 * 应用退出时自动关闭并移除连接名。
 *
 * Change Log:
+* [v6.8.1] GY   2026-06-29
+* * 析构时同步关闭当前线程工作连接，避免连接名复用指向旧数据库
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.6.0] GY 2026-06-25
@@ -47,6 +49,7 @@ SqliteDatabaseBroker::SqliteDatabaseBroker(DriverProvider driverProvider)
 // 析构函数，关闭并移除初始化线程的命名连接
 SqliteDatabaseBroker::~SqliteDatabaseBroker()
 {
+    closeConnectionForCurrentThread();
     closeMainConnection();
 }
 

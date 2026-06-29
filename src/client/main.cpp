@@ -20,7 +20,7 @@
 * [v6.8.1] GY   2026-06-28
 * * 补充源码行内注释，移除无效平台主题配置函数，版本同步到 v6.8.1
 * [v6.8.0] GY   2026-06-28
-* * 运行时数据目录改为可执行文件同级策略，配置文件路径上提一级
+* * 调整运行时数据目录策略
 * [v6.7.0] GY   2026-06-28
 * * 取消 --port 自动生成 /tmp 临时配置文件
 * * 应用版本号更新到 6.7.0
@@ -93,8 +93,8 @@
 * * Stage 0：空白窗口能起来；注册 PeerInfo 元类型
 */
 
+#include <QApplication>
 #include <QCommandLineParser>
-#include <QGuiApplication>
 #include <QIcon>
 #include <QQuickStyle>
 
@@ -104,7 +104,7 @@
 
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
     QGuiApplication::setApplicationVersion("6.8.1");

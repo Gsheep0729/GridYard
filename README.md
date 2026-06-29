@@ -87,7 +87,7 @@ ctest --test-dir src/build-ninja --output-on-failure
   --name "发送端" &
 ```
 
-`--config` 必须指定主目录下的稳定路径（如 `~/gridyard_alice.ini`），配置文件会在首次运行时自动创建。不要省略 `--config`，否则程序会使用 `/tmp/gridyard_config_<port>.ini` 作为临时配置，系统清理 `/tmp` 后 `device_id` 会重新生成，旧历史记录虽然仍在数据库中但无法挂到新设备卡片下，表现为"历史丢失"。
+默认启动时，配置文件会写入系统配置目录。单机双实例测试时建议显式指定两份不同的稳定配置文件（如 `~/gridyard_alice.ini` 和 `~/gridyard_bob.ini`），避免两个实例共用同一份设备身份。
 
 **命令行参数**
 
@@ -103,21 +103,33 @@ ctest --test-dir src/build-ninja --output-on-failure
 
 | 数据 | 位置规则 | 文件说明 |
 |:-----|:---------|:---------|
-| 配置文件 | 可执行文件上一级目录的 `config/` 子目录 | `gridyard.ini`：设备 ID、设备名、TCP 端口、接收路径等 |
-| 数据库 | 可执行文件同级的 `database/` 子目录 | `gridyard.db`：聊天记录、传输历史、设备目录（SQLite WAL 模式） |
-| 日志 | 可执行文件同级的 `logs/` 子目录 | `gridyard_YYYYMMDD.log`：运行日志，按日期自动切换 |
+| 配置文件 | 系统配置目录 | `gridyard.ini`：设备 ID、设备名、TCP 端口、接收路径等 |
+| 数据库 | 系统应用数据目录的 `database/` 子目录 | `gridyard-history.sqlite`：聊天记录、传输历史、设备目录（SQLite WAL 模式） |
+| 日志 | 系统应用数据目录的 `logs/` 子目录 | `gridyard_YYYYMMDD.log`：运行日志，按日期自动切换 |
 
-示例（开发构建目录为 `src/build-ninja`，AppImage 放在 `/root/GridYard/`）：
+Linux 示例：
 
-| 数据 | 开发构建路径 | AppImage 路径 |
-|:-----|:------------|:--------------|
-| 配置文件 | `src/build-ninja/config/gridyard.ini` | `/root/GridYard/config/gridyard.ini` |
-| 数据库 | `src/build-ninja/client/database/gridyard.db` | `/root/GridYard/database/gridyard.db` |
-| 日志 | `src/build-ninja/client/logs/gridyard_YYYYMMDD.log` | `/root/GridYard/logs/gridyard_YYYYMMDD.log` |
+| 数据 | 默认路径 |
+|:-----|:---------|
+| 配置文件 | `~/.config/CQNU-SED/GridYard/gridyard.ini` |
+| 数据库 | `~/.local/share/CQNU-SED/GridYard/database/gridyard-history.sqlite` |
+| 日志 | `~/.local/share/CQNU-SED/GridYard/logs/gridyard_YYYYMMDD.log` |
 
-开发构建时配置文件会提升到 `client/` 的上一级目录，避免混入源码子目录。AppImage 没有这一层，配置、数据库和日志都在 AppImage 同级目录下。
+AppImage 和压缩包运行时也使用上述系统目录，不在发布包同级写入配置、数据库或日志。
 
-使用 `--config` 参数时，配置文件路径以命令行指定的为准，数据库和日志仍在上述目录下。
+使用 `--config` 参数时，配置文件路径以命令行指定的为准，数据库和日志仍在系统应用数据目录下。
+
+**v6.8.1 最终发布验证**
+
+| 测试项 | 结果 |
+|:------|:-----|
+| `--config` 参数 | 通过，`/tmp/config_test/test.ini` 正确创建 |
+| 系统默认配置目录 | 通过，`~/.config/CQNU-SED/GridYard/gridyard.ini` 存在 |
+| 系统默认数据库 | 通过，`~/.local/share/CQNU-SED/GridYard/database/` 有 SQLite 文件 |
+| 系统默认日志 | 通过，`~/.local/share/CQNU-SED/GridYard/logs/` 有日志文件 |
+| 设备别名持久化 | 通过，重启后 `name=GY-PC` 保持不变 |
+
+结论：AppImage 使用系统标准目录策略，配置、数据库和日志都在用户目录下正确持久化。修改设备别名后重启不会丢失。
 
 ---
 

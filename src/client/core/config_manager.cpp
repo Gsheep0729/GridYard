@@ -56,7 +56,7 @@ static QString resolveConfigPath()
 ConfigManager::ConfigManager(QObject *parent)
     : QObject{parent}
 {
-    // 创建 QSettings 对象，配置文件统一存放在可执行文件同级的 config/ 子目录
+    // 创建 QSettings 对象，配置文件统一存放在系统配置目录
     QSettings settings(resolveConfigPath(), QSettings::IniFormat);
 
     // 设备名：优先使用命令行参数，否则读配置，否则用主机名

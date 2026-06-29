@@ -122,6 +122,7 @@ target_link_libraries(appGridYard PRIVATE
     Qt6::QuickControls2
     Qt6::QuickDialogs2  # 原生文件/文件夹选择对话框
     Qt6::Network
+    Qt6::Widgets        # SystemTrayIcon / Menu 等需要 Widgets
     gy_shared
     gy_storage
 )

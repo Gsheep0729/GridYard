@@ -1,8 +1,8 @@
 # GridYard 打包指南：Linux AppImage
 
 **作者**：GY 团队
-**最后更新**：2026-06-26
-**适用版本**：v6.6.2 起（含在线聊天与 SQLite 本地数据层）
+**最后更新**：2026-06-29
+**适用版本**：v6.8.1（含在线聊天与 SQLite 本地数据层）
 
 ---
 
@@ -12,7 +12,7 @@
 
 v6.6.2 引入在线聊天链路与 SQLite 本地数据层后，运行时依赖相比 v4.x 多出两类：Qt6 SQL 驱动（`libqsqlite.so`）和 Qt6 Widgets（系统托盘后端依赖）。打包流程在原 v4.x 基础上补齐这两项即可。
 
-**最终产物**：`release/v6.6.2/GridYard-v6.6.2-x86_64.AppImage`（约 93 MB）
+**最终产物**：`release/v6.8.1/GridYard-v6.8.1-x86_64.AppImage`（约 93 MB）
 
 **已验证可工作**：
 
@@ -76,7 +76,7 @@ ctest --test-dir src/build-ninja --output-on-failure -R storage
 
 ## 3. 打包流程
 
-下文以仓库根为工作目录，AppDir 临时放在 `src/dist/AppDir`，最终 AppImage 输出到 `release/v6.6.2/`。
+下文以仓库根为工作目录，AppDir 临时放在 `src/dist/AppDir`，最终 AppImage 输出到 `release/v6.8.1/`。
 
 ### 3.1 准备 AppDir 结构
 
@@ -194,7 +194,7 @@ chmod +x "$APPDIR/AppRun"
 ### 3.5 打包为 AppImage
 
 ```bash
-VERSION=v6.6.2
+VERSION=v6.8.1
 mkdir -p "$PROJECT/release/$VERSION"
 
 env -u DISPLAY ARCH=x86_64 /tmp/appimagetool \
@@ -207,7 +207,7 @@ ls -lh "$PROJECT/release/$VERSION"
 成功输出示例：
 
 ```
--rwxr-xr-x 1 root root 93M ... GridYard-v6.6.2-x86_64.AppImage
+-rwxr-xr-x 1 root root 93M ... GridYard-v6.8.1-x86_64.AppImage
 ```
 
 ---
@@ -220,7 +220,7 @@ CI 服务器或纯命令行环境可用 offscreen 平台验证二进制可执行
 
 ```bash
 QT_QPA_PLATFORM=offscreen timeout 5 \
-    release/v6.6.2/GridYard-v6.6.2-x86_64.AppImage
+    release/v6.8.1/GridYard-v6.8.1-x86_64.AppImage
 ```
 
 预期输出包含：
@@ -237,14 +237,14 @@ QT_QPA_PLATFORM=offscreen timeout 5 \
 ### 4.2 真实桌面测试
 
 ```bash
-./release/v6.6.2/GridYard-v6.6.2-x86_64.AppImage
+./release/v6.8.1/GridYard-v6.8.1-x86_64.AppImage
 ```
 
 需双开测试时，用不同 `--config` 参数避免设备 ID 互相覆盖：
 
 ```bash
-./GridYard-v6.6.2-x86_64.AppImage --config /tmp/gridyard_a.ini &
-./GridYard-v6.6.2-x86_64.AppImage --config /tmp/gridyard_b.ini &
+./GridYard-v6.8.1-x86_64.AppImage --config /tmp/gridyard_a.ini &
+./GridYard-v6.8.1-x86_64.AppImage --config /tmp/gridyard_b.ini &
 ```
 
 ---
@@ -435,7 +435,7 @@ sudo install -m 0755 linuxdeploy-x86_64.AppImage /opt/linuxdeploy
 bash src/scripts/build_appimage.sh
 ```
 
-脚本会从 `src/CMakeLists.txt` 自动读取版本号（v6.6.2 起 `project(GridYard VERSION 6.6.2 ...)`），输出到 `release/v<VERSION>/GridYard-v<VERSION>-x86_64.AppImage`。
+脚本会从 `src/CMakeLists.txt` 自动读取版本号（当前为 `project(GridYard VERSION 6.8.1 ...)`），输出到 `release/v<VERSION>/GridYard-v<VERSION>-x86_64.AppImage`。
 
 ---
 
@@ -444,8 +444,8 @@ bash src/scripts/build_appimage.sh
 每个版本目录建议包含：
 
 ```
-release/v6.6.2/
-├── GridYard-v6.6.2-x86_64.AppImage   # 主交付物
+release/v6.8.1/
+├── GridYard-v6.8.1-x86_64.AppImage   # 主交付物
 ├── release-notes.md                   # 本版本变更要点
 └── SHA256SUMS                         # 校验和（可选）
 ```
@@ -453,7 +453,7 @@ release/v6.6.2/
 `release-notes.md` 模板：
 
 ```markdown
-# GridYard v6.6.2
+# GridYard v6.8.1
 
 ## 主要变更
 - 在线聊天链路与首帧路由
@@ -471,8 +471,8 @@ release/v6.6.2/
 生成 SHA256：
 
 ```bash
-cd release/v6.6.2
-sha256sum GridYard-v6.6.2-x86_64.AppImage > SHA256SUMS
+cd release/v6.8.1
+sha256sum GridYard-v6.8.1-x86_64.AppImage > SHA256SUMS
 ```
 
 ---
