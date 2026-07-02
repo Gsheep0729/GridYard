@@ -355,8 +355,6 @@ GridYard/
     │   └── utils/                       # QML 工具模块
     │       ├── Style.js                 # 样式常量
     │       └── FormatUtils.js           # 格式化工具
-    ├── scripts/                         # 辅助脚本
-    │   └── for_md.py                    # 代码归档工具
     └── server/                          # V2 服务端（规划中）
 ```
 
