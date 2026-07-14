@@ -12,6 +12,18 @@ GridYard 是一个面向局域网环境的 P2P 文件传输与在线聊天桌面
 | 网络模型 | 局域网 UDP 发现 + TCP P2P 传输 |
 | 发布形式 | AppImage、portable tar.gz、源码构建 |
 
+## 答辩与演示材料
+
+拉取仓库后，建议先查看 `doc/delivery/` 目录中的最终交付材料：
+
+| 文件 | 说明 |
+| --- | --- |
+| `doc/delivery/GridYard项目演示视频-v6.8.1.mp4` | 项目功能演示视频，展示局域网发现、聊天、文件传输和历史记录等主流程 |
+| `doc/delivery/GridYard项目答辩视频-v6.8.1.mp4` | 答辩说明视频，用于配合 PPT 快速了解项目目标、实现路线和最终效果 |
+| `doc/delivery/GridYard项目答辩PPT-v6.8.1.pptx` | 最终答辩 PPT，可直接用于课堂汇报或验收查看 |
+
+如果只想快速了解项目效果，优先观看项目演示视频；如果需要评审实现完整度，再结合答辩视频、答辩 PPT 和下方文档索引查看设计说明。
+
 ## 获取与运行
 
 ### 方式一：直接运行 AppImage
@@ -138,17 +150,17 @@ GridYard 的实现重点放在桌面应用、局域网通信和可交付部署�
 ```text
 GridYard/
 ├── README.md
-├── CLAUDE.md
 ├── doc/
 │   ├── api-docs/
 │   ├── delivery/
+│   │   ├── GridYard项目演示视频-v6.8.1.mp4
+│   │   ├── GridYard项目答辩视频-v6.8.1.mp4
+│   │   └── GridYard项目答辩PPT-v6.8.1.pptx
 │   ├── dev-manual/
 │   │   ├── 规格与设计/
 │   │   ├── 开发心得/
 │   │   └── 测试与部署/
 │   ├── diagrams/
-│   ├── 试卷要求符合性审查结果.local.md
-│   ├── 5-软件工程综合实训2-1(C++方向)_试卷.local.md
 │   ├── 团队分工说明.md
 │   └── CQNU.png
 ├── release/
@@ -188,7 +200,10 @@ GridYard/
 | `src/client/network/` | 节点发现、P2P 服务、聊天连接和文件传输 Worker |
 | `src/client/storage/` | SQLite 数据库 Broker 与历史记录 Repository |
 | `src/install-gridyard.sh` | AppImage 一键部署脚本 |
+| `doc/delivery/` | 最终答辩 PPT、项目演示视频和答辩视频 |
+| `doc/api-docs/` | 面向验收和二次开发的接口文档 |
 | `doc/dev-manual/` | 开发、测试、部署和设计文档 |
+| `doc/diagrams/` | UML、架构图和模块关系图 |
 | `release/` | 本地 release 打包输出目录，默认不纳入 Git 跟踪 |
 
 ## 文档索引
