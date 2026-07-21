@@ -18,6 +18,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # ---- 子模块引入 --------------------------------------------------------
 add_subdirectory(shared)
 add_subdirectory(client)
+add_subdirectory(rendezvous)
 
 # V2.0 阶段启用：
 # add_subdirectory(server)
