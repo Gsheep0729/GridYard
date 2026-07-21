@@ -162,6 +162,18 @@ target_include_directories(test_endpoint_probe PRIVATE
 target_compile_features(test_endpoint_probe PRIVATE cxx_std_23)
 add_test(NAME test_endpoint_probe COMMAND test_endpoint_probe)
 
+# --- 邀请连接编解码测试 ---
+qt_add_executable(test_invite_codec test_invite_codec.cpp
+    ${CLIENT_NET_DIR}/invite_codec.cpp
+)
+target_link_libraries(test_invite_codec PRIVATE Qt6::Test Qt6::Core Qt6::Network)
+target_include_directories(test_invite_codec PRIVATE
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_invite_codec PRIVATE cxx_std_23)
+add_test(NAME test_invite_codec COMMAND test_invite_codec)
+
 # --- ConfigManager 配置测试 ---
 qt_add_executable(test_config_manager test_config_manager.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp

@@ -52,6 +52,8 @@ set(GRIDYARD_CLIENT_NETWORK_SOURCES
     network/file_receiver_worker.cpp
     network/endpoint_probe.h
     network/endpoint_probe.cpp
+    network/invite_codec.h
+    network/invite_codec.cpp
 )
 
 set(GRIDYARD_CLIENT_QML_ENTRY_FILES

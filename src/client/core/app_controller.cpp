@@ -121,8 +121,9 @@ AppController::AppController(QObject *parent)
     , _reachability{new ReachabilityController{this}}
     , _retentionTimer{new QTimer{this}}
 {
-    // 初始化 ReachabilityController 的 DiscoveryService 引用
+    // 初始化 ReachabilityController 的引用
     _reachability->setDiscoveryService(_discovery);
+    _reachability->setConfigManager(_config);
 
     QString storageError;
     if (!_dataBroker->initialize(ApplicationPaths::databaseDir() + "/gridyard-history.sqlite",
