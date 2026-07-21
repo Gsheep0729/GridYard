@@ -1,19 +1,23 @@
 /**
 * @file    main.cpp
-* @version 7.2.0
+* @version 7.3.0
 * @date    2026-07-21
 * @author  GridYard Team
-* @brief   协调节点服务入口
+* @brief   协调节点和中继服务入口
 *
-* 监听 TCP 连接，提供设备注册和候选端点拉取服务。
-* 不保存文件内容、聊天内容和历史记录。
+* 支持两种模式：
+* - 协调节点模式（默认）：提供设备注册和候选端点拉取服务
+* - 中继模式：提供流式中继转发服务
 *
 * Change Log:
+* [v7.3.0] GY   2026-07-21
+* * Stage 7.3：新增流式中继服务支持
 * [v7.2.0] GY   2026-07-21
 * * Stage 7.2：新增协调节点服务
 */
 
 #include "rendezvous_server.h"
+#include "relay_server.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -24,12 +28,20 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app{argc, argv};
     app.setApplicationName(QStringLiteral("gridyard-rendezvous"));
-    app.setApplicationVersion(QStringLiteral("7.2.0"));
+    app.setApplicationVersion(QStringLiteral("7.3.0"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("GridYard 协调节点服务"));
+    parser.setApplicationDescription(QStringLiteral("GridYard 协调节点/中继服务"));
     parser.addHelpOption();
     parser.addVersionOption();
+
+    QCommandLineOption modeOption(
+        QStringList() << QStringLiteral("m") << QStringLiteral("mode"),
+        QStringLiteral("运行模式：rendezvous=协调节点，relay=中继"),
+        QStringLiteral("mode"),
+        QStringLiteral("rendezvous")
+    );
+    parser.addOption(modeOption);
 
     QCommandLineOption portOption(
         QStringList() << QStringLiteral("p") << QStringLiteral("port"),
@@ -49,21 +61,37 @@ int main(int argc, char *argv[])
 
     parser.process(app);
 
+    const QString mode = parser.value(modeOption);
     const quint16 port = parser.value(portOption).toUShort();
     const QString token = parser.value(tokenOption);
 
-    RendezvousServer server{QStringLiteral("0.0.0.0"), port, token};
+    if (mode == QStringLiteral("relay")) {
+        RelayServer server{port, token};
 
-    QObject::connect(&server, &RendezvousServer::serverStarted, &app, [&app](bool success, const QString &error) {
-        if (!success) {
-            qCritical() << "[Main] 服务器启动失败:" << error;
-            QTimer::singleShot(0, &app, [] { QCoreApplication::exit(1); });
-        } else {
-            qInfo() << "[Main] GridYard 协调节点服务已启动";
-        }
-    });
+        QObject::connect(&server, &RelayServer::serverStarted, &app, [&app](bool success, const QString &error) {
+            if (!success) {
+                qCritical() << "[Main] 中继服务启动失败:" << error;
+                QTimer::singleShot(0, &app, [] { QCoreApplication::exit(1); });
+            } else {
+                qInfo() << "[Main] GridYard 中继服务已启动";
+            }
+        });
 
-    server.start();
+        server.start();
+    } else {
+        RendezvousServer server{QStringLiteral("0.0.0.0"), port, token};
+
+        QObject::connect(&server, &RendezvousServer::serverStarted, &app, [&app](bool success, const QString &error) {
+            if (!success) {
+                qCritical() << "[Main] 协调节点服务启动失败:" << error;
+                QTimer::singleShot(0, &app, [] { QCoreApplication::exit(1); });
+            } else {
+                qInfo() << "[Main] GridYard 协调节点服务已启动";
+            }
+        });
+
+        server.start();
+    }
 
     return app.exec();
 }

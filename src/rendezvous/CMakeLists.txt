@@ -18,6 +18,8 @@ add_executable(gridyard_rendezvous WIN32
     rendezvous_protocol.cpp
     rendezvous_server.h
     rendezvous_server.cpp
+    relay_server.h
+    relay_server.cpp
 )
 
 target_link_libraries(gridyard_rendezvous PRIVATE
