@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.h
-* @version 6.6.2
-* @date    2026-06-21
+* @version 7.4.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
@@ -10,6 +10,8 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+* [v7.4.0] GY   2026-07-21
+* * 新增 Reachability 配置分组：rendezvousEnabled、rendezvousHost、rendezvousPort、relayMode
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
@@ -34,6 +36,13 @@
 class QQmlEngine;
 class QJSEngine;
 
+// Relay 策略枚举
+enum class RelayMode {
+    AskBeforeRelay,  // 默认：询问后再中继（适合大文件）
+    AutoRelay,       // 自动中继（适合小文件或已确认对方在线）
+    NeverRelay       // 从不使用中继
+};
+
 class ConfigManager : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -45,6 +54,10 @@ class ConfigManager : public QObject {
     Q_PROPERTY(bool     autoAcceptFiles READ autoAcceptFiles WRITE setAutoAcceptFiles NOTIFY autoAcceptFilesChanged)
     Q_PROPERTY(quint16  tcpPort     READ tcpPort     WRITE setTcpPort     NOTIFY tcpPortChanged)
     Q_PROPERTY(int retentionDays READ retentionDays WRITE setRetentionDays NOTIFY retentionDaysChanged)
+    Q_PROPERTY(bool     rendezvousEnabled READ rendezvousEnabled WRITE setRendezvousEnabled NOTIFY rendezvousEnabledChanged)
+    Q_PROPERTY(QString  rendezvousHost   READ rendezvousHost   WRITE setRendezvousHost   NOTIFY rendezvousHostChanged)
+    Q_PROPERTY(int      rendezvousPort   READ rendezvousPort   WRITE setRendezvousPort   NOTIFY rendezvousPortChanged)
+    Q_PROPERTY(RelayMode relayMode       READ relayMode       WRITE setRelayMode       NOTIFY relayModeChanged)
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
@@ -66,6 +79,14 @@ public:
     quint16  tcpPort()     const;
     // 获取历史保留天数
     int retentionDays() const;
+    // 获取协调服务器启用状态
+    bool rendezvousEnabled() const;
+    // 获取协调服务器地址
+    QString rendezvousHost() const;
+    // 获取协调服务器端口
+    int rendezvousPort() const;
+    // 获取 Relay 策略
+    RelayMode relayMode() const;
 
     // 设置设备名称
     void setDeviceName(const QString &name);
@@ -77,6 +98,14 @@ public:
     void setTcpPort(quint16 port);
     // 设置历史保留天数
     void setRetentionDays(int days);
+    // 设置协调服务器启用状态
+    void setRendezvousEnabled(bool enabled);
+    // 设置协调服务器地址
+    void setRendezvousHost(const QString &host);
+    // 设置协调服务器端口
+    void setRendezvousPort(int port);
+    // 设置 Relay 策略
+    void setRelayMode(RelayMode mode);
 
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
@@ -96,6 +125,10 @@ signals:
     void autoAcceptFilesChanged();
     void tcpPortChanged();
     void retentionDaysChanged();
+    void rendezvousEnabledChanged();
+    void rendezvousHostChanged();
+    void rendezvousPortChanged();
+    void relayModeChanged();
 
 private:
     explicit ConfigManager(QObject *parent = nullptr);
@@ -118,4 +151,8 @@ private:
     bool    _autoAcceptFiles = false; // 是否跳过接收确认直接保存
     quint16 _tcpPort = 0;             // TCP P2P 服务监听端口
     int _retentionDays = 0;           // 本地历史保留天数，0 表示永久保留
+    bool _rendezvousEnabled = false;   // 是否启用协调服务器
+    QString _rendezvousHost = "127.0.0.1"; // 协调服务器地址
+    int _rendezvousPort = 45780;      // 协调服务器端口（避免与 UDP 发现 45678 混淆）
+    RelayMode _relayMode = RelayMode::AskBeforeRelay; // Relay 策略
 };

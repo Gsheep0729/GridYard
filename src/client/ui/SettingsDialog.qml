@@ -1,14 +1,16 @@
 /**
  * @file    SettingsDialog.qml
- * @version 6.8.1
- * @date    2026-06-28
+ * @version 7.4.0
+ * @date    2026-07-21
  * @author  GridYard Team
  * @brief   设置对话框
  *
- * 编辑设备名、选择接收路径、修改 TCP 端口。
+ * 编辑设备名、选择接收路径、修改 TCP 端口、配置协调服务器。
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.4.0] GY   2026-07-21
+ * * 新增协调服务器配置区块（地址、端口、Relay 策略）
  * [v6.8.1] GY   2026-06-28
  * * 补充 localPathFromUrl 函数行内注释
  * [v6.7.0] GY   2026-06-28
@@ -54,18 +56,28 @@ Dialog {
     property bool   _tempAutoAcceptFiles: ConfigManager.autoAcceptFiles
     property int    _tempTcpPort:     ConfigManager.tcpPort
     property int    _tempRetentionDays: ConfigManager.retentionDays
+    property bool   _tempRendezvousEnabled: ConfigManager.rendezvousEnabled
+    property string _tempRendezvousHost: ConfigManager.rendezvousHost
+    property int    _tempRendezvousPort: ConfigManager.rendezvousPort
+    property int    _tempRelayMode: ConfigManager.relayMode
 
     // 表单校验：设备名非空、接收路径非空、端口在合法范围内
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
                                     && _tempReceivePath.length > 0
                                     && _tempTcpPort >= 1024
                                     && _tempTcpPort <= 65535
+                                    && _tempRendezvousPort >= 1024
+                                    && _tempRendezvousPort <= 65535
     // 脏标记：任一字段与当前配置不同则视为已修改
     readonly property bool _isDirty: _tempDeviceName.trim() !== ConfigManager.deviceName
                                     || _tempReceivePath !== ConfigManager.receivePath
                                     || _tempAutoAcceptFiles !== ConfigManager.autoAcceptFiles
                                     || _tempTcpPort !== ConfigManager.tcpPort
                                     || _tempRetentionDays !== ConfigManager.retentionDays
+                                    || _tempRendezvousEnabled !== ConfigManager.rendezvousEnabled
+                                    || _tempRendezvousHost !== ConfigManager.rendezvousHost
+                                    || _tempRendezvousPort !== ConfigManager.rendezvousPort
+                                    || _tempRelayMode !== ConfigManager.relayMode
     readonly property int kColorDuration: Style.Motion.base
     readonly property int kEnterDuration: 200  // 弹窗入场动画时长
 
@@ -86,6 +98,10 @@ Dialog {
         _tempAutoAcceptFiles = ConfigManager.autoAcceptFiles
         _tempTcpPort     = ConfigManager.tcpPort
         _tempRetentionDays = ConfigManager.retentionDays
+        _tempRendezvousEnabled = ConfigManager.rendezvousEnabled
+        _tempRendezvousHost = ConfigManager.rendezvousHost
+        _tempRendezvousPort = ConfigManager.rendezvousPort
+        _tempRelayMode = ConfigManager.relayMode
     }
 
     // 将 FolderDialog 返回的 URL 转成本地路径，保留中文和空格等字符
@@ -397,6 +413,129 @@ Dialog {
                 }
             }
 
+            // 协调服务器卡片
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: rendezvousSection.implicitHeight + 32
+                color: Style.Color.surface
+                radius: Style.Radius.lg
+                border.color: Style.Color.border
+                border.width: 1
+
+                ColumnLayout {
+                    id: rendezvousSection
+                    anchors.fill: parent
+                    anchors.margins: Style.Space.lg
+                    spacing: Style.Space.md
+
+                    RowLayout {
+                        spacing: Style.Space.md
+                        Layout.fillWidth: true
+
+                        ColumnLayout {
+                            spacing: Style.Space.xs
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: qsTr("协调服务器")
+                                font.pixelSize: 15
+                                font.bold: true
+                                color: Style.Color.textMain
+                            }
+
+                            Label {
+                                text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备。")
+                                color: Style.Color.textMuted
+                                font.pixelSize: 13
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Switch {
+                            checked: settingsDialog._tempRendezvousEnabled
+                            onToggled: settingsDialog._tempRendezvousEnabled = checked
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Style.Color.borderSoft
+                        visible: settingsDialog._tempRendezvousEnabled
+                    }
+
+                    GridLayout {
+                        columns: 3
+                        columnSpacing: Style.Space.md
+                        rowSpacing: Style.Space.sm
+                        visible: settingsDialog._tempRendezvousEnabled
+
+                        Label {
+                            text: qsTr("服务器地址")
+                            font.pixelSize: 13
+                            color: Style.Color.textSecondary
+                        }
+
+                        TextField {
+                            id: rendezvousHostField
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            text: settingsDialog._tempRendezvousHost
+                            placeholderText: qsTr("例如：10.10.10.100")
+                            selectByMouse: true
+                            onTextChanged: settingsDialog._tempRendezvousHost = text
+                        }
+
+                        Label {
+                            text: qsTr("服务器端口")
+                            font.pixelSize: 13
+                            color: Style.Color.textSecondary
+                        }
+
+                        SpinBox {
+                            id: rendezvousPortSpinBox
+                            from: 1024
+                            to: 65535
+                            value: settingsDialog._tempRendezvousPort
+                            editable: true
+                            onValueModified: settingsDialog._tempRendezvousPort = value
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Label {
+                            text: qsTr("Relay 策略")
+                            font.pixelSize: 13
+                            color: Style.Color.textSecondary
+                        }
+
+                        ComboBox {
+                            id: relayModeComboBox
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            model: [
+                                { label: qsTr("询问后中继（默认）"), value: 0 },
+                                { label: qsTr("自动中继"), value: 1 },
+                                { label: qsTr("从不中继"), value: 2 }
+                            ]
+                            textRole: "label"
+                            currentIndex: settingsDialog._tempRelayMode
+                            onActivated: settingsDialog._tempRelayMode = model[currentIndex].value
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("提示：自动中继会直接通过服务器转发流量，速度可能受限。")
+                        font.pixelSize: 12
+                        color: Style.Color.warning
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                        visible: settingsDialog._tempRendezvousEnabled && settingsDialog._tempRelayMode !== 2
+                    }
+                }
+            }
+
             // 清除缓存卡片
             Rectangle {
                 Layout.fillWidth: true
@@ -507,6 +646,10 @@ Dialog {
                     ConfigManager.autoAcceptFiles = settingsDialog._tempAutoAcceptFiles
                     ConfigManager.tcpPort = settingsDialog._tempTcpPort
                     AppController.historyController.setRetentionDays(settingsDialog._tempRetentionDays)
+                    ConfigManager.rendezvousEnabled = settingsDialog._tempRendezvousEnabled
+                    ConfigManager.rendezvousHost = settingsDialog._tempRendezvousHost
+                    ConfigManager.rendezvousPort = settingsDialog._tempRendezvousPort
+                    ConfigManager.relayMode = settingsDialog._tempRelayMode
                     settingsDialog.accept()
                 }
             }

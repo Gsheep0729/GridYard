@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
-* @version 6.6.2
-* @date    2026-06-21
+* @version 7.4.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -10,6 +10,8 @@
 * GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
 *
 * Change Log:
+* [v7.4.0] GY   2026-07-21
+* * 新增 Reachability 配置分组：rendezvousEnabled、rendezvousHost、rendezvousPort、relayMode
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
@@ -77,6 +79,13 @@ ConfigManager::ConfigManager(QObject *parent)
     _tcpPort = envPort.isEmpty()
         ? settings.value("network/tcpPort", gy::protocol::kDefaultP2pPort).toUInt()
         : envPort.toUInt();
+
+    // Reachability 配置：协调服务器
+    _rendezvousEnabled = settings.value("reachability/rendezvousEnabled", false).toBool();
+    _rendezvousHost = settings.value("reachability/rendezvousHost", "127.0.0.1").toString();
+    _rendezvousPort = settings.value("reachability/rendezvousPort", 45780).toInt();
+    int relayModeInt = settings.value("reachability/relayMode", static_cast<int>(RelayMode::AskBeforeRelay)).toInt();
+    _relayMode = static_cast<RelayMode>(relayModeInt);
 
     // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
     ensureDeviceId();
@@ -288,4 +297,69 @@ void ConfigManager::fillSenderInfo(QVariantMap &session) const
 {
     session["senderDeviceId"] = _deviceId;
     session["senderName"]     = _deviceName;
+}
+
+// 获取协调服务器启用状态
+bool ConfigManager::rendezvousEnabled() const
+{
+    return _rendezvousEnabled;
+}
+
+// 获取协调服务器地址
+QString ConfigManager::rendezvousHost() const
+{
+    return _rendezvousHost;
+}
+
+// 获取协调服务器端口
+int ConfigManager::rendezvousPort() const
+{
+    return _rendezvousPort;
+}
+
+// 获取 Relay 策略
+RelayMode ConfigManager::relayMode() const
+{
+    return _relayMode;
+}
+
+// 设置协调服务器启用状态并持久化
+void ConfigManager::setRendezvousEnabled(bool enabled)
+{
+    if (_rendezvousEnabled == enabled) return;
+    _rendezvousEnabled = enabled;
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
+    settings.setValue("reachability/rendezvousEnabled", enabled);
+    emit rendezvousEnabledChanged();
+}
+
+// 设置协调服务器地址并持久化
+void ConfigManager::setRendezvousHost(const QString &host)
+{
+    if (_rendezvousHost == host) return;
+    _rendezvousHost = host;
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
+    settings.setValue("reachability/rendezvousHost", host);
+    emit rendezvousHostChanged();
+}
+
+// 设置协调服务器端口并持久化
+void ConfigManager::setRendezvousPort(int port)
+{
+    port = std::max(1, std::min(65535, port));
+    if (_rendezvousPort == port) return;
+    _rendezvousPort = port;
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
+    settings.setValue("reachability/rendezvousPort", port);
+    emit rendezvousPortChanged();
+}
+
+// 设置 Relay 策略并持久化
+void ConfigManager::setRelayMode(RelayMode mode)
+{
+    if (_relayMode == mode) return;
+    _relayMode = mode;
+    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
+    settings.setValue("reachability/relayMode", static_cast<int>(mode));
+    emit relayModeChanged();
 }
