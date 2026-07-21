@@ -1,15 +1,13 @@
 /**
 * @file    discovery_service.h
-* @version 6.6.2
-* @date    2026-06-28
+* @version 7.5.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
-* 通过 UDP 广播实现局域网内设备自动发现。每 5 秒发送 Hello 包，
-* 维护在线节点表（QHash<QString, PeerInfo>），15 秒无心跳自动剔除。
-* 提供面向发送场景的对端快照查询供其他模块调用。
-*
 * Change Log:
+* [v7.5.0] GY   2026-07-21
+* * 新增 onRendezvousPeersReceived 处理协调节点返回的候选端点
 * [v6.6.2] GY   2026-06-28
 * * 移除 QML 暴露宏和 Q_INVOKABLE 标记，QML 通过 PeerDiscoveryViewModel 访问
 * [v6.6.2] GY   2026-06-25
@@ -41,6 +39,7 @@
 
 class ConfigManager;
 class TestChatManager;
+class RendezvousClient;
 
 class DiscoveryService : public QObject {
     Q_OBJECT
@@ -62,6 +61,9 @@ public:
     void refresh();
     // 向指定地址发送定向 Hello 包（用于跨 AP 场景）
     void sendDirectedHello(const QHostAddress &address, quint16 discoveryPort);
+
+    // 处理协调节点返回的候选端点
+    Q_INVOKABLE void onRendezvousPeersReceived(const QList<QVariantMap> &peers);
 
 signals:
     // 节点列表变化通知

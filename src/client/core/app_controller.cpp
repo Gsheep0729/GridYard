@@ -57,6 +57,7 @@
 #include "reachability_controller.h"
 #include "transfer_controller.h"
 #include "transfer_session_manager.h"
+#include "network/rendezvous_client.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -119,11 +120,33 @@ AppController::AppController(QObject *parent)
     , _dataBroker{new LocalDataBroker{this}}
     , _history{new HistoryController{_chat, _transfer, _config, _dataBroker, this}}
     , _reachability{new ReachabilityController{this}}
+    , _rendezvousClient{new RendezvousClient{this}}
     , _retentionTimer{new QTimer{this}}
 {
     // 初始化 ReachabilityController 的引用
     _reachability->setDiscoveryService(_discovery);
     _reachability->setConfigManager(_config);
+
+    // 如果启用了协调服务器，自动连接并注册
+    if (_config->rendezvousEnabled()) {
+        _rendezvousClient->connectToServer(_config->rendezvousHost(), _config->rendezvousPort());
+        connect(_rendezvousClient, &RendezvousClient::connected,
+                this, [this]() {
+                    // 连接成功后注册本机端点
+                    QStringList addresses;
+                    if (!_config->localIp().isEmpty()) {
+                        addresses.append(_config->localIp());
+                    }
+                    _rendezvousClient->registerDevice(
+                        QStringLiteral("default"),  // 默认 room
+                        _config->deviceId(),
+                        _config->deviceName(),
+                        addresses,
+                        _config->tcpPort(),
+                        45678  // UDP 发现端口
+                    );
+                });
+    }
 
     QString storageError;
     if (!_dataBroker->initialize(ApplicationPaths::databaseDir() + "/gridyard-history.sqlite",

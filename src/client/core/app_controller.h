@@ -57,6 +57,8 @@
 #include "reachability_controller.h"
 #include "transfer_controller.h"
 
+#include "network/rendezvous_client.h"
+
 class QQmlEngine;
 class QJSEngine;
 class QQmlApplicationEngine;
@@ -68,6 +70,7 @@ class LocalDataBroker;
 class P2pServer;
 class QTimer;
 class ReachabilityController;
+class RendezvousClient;
 class TransferSessionManager;
 
 class AppController : public QObject {
@@ -149,6 +152,7 @@ private:
     QQmlApplicationEngine *_uiEngine = nullptr;  // 由控制器持有的 QML UI 引擎
     HistoryController *_history = nullptr;  // 本地历史查询、清理与 QML 操作入口
     ReachabilityController *_reachability = nullptr;  // 网络可达性诊断控制器
+    RendezvousClient *_rendezvousClient = nullptr;  // 协调节点客户端
     QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
     bool _quitRequested = false;  // 防止托盘退出动作重复请求排空同一任务队列

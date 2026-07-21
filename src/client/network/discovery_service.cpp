@@ -1,15 +1,13 @@
 /**
 * @file    discovery_service.cpp
-* @version 6.6.2
-* @date    2026-06-25
+* @version 7.5.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
-* 实现 UDP 广播发送、接收、节点管理等功能。每 5 秒发送 Hello 包，
-* 接收到其他设备的广播后更新在线节点表。支持协议版本兼容性检查
-* 和多网卡广播。
-*
 * Change Log:
+* [v7.5.0] GY   2026-07-21
+* * 新增 onRendezvousPeersReceived 处理协调节点返回的候选端点
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.1.0] GY   2026-06-25
@@ -371,4 +369,42 @@ void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 di
     } else {
         qDebug() << "DiscoveryService: 定向 Hello 发送成功，字节数:" << sent;
     }
+}
+
+// 处理协调节点返回的候选端点，将其转换为 PeerInfo 并更新本地设备表
+void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers)
+{
+    for (const QVariantMap &peerData : peers) {
+        const QString deviceId = peerData[QStringLiteral("deviceId")].toString();
+        if (deviceId.isEmpty()) {
+            continue;
+        }
+
+        // 过滤本机
+        if (_config->isMyDevice(deviceId)) {
+            continue;
+        }
+
+        PeerInfo info;
+        info.deviceId = deviceId;
+        info.deviceName = peerData[QStringLiteral("deviceName")].toString();
+        info.tcpPort = static_cast<quint16>(peerData[QStringLiteral("tcpPort")].toInt());
+
+        // 优先使用第一个地址，否则用 deviceId 作为占位
+        const QVariant addressesVar = peerData[QStringLiteral("addresses")];
+        if (addressesVar.canConvert<QVariantList>() && !addressesVar.toList().isEmpty()) {
+            info.ipAddress = addressesVar.toList().first().toString();
+        } else if (addressesVar.canConvert<QString>()) {
+            info.ipAddress = addressesVar.toString();
+        }
+
+        info.isOnline = true;
+        info.lastSeen = QDateTime::currentDateTime();
+
+        // 候选端点直接更新，不通过 updatePeer（避免覆盖 UDP 发现的在线设备）
+        _peers.insert(deviceId, info);
+        qDebug() << "DiscoveryService: 从协调节点收到候选设备" << deviceId << info.deviceName;
+    }
+
+    notifyPeersChanged();
 }
