@@ -7,7 +7,7 @@ set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
 # set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
 set(CMAKE_CXX_MODULE_STD ON)
 
-project(GridYard VERSION 7.0.0 LANGUAGES CXX)
+project(GridYard VERSION 7.3.0 LANGUAGES CXX)
 
 # QuickDialogs2 提供原生 FileDialog / FolderDialog，替代已废弃的 Qt.labs.platform 方案
 find_package(Qt6 REQUIRED COMPONENTS Quick Network QuickControls2 QuickDialogs2 Sql Widgets)

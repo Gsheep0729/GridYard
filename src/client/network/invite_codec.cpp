@@ -18,6 +18,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 
+// 编码邀请数据为 URL 文本
 QString InviteCodec::encode(const Invite &invite)
 {
     QUrl url(QStringLiteral("gridyard://invite"));
@@ -33,6 +34,7 @@ QString InviteCodec::encode(const Invite &invite)
     return url.toString();
 }
 
+// 解析邀请文本，错误时 result 为空，error 指示错误类型
 InviteCodec::Invite InviteCodec::parse(const QString &text, Error *error)
 {
     Invite result;
@@ -88,6 +90,7 @@ InviteCodec::Invite InviteCodec::parse(const QString &text, Error *error)
     return result;
 }
 
+// 获取错误描述
 QString InviteCodec::errorString(Error error)
 {
     switch (error) {

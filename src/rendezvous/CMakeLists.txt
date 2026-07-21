@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 4.2.3)
 
-project(gridyard_rendezvous VERSION 7.2.0 LANGUAGES CXX)
+project(gridyard_rendezvous VERSION 7.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

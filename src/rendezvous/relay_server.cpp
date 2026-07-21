@@ -20,12 +20,14 @@
 
 // -------------------- RelaySession --------------------
 
+// 构造函数
 RelaySession::RelaySession(const QString &relayId, QObject *parent)
     : QObject{parent}
     , _relayId{relayId}
 {
 }
 
+// 析构函数，清理 socket
 RelaySession::~RelaySession()
 {
     if (_sender) {
@@ -38,6 +40,7 @@ RelaySession::~RelaySession()
     }
 }
 
+// 检查两端是否都连接完成
 bool RelaySession::isComplete() const
 {
     return _sender != nullptr && _receiver != nullptr;
@@ -59,6 +62,7 @@ bool RelaySession::addSender(QTcpSocket *socket)
     return true;
 }
 
+// 添加接收端连接
 bool RelaySession::addReceiver(QTcpSocket *socket)
 {
     if (_receiver != nullptr) {
@@ -75,6 +79,7 @@ bool RelaySession::addReceiver(QTcpSocket *socket)
     return true;
 }
 
+// 向两端广播错误消息
 void RelaySession::broadcastError(const QString &code, const QString &message)
 {
     QJsonObject error;
@@ -92,6 +97,7 @@ void RelaySession::broadcastError(const QString &code, const QString &message)
     }
 }
 
+// 处理发送端可读事件，转发数据到接收端
 void RelaySession::onSenderReadyRead()
 {
     if (!_sender || !_receiver) {
@@ -104,6 +110,7 @@ void RelaySession::onSenderReadyRead()
     }
 }
 
+// 处理接收端可读事件，转发数据到发送端
 void RelaySession::onReceiverReadyRead()
 {
     if (!_sender || !_receiver) {
@@ -116,6 +123,7 @@ void RelaySession::onReceiverReadyRead()
     }
 }
 
+// 处理发送端断开事件
 void RelaySession::onSenderDisconnected()
 {
     qDebug() << "[RelaySession]" << _relayId << "发送端断开";
@@ -130,6 +138,7 @@ void RelaySession::onSenderDisconnected()
     }
 }
 
+// 处理接收端断开事件
 void RelaySession::onReceiverDisconnected()
 {
     qDebug() << "[RelaySession]" << _relayId << "接收端断开";
@@ -146,6 +155,7 @@ void RelaySession::onReceiverDisconnected()
 
 // -------------------- RelayServer --------------------
 
+// 构造函数
 RelayServer::RelayServer(quint16 port, const QString &token, QObject *parent)
     : QObject{parent}
     , _port{port}
@@ -154,11 +164,13 @@ RelayServer::RelayServer(quint16 port, const QString &token, QObject *parent)
     _server = new QTcpServer{this};
 }
 
+// 析构函数，停止服务
 RelayServer::~RelayServer()
 {
     stop();
 }
 
+// 启动中继服务
 bool RelayServer::start()
 {
     if (!_server->listen(QHostAddress::Any, _port)) {
@@ -173,6 +185,7 @@ bool RelayServer::start()
     return true;
 }
 
+// 停止中继服务并清理会话
 void RelayServer::stop()
 {
     // 清理所有会话
@@ -185,16 +198,19 @@ void RelayServer::stop()
     qInfo() << "[RelayServer] 中继服务已停止";
 }
 
+// 获取服务监听端口
 quint16 RelayServer::serverPort() const
 {
     return _server->serverPort();
 }
 
+// 获取当前活跃会话数量
 int RelayServer::sessionCount() const
 {
     return _sessions.size();
 }
 
+// 处理新的客户端连接
 void RelayServer::onNewConnection()
 {
     QTcpSocket *socket = _server->nextPendingConnection();
@@ -259,6 +275,7 @@ void RelayServer::onNewConnection()
     }
 }
 
+// 处理会话关闭事件
 void RelayServer::onSessionClosed()
 {
     RelaySession *session = qobject_cast<RelaySession *>(sender());
@@ -271,6 +288,7 @@ void RelayServer::onSessionClosed()
     }
 }
 
+// 生成新的 relay_id
 QString RelayServer::generateRelayId() const
 {
     return QUuid::createUuid().toString(QUuid::WithoutBraces);

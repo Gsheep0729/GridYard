@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+// 解析请求消息类型
 RendezvousProtocol::MessageType RendezvousProtocol::parseRequest(const QJsonObject &json, QString *errorString)
 {
     const QString type = json[QStringLiteral("type")].toString();
@@ -30,6 +31,7 @@ RendezvousProtocol::MessageType RendezvousProtocol::parseRequest(const QJsonObje
     return MessageType::Error;
 }
 
+// 构建注册响应
 QJsonObject RendezvousProtocol::buildRegisterAck(int ttlSeconds)
 {
     QJsonObject json;
@@ -39,6 +41,7 @@ QJsonObject RendezvousProtocol::buildRegisterAck(int ttlSeconds)
     return json;
 }
 
+// 构建候选列表响应
 QJsonObject RendezvousProtocol::buildPeersResponse(const QList<OnlineRegistry::PeerInfo> &peers)
 {
     QJsonObject json;
@@ -60,6 +63,7 @@ QJsonObject RendezvousProtocol::buildPeersResponse(const QList<OnlineRegistry::P
     return json;
 }
 
+// 构建错误响应
 QJsonObject RendezvousProtocol::buildError(const QString &message)
 {
     QJsonObject json;
@@ -68,21 +72,25 @@ QJsonObject RendezvousProtocol::buildError(const QString &message)
     return json;
 }
 
+// 提取 room 字段
 QString RendezvousProtocol::extractRoom(const QJsonObject &json)
 {
     return json[QStringLiteral("room")].toString();
 }
 
+// 提取 token 字段
 QString RendezvousProtocol::extractToken(const QJsonObject &json)
 {
     return json[QStringLiteral("token")].toString();
 }
 
+// 提取 device_id 字段
 QString RendezvousProtocol::extractDeviceId(const QJsonObject &json)
 {
     return json[QStringLiteral("device_id")].toString();
 }
 
+// 提取 PeerInfo 字段
 OnlineRegistry::PeerInfo RendezvousProtocol::extractPeerInfo(const QJsonObject &json)
 {
     OnlineRegistry::PeerInfo peer;
@@ -102,6 +110,7 @@ OnlineRegistry::PeerInfo RendezvousProtocol::extractPeerInfo(const QJsonObject &
     return peer;
 }
 
+// 验证 token
 bool RendezvousProtocol::validateToken(const QString &provided, const QString &expected)
 {
     if (expected.isEmpty()) {

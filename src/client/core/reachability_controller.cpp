@@ -24,8 +24,10 @@
 #include <QNetworkInterface>
 #include <QJSEngine>
 
+// 单例静态成员定义
 QPointer<ReachabilityController> ReachabilityController::s_instance;
 
+// 构造函数
 ReachabilityController::ReachabilityController(QObject *parent)
     : QObject{parent}
     , _probe{new EndpointProbe{this}}
@@ -36,6 +38,7 @@ ReachabilityController::ReachabilityController(QObject *parent)
     _localAddresses = collectLocalAddresses();
 }
 
+// QML 单例工厂函数
 ReachabilityController *ReachabilityController::create(QJSEngine *engine, QJSEngine *scriptEngine)
 {
     Q_UNUSED(engine);
@@ -43,6 +46,7 @@ ReachabilityController *ReachabilityController::create(QJSEngine *engine, QJSEng
     return singleton();
 }
 
+// 获取单例实例
 ReachabilityController *ReachabilityController::singleton()
 {
     if (s_instance.isNull()) {
@@ -51,31 +55,37 @@ ReachabilityController *ReachabilityController::singleton()
     return s_instance;
 }
 
+// 获取本机所有 IPv4 地址列表
 QStringList ReachabilityController::localAddresses() const
 {
     return _localAddresses;
 }
 
+// 获取最近一次探测结果
 QVariantMap ReachabilityController::lastProbeResult() const
 {
     return _lastProbeResult;
 }
 
+// 当前是否正在探测
 bool ReachabilityController::isProbing() const
 {
     return _isProbing;
 }
 
+// 获取最近一次生成的邀请文本
 QString ReachabilityController::lastInviteText() const
 {
     return _lastInviteText;
 }
 
+// 获取最近一次邀请操作的错误信息
 QString ReachabilityController::inviteError() const
 {
     return _inviteError;
 }
 
+// 探测指定端点
 void ReachabilityController::probeEndpoint(const QString &ip, quint16 tcpPort, int timeoutMs)
 {
     _isProbing = true;
@@ -84,6 +94,7 @@ void ReachabilityController::probeEndpoint(const QString &ip, quint16 tcpPort, i
     _probe->probeTcp(ip, tcpPort, timeoutMs);
 }
 
+// 发送定向 Hello
 void ReachabilityController::sendDirectedHello(const QString &ip, quint16 discoveryPort)
 {
     if (!_discovery) {
@@ -100,22 +111,26 @@ void ReachabilityController::sendDirectedHello(const QString &ip, quint16 discov
     _discovery->sendDirectedHello(address, discoveryPort);
 }
 
+// 刷新本机地址列表
 void ReachabilityController::refreshLocalAddresses()
 {
     _localAddresses = collectLocalAddresses();
     emit localAddressesChanged();
 }
 
+// 设置 DiscoveryService 引用
 void ReachabilityController::setDiscoveryService(DiscoveryService *discovery)
 {
     _discovery = discovery;
 }
 
+// 设置 ConfigManager 引用
 void ReachabilityController::setConfigManager(ConfigManager *config)
 {
     _config = config;
 }
 
+// 收集本机所有有效的 IPv4 地址
 QStringList ReachabilityController::collectLocalAddresses() const
 {
     QStringList addresses;
@@ -135,6 +150,7 @@ QStringList ReachabilityController::collectLocalAddresses() const
     return addresses;
 }
 
+// 处理探测完成结果
 void ReachabilityController::onProbeFinished(const EndpointProbe::ProbeResult &result)
 {
     _isProbing = false;
@@ -151,6 +167,7 @@ void ReachabilityController::onProbeFinished(const EndpointProbe::ProbeResult &r
     emit lastProbeResultChanged();
 }
 
+// 生成当前设备的邀请文本
 QString ReachabilityController::generateInvite()
 {
     if (!_config) {
@@ -174,6 +191,7 @@ QString ReachabilityController::generateInvite()
     return _lastInviteText;
 }
 
+// 导入邀请文本
 void ReachabilityController::importInvite(const QString &text)
 {
     InviteCodec::Error error = InviteCodec::Error::None;
@@ -205,6 +223,7 @@ void ReachabilityController::importInvite(const QString &text)
     emit inviteImported(true, invite.deviceId, QString());
 }
 
+// 手动添加端点
 void ReachabilityController::addManualEndpoint(const QString &ip, quint16 tcpPort)
 {
     if (ip.isEmpty()) {
@@ -227,6 +246,7 @@ void ReachabilityController::addManualEndpoint(const QString &ip, quint16 tcpPor
     sendDirectedHello(ip, 45678);
 }
 
+// 测试手动端点
 void ReachabilityController::testManualEndpoint(const QString &ip, quint16 tcpPort)
 {
     if (ip.isEmpty()) {
@@ -246,6 +266,7 @@ void ReachabilityController::testManualEndpoint(const QString &ip, quint16 tcpPo
     _probe->probeTcp(ip, tcpPort, 3000);
 }
 
+// 处理手动端点探测完成
 void ReachabilityController::onManualEndpointProbeFinished(const EndpointProbe::ProbeResult &result,
                                                             const QString &deviceId,
                                                             const QString &deviceName,

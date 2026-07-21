@@ -18,6 +18,7 @@
 #include <QJsonDocument>
 #include <QTimer>
 
+// 会话构造函数
 RendezvousSession::RendezvousSession(QTcpSocket *socket, OnlineRegistry *registry, const QString &token, QObject *parent)
     : QObject{parent}
     , _socket{socket}
@@ -28,11 +29,13 @@ RendezvousSession::RendezvousSession(QTcpSocket *socket, OnlineRegistry *registr
     connect(_socket, &QTcpSocket::disconnected, this, &RendezvousSession::onDisconnected);
 }
 
+// 启动会话处理
 void RendezvousSession::start()
 {
     qDebug() << "[RendezvousSession] 新会话来自" << _socket->peerAddress().toString();
 }
 
+// 处理收到的数据，按行解析 JSON 请求
 void RendezvousSession::onReadyRead()
 {
     _buffer.append(_socket->readAll());
@@ -60,12 +63,14 @@ void RendezvousSession::onReadyRead()
     }
 }
 
+// 处理连接断开
 void RendezvousSession::onDisconnected()
 {
     qDebug() << "[RendezvousSession] 会话断开" << _socket->peerAddress().toString();
     emit finished();
 }
 
+// 处理 JSON 请求消息
 void RendezvousSession::processRequest(const QJsonObject &json)
 {
     QString errorString;
@@ -118,6 +123,7 @@ void RendezvousSession::processRequest(const QJsonObject &json)
     }
 }
 
+// 发送 JSON 响应
 void RendezvousSession::sendResponse(const QJsonObject &json)
 {
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact) + '\n';
@@ -127,6 +133,7 @@ void RendezvousSession::sendResponse(const QJsonObject &json)
 
 // -------------------- RendezvousServer --------------------
 
+// 构造函数
 RendezvousServer::RendezvousServer(const QString &host, quint16 port, const QString &token, QObject *parent)
     : QObject{parent}
     , _host{host}
@@ -137,6 +144,7 @@ RendezvousServer::RendezvousServer(const QString &host, quint16 port, const QStr
     _server = new QTcpServer{this};
 }
 
+// 启动监听服务
 bool RendezvousServer::start()
 {
     if (!_server->listen(QHostAddress::Any, _port)) {
@@ -156,22 +164,26 @@ bool RendezvousServer::start()
     return true;
 }
 
+// 停止监听服务
 void RendezvousServer::stop()
 {
     _server->close();
     qInfo() << "[RendezvousServer] 已停止";
 }
 
+// 是否正在监听
 bool RendezvousServer::isListening() const
 {
     return _server->isListening();
 }
 
+// 获取服务监听端口
 quint16 RendezvousServer::serverPort() const
 {
     return _server->serverPort();
 }
 
+// 处理新的客户端连接
 void RendezvousServer::onNewConnection()
 {
     QTcpSocket *socket = _server->nextPendingConnection();
@@ -194,6 +206,7 @@ void RendezvousServer::onNewConnection()
     session->start();
 }
 
+// 处理会话关闭
 void RendezvousServer::onSessionFinished()
 {
 }

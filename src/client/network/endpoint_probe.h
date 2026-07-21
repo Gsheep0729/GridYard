@@ -18,7 +18,6 @@
 #include <QObject>
 #include <QString>
 #include <QHostAddress>
-#include <QtQml/QtQml>
 
 class EndpointProbe : public QObject {
     Q_OBJECT
