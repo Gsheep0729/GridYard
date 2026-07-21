@@ -1,14 +1,13 @@
 /**
 * @file    transfer_controller.h
-* @version 6.6.2
-* @date    2026-06-27
+* @version 7.8.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 *
-* 只暴露表现层需要的传输会话列表、用户命令和提示信号，内部传输
-* 会话管理、Worker 映射和 P2P 依赖由 TransferSessionManager 持有。
-*
 * Change Log:
+* [v7.8.0] GY   2026-07-21
+* * 新增 relayModeRequested 信号，用于 P2P 直连失败后请求 Relay 中继
 * [v6.6.2] GY   2026-06-27
 * * 新增传输 UI API 门面，避免 QML 直接依赖内部 Manager
 */
@@ -55,6 +54,8 @@ public:
 
 signals:
     void sessionsChanged();
+    // Relay 降级请求（所有直连候选失败后触发）
+    void relayModeRequested(const QString &sessionId, const QString &deviceId);
     void receiveRequestReceived(const QString &sessionId,
                                 const QString &senderDeviceId,
                                 const QString &senderName,
