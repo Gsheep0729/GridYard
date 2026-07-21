@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.cpp
-* @version 6.7.0
-* @date    2026-06-28
+* @version 7.0.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
@@ -10,6 +10,8 @@
 * UI 引擎由 singleton() 在控制器实例缓存后再初始化，避免 QML 单例回调递归创建。
 *
 * Change Log:
+* [v7.0.0] GY   2026-07-21
+* * 接入 ReachabilityController，提供网络可达性诊断入口
 * [v6.7.0] GY   2026-06-28
 * * 增加清除本地缓存入口，用于删除配置、历史数据库和日志
 * * 启动时为设备列表加载本地历史设备目录
@@ -52,6 +54,7 @@
 #include "logger.h"
 #include "p2p_server.h"
 #include "peer_discovery_view_model.h"
+#include "reachability_controller.h"
 #include "transfer_controller.h"
 #include "transfer_session_manager.h"
 
@@ -115,8 +118,12 @@ AppController::AppController(QObject *parent)
     , _chatController{new ChatController{_chat, this}}
     , _dataBroker{new LocalDataBroker{this}}
     , _history{new HistoryController{_chat, _transfer, _config, _dataBroker, this}}
+    , _reachability{new ReachabilityController{this}}
     , _retentionTimer{new QTimer{this}}
 {
+    // 初始化 ReachabilityController 的 DiscoveryService 引用
+    _reachability->setDiscoveryService(_discovery);
+
     QString storageError;
     if (!_dataBroker->initialize(ApplicationPaths::databaseDir() + "/gridyard-history.sqlite",
                                  &storageError)) {
@@ -269,6 +276,12 @@ HistoryController *AppController::historyController() const
 bool AppController::localHistoryAvailable() const
 {
     return _localHistoryAvailable;
+}
+
+// 获取网络可达性控制器
+ReachabilityController *AppController::reachabilityController() const
+{
+    return _reachability;
 }
 
 // 获取 UI 根对象是否创建成功

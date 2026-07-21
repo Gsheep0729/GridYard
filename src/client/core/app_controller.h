@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
-* @version 6.7.0
-* @date    2026-06-28
+* @version 7.0.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -13,6 +13,8 @@
 * 不直接暴露内部 Manager、Service 或上下文属性。
 *
 * Change Log:
+* [v7.0.0] GY   2026-07-21
+* * 接入 ReachabilityController，提供网络可达性诊断入口
 * [v6.7.0] GY   2026-06-28
 * * 增加清除本地缓存入口，用于删除配置、历史数据库和日志
 * [v6.6.2] GY   2026-06-28
@@ -52,6 +54,7 @@
 #include "chat_controller.h"
 #include "history_controller.h"
 #include "peer_discovery_view_model.h"
+#include "reachability_controller.h"
 #include "transfer_controller.h"
 
 class QQmlEngine;
@@ -64,6 +67,7 @@ class DiscoveryService;
 class LocalDataBroker;
 class P2pServer;
 class QTimer;
+class ReachabilityController;
 class TransferSessionManager;
 
 class AppController : public QObject {
@@ -77,6 +81,7 @@ private:
     Q_PROPERTY(TransferController* transferController READ transferController CONSTANT)
     Q_PROPERTY(ChatController* chatController READ chatController CONSTANT)
     Q_PROPERTY(HistoryController* historyController READ historyController CONSTANT)
+    Q_PROPERTY(ReachabilityController* reachabilityController READ reachabilityController CONSTANT)
     Q_PROPERTY(bool localHistoryAvailable READ localHistoryAvailable CONSTANT)
 
 public:
@@ -102,6 +107,8 @@ public:
     HistoryController *historyController() const;
     // 获取本地历史可用性
     bool localHistoryAvailable() const;
+    // 获取网络可达性控制器
+    ReachabilityController *reachabilityController() const;
     // 获取 UI 根对象是否创建成功
     bool uiReady() const;
 
@@ -141,6 +148,7 @@ private:
     LocalDataBroker *_dataBroker = nullptr;  // 本地数据层代管者
     QQmlApplicationEngine *_uiEngine = nullptr;  // 由控制器持有的 QML UI 引擎
     HistoryController *_history = nullptr;  // 本地历史查询、清理与 QML 操作入口
+    ReachabilityController *_reachability = nullptr;  // 网络可达性诊断控制器
     QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
     bool _quitRequested = false;  // 防止托盘退出动作重复请求排空同一任务队列

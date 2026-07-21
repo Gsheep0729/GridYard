@@ -60,6 +60,8 @@ public:
 
     // 立即发送一次广播并清理离线节点
     void refresh();
+    // 向指定地址发送定向 Hello 包（用于跨 AP 场景）
+    void sendDirectedHello(const QHostAddress &address, quint16 discoveryPort);
 
 signals:
     // 节点列表变化通知

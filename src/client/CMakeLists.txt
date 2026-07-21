@@ -31,6 +31,8 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/logger.cpp
     core/peer_discovery_view_model.h
     core/peer_discovery_view_model.cpp
+    core/reachability_controller.h
+    core/reachability_controller.cpp
     core/transfer_controller.h
     core/transfer_controller.cpp
     core/transfer_session_manager.h
@@ -48,6 +50,8 @@ set(GRIDYARD_CLIENT_NETWORK_SOURCES
     network/file_sender_worker.cpp
     network/file_receiver_worker.h
     network/file_receiver_worker.cpp
+    network/endpoint_probe.h
+    network/endpoint_probe.cpp
 )
 
 set(GRIDYARD_CLIENT_QML_ENTRY_FILES

@@ -351,3 +351,24 @@ void DiscoveryService::refresh()
     // 发送广播，让其他设备响应
     sendHelloPacket();
 }
+
+// 向指定地址发送定向 Hello 包，复用 buildHelloPayload() 构建内容
+void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 discoveryPort)
+{
+    if (!_socket || _socket->state() == QAbstractSocket::UnconnectedState) {
+        qDebug() << "DiscoveryService: socket 未绑定，跳过定向 Hello";
+        return;
+    }
+
+    const QByteArray data = buildHelloPayload();
+    qDebug() << "DiscoveryService: 发送定向 Hello 到" << address.toString()
+             << "端口" << discoveryPort;
+
+    qint64 sent = _socket->writeDatagram(data, address, discoveryPort);
+    if (sent == -1) {
+        qWarning() << "DiscoveryService: 定向 Hello 发送失败:"
+                   << address.toString() << ":" << _socket->errorString();
+    } else {
+        qDebug() << "DiscoveryService: 定向 Hello 发送成功，字节数:" << sent;
+    }
+}
