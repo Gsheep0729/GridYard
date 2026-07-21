@@ -374,6 +374,15 @@ void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 di
     }
 }
 
+// 添加手动端点（来源标记为 manual，不通过 updatePeer 以保留 source 标签）
+void DiscoveryService::addManualPeer(const PeerInfo &peer)
+{
+    const QString deviceId = peer.deviceId;
+    _peers.insert(deviceId, peer);
+    qDebug() << "DiscoveryService: 添加手动端点" << deviceId << peer.ipAddress;
+    notifyPeersChanged();
+}
+
 // 处理协调节点返回的候选端点，将其转换为 PeerInfo 并更新本地设备表
 void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers)
 {

@@ -1,11 +1,13 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 6.7.0
-* @date    2026-06-28
+* @version 7.8.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 *
 * Change Log:
+* [v7.8.0] GY   2026-07-21
+* * 按设备来源优先级排序：broadcast > directed > rendezvous > manual > history
 * [v6.7.0] GY   2026-06-28
 * * 合并在线发现设备和本地历史设备目录
 * [v6.6.2] GY   2026-06-27
@@ -38,6 +40,42 @@ QString deviceIdFromVariant(const QVariant &peer)
     }
     return peer.toMap().value("deviceId").toString();
 }
+
+// 设备来源优先级：数值越小优先级越高
+int sourcePriority(const QVariant &peer)
+{
+    QString source = QStringLiteral("history");  // 默认最低优先级
+    if (peer.canConvert<PeerInfo>()) {
+        source = peer.value<PeerInfo>().source;
+    } else {
+        source = peer.toMap().value("source").toString();
+    }
+    // broadcast(0) > directed(1) > rendezvous(2) > manual(3) > history(4)
+    if (source == QStringLiteral("broadcast")) return 0;
+    if (source == QStringLiteral("directed")) return 1;
+    if (source == QStringLiteral("rendezvous")) return 2;
+    if (source == QStringLiteral("manual")) return 3;
+    return 4;  // history 或空
+}
+
+// 比较函数用于排序
+bool peerSortLessThan(const QVariant &a, const QVariant &b)
+{
+    const int priorityA = sourcePriority(a);
+    const int priorityB = sourcePriority(b);
+    if (priorityA != priorityB) {
+        return priorityA < priorityB;
+    }
+    // 优先级相同按最后发现时间倒序
+    QDateTime timeA, timeB;
+    if (a.canConvert<PeerInfo>()) {
+        timeA = a.value<PeerInfo>().lastSeen;
+    }
+    if (b.canConvert<PeerInfo>()) {
+        timeB = b.value<PeerInfo>().lastSeen;
+    }
+    return timeA > timeB;  // 较新的排在前面
+}
 }
 
 // 构造函数
@@ -65,7 +103,7 @@ PeerDiscoveryViewModel::PeerDiscoveryViewModel(DiscoveryService *discovery, QObj
             });
 }
 
-// 合并在线设备和历史设备，在线设备优先，历史设备不重复追加
+// 合并在线设备和历史设备，按来源优先级排序
 QVariantList PeerDiscoveryViewModel::peers() const
 {
     QVariantList mergedPeers = _discovery ? _discovery->peers() : QVariantList{};
@@ -87,6 +125,10 @@ QVariantList PeerDiscoveryViewModel::peers() const
         }
         mergedPeers.append(map);
     }
+
+    // 按来源优先级排序：broadcast > directed > rendezvous > manual > history
+    std::sort(mergedPeers.begin(), mergedPeers.end(), peerSortLessThan);
+
     return mergedPeers;
 }
 

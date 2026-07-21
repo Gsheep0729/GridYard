@@ -62,6 +62,9 @@ public:
     // 向指定地址发送定向 Hello 包（用于跨 AP 场景）
     void sendDirectedHello(const QHostAddress &address, quint16 discoveryPort);
 
+    // 添加手动端点（来源标记为 manual）
+    void addManualPeer(const PeerInfo &peer);
+
     // 处理协调节点返回的候选端点
     Q_INVOKABLE void onRendezvousPeersReceived(const QList<QVariantMap> &peers);
 

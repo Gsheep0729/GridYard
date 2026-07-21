@@ -1,14 +1,17 @@
 /**
 * @file    reachability_controller.h
-* @version 7.1.0
+* @version 7.8.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   网络可达性控制器（QML 单例）
 *
 * 聚合 EndpointProbe 和 DiscoveryService，向 QML 提供统一的网络诊断入口。
 * 支持本机 IP 地址查询、TCP 探测、定向 Hello 发送和邀请文本处理。
+* 协调服务器启用时，支持向协调节点查询候选设备列表。
 *
 * Change Log:
+* [v7.8.0] GY   2026-07-21
+* * 新增协调服务器候选设备查询接口
 * [v7.1.0] GY   2026-07-21
 * * Stage 7.1：新增邀请文本导入导出和手动添加设备功能
 * [v7.0.0] GY   2026-07-21
@@ -30,6 +33,7 @@
 #include "invite_codec.h"
 
 class ConfigManager;
+class RendezvousClient;
 
 class ReachabilityController : public QObject {
     Q_OBJECT
@@ -41,6 +45,7 @@ class ReachabilityController : public QObject {
     Q_PROPERTY(bool isProbing READ isProbing NOTIFY isProbingChanged)
     Q_PROPERTY(QString lastInviteText READ lastInviteText NOTIFY lastInviteTextChanged)
     Q_PROPERTY(QString inviteError READ inviteError NOTIFY inviteErrorChanged)
+    Q_PROPERTY(bool rendezvousEnabled READ rendezvousEnabled NOTIFY rendezvousEnabledChanged)
 
 public:
     static ReachabilityController *create(QJSEngine *engine, QJSEngine *scriptEngine);
@@ -62,6 +67,8 @@ public:
     QString lastInviteText() const;
     // 获取最近一次邀请操作的错误信息
     QString inviteError() const;
+    // 协调服务器是否启用
+    bool rendezvousEnabled() const;
 
     // 生成当前设备的邀请文本
     Q_INVOKABLE QString generateInvite();
@@ -75,11 +82,15 @@ public:
     Q_INVOKABLE void probeEndpoint(const QString &ip, quint16 tcpPort, int timeoutMs = 5000);
     Q_INVOKABLE void sendDirectedHello(const QString &ip, quint16 discoveryPort = 45678);
     Q_INVOKABLE void refreshLocalAddresses();
+    // 向协调服务器查询在线设备列表
+    Q_INVOKABLE void queryRendezvousPeers();
 
     // 设置 DiscoveryService 引用（由 AppController 在构造后调用）
     void setDiscoveryService(DiscoveryService *discovery);
     // 设置 ConfigManager 引用（由 AppController 在构造后调用）
     void setConfigManager(ConfigManager *config);
+    // 设置 RendezvousClient 引用（由 AppController 在构造后调用）
+    void setRendezvousClient(RendezvousClient *client);
 
 signals:
     void localAddressesChanged();
@@ -87,8 +98,11 @@ signals:
     void isProbingChanged();
     void lastInviteTextChanged();
     void inviteErrorChanged();
+    void rendezvousEnabledChanged();
     void manualEndpointTestResult(bool success, const QString &errorString);
     void inviteImported(bool success, const QString &deviceId, const QString &errorString);
+    // 协调服务器返回的候选设备列表
+    void rendezvousPeersReceived(const QList<QVariantMap> &peers);
 
 private:
     // 收集本机所有有效的 IPv4 地址
@@ -103,6 +117,7 @@ private:
     EndpointProbe *_probe = nullptr;    // TCP 探测器
     DiscoveryService *_discovery = nullptr; // 设备发现服务
     ConfigManager *_config = nullptr;   // 本机配置
+    RendezvousClient *_rendezvousClient = nullptr; // 协调节点客户端
     QStringList _localAddresses;       // 本机 IP 地址列表
     QVariantMap _lastProbeResult;       // 最近一次探测结果
     bool _isProbing = false;            // 是否正在探测

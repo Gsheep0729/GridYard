@@ -124,6 +124,7 @@ AppController::AppController(QObject *parent)
     // 初始化 ReachabilityController 的引用
     _reachability->setDiscoveryService(_discovery);
     _reachability->setConfigManager(_config);
+    _reachability->setRendezvousClient(_rendezvousClient);
 
     // 如果启用了协调服务器，自动连接并注册
     if (_config->rendezvousEnabled()) {
