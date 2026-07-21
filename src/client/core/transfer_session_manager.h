@@ -1,15 +1,13 @@
 /**
 * @file    transfer_session_manager.h
-* @version 6.6.2
-* @date    2026-06-28
+* @version 7.8.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器
 *
-* 管理所有进行中的传输会话（发送和接收），维护会话状态和进度。
-* 提供创建、接受、拒绝、取消、移除会话等应用层命令。
-* QML 通过 TransferController 门面访问，不直接依赖该内部 Manager。
-*
 * Change Log:
+* [v7.8.0] GY   2026-07-21
+* * 新增 Relay 降级策略支持（询问后中继 / 自动中继 / 从不中继）
 * [v6.6.2] GY   2026-06-28
 * * 移除 QML 属性和 Q_INVOKABLE 标记，QML 通过 TransferController 访问
 * [v6.6.2] GY   2026-06-25
@@ -82,6 +80,8 @@ public:
 
 signals:
     void sessionsChanged();
+    // Relay 降级请求（所有直连候选失败后触发）
+    void relayModeRequested(const QString &sessionId, const QString &deviceId);
     // 新的接收请求（需要弹窗确认）
     void receiveRequestReceived(const QString &sessionId,
                                 const QString &senderDeviceId,

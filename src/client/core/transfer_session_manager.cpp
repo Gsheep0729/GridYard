@@ -1,15 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 6.6.2
-* @date    2026-06-21
+* @version 7.8.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
-* 管理发送和接收会话的生命周期，包括创建、接受、拒绝、取消、移除。
-* 维护会话状态和进度，通过信号通知 QML 界面更新。
-* 使用委托模式从 ConfigManager 和 FileReceiverWorker 获取信息。
-*
 * Change Log:
+* [v7.8.0] GY   2026-07-21
+* * 传输连接增加重试机制和候选端点超时
 * [v6.6.2] GY   2026-06-25
 * * 支持按当前设备清空已结束传输记录
 * [v6.3.0] GY   2026-06-25
