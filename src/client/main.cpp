@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("7.5.0");
+    QGuiApplication::setApplicationVersion("7.6.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
     // 统一设置窗口图标，覆盖任务栏和窗口标题栏
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));

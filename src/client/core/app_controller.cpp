@@ -1,15 +1,13 @@
 /**
 * @file    app_controller.cpp
-* @version 7.0.0
+* @version 7.6.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
-* 构造时创建并组装 ConfigManager、DiscoveryService、P2pServer、
-* TransferSessionManager，启动 P2P 服务器并初始化传输会话管理器。
-* UI 引擎由 singleton() 在控制器实例缓存后再初始化，避免 QML 单例回调递归创建。
-*
 * Change Log:
+* [v7.6.0] GY   2026-07-21
+* * 协调服务器启用时自动拉取在线设备列表，10 秒周期刷新
 * [v7.0.0] GY   2026-07-21
 * * 接入 ReachabilityController，提供网络可达性诊断入口
 * [v6.7.0] GY   2026-06-28
@@ -145,7 +143,22 @@ AppController::AppController(QObject *parent)
                         _config->tcpPort(),
                         45678  // UDP 发现端口
                     );
+                    // 注册成功后查询一次在线设备
+                    _rendezvousClient->listPeers(QStringLiteral("default"));
                 });
+        // 协调节点返回的候选端点加入设备列表
+        connect(_rendezvousClient, &RendezvousClient::peersReceived,
+                _discovery, &DiscoveryService::onRendezvousPeersReceived);
+        // 启动周期性查询（每 10 秒拉取一次在线设备）
+        QTimer *queryTimer = new QTimer{this};
+        queryTimer->setInterval(10000);
+        connect(queryTimer, &QTimer::timeout,
+                this, [this]() {
+                    if (_rendezvousClient->isConnected()) {
+                        _rendezvousClient->listPeers(QStringLiteral("default"));
+                    }
+                });
+        queryTimer->start();
     }
 
     QString storageError;
