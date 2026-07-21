@@ -1,7 +1,7 @@
 /**
 * @file    data_types.h
-* @version 6.6.2
-* @date    2026-06-21
+* @version 7.7.0
+* @date    2026-07-21
 * @author  GridYard Team
 * @brief   跨模块共享数据类型定义（值类型 / POD）
 *
@@ -11,6 +11,8 @@
 * QObject 的身份语义不适合。QML 端通过 Q_PROPERTY MEMBER 反射访问。
 *
 * Change Log:
+* [v7.7.0] GY   2026-07-21
+* * PeerInfo 新增 source 标签标识设备来源
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
@@ -39,6 +41,7 @@ class PeerInfo {
     Q_PROPERTY(bool     isOnline   MEMBER isOnline)
     Q_PROPERTY(QString  lastSeen   READ lastSeenStr)
     Q_PROPERTY(quint16  protocolVersion MEMBER protocolVersion)
+    Q_PROPERTY(QString  source     MEMBER source)
 
 public:
     QString  deviceId;      // UUID，首次启动生成
@@ -48,6 +51,7 @@ public:
     bool     isOnline = false;  // 是否仍处于发现心跳有效期内
     quint16  protocolVersion = 0;  // 对端协议版本
     QDateTime lastSeen;     // 最后心跳时间
+    QString  source;        // 设备来源标签：broadcast/directed/rendezvous/manual/history
 
     QString lastSeenStr() const { return lastSeen.toString("HH:mm:ss"); }
 };

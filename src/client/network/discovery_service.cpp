@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.cpp
-* @version 7.5.0
+* @version 7.7.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
 * Change Log:
+* [v7.7.0] GY   2026-07-21
+* * 设备来源标签：broadcast（UDP广播）、rendezvous（协调节点）
 * [v7.5.0] GY   2026-07-21
 * * 新增 onRendezvousPeersReceived 处理协调节点返回的候选端点
 * [v6.6.2] GY   2026-06-25
@@ -298,6 +300,7 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
     info.isOnline   = true;
     info.protocolVersion = version;
     info.lastSeen   = QDateTime::currentDateTimeUtc();
+    info.source     = QStringLiteral("broadcast");  // UDP 广播来源
 
     updatePeer(deviceId, info);
 }
@@ -400,6 +403,7 @@ void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers
 
         info.isOnline = true;
         info.lastSeen = QDateTime::currentDateTime();
+        info.source = QStringLiteral("rendezvous");  // 协调节点来源
 
         // 候选端点直接更新，不通过 updatePeer（避免覆盖 UDP 发现的在线设备）
         _peers.insert(deviceId, info);
