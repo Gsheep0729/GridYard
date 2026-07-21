@@ -8,6 +8,10 @@
 * 封装与协调服务器的 TCP 连接和 JSON 协议通信。
 * 负责向协调节点注册本机端点、拉取候选设备列表。
 *
+* 客户端开机后若启用了协调服务器（rendezvousEnabled=true），
+* 自动连接并注册本机 deviceId、IP 列表、TCP 端口等信息，
+* 每 5 秒心跳刷新 TTL，断线后自动重连。
+*
 * Change Log:
 * [v7.5.0] GY   2026-07-21
 * * Stage 7.5 Phase B：新增协调节点客户端

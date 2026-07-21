@@ -1,18 +1,13 @@
 /**
 * @file    app_controller.h
-* @version 7.0.0
+* @version 7.5.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
-* 按四层架构要求，AppController 是中介者单例，负责组装和持有
-* DiscoveryService、TransferSessionManager、P2pServer 等下层模块，
-* 并负责初始化 QML UI 层。
-* QML 通过 AppController.peerDiscoveryViewModel / transferController /
-* chatController / historyController 等 UI API 门面触达应用能力，
-* 不直接暴露内部 Manager、Service 或上下文属性。
-*
 * Change Log:
+* [v7.5.0] GY   2026-07-21
+* * 集成 RendezvousClient，开机自动连接协调节点并注册
 * [v7.0.0] GY   2026-07-21
 * * 接入 ReachabilityController，提供网络可达性诊断入口
 * [v6.7.0] GY   2026-06-28
