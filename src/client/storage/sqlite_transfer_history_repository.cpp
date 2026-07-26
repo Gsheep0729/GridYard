@@ -240,6 +240,59 @@ bool SqliteTransferHistoryRepository::deleteExpiredTransfers(const QDateTime &be
         errorMessage);
 }
 
+// 纯 SQL 幂等写入步骤，不自开事务；供 LocalDataBroker 在单个事务内组合
+SqliteTransferHistoryRepository::SqlStep
+SqliteTransferHistoryRepository::upsertFinishedTransferStep(const TransferRecord &record)
+{
+    return[record](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        // session_id 幂等键，重复写入覆盖为最新快照
+        query.prepare(
+            "INSERT INTO transfer_history(record_id, session_id, peer_device_id, peer_name, "
+            "direction, display_name, is_directory, file_count, total_bytes, status, "
+            "started_at, finished_at, error_code, error_message) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(session_id) DO UPDATE SET "
+            "peer_device_id=excluded.peer_device_id, "
+            "peer_name=excluded.peer_name, "
+            "direction=excluded.direction, "
+            "display_name=excluded.display_name, "
+            "is_directory=excluded.is_directory, "
+            "file_count=excluded.file_count, "
+            "total_bytes=excluded.total_bytes, "
+            "status=excluded.status, "
+            "started_at=excluded.started_at, "
+            "finished_at=excluded.finished_at, "
+            "error_code=excluded.error_code, "
+            "error_message=excluded.error_message");
+        query.addBindValue(record.recordId);
+        query.addBindValue(record.sessionId);
+        query.addBindValue(record.peerDeviceId);
+        query.addBindValue(record.peerName);
+        query.addBindValue(static_cast<int>(record.direction));
+        query.addBindValue(record.displayName);
+        query.addBindValue(record.isDirectory ? 1 : 0);
+        query.addBindValue(record.fileCount);
+        query.addBindValue(record.totalBytes);
+        query.addBindValue(record.status);
+        query.addBindValue(sqlTime(record.startedAt));
+        query.addBindValue(record.finishedAt.isValid()
+                               ? QVariant(sqlTime(record.finishedAt))
+                               : QVariant{});
+        query.addBindValue(record.status == "completed"
+                               ? QVariant{}
+                               : QVariant(record.errorCode));
+        query.addBindValue(record.status == "completed" || record.errorMessage.isEmpty()
+                               ? QVariant{}
+                               : QVariant(record.errorMessage));
+        if (query.exec())
+            return true;
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}
+
 // 清空全部传输历史
 bool SqliteTransferHistoryRepository::clearAllTransfers(QString *errorMessage)
 {

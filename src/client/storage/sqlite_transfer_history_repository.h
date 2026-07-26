@@ -19,10 +19,17 @@
 
 #include "history_repositories.h"
 
+#include <QString>
+
+#include <functional>
+
+class QSqlDatabase;
 class SqliteDatabaseBroker;
 
 class SqliteTransferHistoryRepository : public ITransferHistoryRepository {
 public:
+    using SqlStep = std::function<bool(QSqlDatabase &, QString *)>;
+
     // 构造传输历史 Repository
     explicit SqliteTransferHistoryRepository(SqliteDatabaseBroker *database);
 
@@ -36,6 +43,9 @@ public:
     virtual bool deleteExpiredTransfers(const QDateTime &before, QString *errorMessage) override;
     // 清空全部传输历史
     virtual bool clearAllTransfers(QString *errorMessage) override;
+
+    // 纯 SQL 步骤，不自开事务；供 LocalDataBroker 在单个事务内组合
+    static SqlStep upsertFinishedTransferStep(const TransferRecord &record);
 
 private:
     SqliteDatabaseBroker *_database = nullptr;  // 数据库连接和事务入口

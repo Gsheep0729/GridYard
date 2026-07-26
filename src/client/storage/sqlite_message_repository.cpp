@@ -176,6 +176,60 @@ QList<MessageRecord> SqliteMessageRepository::loadMessages(const MessageCursor &
     return records;
 }
 
+// 纯 SQL 幂等写入步骤，不自开事务；调用方须在事务内使用
+SqliteMessageRepository::SqlStep SqliteMessageRepository::saveMessageStep(const MessageRecord &record)
+{
+    return[record](QSqlDatabase &database, QString *taskError) {
+        // 先占用会话行（ON CONFLICT DO NOTHING 使其幂等）
+        QSqlQuery conv(database);
+        conv.prepare("INSERT INTO chat_conversations(peer_device_id, created_at, last_message_at) "
+                     "VALUES(?, ?, ?) ON CONFLICT(peer_device_id) DO NOTHING");
+        conv.addBindValue(record.peerDeviceId);
+        conv.addBindValue(sqlTime(record.createdAt));
+        conv.addBindValue(sqlTime(record.sentAt));
+        if (!conv.exec()) {
+            if (taskError) *taskError = conv.lastError().text();
+            return false;
+        }
+
+        // 写入消息（message_id 是网络层 UUID，冲突则视为已保存，支持重试和重复帧）
+        QSqlQuery msg(database);
+        msg.prepare("INSERT INTO chat_messages(message_id, peer_device_id, direction, "
+                    "sender_device_id, sender_name, content, sent_at, local_status, created_at) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(message_id) DO NOTHING");
+        msg.addBindValue(record.messageId);
+        msg.addBindValue(record.peerDeviceId);
+        msg.addBindValue(static_cast<int>(record.direction));
+        msg.addBindValue(record.senderDeviceId);
+        msg.addBindValue(record.senderName);
+        msg.addBindValue(record.content);
+        msg.addBindValue(sqlTime(record.sentAt));
+        msg.addBindValue(record.localStatus);
+        msg.addBindValue(sqlTime(record.createdAt));
+        if (!msg.exec()) {
+            if (taskError) *taskError = msg.lastError().text();
+            return false;
+        }
+
+        if (msg.numRowsAffected() == 0) {
+            // 旧消息（重复帧）不推动会话排序
+            return true;
+        }
+
+        // 更新会话最近消息时间
+        QSqlQuery act(database);
+        act.prepare("UPDATE chat_conversations SET last_message_at=MAX(last_message_at, ?) "
+                    "WHERE peer_device_id=?");
+        act.addBindValue(sqlTime(record.sentAt));
+        act.addBindValue(record.peerDeviceId);
+        if (!act.exec() && taskError) {
+            *taskError = act.lastError().text();
+            return false;
+        }
+        return true;
+    };
+}
+
 // 删除指定设备的所有聊天记录（CASCADE 同时清理会话行）
 bool SqliteMessageRepository::deleteConversation(const QString &deviceId, QString *errorMessage)
 {

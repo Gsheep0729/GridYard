@@ -19,10 +19,18 @@
 
 #include "history_repositories.h"
 
+#include <QDateTime>
+#include <QString>
+
+#include <functional>
+
+class QSqlDatabase;
 class SqliteDatabaseBroker;
 
 class SqliteMessageRepository : public IMessageRepository {
 public:
+    using SqlStep = std::function<bool(QSqlDatabase &, QString *)>;
+
     // 构造消息 Repository
     explicit SqliteMessageRepository(SqliteDatabaseBroker *database);
 
@@ -38,6 +46,10 @@ public:
     virtual bool deleteExpiredMessages(const QDateTime &before, QString *errorMessage) override;
     // 清空全部聊天消息
     virtual bool clearAllMessages(QString *errorMessage) override;
+
+    // 以下 Step 返回纯 SQL 步骤，由调用方置于同一事务内组合执行（幂等，不自开事务）
+    static SqlStep saveMessageStep(const MessageRecord &record);
+    // 提交方需在事务成功后自己更新会话排序（last_message_at）
 
 private:
     SqliteDatabaseBroker *_database = nullptr;  // 数据库连接和事务入口

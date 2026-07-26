@@ -222,6 +222,34 @@ bool SqliteDatabaseBroker::runInTransaction(const TransactionTask &task, QString
     return true;
 }
 
+bool SqliteDatabaseBroker::runSteps(const std::vector<TransactionTask> &steps,
+                                   QString *errorMessage) const
+{
+    QSqlDatabase database = connectionForWorkerThread(errorMessage);
+    if (!database.isValid() || !database.transaction()) {
+        if (errorMessage && errorMessage->isEmpty()) {
+            *errorMessage = database.lastError().text();
+        }
+        return false;
+    }
+
+    for (const auto &step : steps) {
+        if (!step(database, errorMessage)) {
+            database.rollback();
+            return false;
+        }
+    }
+
+    if (!database.commit()) {
+        if (errorMessage) {
+            *errorMessage = database.lastError().text();
+        }
+        database.rollback();
+        return false;
+    }
+    return true;
+}
+
 // 获取当前 Schema 版本
 int SqliteDatabaseBroker::schemaVersion() const
 {

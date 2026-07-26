@@ -47,6 +47,9 @@ public:
     void closeConnectionForCurrentThread() const;
     // 在短事务中执行跨表持久化任务
     bool runInTransaction(const TransactionTask &task, QString *errorMessage) const;
+    // 在单个事务内依次执行多个步骤，全部成功才提交；任一步骤失败则整体回滚
+    bool runSteps(const std::vector<std::function<bool(QSqlDatabase &, QString *)>> &steps,
+                  QString *errorMessage) const;
     // 获取当前 Schema 版本
     int schemaVersion() const;
     // 判断数据库是否已成功初始化

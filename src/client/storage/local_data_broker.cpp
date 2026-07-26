@@ -29,7 +29,9 @@
 
 #include <QDateTime>
 #include <QMetaObject>
+#include <QSqlDatabase>
 #include <QThread>
+#include <vector>
 
 // 构造函数
 LocalDataBroker::LocalDataBroker(QObject *parent)
@@ -110,12 +112,18 @@ void LocalDataBroker::persistChatMessage(const MessageRecord &record, const QVar
     peer.lastSeenAt = peer.firstSeenAt;
 
     _storageWorker->submitSave(
-        [this, peer, record](SqliteDatabaseBroker &, QString *errorMessage) {
-            // 同一任务内按顺序执行：先确保设备目录存在，再更新活动时间，最后写消息
-            // 三步在同一事务中，避免部分写入导致外键不一致
-            return _deviceRepository->upsertPeer(peer, errorMessage)
-                   && _deviceRepository->markChatActivity(peer.deviceId, record.sentAt, errorMessage)
-                   && _messageRepository->saveMessage(record, errorMessage);
+        [this, peer, record](SqliteDatabaseBroker &db, QString *errorMessage) {
+            // 组合三个步骤在同一事务内执行，任何一步失败全部回滚
+            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
+            steps.push_back(SqliteDeviceRepository::upsertPeerStep(peer));
+            steps.push_back(SqliteDeviceRepository::markChatActivityStep(peer.deviceId, record.sentAt));
+            steps.push_back(SqliteMessageRepository::saveMessageStep(record));
+            if (!db.runSteps(steps, errorMessage)) {
+                return false;
+            }
+            // 事务成功后刷新设备目录节流缓存
+            _deviceRepository->noteWritten(peer);
+            return true;
         });
 }
 
@@ -138,12 +146,18 @@ void LocalDataBroker::persistTransferRecord(const TransferRecord &record,
     peer.lastSeenAt = activityAt;
 
     _storageWorker->submitSave(
-        [this, peer, record, activityAt](SqliteDatabaseBroker &, QString *errorMessage) {
-            // 与聊天消息持久化相同的三步事务：设备目录 → 活动时间 → 历史记录
-            return _deviceRepository->upsertPeer(peer, errorMessage)
-                   && _deviceRepository->markTransferActivity(peer.deviceId, activityAt,
-                                                              errorMessage)
-                   && _transferRepository->upsertFinishedTransfer(record, errorMessage);
+        [this, peer, record, activityAt](SqliteDatabaseBroker &db, QString *errorMessage) {
+            // 组合三个步骤在同一事务内执行，任何一步失败全部回滚
+            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
+            steps.push_back(SqliteDeviceRepository::upsertPeerStep(peer));
+            steps.push_back(SqliteDeviceRepository::markTransferActivityStep(peer.deviceId, activityAt));
+            steps.push_back(SqliteTransferHistoryRepository::upsertFinishedTransferStep(record));
+            if (!db.runSteps(steps, errorMessage)) {
+                return false;
+            }
+            // 事务成功后刷新设备目录节流缓存
+            _deviceRepository->noteWritten(peer);
+            return true;
         });
 }
 
