@@ -52,6 +52,7 @@ private slots:
     void testOfflinePeerRejected();
     void testOnlineSendAndReconnect();
     void testIncomingMessageDeduplicated();
+    void testGlareIncomingMessagePreserved();
     void testInvalidFollowUpFrameRejected();
     void testMessagesPersisted();
 
@@ -209,6 +210,48 @@ void TestChatManager::testIncomingMessageDeduplicated()
 
     peer.disconnectFromHost();
     peer.waitForDisconnected(1000);
+}
+
+// 验证双方同时建连时，多余入站连接的首帧消息不会被丢弃
+void TestChatManager::testGlareIncomingMessagePreserved()
+{
+    QTcpServer peerServer;
+    QVERIFY(peerServer.listen(QHostAddress::LocalHost, 0));
+    const QString deviceId = "glare-peer";
+    addOnlinePeer(deviceId, peerServer.serverPort());
+    _manager->clearMessages(deviceId);
+
+    _manager->sendText(deviceId, "本机先发消息");
+    QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
+    QTcpSocket *outboundSocket = peerServer.nextPendingConnection();
+    QVERIFY(outboundSocket != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(outboundSocket->bytesAvailable() > 0, 3000);
+    outboundSocket->readAll();
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 1, 3000);
+
+    gy::ChatMessage incoming = createPeerMessage(
+        "8bb441aa-c1d8-48df-9f3c-8dc5a027c1ed", "对端同时发来的消息");
+    incoming.fromDeviceId = deviceId;
+    incoming.fromName = "GlarePeer";
+    const QByteArray frame = encodeMessageFrame(incoming);
+
+    QSignalSpy notificationSpy(_manager, &ChatManager::incomingMessageReceived);
+    QTcpSocket inboundSocket;
+    inboundSocket.connectToHost(QHostAddress::LocalHost, _p2pPort);
+    QVERIFY(inboundSocket.waitForConnected(3000));
+    QVERIFY(inboundSocket.write(frame) == frame.size());
+    QVERIFY(inboundSocket.waitForBytesWritten(1000));
+
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 2, 3000);
+    const QVariantMap lastMessage = _manager->messagesForDevice(deviceId).last().toMap();
+    QCOMPARE(lastMessage.value("content").toString(), incoming.content);
+    QCOMPARE(lastMessage.value("isOutgoing").toBool(), false);
+    QCOMPARE(notificationSpy.count(), 1);
+
+    inboundSocket.disconnectFromHost();
+    inboundSocket.waitForDisconnected(1000);
+    outboundSocket->disconnectFromHost();
+    outboundSocket->deleteLater();
 }
 
 // 验证合法首帧后的非法帧不会进入内存会话

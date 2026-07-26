@@ -221,13 +221,13 @@ void ChatManager::onChatConnectionReceived(QTcpSocket *socket)
 void ChatManager::onMessageReceived(ChatConnection *connection, const gy::ChatMessage &message)
 {
     const QString deviceId = message.fromDeviceId;
+    const bool appended = appendMessage(deviceId, message, false, MessageStatus::Sent);
     if (!registerConnection(deviceId, connection)) {
-        // 已有活跃连接时拒绝第二条入站通道，避免同一会话交错收帧。
+        // 已有活跃连接时只关闭多余通道；首帧消息已按 messageId 去重归档。
         connection->close();
-        return;
     }
 
-    if (appendMessage(deviceId, message, false, MessageStatus::Sent)) {
+    if (appended) {
         // 通知预览只取前 20 个字符，避免系统通知泄露完整聊天内容。
         const QString preview = message.content.simplified().left(20);
         emit incomingMessageReceived(deviceId, message.fromName, preview);
