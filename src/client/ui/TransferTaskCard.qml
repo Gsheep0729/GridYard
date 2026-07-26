@@ -410,12 +410,12 @@ Frame {
 
     // 删除本地文件确认弹窗：警告用户操作不可撤销
     Dialog {
+        id: deleteConfirmDialog
         title: qsTr("删除确认")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(360, parent.width - 24)
         padding: 12
-        standardButtons: Dialog.No
 
         background: Rectangle {
             color: Style.Color.surface
