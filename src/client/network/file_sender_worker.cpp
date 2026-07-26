@@ -165,7 +165,9 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
     _socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
 
-    sendTransferRequest();
+    if (!sendTransferRequest()) {
+        return;
+    }
 
     // 启动超时定时器
     _timeoutTimer->start(kTimeoutMs);
@@ -356,7 +358,7 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 }
 
 // 构建并发送传输请求帧（文件列表、总大小、协议版本等）
-void FileSenderWorker::sendTransferRequest()
+bool FileSenderWorker::sendTransferRequest()
 {
     qDebug() << "[FileSender] 发送传输请求";
 
@@ -388,10 +390,12 @@ void FileSenderWorker::sendTransferRequest()
     json["empty_directories"] = directories;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
-    _socket->write(frame);
+    if (!writeControlFrame(gy::protocol::kTypeTransferReq, data, tr("发送传输请求"))) {
+        return false;
+    }
 
     qDebug() << "[FileSender] 传输请求已发送，会话ID:" << _sessionId;
+    return true;
 }
 
 // 读取当前文件的数据并构建 DataChunk 帧发送，带背压控制
@@ -508,19 +512,11 @@ bool FileSenderWorker::sendTransferDone()
     json["session_id"] = _sessionId;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferDone, data);
-    if (_socket->write(frame) != frame.size()) {
-        const QString errorMsg = _socket->errorString().isEmpty()
-            ? tr("传输完成帧写入失败")
-            : _socket->errorString();
-        finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("发送完成帧失败: %1").arg(errorMsg));
-        return false;
-    }
-    return true;
+    return writeControlFrame(gy::protocol::kTypeTransferDone, data, tr("发送完成帧"));
 }
 
 // 发送取消传输帧并关闭连接
-void FileSenderWorker::sendCancel(const QString &reason)
+bool FileSenderWorker::sendCancel(const QString &reason)
 {
     QJsonObject json;
     json["session_id"] = _sessionId;
@@ -528,12 +524,34 @@ void FileSenderWorker::sendCancel(const QString &reason)
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeCancel, data);
-    _socket->write(frame);
+    const qint64 written = _socket->write(frame);
+    if (written != frame.size()) {
+        qWarning() << "[FileSender] 取消帧写入失败:" << _socket->errorString();
+    }
 
     _socket->disconnectFromHost();
     if (_file.isOpen()) {
         _file.close();
     }
+    return written == frame.size();
+}
+
+// 写入控制帧并检查 socket 接受的字节数
+bool FileSenderWorker::writeControlFrame(quint32 type, const QByteArray &payload,
+                                         const QString &description,
+                                         gy::protocol::ErrorCode errorCode)
+{
+    const QByteArray frame = FrameCodec::encode(type, payload);
+    const qint64 written = _socket->write(frame);
+    if (written == frame.size()) {
+        return true;
+    }
+
+    const QString socketError = _socket->errorString().isEmpty()
+        ? tr("socket 写入失败")
+        : _socket->errorString();
+    finish(false, errorCode, tr("%1失败: %2").arg(description, socketError));
+    return false;
 }
 
 // 用户取消传输，发送取消帧并通知完成信号

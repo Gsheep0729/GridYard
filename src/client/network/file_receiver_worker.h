@@ -115,9 +115,12 @@ private:
     // 打开当前文件
     bool openCurrentFile();
     // 发送握手响应
-    void sendTransferResponse(bool accepted, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &reason = "");
+    bool sendTransferResponse(bool accepted, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &reason = "");
     // 发送块确认
-    void sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &errorMsg = "");
+    bool sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &errorMsg = "");
+    // 写入控制帧并检查 socket 接受的字节数
+    bool writeControlFrame(quint32 type, const QByteArray &payload, const QString &description,
+                           gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::ConnectionLost);
     // 清理资源
     void cleanup();
     // 统一的终结出口：清理资源并发射一次 transferFinished，重复调用被忽略

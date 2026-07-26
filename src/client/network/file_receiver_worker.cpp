@@ -183,7 +183,9 @@ void FileReceiverWorker::acceptTransfer()
     _receiveChunkCount = 0;
 
     const auto failPreparation = [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
-        sendTransferResponse(false, errorCode, errorMsg);
+        if (!sendTransferResponse(false, errorCode, errorMsg)) {
+            return;
+        }
         _socket->disconnectFromHost();
         finish(false, errorCode, errorMsg);
     };
@@ -222,7 +224,9 @@ void FileReceiverWorker::acceptTransfer()
     }
 
     qDebug() << "[FileReceiver] 发送接受响应";
-    sendTransferResponse(true, gy::protocol::ErrorCode::Success);
+    if (!sendTransferResponse(true, gy::protocol::ErrorCode::Success)) {
+        return;
+    }
 
     // 启动超时定时器
     _timeoutTimer->start(kTimeoutMs);
@@ -241,7 +245,10 @@ void FileReceiverWorker::rejectTransfer(const QString &reason)
     _waitingForUserConfirm = false;
 
     // 发送拒绝响应
-    sendTransferResponse(false, gy::protocol::ErrorCode::UserRejected, reason.isEmpty() ? tr("用户拒绝") : reason);
+    if (!sendTransferResponse(false, gy::protocol::ErrorCode::UserRejected,
+                              reason.isEmpty() ? tr("用户拒绝") : reason)) {
+        return;
+    }
 
     // 关闭连接并终结会话
     _socket->disconnectFromHost();
@@ -608,7 +615,11 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         }
 
         // 发送块确认
-        sendChunkAck(verified, verified ? gy::protocol::ErrorCode::Success : gy::protocol::ErrorCode::Sha256Mismatch, errorMsg);
+        if (!sendChunkAck(verified,
+                          verified ? gy::protocol::ErrorCode::Success : gy::protocol::ErrorCode::Sha256Mismatch,
+                          errorMsg)) {
+            return;
+        }
 
         if (!verified) {
             // 校验失败的文件不能保留到接收目录，避免用户误用损坏内容。
@@ -689,7 +700,7 @@ void FileReceiverWorker::handleCancel(const QByteArray &payload)
 }
 
 // 构建并发送传输响应帧（接受/拒绝 + 错误码 + 原因）
-void FileReceiverWorker::sendTransferResponse(bool accepted, gy::protocol::ErrorCode errorCode, const QString &reason)
+bool FileReceiverWorker::sendTransferResponse(bool accepted, gy::protocol::ErrorCode errorCode, const QString &reason)
 {
     QJsonObject json;
     json["session_id"] = _sessionId;
@@ -698,12 +709,11 @@ void FileReceiverWorker::sendTransferResponse(bool accepted, gy::protocol::Error
     json["reason"]     = reason;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferRsp, data);
-    _socket->write(frame);
+    return writeControlFrame(gy::protocol::kTypeTransferRsp, data, tr("发送传输响应"));
 }
 
 // 构建并发送数据块确认帧（校验结果 + 文件索引 + 错误信息）
-void FileReceiverWorker::sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode, const QString &errorMsg)
+bool FileReceiverWorker::sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode, const QString &errorMsg)
 {
     QJsonObject json;
     json["session_id"] = _sessionId;
@@ -713,8 +723,25 @@ void FileReceiverWorker::sendChunkAck(bool verified, gy::protocol::ErrorCode err
     json["error_msg"]  = errorMsg;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeChunkAck, data);
-    _socket->write(frame);
+    return writeControlFrame(gy::protocol::kTypeChunkAck, data, tr("发送块确认"));
+}
+
+// 写入控制帧并检查 socket 接受的字节数
+bool FileReceiverWorker::writeControlFrame(quint32 type, const QByteArray &payload,
+                                           const QString &description,
+                                           gy::protocol::ErrorCode errorCode)
+{
+    const QByteArray frame = FrameCodec::encode(type, payload);
+    const qint64 written = _socket->write(frame);
+    if (written == frame.size()) {
+        return true;
+    }
+
+    const QString socketError = _socket->errorString().isEmpty()
+        ? tr("socket 写入失败")
+        : _socket->errorString();
+    finish(false, errorCode, tr("%1失败: %2").arg(description, socketError));
+    return false;
 }
 
 // 构建接收请求快照，供主线程创建会话和展示确认弹窗

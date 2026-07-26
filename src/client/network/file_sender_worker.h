@@ -97,7 +97,7 @@ private slots:
 
 private:
     // 发送握手请求
-    void sendTransferRequest();
+    bool sendTransferRequest();
     // 发送下一个数据块
     void sendNextChunk();
     // 在事件循环中安排下一块发送
@@ -107,7 +107,10 @@ private:
     // 发送传输完成帧
     bool sendTransferDone();
     // 发送取消请求
-    void sendCancel(const QString &reason);
+    bool sendCancel(const QString &reason);
+    // 写入控制帧并检查 socket 接受的字节数
+    bool writeControlFrame(quint32 type, const QByteArray &payload, const QString &description,
+                           gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::ConnectionLost);
     // 清理资源
     void cleanup();
     // 统一的终结出口：清理资源并发射一次 transferFinished，重复调用被忽略
