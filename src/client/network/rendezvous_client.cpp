@@ -24,22 +24,19 @@ RendezvousClient::RendezvousClient(QObject *parent)
 
 RendezvousClient::~RendezvousClient()
 {
-    if (_heartbeatTimerId != 0) {
-        killTimer(_heartbeatTimerId);
-    }
     disconnectFromServer();
 }
 
 void RendezvousClient::connectToServer(const QString &host, int port)
 {
-    if (_socket) {
-        _socket->disconnectFromHost();
-        _socket->deleteLater();
-    }
-
+    _wantConnected = true;
     _serverHost = host;
     _serverPort = port;
     _buffer.clear();
+    _isConnected = false;
+
+    stopHeartbeat();
+    closeSocket();
 
     _socket = new QTcpSocket(this);
     connect(_socket, &QTcpSocket::connected, this, &RendezvousClient::onSocketConnected);
@@ -53,17 +50,15 @@ void RendezvousClient::connectToServer(const QString &host, int port)
 
 void RendezvousClient::disconnectFromServer()
 {
+    const bool wasConnected = _isConnected;
+    _wantConnected = false;
+    _reconnectScheduled = false;
     _isConnected = false;
-    if (_heartbeatTimerId != 0) {
-        killTimer(_heartbeatTimerId);
-        _heartbeatTimerId = 0;
+    stopHeartbeat();
+    closeSocket();
+    if (wasConnected) {
+        emit disconnected();
     }
-    if (_socket) {
-        _socket->disconnectFromHost();
-        _socket->deleteLater();
-        _socket = nullptr;
-    }
-    emit disconnected();
 }
 
 void RendezvousClient::registerDevice(const QString &room,
@@ -135,20 +130,11 @@ void RendezvousClient::onSocketConnected()
 void RendezvousClient::onSocketDisconnected()
 {
     _isConnected = false;
-    if (_heartbeatTimerId != 0) {
-        killTimer(_heartbeatTimerId);
-        _heartbeatTimerId = 0;
-    }
+    stopHeartbeat();
     qDebug() << "RendezvousClient: 与协调服务器断开连接";
     emit disconnected();
 
-    // 3 秒后尝试重连
-    QTimer::singleShot(kReconnectDelayMs, this, [this]() {
-        if (!_serverHost.isEmpty() && _serverPort > 0) {
-            qDebug() << "RendezvousClient: 尝试重新连接...";
-            connectToServer(_serverHost, _serverPort);
-        }
-    });
+    scheduleReconnect();
 }
 
 void RendezvousClient::onSocketError(QAbstractSocket::SocketError socketError)
@@ -157,6 +143,7 @@ void RendezvousClient::onSocketError(QAbstractSocket::SocketError socketError)
     QString errorMsg = _socket ? _socket->errorString() : QStringLiteral("未知错误");
     qWarning() << "RendezvousClient: 套接字错误" << errorMsg;
     emit errorOccurred(errorMsg);
+    scheduleReconnect();
 }
 
 void RendezvousClient::onReadyRead()
@@ -184,6 +171,51 @@ void RendezvousClient::sendJson(const QJsonObject &json)
     data.append("\n");  // 每条消息以换行符分隔
     _socket->write(data);
     _socket->flush();
+}
+
+void RendezvousClient::closeSocket()
+{
+    if (!_socket) {
+        return;
+    }
+
+    disconnect(_socket, nullptr, this, nullptr);
+    if (_socket->state() != QAbstractSocket::UnconnectedState) {
+        _socket->disconnectFromHost();
+    }
+    _socket->deleteLater();
+    _socket = nullptr;
+}
+
+void RendezvousClient::stopHeartbeat()
+{
+    if (_heartbeatTimerId != 0) {
+        killTimer(_heartbeatTimerId);
+        _heartbeatTimerId = 0;
+    }
+}
+
+void RendezvousClient::scheduleReconnect()
+{
+    if (!_wantConnected || _serverHost.isEmpty() || _serverPort <= 0 || _reconnectScheduled) {
+        return;
+    }
+
+    _reconnectScheduled = true;
+    QTimer::singleShot(kReconnectDelayMs, this, [this]() {
+        _reconnectScheduled = false;
+        if (!_wantConnected || _serverHost.isEmpty() || _serverPort <= 0) {
+            return;
+        }
+        if (_socket && (_socket->state() == QAbstractSocket::HostLookupState
+                        || _socket->state() == QAbstractSocket::ConnectingState
+                        || _socket->state() == QAbstractSocket::ConnectedState)) {
+            return;
+        }
+
+        qDebug() << "RendezvousClient: 尝试重新连接...";
+        connectToServer(_serverHost, _serverPort);
+    });
 }
 
 bool RendezvousClient::readJson(QJsonObject *json)

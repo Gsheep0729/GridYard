@@ -91,6 +91,9 @@ protected:
     void timerEvent(QTimerEvent *event) override;
 
 private:
+    void closeSocket();
+    void stopHeartbeat();
+    void scheduleReconnect();
     void sendJson(const QJsonObject &json);
     bool readJson(QJsonObject *json);
     void handleMessage(const QJsonObject &json);
@@ -99,6 +102,8 @@ private:
     QTcpSocket *_socket = nullptr;
     QByteArray _buffer;
     bool _isConnected = false;
+    bool _wantConnected = false;
+    bool _reconnectScheduled = false;
     QString _serverHost;
     int _serverPort = 0;
     QString _room;               // 房间名，用于心跳重注册
