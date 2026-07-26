@@ -290,45 +290,131 @@ sequenceDiagram
 
 当设备处于校园网等复杂网络环境时，UDP 广播可能被 AP 隔离阻断，导致同网段的设备无法互相发现。协调服务器提供了设备发现的兜底方案。
 
+### 网络隔离场景示意
+
+```mermaid
+graph LR
+    subgraph 校园网核心["校园网核心交换机"]
+        SW["核心交换机"]
+    end
+
+    subgraph 宿舍楼A["宿舍楼 A（10.0.1.x）"]
+        AP_A["AP A"]
+        PC_A["你的电脑"]
+    end
+
+    subgraph 宿舍楼B["宿舍楼 B（10.0.2.x）"]
+        AP_B["AP B"]
+        PC_B["室友的电脑"]
+    end
+
+    subgraph 服务器["协调/中继服务器（10.10.10.100）"]
+        RV["gridyard_rendezvous"]
+    end
+
+    PC_A -->|"UDP 广播被 AP 隔离"| AP_A
+    PC_B -->|"UDP 广播被 AP 隔离"| AP_B
+    PC_A -.->|"TCP 单播可达？<br/>（取决于 AP 安全策略）"| PC_B
+    PC_A -->|"注册/拉取设备"| RV
+    PC_B -->|"注册/拉取设备"| RV
+```
+
+**关键点**：
+- 你的电脑和室友的电脑分别在不同的宿舍楼，接入了不同的 AP
+- AP 可能会隔离同一网段的 UDP 广播，导致两台电脑无法通过 UDP 广播互相发现
+- 协调服务器是一台**在校园网内**有固定 IP 的机器（只要 TCP 能到达就行，不要求 UDP）
+- 客户端开机后自动向协调服务器注册自己的 IP:端口，并周期性拉取在线设备列表
+
 ### 工作原理
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      校园网核心交换机                    │
-├──────────────┬──────────────────────┬──────────────────────┤
-│   宿舍楼 A    │      宿舍楼 B        │    协调/中继服务器   │
-│   10.0.1.x   │      10.0.2.x       │    10.10.10.100    │
-│              │                      │                    │
-│  [你的电脑] ──┼─── AP 隔离阻断 UDP ──┼─── [室友的电脑]    │
-│              │                      │                    │
-│  启用协调服务器 ───────────────────────┼  注册 IP:端口      │
-│  开机自动注册                           │                    │
-│  每 10 秒刷新设备列表 ◄─────────────────┘                    │
-└──────────────┴──────────────────────┴──────────────────────┘
+协调服务器不参与任何文件传输，只做两件事：**登记在线设备**和**返回设备列表**。
+
+```mermaid
+sequenceDiagram
+    participant A as 你的电脑
+    participant RV as 协调服务器
+    participant B as 室友的电脑
+
+    Note over A: 开机，启用协调服务器
+    A->>RV: TCP 连接（WebSocket/JSON）
+    A->>RV: register {"deviceId": "A", "ip": "10.0.1.50", "tcpPort": 35100}
+    RV-->>A: register_ack {"status": "ok"}
+
+    Note over B: 开机，启用协调服务器
+    B->>RV: TCP 连接
+    B->>RV: register {"deviceId": "B", "ip": "10.0.2.80", "tcpPort": 35100}
+    RV-->>B: register_ack {"status": "ok"}
+
+    Note over A: 每 10 秒刷新 TTL
+    A->>RV: register {"deviceId": "A", ...}
+    RV-->>A: register_ack {"status": "ok"}
+
+    Note over A: 每 10 秒拉取设备列表
+    A->>RV: list_peers
+    RV-->>A: peers {"peers": [{"deviceId": "B", "ip": "10.0.2.80", "tcpPort": 35100}]}
 ```
 
-### 部署协调服务器
+**结果**：你的电脑在设备列表里看到了室友的电脑（来自协调服务器），双方的 IP 和端口都已知。此时两台电脑可以尝试**直接 TCP 连接**传输文件，**不经过协调服务器**。
 
+### 部署架构：只需要一台能 SSH 的旧电脑/服务器
+
+```mermaid
+graph LR
+    subgraph 局域网["任意可达的局域网（WiFi / 有线）"]
+        SERVER["低配旧电脑或服务器<br/>运行 gridyard_rendezvous<br/>端口 45678"]
+        PC1["设备 A"]
+        PC2["设备 B"]
+        PC3["设备 C"]
+    end
+
+    SERVER -->|"注册/查询"| PC1
+    SERVER -->|"注册/查询"| PC2
+    SERVER -->|"注册/查询"| PC3
+    PC1 <-->|"直连 P2P 传输<br/>不经过 SERVER"| PC2
+    PC2 <-->|"直连 P2P 传输<br/>不经过 SERVER"| PC3
+    PC1 <-->|"直连 P2P 传输<br/>不经过 SERVER"| PC3
+```
+
+**部署要求极低**：
+- 任意一台能 SSH 连上的电脑/服务器/树莓派
+- **不需要公网 IP**，只需要在校园网内能 TCP 到达
+- **不需要域名**，IP + 端口就行
+- **内存 512MB 就够**，因为只做连接登记不做文件转发（Relay 模式除外）
+- 建议用 `--token` 参数加简单密码，客户端配置相同的 Token 防止蹭网
+
+### 两种运行模式
+
+| 模式 | 命令 | 用途 |
+|:-----|:-----|:-----|
+| 协调节点（默认） | `./gridyard_rendezvous --port 45678` | 仅发现兜底，流量不经过此机器 |
+| 中继服务器 | `./gridyard_rendezvous --mode relay --port 45679` | 极端网络隔离时转发流量 |
+
+**协调节点**（默认）：
 ```bash
-# 编译并启动协调服务器（默认端口 45678）
+# 编译
 cd src
-cmake -S . -B build-ninja -G Ninja
 cmake --build build-ninja -j
+
+# 启动协调节点（默认端口 45678）
 ./build-ninja/rendezvous/gridyard_rendezvous
 
-# 指定端口
-./build-ninja/rendezvous/gridyard_rendezvous --port 45780
-
-# 带 Token 认证（客户端需配置相同 Token）
-./build-ninja/rendezvous/gridyard_rendezvous --port 45780 --token your-secret-token
+# 指定端口和密码
+./build-ninja/rendezvous/gridyard_rendezvous --port 45780 --token my-secret-token
 ```
+
+**中继服务器**（仅在 P2P 直连完全失败时使用）：
+```bash
+./build-ninja/rendezvous/gridyard_rendezvous --mode relay --port 45679
+```
+> 中继模式流量经服务器转发，大文件会占带宽，只有 AP 完全隔离 TCP 的极端场景才需要。
 
 ### 配置客户端
 
-1. 打开 **设置** → **协调服务器**
+1. 打开 **设置 → 协调服务器**
 2. 启用协调服务器
-3. 填入服务器地址（如 `10.10.10.100`）和端口（如 `45780`）
-4. 选择 **Relay 策略**：
+3. 填入服务器地址（如 `10.10.10.100`）和端口（如 `45678`）
+4. 如果服务器设置了 Token，填入相同的 Token
+5. 选择 **Relay 策略**：
    - **询问后中继**（默认）：P2P 失败时弹窗询问用户
    - **自动中继**：P2P 失败后自动通过中继服务器转发
    - **从不**：P2P 失败则传输失败
@@ -339,26 +425,41 @@ cmake --build build-ninja -j
 
 | 优先级 | 来源 | 说明 |
 |:-------|:-----|:-----|
-| 1 | broadcast | UDP 广播直接发现（同 AP 内） |
+| 1 | broadcast | UDP 广播直接发现（同 AP 内，最优先） |
 | 2 | directed | 定向 Hello 探测成功 |
 | 3 | rendezvous | 协调服务器返回的候选端点 |
 | 4 | manual | 用户手动添加的 IP 端点 |
 | 5 | history | 历史记录中的设备 |
 
-### Relay 中继说明
+**连接优先级**：发现服务会按优先级尝试建立连接，成功即停，不逐个尝试。
 
-Relay 中继是最后的兜底方案，流量通过中继服务器明文转发，**速度受限于中继服务器带宽**。建议：
+### 数据流总览
 
-- 优先使用 P2P 直连（同一 AP 内或 TCP 单播可达时）
-- 中继仅用于极端网络隔离场景
-- 大文件传输建议选择"询问后中继"，避免自动消耗中继带宽
+```mermaid
+graph TD
+    subgraph 发现阶段["发现阶段"]
+        A["设备 A"]
+        B["设备 B"]
+        RV["协调服务器"]
+    end
 
-### 启动中继服务器
+    subgraph 连接阶段["连接阶段（A 主动连接 B）"]
+        A -->|"1. 已知 B 的 IP:端口<br/>直接 TCP 连接"| B
+        A -.->|"2. 直连失败时尝试<br/>中继转发"| RV
+    end
 
-```bash
-# 中继模式（所有流量通过服务器转发）
-./build-ninja/rendezvous/gridyard_rendezvous --mode relay --port 45679
+    subgraph 传输阶段["传输阶段"]
+        A <-.->|"3. 成功后直传文件<br/>不经过协调服务器"| B
+    end
 ```
+
+### 端口说明
+
+| 服务 | 默认端口 | 说明 |
+|:-----|:---------|:-----|
+| 协调节点 | 45678 | 设备注册与列表查询 |
+| 中继服务器 | 45679 | 流量转发（仅 relay 模式） |
+| 客户端 TCP 监听 | 35100 | 接收文件/聊天连接 |
 
 ---
 
