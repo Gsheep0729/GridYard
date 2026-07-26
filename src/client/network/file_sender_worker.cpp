@@ -75,9 +75,8 @@ FileSenderWorker::FileSenderWorker(QObject *parent)
     connect(_codec,  &FrameCodec::errorOccurred,
             this,    [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         qWarning() << "[FileSender] 协议错误:" << errorMsg;
-        cleanup();
         _socket->disconnectFromHost();
-        emit transferFinished(false, errorCode, errorMsg);
+        finish(false, errorCode, errorMsg);
     });
 
     // 超时定时器
@@ -121,7 +120,7 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
 
     if (_fileList.isEmpty() && !_isDirectory) {
         qWarning() << "[FileSender] 序列化文件列表为空，没有可传输的文件";
-        emit transferFinished(false, gy::protocol::ErrorCode::InvalidPayload, tr("没有可传输的文件"));
+        finish(false, gy::protocol::ErrorCode::InvalidPayload, tr("没有可传输的文件"));
         return;
     }
 
@@ -145,7 +144,7 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     // 打开第一个文件；空文件夹没有文件数据，只发送目录元数据
     if (!_fileList.isEmpty() && !openNextFile()) {
         qWarning() << "[FileSender] 无法打开第一个文件";
-        emit transferFinished(false, gy::protocol::ErrorCode::InvalidFilePath, tr("无法打开文件"));
+        finish(false, gy::protocol::ErrorCode::InvalidFilePath, tr("无法打开文件"));
         return;
     }
 
@@ -155,7 +154,8 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     // 连接建立最多等待 5 秒，避免离线设备导致发送线程长时间卡住。
     if (!_socket->waitForConnected(5000)) {
         qWarning() << "[FileSender] 连接失败:" << _socket->errorString();
-        emit transferFinished(false, gy::protocol::ErrorCode::ConnectionTimeout, tr("连接超时: %1").arg(_socket->errorString()));
+        _socket->abort();  // 放弃仍在进行的连接尝试，避免半开连接残留
+        finish(false, gy::protocol::ErrorCode::ConnectionTimeout, tr("连接超时: %1").arg(_socket->errorString()));
         return;
     }
 
@@ -185,8 +185,7 @@ void FileSenderWorker::onReadyRead()
 void FileSenderWorker::onDisconnected()
 {
     if (_transferActive) {
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::ConnectionLost, tr("连接断开"));
+        finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("连接断开"));
     }
 }
 
@@ -195,8 +194,7 @@ void FileSenderWorker::onTimeout()
 {
     if (_transferActive) {
         qWarning() << "FileSenderWorker: 传输超时";
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
+        finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
     }
 }
 
@@ -227,6 +225,33 @@ void FileSenderWorker::cleanup()
     _sendScheduled = false;
 }
 
+// 统一终结出口：cleanup 后只发射一次 transferFinished
+// 取消会主动断连、断连又触发 onDisconnected，若各自 emit 会导致上层重复持久化甚至操作已删除的 worker
+void FileSenderWorker::finish(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg)
+{
+    if (_finished) {
+        return;
+    }
+    _finished = true;
+    cleanup();
+    emit transferFinished(success, errorCode, errorMsg);
+}
+
+// 成功终结前先把写缓冲刷到内核，否则上层会立即拆线程销毁 socket，
+// 末尾的 TransferDone 可能还没发出，接收端就会一直等到超时误判失败
+void FileSenderWorker::finishAfterSend()
+{
+    if (_finished) {
+        return;
+    }
+    // 局域网下等待时间很短；即便超时也继续终结，可靠交付由接收端的完成确认兜底
+    if (_socket && _socket->state() == QAbstractSocket::ConnectedState
+        && _socket->bytesToWrite() > 0) {
+        _socket->waitForBytesWritten(3000);
+    }
+    finish(true, gy::protocol::ErrorCode::Success, QString());
+}
+
 // 处理收到的响应帧：传输响应决定是否开始发送，块确认决定是否继续下一文件
 void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
 {
@@ -253,19 +278,17 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             _timeoutTimer->start(kTimeoutMs);
             if (_fileList.isEmpty()) {
                 sendTransferDone();
-                cleanup();
-                emit transferFinished(true, gy::protocol::ErrorCode::Success, "");
+                finishAfterSend();  // 空文件夹：等 TransferDone 落网后再终结
             } else {
                 scheduleNextChunk();
             }
         } else {
-            cleanup();
             emit requestRejected(reason);
             // 若响应携带了非默认错误码则优先使用，否则按 UserRejected 处理
             if (errorCode == gy::protocol::ErrorCode::Success) {
                 errorCode = gy::protocol::ErrorCode::UserRejected;
             }
-            emit transferFinished(false, errorCode, tr("请求被拒绝: %1").arg(reason));
+            finish(false, errorCode, tr("请求被拒绝: %1").arg(reason));
         }
         break;
     }
@@ -283,19 +306,17 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
                  << "校验结果:" << (verified ? "通过" : "失败");
 
         if (fileIndex != _currentFileIndex) {
-            cleanup();
-            emit transferFinished(false, gy::protocol::ErrorCode::InvalidPayload, tr("收到无效的文件确认"));
+            finish(false, gy::protocol::ErrorCode::InvalidPayload, tr("收到无效的文件确认"));
             return;
         }
 
         if (!verified) {
             qWarning() << "[FileSender] 文件校验失败:" << errorMsg;
-            cleanup();
             // 优先使用响应携带的错误码
             if (errorCode == gy::protocol::ErrorCode::Success) {
                 errorCode = gy::protocol::ErrorCode::Sha256Mismatch;
             }
-            emit transferFinished(false, errorCode, tr("文件 %1 校验失败: %2")
+            finish(false, errorCode, tr("文件 %1 校验失败: %2")
                                           .arg(fileIndex).arg(errorMsg));
             return;
         }
@@ -311,8 +332,7 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             // 还有文件要发
             if (!openNextFile()) {
                 qWarning() << "[FileSender] 无法打开文件" << _fileList[_currentFileIndex].relativePath;
-                cleanup();
-                emit transferFinished(false, gy::protocol::ErrorCode::InvalidFilePath, tr("无法打开文件 %1")
+                finish(false, gy::protocol::ErrorCode::InvalidFilePath, tr("无法打开文件 %1")
                                               .arg(_fileList[_currentFileIndex].relativePath));
                 return;
             }
@@ -321,8 +341,7 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             // 所有文件发完
             qDebug() << "[FileSender] 所有文件传输完成";
             sendTransferDone();
-            cleanup();
-            emit transferFinished(true, gy::protocol::ErrorCode::Success, "");
+            finishAfterSend();  // 等 TransferDone 落网后再终结，避免接收端收不到而误判超时
         }
         break;
     }
@@ -390,8 +409,7 @@ void FileSenderWorker::sendNextChunk()
         qDebug() << "[FileSender] 处理零字节文件";
     } else if (chunkData.isEmpty()) {
         qWarning() << "[FileSender] 读取文件失败";
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("读取文件失败"));
+        finish(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("读取文件失败"));
         return;
     }
 
@@ -418,8 +436,7 @@ void FileSenderWorker::sendNextChunk()
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeDataChunk, payload);
     if (_socket->write(frame) < 0) {
         const QString errorMsg = _socket->errorString();
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::ConnectionLost, tr("发送数据失败: %1").arg(errorMsg));
+        finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("发送数据失败: %1").arg(errorMsg));
         return;
     }
 
@@ -511,6 +528,12 @@ void FileSenderWorker::sendCancel(const QString &reason)
 // 用户取消传输，发送取消帧并通知完成信号
 void FileSenderWorker::cancel()
 {
+    if (_finished) {
+        return;
+    }
+    // 先发取消帧（此时 socket 尚未关闭），再走统一终结出口。
+    // finish() 内部 cleanup 会把 _transferActive 置 false，随后 disconnectFromHost
+    // 触发的 onDisconnected 因此不会再次终结，配合 _finished 标志杜绝重复发射。
     sendCancel(tr("用户取消"));
-    emit transferFinished(false, gy::protocol::ErrorCode::UserCancelled, tr("已取消"));
+    finish(false, gy::protocol::ErrorCode::UserCancelled, tr("已取消"));
 }

@@ -158,3 +158,61 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
     }
     return records;
 }
+
+// 只执行 upsert，不自开事务；节流由 noteWritten 在事务外控制
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::upsertPeerStep(const PeerRecord &record)
+{
+    return[record](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        query.prepare(
+            "INSERT INTO peer_devices(device_id, device_name, last_ip_address, "
+            "last_tcp_port, first_seen_at, last_seen_at) VALUES(?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(device_id) DO UPDATE SET "
+            "device_name=excluded.device_name, "
+            "last_ip_address=excluded.last_ip_address, "
+            "last_tcp_port=excluded.last_tcp_port, "
+            "last_seen_at=excluded.last_seen_at");
+        query.addBindValue(record.deviceId);
+        query.addBindValue(record.deviceName);
+        query.addBindValue(record.lastIpAddress);
+        query.addBindValue(record.lastTcpPort);
+        query.addBindValue(sqlTime(record.firstSeenAt));
+        query.addBindValue(sqlTime(record.lastSeenAt));
+        if (query.exec())
+            return true;
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}
+
+// 只执行活动字段更新，不自开事务
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::markChatActivityStep(
+    const QString &deviceId, const QDateTime &time)
+{
+    return[deviceId, time](QSqlDatabase &database, QString *) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE peer_devices SET last_chat_at=? WHERE device_id=?");
+        query.addBindValue(sqlTime(time));
+        query.addBindValue(deviceId);
+        return query.exec();  // UPDATE 找不到行不算错误
+    };
+}
+
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::markTransferActivityStep(
+    const QString &deviceId, const QDateTime &time)
+{
+    return[deviceId, time](QSqlDatabase &database, QString *) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE peer_devices SET last_transfer_at=? WHERE device_id=?");
+        query.addBindValue(sqlTime(time));
+        query.addBindValue(deviceId);
+        return query.exec();
+    };
+}
+
+// 事务成功后刷新内存节流缓存，避免下一条写入因时间未推进而被节流拒绝
+void SqliteDeviceRepository::noteWritten(const PeerRecord &record)
+{
+    _recentWrites.insert(record.deviceId, record);
+}

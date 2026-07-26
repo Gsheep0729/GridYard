@@ -120,6 +120,9 @@ private:
     void sendChunkAck(bool verified, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &errorMsg = "");
     // 清理资源
     void cleanup();
+    // 统一的终结出口：清理资源并发射一次 transferFinished，重复调用被忽略
+    void finish(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg,
+                const QString &savedPath = QString());
     // 构建接收请求的不可变快照，跨线程交付给会话管理器
     QVariantMap receiveRequestSnapshot() const;
 
@@ -151,6 +154,7 @@ private:
     bool _waitingForUserConfirm = false; // 是否等待用户接受或拒绝
     bool _transferActive = false;        // 是否处于实际接收数据阶段
     bool _isDirectory = false;           // 当前任务是否为目录传输
+    bool _finished = false;              // 是否已发射过 transferFinished，防止拒绝/断开路径重复或遗漏终结
 
     // 接收路径
     QString _receivePath;                // 配置的接收文件根目录

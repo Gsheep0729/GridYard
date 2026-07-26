@@ -110,6 +110,10 @@ private:
     void sendCancel(const QString &reason);
     // 清理资源
     void cleanup();
+    // 统一的终结出口：清理资源并发射一次 transferFinished，重复调用被忽略
+    void finish(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
+    // 成功路径专用：先把 TransferDone 等待写入网络，再以成功终结
+    void finishAfterSend();
 
     QTcpSocket  *_socket = nullptr;       // 与接收端通信的 TCP 连接
     FrameCodec  *_codec  = nullptr;       // 接收响应帧的 TLV 解码器
@@ -125,6 +129,7 @@ private:
     bool         _transferActive = false; // 是否已收到接收端确认并开始发送
     bool         _waitingForFileAck = false; // 是否等待当前文件校验确认
     bool         _sendScheduled = false;  // 是否已投递下一块发送任务
+    bool         _finished = false;        // 是否已发射过 transferFinished，防止取消/断开路径重复终结
     qint64       _totalBytes = 0;         // 本次传输的文件总字节数
     qint64       _bytesSent  = 0;         // 已成功写入 socket 的总字节数
 

@@ -259,6 +259,12 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     worker->moveToThread(thread);
 
+    // 线程结束后按 Qt 惯用法销毁 worker 和线程：worker 在自己的事件循环里被 deleteLater，
+    // 线程随后自删。不能用 quit()+wait()+deleteLater()——wait 后事件循环已停，
+    // DeferredDelete 无人处理会导致 worker 连同 socket 永久泄漏，wait 本身还会阻塞 UI 线程。
+    connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+
     // 保存 worker 引用
     _sendWorkers[sessionId] = worker;
 
@@ -313,11 +319,8 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
         // 清理 worker 引用
         _sendWorkers.remove(sessionId);
 
-        // 等待工作线程结束后安全销毁 worker 和线程对象
+        // 只请求线程退出，销毁由上面的 finished→deleteLater 链接完成，不在 UI 线程 wait
         thread->quit();
-        thread->wait();
-        worker->deleteLater();
-        thread->deleteLater();
     });
 
     // 启动线程
@@ -335,6 +338,9 @@ void TransferSessionManager::acceptReceiveSession(const QString &sessionId)
         if (_sessions[i]["sessionId"].toString() == sessionId &&
             _sessions[i]["type"].toString() == "receive") {
 
+            if (isFinishedStatus(_sessions[i]["status"].toString())) {
+                break;  // 会话已结束，worker 已释放，忽略迟到的接受
+            }
             FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
             if (worker) {
                 // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
@@ -356,6 +362,9 @@ void TransferSessionManager::rejectReceiveSession(const QString &sessionId)
         if (_sessions[i]["sessionId"].toString() == sessionId &&
             _sessions[i]["type"].toString() == "receive") {
 
+            if (isFinishedStatus(_sessions[i]["status"].toString())) {
+                break;  // 会话已结束，worker 已释放，忽略迟到的拒绝
+            }
             FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
             if (worker) {
                 // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
@@ -376,6 +385,9 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
     // 查找会话
     for (int i = 0; i < _sessions.size(); ++i) {
         if (_sessions[i]["sessionId"].toString() == sessionId) {
+            if (isFinishedStatus(_sessions[i]["status"].toString())) {
+                break;  // 已结束会话不能再取消，其 worker 可能已释放
+            }
             QString type = _sessions[i]["type"].toString();
 
             if (type == "send") {
@@ -665,6 +677,8 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
         _sessions[i]["progress"] = finalStatus == "completed" ? 100 : _sessions[i]["progress"].toInt();
         _sessions[i]["errorMsg"] = errorMessage;
         _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
+        // 会话结束后接收 worker 即将 deleteLater，清空指针避免后续 cancel/accept 操作已释放对象
+        _sessions[i].remove("worker");
         if (finalStatus == "completed") {
             _sessions[i]["bytesTransferred"] = _sessions[i]["totalBytes"];
         }

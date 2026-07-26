@@ -142,9 +142,8 @@ void FileReceiverWorker::initialize()
     connect(_codec,  &FrameCodec::errorOccurred,
             this,    [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         qWarning() << "[FileReceiver] 协议错误:" << errorMsg;
-        cleanup();
         _socket->disconnectFromHost();
-        emit transferFinished(false, errorCode, errorMsg, {});
+        finish(false, errorCode, errorMsg);
     });
 
     // 超时定时器
@@ -185,9 +184,8 @@ void FileReceiverWorker::acceptTransfer()
 
     const auto failPreparation = [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         sendTransferResponse(false, errorCode, errorMsg);
-        cleanup();
-        emit transferFinished(false, errorCode, errorMsg, {});
         _socket->disconnectFromHost();
+        finish(false, errorCode, errorMsg);
     };
 
     // 准备接收目录（路径由上层通过信号传入，此处用默认路径兜底）
@@ -245,11 +243,9 @@ void FileReceiverWorker::rejectTransfer(const QString &reason)
     // 发送拒绝响应
     sendTransferResponse(false, gy::protocol::ErrorCode::UserRejected, reason.isEmpty() ? tr("用户拒绝") : reason);
 
-    // 发射传输完成信号（被拒绝）
-    emit transferFinished(false, gy::protocol::ErrorCode::UserRejected, reason, {});
-
-    // 关闭连接
+    // 关闭连接并终结会话
     _socket->disconnectFromHost();
+    finish(false, gy::protocol::ErrorCode::UserRejected, reason);
 }
 
 // 处理 socket 可读数据，喂入 FrameCodec 解码并重置超时
@@ -264,13 +260,19 @@ void FileReceiverWorker::onReadyRead()
     }
 }
 
-// 处理连接断开事件，传输活跃时清理资源并通知失败
+// 处理连接断开事件，未终结的会话在此兜底发出终结信号
+// 协议拒绝分支只 disconnectFromHost 而不主动终结，全靠这里保证后台线程能退出、不泄漏
 void FileReceiverWorker::onDisconnected()
 {
-    if (_transferActive) {
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::ConnectionLost, tr("连接断开"), {});
+    if (_finished) {
+        return;
     }
+    // 传输中途断开按连接丢失处理；确认前（或拒绝后）断开则说明会话已无意义，同样需要终结
+    const gy::protocol::ErrorCode code = _transferActive
+        ? gy::protocol::ErrorCode::ConnectionLost
+        : gy::protocol::ErrorCode::UserCancelled;
+    const QString msg = _transferActive ? tr("连接断开") : tr("连接在确认前关闭");
+    finish(false, code, msg);
 }
 
 // 处理传输超时，清理资源并通知超时失败
@@ -278,8 +280,7 @@ void FileReceiverWorker::onTimeout()
 {
     if (_transferActive) {
         qWarning() << "FileReceiverWorker: 传输超时";
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"), {});
+        finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
     }
 }
 
@@ -301,6 +302,19 @@ void FileReceiverWorker::cleanup()
     _hash->reset();
 
     _transferActive = false;
+}
+
+// 统一终结出口：cleanup 后只发射一次 transferFinished
+// P2pServer 依赖此信号退出后台线程，任何拒绝/失败/断开路径遗漏它都会导致线程与 socket 泄漏
+void FileReceiverWorker::finish(bool success, gy::protocol::ErrorCode errorCode,
+                                const QString &errorMsg, const QString &savedPath)
+{
+    if (_finished) {
+        return;
+    }
+    _finished = true;
+    cleanup();
+    emit transferFinished(success, errorCode, errorMsg, savedPath);
 }
 
 // 根据帧类型分发到对应的处理函数
@@ -533,23 +547,25 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
                    << "声明长度:" << chunkSize
                    << "实际长度:" << chunkData.size();
         sendChunkAck(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg);
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg, {});
         _socket->disconnectFromHost();
+        finish(false, gy::protocol::ErrorCode::InvalidPayload, errorMsg);
         return;
     }
 
     // 写入文件
     if (!_file.seek(chunkOffset)) {
+        // seek 失败不能只 return，否则会话会僵死到超时；直接按磁盘错误终结
         qWarning() << "[FileReceiver] 文件 seek 失败，偏移量:" << chunkOffset;
+        _socket->disconnectFromHost();
+        finish(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("文件定位失败"));
         return;
     }
 
     qint64 written = _file.write(chunkData);
     if (written != chunkData.size()) {
         qWarning() << "[FileReceiver] 写入文件失败，可能是磁盘空间不足";
-        cleanup();
-        emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("写入文件失败，可能是磁盘空间不足"), {});
+        _socket->disconnectFromHost();
+        finish(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("写入文件失败，可能是磁盘空间不足"));
         return;
     }
 
@@ -597,9 +613,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         if (!verified) {
             // 校验失败的文件不能保留到接收目录，避免用户误用损坏内容。
             QFile::remove(_file.fileName());
-            _timeoutTimer->stop();
-            _transferActive = false;
-            emit transferFinished(false, gy::protocol::ErrorCode::Sha256Mismatch, errorMsg, {});
+            finish(false, gy::protocol::ErrorCode::Sha256Mismatch, errorMsg);
             return;
         }
 
@@ -615,8 +629,7 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
             _bytesReceived = 0;
 
             if (!openCurrentFile()) {
-                _transferActive = false;
-                emit transferFinished(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建文件: %1").arg(_file.errorString()), {});
+                finish(false, gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建文件: %1").arg(_file.errorString()));
                 return;
             }
 
@@ -637,10 +650,8 @@ void FileReceiverWorker::handleTransferDone()
     }
 
     qDebug() << "[FileReceiver] 收到传输完成确认:" << _displayName;
-    _timeoutTimer->stop();
-    _transferActive = false;
-    emit transferFinished(true, gy::protocol::ErrorCode::Success, "",
-                          _isDirectory ? _destinationRoot : _singleFilePath);
+    finish(true, gy::protocol::ErrorCode::Success, QString(),
+           _isDirectory ? _destinationRoot : _singleFilePath);
 }
 
 // 打开当前待接收的文件，目录模式下自动创建父目录
@@ -672,19 +683,9 @@ void FileReceiverWorker::handleCancel(const QByteArray &payload)
 
     QString reason = json["reason"].toString();
 
-    // 清理资源
-    if (_file.isOpen()) {
-        _file.close();
-        // 删除不完整的文件
-        QFile::remove(_file.fileName());
-    }
-
-    _transferActive = false;
-
-    emit transferFinished(false, gy::protocol::ErrorCode::UserCancelled, tr("传输被取消: %1").arg(reason), {});
-
-    // 关闭连接
+    // 关闭连接并终结；cleanup()（由 finish 调用）会关闭并删除不完整文件
     _socket->disconnectFromHost();
+    finish(false, gy::protocol::ErrorCode::UserCancelled, tr("传输被取消: %1").arg(reason));
 }
 
 // 构建并发送传输响应帧（接受/拒绝 + 错误码 + 原因）
