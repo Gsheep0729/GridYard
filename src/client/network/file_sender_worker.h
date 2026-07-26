@@ -105,7 +105,7 @@ private:
     // 打开下一个文件
     bool openNextFile();
     // 发送传输完成帧
-    void sendTransferDone();
+    bool sendTransferDone();
     // 发送取消请求
     void sendCancel(const QString &reason);
     // 清理资源

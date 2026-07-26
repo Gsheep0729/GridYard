@@ -277,7 +277,9 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             _transferActive = true;
             _timeoutTimer->start(kTimeoutMs);
             if (_fileList.isEmpty()) {
-                sendTransferDone();
+                if (!sendTransferDone()) {
+                    return;
+                }
                 finishAfterSend();  // 空文件夹：等 TransferDone 落网后再终结
             } else {
                 scheduleNextChunk();
@@ -340,7 +342,9 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         } else {
             // 所有文件发完
             qDebug() << "[FileSender] 所有文件传输完成";
-            sendTransferDone();
+            if (!sendTransferDone()) {
+                return;
+            }
             finishAfterSend();  // 等 TransferDone 落网后再终结，避免接收端收不到而误判超时
         }
         break;
@@ -498,14 +502,21 @@ bool FileSenderWorker::openNextFile()
 }
 
 // 发送传输完成帧，通知接收端所有文件已发送完毕
-void FileSenderWorker::sendTransferDone()
+bool FileSenderWorker::sendTransferDone()
 {
     QJsonObject json;
     json["session_id"] = _sessionId;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
     QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferDone, data);
-    _socket->write(frame);
+    if (_socket->write(frame) != frame.size()) {
+        const QString errorMsg = _socket->errorString().isEmpty()
+            ? tr("传输完成帧写入失败")
+            : _socket->errorString();
+        finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("发送完成帧失败: %1").arg(errorMsg));
+        return false;
+    }
+    return true;
 }
 
 // 发送取消传输帧并关闭连接
