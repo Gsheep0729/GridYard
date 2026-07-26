@@ -10,6 +10,9 @@
 * - 中继模式：提供流式中继转发服务
 *
 * Change Log:
+* [v7.8.1] GY   2026-07-26
+* * 修复服务器对象声明在 if/else 块内导致离开作用域即析构、事件循环空转不监听的问题
+* * 补充端口和运行模式参数校验
 * [v7.3.0] GY   2026-07-21
 * * Stage 7.3：新增流式中继服务支持
 * [v7.2.0] GY   2026-07-21
@@ -24,11 +27,13 @@
 #include <QDebug>
 #include <QTimer>
 
+#include <memory>
+
 int main(int argc, char *argv[])
 {
     QCoreApplication app{argc, argv};
     app.setApplicationName(QStringLiteral("gridyard-rendezvous"));
-    app.setApplicationVersion(QStringLiteral("7.3.0"));
+    app.setApplicationVersion(QStringLiteral("7.8.1"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("GridYard 协调节点/中继服务"));
@@ -62,13 +67,32 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     const QString mode = parser.value(modeOption);
-    const quint16 port = parser.value(portOption).toUShort();
     const QString token = parser.value(tokenOption);
 
-    if (mode == QStringLiteral("relay")) {
-        RelayServer server{port, token};
+    // 端口必须能解析为 1~65535，否则 toUShort 返回 0 会让 OS 分配随机端口，
+    // 用户以为服务在指定端口实则监听在别处
+    bool portOk = false;
+    const quint16 port = parser.value(portOption).toUShort(&portOk);
+    if (!portOk || port == 0) {
+        qCritical() << "[Main] 无效的端口参数:" << parser.value(portOption);
+        return 1;
+    }
 
-        QObject::connect(&server, &RelayServer::serverStarted, &app, [&app](bool success, const QString &error) {
+    // 只接受 rendezvous / relay 两种模式，拼写错误不再静默回退
+    if (mode != QStringLiteral("rendezvous") && mode != QStringLiteral("relay")) {
+        qCritical() << "[Main] 无效的运行模式:" << mode << "（可选 rendezvous 或 relay）";
+        return 1;
+    }
+
+    // server 必须活过 app.exec()，用 unique_ptr 持有到 main 作用域，
+    // 不能声明在 if/else 块内——那样离开块即析构，事件循环会跑在没有监听套接字的空壳上
+    std::unique_ptr<QObject> server;
+
+    if (mode == QStringLiteral("relay")) {
+        auto *relay = new RelayServer{port, token};
+        server.reset(relay);
+
+        QObject::connect(relay, &RelayServer::serverStarted, &app, [&app](bool success, const QString &error) {
             if (!success) {
                 qCritical() << "[Main] 中继服务启动失败:" << error;
                 QTimer::singleShot(0, &app, [] { QCoreApplication::exit(1); });
@@ -77,11 +101,12 @@ int main(int argc, char *argv[])
             }
         });
 
-        server.start();
+        relay->start();
     } else {
-        RendezvousServer server{QStringLiteral("0.0.0.0"), port, token};
+        auto *rendezvous = new RendezvousServer{QStringLiteral("0.0.0.0"), port, token};
+        server.reset(rendezvous);
 
-        QObject::connect(&server, &RendezvousServer::serverStarted, &app, [&app](bool success, const QString &error) {
+        QObject::connect(rendezvous, &RendezvousServer::serverStarted, &app, [&app](bool success, const QString &error) {
             if (!success) {
                 qCritical() << "[Main] 协调节点服务启动失败:" << error;
                 QTimer::singleShot(0, &app, [] { QCoreApplication::exit(1); });
@@ -90,7 +115,7 @@ int main(int argc, char *argv[])
             }
         });
 
-        server.start();
+        rendezvous->start();
     }
 
     return app.exec();
