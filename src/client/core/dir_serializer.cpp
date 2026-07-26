@@ -50,6 +50,29 @@ QList<FileItem> DirSerializer::serialize(const QString &path)
     return result;
 }
 
+// 遍历路径（文件或目录），返回 FileItem 列表（不计算 SHA-256，仅用于 UI 线程快速统计）
+QList<FileItem> DirSerializer::serializeNoHash(const QString &path)
+{
+    QList<FileItem> result;
+    QFileInfo info(path);
+
+    if (!info.exists()) {
+        return result;
+    }
+
+    if (info.isFile()) {
+        FileItem item;
+        item.relativePath = info.fileName();
+        item.sizeBytes = info.size();
+        item.sha256 = QString();
+        result.append(item);
+    } else if (info.isDir()) {
+        traverseDirNoHash(path, QString(), result);
+    }
+
+    return result;
+}
+
 // 计算单个文件的 SHA-256 哈希值
 QString DirSerializer::computeSha256(const QString &filePath)
 {
@@ -98,6 +121,39 @@ void DirSerializer::traverseDir(const QString &basePath,
             result.append(item);
         } else if (entry.isDir()) {
             traverseDir(basePath, relPath, result);  // 递归进入子目录
+        }
+    }
+}
+
+// 递归遍历目录，收集文件信息（不计算 SHA-256）
+void DirSerializer::traverseDirNoHash(const QString &basePath,
+                                       const QString &currentPath,
+                                       QList<FileItem> &result)
+{
+    QDir dir(basePath + (currentPath.isEmpty() ? QString() : "/" + currentPath));
+    QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+
+    if (entries.isEmpty() && !currentPath.isEmpty()) {
+        FileItem item;
+        item.relativePath = currentPath + "/";
+        item.sizeBytes = 0;
+        item.sha256 = QString();
+        result.append(item);
+    }
+
+    for (const QFileInfo &entry : entries) {
+        QString relPath = currentPath.isEmpty()
+            ? entry.fileName()
+            : currentPath + "/" + entry.fileName();
+
+        if (entry.isFile()) {
+            FileItem item;
+            item.relativePath = relPath;
+            item.sizeBytes = entry.size();
+            item.sha256 = QString();
+            result.append(item);
+        } else if (entry.isDir()) {
+            traverseDirNoHash(basePath, relPath, result);
         }
     }
 }

@@ -35,8 +35,11 @@ struct FileItem {
 // 目录序列化工具类
 class DirSerializer {
 public:
-    // 遍历路径（文件或目录），返回 FileItem 列表
+    // 遍历路径（文件或目录），返回 FileItem 列表（含 SHA-256，用于传输校验）
     static QList<FileItem> serialize(const QString &path);
+
+    // 同上，但不计算 SHA-256（只用于主线程统计文件数和总大小，避免在 UI 线程算哈希冻结界面）
+    static QList<FileItem> serializeNoHash(const QString &path);
 
     // 计算单个文件 SHA-256
     static QString computeSha256(const QString &filePath);
@@ -46,6 +49,10 @@ private:
     static void traverseDir(const QString &basePath,
                             const QString &currentPath,
                             QList<FileItem> &result);
+    // 递归遍历目录（不计算 SHA-256）
+    static void traverseDirNoHash(const QString &basePath,
+                                   const QString &currentPath,
+                                   QList<FileItem> &result);
 };
 
 } // namespace gy

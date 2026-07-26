@@ -110,7 +110,7 @@ QPair<int, qint64> transferStatsForPath(const QString &path)
         return {1, info.size()};
     }
 
-    const auto items = gy::DirSerializer::serialize(path);
+    const auto items = gy::DirSerializer::serializeNoHash(path);
     int fileCount = 0;
     qint64 totalBytes = 0;
     for (const auto &item : items) {
@@ -240,7 +240,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     // 如果是文件夹，获取文件列表
     if (QFileInfo{filePath}.isDir()) {
-        auto fileList = gy::DirSerializer::serialize(filePath);
+        auto fileList = gy::DirSerializer::serializeNoHash(filePath);
         QStringList paths;
         for (const auto &item : fileList) {
             paths.append(item.relativePath);
