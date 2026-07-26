@@ -30,9 +30,11 @@
 #pragma once
 
 #include <QObject>
+#include <QHash>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
+#include <QTimer>
 #include <QVariantMap>
 
 class ConfigManager;
@@ -72,7 +74,10 @@ private:
     void startFileReceiver(QTcpSocket *socket);
     // 关闭尚未交接的入站连接
     void closePendingConnection(QTcpSocket *socket, const QString &reason);
+    // 清理待路由首帧的超时计时器
+    void stopFirstFrameTimeout(QTcpSocket *socket);
 
     ConfigManager *_config = nullptr; // TCP 监听端口配置来源
     QTcpServer    *_server = nullptr; // 接受入站传输连接的服务器
+    QHash<QTcpSocket *, QTimer *> _firstFrameTimers;
 };

@@ -40,6 +40,8 @@
 
 namespace {
 
+static constexpr int kFirstFrameTimeoutMs = 8000;
+
 // 读取 TLV 帧头中的 Type 和 Payload 长度
 bool readFrameHeader(const QByteArray &header, quint32 *type, quint32 *payloadLength)
 {
@@ -140,15 +142,31 @@ void P2pServer::onNewConnection()
 // 监听 socket，等待首个完整 TLV 帧
 void P2pServer::monitorFirstFrame(QTcpSocket *socket)
 {
+    auto *firstFrameTimer = new QTimer{socket};
+    firstFrameTimer->setSingleShot(true);
+    _firstFrameTimers.insert(socket, firstFrameTimer);
+
+    connect(firstFrameTimer, &QTimer::timeout,
+            this, [this, socket]() {
+        if (socket && socket->parent() == this) {
+            closePendingConnection(socket, tr("首帧路由超时"));
+        }
+    });
     connect(socket, &QTcpSocket::readyRead,
             this,   [this, socket]() { routeFirstFrame(socket); });
     connect(socket, &QTcpSocket::disconnected,
             this,   [this, socket]() {
+        stopFirstFrameTimeout(socket);
         if (socket->parent() == this) {
             socket->deleteLater();
         }
     });
+    connect(socket, &QObject::destroyed,
+            this, [this, socket]() {
+        _firstFrameTimers.remove(socket);
+    });
 
+    firstFrameTimer->start(kFirstFrameTimeoutMs);
     routeFirstFrame(socket);
 }
 
@@ -212,6 +230,7 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
         return;
     }
 
+    stopFirstFrameTimeout(socket);
     disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
     disconnect(socket, &QTcpSocket::disconnected, this, nullptr);
 
@@ -282,7 +301,19 @@ void P2pServer::startFileReceiver(QTcpSocket *socket)
 void P2pServer::closePendingConnection(QTcpSocket *socket, const QString &reason)
 {
     qWarning() << "[P2pServer] 关闭入站连接:" << reason;
+    stopFirstFrameTimeout(socket);
     disconnect(socket, nullptr, this, nullptr);
     socket->disconnectFromHost();
     socket->deleteLater();
+}
+
+// 清理待路由首帧的超时计时器
+void P2pServer::stopFirstFrameTimeout(QTcpSocket *socket)
+{
+    QTimer *timer = _firstFrameTimers.take(socket);
+    if (!timer) {
+        return;
+    }
+    timer->stop();
+    timer->deleteLater();
 }
