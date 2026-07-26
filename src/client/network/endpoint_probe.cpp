@@ -73,6 +73,7 @@ void EndpointProbe::probeTcp(const QString &ip, quint16 port, int timeoutMs)
             result.errorCode = QStringLiteral("TcpTimeout");
             result.errorMessage = QStringLiteral("连接超时");
             emit probeFinished(result);
+            socket->deleteLater();
         }
         timeoutTimer->deleteLater();
     });
