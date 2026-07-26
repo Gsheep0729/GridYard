@@ -52,6 +52,7 @@
 #include "logger.h"
 #include "p2p_server.h"
 #include "peer_discovery_view_model.h"
+#include "protocol.h"
 #include "reachability_controller.h"
 #include "transfer_controller.h"
 #include "transfer_session_manager.h"
@@ -142,8 +143,7 @@ AppController::AppController(QObject *parent)
                         _config->deviceName(),
                         addresses,
                         _config->tcpPort(),
-                        45678  // UDP 发现端口
-                    );
+                        gy::protocol::kDefaultDiscoveryPort);  // UDP 发现端口
                     // 注册成功后查询一次在线设备
                     _rendezvousClient->listPeers(QStringLiteral("default"));
                 });

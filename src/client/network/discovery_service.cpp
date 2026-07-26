@@ -374,11 +374,19 @@ void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 di
     }
 }
 
-// 添加手动端点（来源标记为 manual，不通过 updatePeer 以保留 source 标签）
+// 添加手动端点（只在没有更高优先级在线来源时才插入）
 void DiscoveryService::addManualPeer(const PeerInfo &peer)
 {
     const QString deviceId = peer.deviceId;
-    _peers.insert(deviceId, peer);
+    const QString highPrioritySource = QStringLiteral("broadcast");
+    const QString midPrioritySource = QStringLiteral("directed");
+    bool hasHigherPriorityOnline = _peers.contains(deviceId)
+                                    && (_peers[deviceId].source == highPrioritySource
+                                        || _peers[deviceId].source == midPrioritySource)
+                                    && _peers[deviceId].isOnline;
+    if (!hasHigherPriorityOnline) {
+        _peers.insert(deviceId, peer);
+    }
     qDebug() << "DiscoveryService: 添加手动端点" << deviceId << peer.ipAddress;
     notifyPeersChanged();
 }
@@ -414,8 +422,18 @@ void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers
         info.lastSeen = QDateTime::currentDateTime();
         info.source = QStringLiteral("rendezvous");  // 协调节点来源
 
-        // 候选端点直接更新，不通过 updatePeer（避免覆盖 UDP 发现的在线设备）
-        _peers.insert(deviceId, info);
+        // 已有更高优先级来源（broadcast/directed）的在线设备时，保留真实直连 IP，
+        // 防止协调节点返回的地址（如 NAT 映射地址）破坏 P2P 直连优先策略。
+        // 只在无现有条目或现有条目优先级不高于 rendezvous 时才插入。
+        const QString highPrioritySource = QStringLiteral("broadcast");
+        const QString midPrioritySource = QStringLiteral("directed");
+        bool isHighPriority = _peers.contains(deviceId)
+                              && (_peers[deviceId].source == highPrioritySource
+                                  || _peers[deviceId].source == midPrioritySource)
+                              && _peers[deviceId].isOnline;
+        if (!isHighPriority) {
+            _peers.insert(deviceId, info);
+        }
         qDebug() << "DiscoveryService: 从协调节点收到候选设备" << deviceId << info.deviceName;
     }
 

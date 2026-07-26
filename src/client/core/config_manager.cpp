@@ -83,7 +83,7 @@ ConfigManager::ConfigManager(QObject *parent)
     // Reachability 配置：协调服务器
     _rendezvousEnabled = settings.value("reachability/rendezvousEnabled", false).toBool();
     _rendezvousHost = settings.value("reachability/rendezvousHost", "127.0.0.1").toString();
-    _rendezvousPort = settings.value("reachability/rendezvousPort", 45780).toInt();
+    _rendezvousPort = settings.value("reachability/rendezvousPort", gy::protocol::kDefaultRendezvousPort).toInt();
     int relayModeInt = settings.value("reachability/relayMode", static_cast<int>(RelayMode::AskBeforeRelay)).toInt();
     _relayMode = static_cast<RelayMode>(relayModeInt);
 
