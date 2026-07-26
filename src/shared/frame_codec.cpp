@@ -67,16 +67,23 @@ void FrameCodec::feed(const QByteArray &data)
 {
     _buffer.append(data);
 
+    // 当已读偏移超过缓冲区一半时，执行一次压缩操作避免内存膨胀
+    if (_bufferOffset > _buffer.size() / 2) {
+        _buffer.remove(0, static_cast<int>(_bufferOffset));
+        _bufferOffset = 0;
+    }
+
     // 循环处理粘包：一次 feed 可能包含多个完整帧（TCP 粘包特性）
     while (true) {
         if (_state == State::WaitingHeader) {
             // 帧头 8 字节未凑齐，等下一次 readyRead
-            if (_buffer.size() < static_cast<int>(gy::protocol::kHeaderBytes)) {
+            if (_buffer.size() - _bufferOffset < static_cast<int>(gy::protocol::kHeaderBytes)) {
                 break;
             }
 
-            // 解析帧头（大端序）
-            QDataStream stream(_buffer.left(gy::protocol::kHeaderBytes));
+            // 解析帧头（大端序），直接用指针算术避免复制
+            const char *ptr = _buffer.data() + _bufferOffset;
+            QDataStream stream(QByteArray::fromRawData(ptr, gy::protocol::kHeaderBytes));
             stream.setByteOrder(QDataStream::BigEndian);
             stream >> _pendingType;
             stream >> _pendingLength;
@@ -93,24 +100,26 @@ void FrameCodec::feed(const QByteArray &data)
                                        .arg(_pendingType, 0, 16));
                 // 超限帧无法恢复，清空缓冲区重置到初始状态
                 _buffer.clear();
+                _bufferOffset = 0;
                 _state = State::WaitingHeader;
                 _pendingType = 0;
                 _pendingLength = 0;
                 break;
             }
 
-            _buffer.remove(0, gy::protocol::kHeaderBytes);
+            _bufferOffset += gy::protocol::kHeaderBytes;
             _state = State::WaitingPayload;
         }
 
         if (_state == State::WaitingPayload) {
             // 载荷字节未凑齐，等下一次 readyRead
-            if (_buffer.size() < static_cast<int>(_pendingLength)) {
+            if (_buffer.size() - _bufferOffset < static_cast<int>(_pendingLength)) {
                 break;
             }
 
-            QByteArray payload = _buffer.left(_pendingLength);
-            _buffer.remove(0, _pendingLength);
+            // 提取载荷并通过信号交付，缓冲区仅移动偏移量不做复制
+            QByteArray payload(_buffer.data() + _bufferOffset, static_cast<int>(_pendingLength));
+            _bufferOffset += _pendingLength;
 
             // 完整帧就绪，通知业务层处理
             emit frameReady(_pendingType, payload);

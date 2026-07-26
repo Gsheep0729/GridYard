@@ -64,6 +64,7 @@ private:
 
     State _state = State::WaitingHeader;    // 当前状态机状态
     QByteArray _buffer;                     // 接收缓冲区，累积 socket 数据
+    qint64 _bufferOffset = 0;              // 已读数据偏移量，用于避免 remove(0,n) 的 O(n) 拷贝
     quint32 _pendingType = 0;              // 待处理帧的 Type 字段
     quint32 _pendingLength = 0;            // 待处理帧的载荷长度
 };
