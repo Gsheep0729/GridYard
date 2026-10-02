@@ -41,6 +41,12 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/transfer_session_mapper.cpp
     core/transfer_session_model.h
     core/transfer_session_model.cpp
+    core/rendezvous_coordinator.h
+    core/rendezvous_coordinator.cpp
+    core/history_wiring.h
+    core/history_wiring.cpp
+    core/shutdown_controller.h
+    core/shutdown_controller.cpp
 )
 
 set(GRIDYARD_CLIENT_NETWORK_SOURCES

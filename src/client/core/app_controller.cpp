@@ -1,11 +1,14 @@
 /**
 * @file    app_controller.cpp
-* @version 7.9.0
+* @version 7.11.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
 * Change Log:
+* [v7.11.0] GY   2026-10-02
+* * 构造函数瘦身为纯装配：协调编排、历史持久化装配、退出与缓存清理
+*   分别移入 RendezvousCoordinator、HistoryWiring、ShutdownController
 * [v7.9.0] GY   2026-07-26
 * * 接入中继降级：收到中继邀请后驱动 P2pServer 加入中继会话
 * [v7.6.0] GY   2026-07-21
@@ -43,71 +46,35 @@
 */
 
 #include "app_controller.h"
-#include "application_paths.h"
 #include "chat_manager.h"
 #include "chat_controller.h"
 #include "config_manager.h"
 #include "discovery_service.h"
-#include "history_records.h"
 #include "history_controller.h"
+#include "history_wiring.h"
 #include "local_data_broker.h"
-#include "logger.h"
 #include "p2p_server.h"
 #include "peer_discovery_view_model.h"
-#include "protocol.h"
 #include "reachability_controller.h"
+#include "rendezvous_coordinator.h"
+#include "shutdown_controller.h"
 #include "transfer_controller.h"
 #include "transfer_session_manager.h"
 #include "network/rendezvous_client.h"
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
-#include <QTimer>
 
 namespace {
 
 QPointer<AppController> s_appController;
 
-QString activeConfigPath()
-{
-    const QString envPath = qEnvironmentVariable("GRIDYARD_CONFIG");
-    return envPath.isEmpty() ? ApplicationPaths::configDir() + "/gridyard.ini" : envPath;
 }
 
-void removeFileIfExists(const QString &path)
-{
-    if (path.isEmpty() || !QFileInfo::exists(path)) {
-        return;
-    }
-    if (!QFile::remove(path)) {
-        qWarning() << "[Cache] 删除文件失败:" << path;
-    }
-}
-
-void removeDirectoryIfExists(const QString &path)
-{
-    if (path.isEmpty()) {
-        return;
-    }
-
-    QDir dir{path};
-    if (!dir.exists()) {
-        return;
-    }
-    if (!dir.removeRecursively()) {
-        qWarning() << "[Cache] 删除目录失败:" << path;
-    }
-}
-
-}
-
-// 构造并组装应用运行期依赖
+// 构造并装配应用运行期依赖
 AppController::AppController(QObject *parent)
     : QObject{parent}
     , _config{ConfigManager::create(nullptr, nullptr)}
@@ -122,83 +89,21 @@ AppController::AppController(QObject *parent)
     , _history{new HistoryController{_chat, _transfer, _config, _dataBroker, this}}
     , _reachability{new ReachabilityController{this}}
     , _rendezvousClient{new RendezvousClient{this}}
-    , _retentionTimer{new QTimer{this}}
+    , _rendezvousCoordinator{new RendezvousCoordinator{_config, _discovery, _p2pServer,
+                                                       _rendezvousClient, this}}
+    , _historyWiring{new HistoryWiring{_discovery, _chat, _transfer, _peerDiscoveryViewModel,
+                                       _history, _dataBroker, this}}
+    , _shutdownController{new ShutdownController{_dataBroker, this}}
 {
     // 初始化 ReachabilityController 的引用
     _reachability->setDiscoveryService(_discovery);
     _reachability->setConfigManager(_config);
     _reachability->setRendezvousClient(_rendezvousClient);
 
-    // 如果启用了协调服务器，自动连接并注册
-    if (_config->rendezvousEnabled()) {
-        _rendezvousClient->connectToServer(_config->rendezvousHost(), _config->rendezvousPort());
-        connect(_rendezvousClient, &RendezvousClient::connected,
-                this, [this]() {
-                    // 连接成功后注册本机端点
-                    QStringList addresses;
-                    if (!_config->localIp().isEmpty()) {
-                        addresses.append(_config->localIp());
-                    }
-                    _rendezvousClient->registerDevice(
-                        QStringLiteral("default"),  // 默认 room
-                        _config->deviceId(),
-                        _config->deviceName(),
-                        addresses,
-                        _config->tcpPort(),
-                        gy::protocol::kDefaultDiscoveryPort);  // UDP 发现端口
-                    // 注册成功后查询一次在线设备
-                    _rendezvousClient->listPeers(QStringLiteral("default"));
-                });
-        // 协调节点返回的候选端点加入设备列表
-        connect(_rendezvousClient, &RendezvousClient::peersReceived,
-                _discovery, &DiscoveryService::onRendezvousPeersReceived);
-        // 轮询到目标为本机的中继邀请：连接中继服务器并加入会话，
-        // 后续字节就是标准 TLV 传输流，由 P2pServer 首帧路由接管
-        connect(_rendezvousClient, &RendezvousClient::relayInvitesReceived,
-                this, [this](const QList<QVariantMap> &invites) {
-                    for (const QVariantMap &invite : invites) {
-                        const QString relayId = invite["relayId"].toString();
-                        if (relayId.isEmpty()) {
-                            continue;
-                        }
-                        _p2pServer->joinRelaySession(_config->rendezvousHost(),
-                                                     static_cast<quint16>(_config->rendezvousPort()),
-                                                     relayId);
-                    }
-                });
-        // 启动周期性查询（每 10 秒拉取一次在线设备）
-        QTimer *queryTimer = new QTimer{this};
-        queryTimer->setInterval(10000);
-        connect(queryTimer, &QTimer::timeout,
-                this, [this]() {
-                    if (_rendezvousClient->isConnected()) {
-                        _rendezvousClient->listPeers(QStringLiteral("default"));
-                    }
-                });
-        queryTimer->start();
-    }
-
-    QString storageError;
-    if (!_dataBroker->initialize(ApplicationPaths::databaseDir() + "/gridyard-history.sqlite",
-                                 &storageError)) {
-        // 历史库不可用时保留在线收发能力，避免本地磁盘问题影响 P2P 主链路。
-        qWarning() << "[Storage] 本地历史不可用:" << storageError;
-    }
-    _localHistoryAvailable = _dataBroker->isAvailable();  // 记录降级状态，供 QML 判断是否展示历史入口
-    _peerDiscoveryViewModel->initDataBroker(_dataBroker);  // 启动时加载本地历史设备目录
-
-    // 存储失败只记录降级状态，不影响已完成的网络收发。
-    connect(_dataBroker, &LocalDataBroker::operationFailed,
-            this, [this] {
-                qWarning() << "[Storage] 存储任务失败，当前操作未写入本地历史";
-                emit localHistoryOperationFailed();
-            });
-
-    // 发现结果异步写入设备目录，避免 UDP 心跳阻塞主线程。
-    connect(_discovery, &DiscoveryService::peerUpdated,
-            this, [this](const PeerInfo &peer) {
-                _dataBroker->persistDiscoveredPeer(peer);  // 设备快照投递到 Worker 线程异步写入
-            });
+    // 打开本地历史库并完成持久化装配；失败时记录降级状态，供 QML 判断是否展示历史入口
+    _localHistoryAvailable = _historyWiring->initialize();
+    connect(_historyWiring, &HistoryWiring::operationFailed,
+            this,           &AppController::localHistoryOperationFailed);
 
     _p2pServer->start();
 
@@ -207,39 +112,8 @@ AppController::AppController(QObject *parent)
 
     _chat->init(_config, _discovery, _p2pServer);
 
-    // 消息收发成功后按顺序确保设备目录和聊天记录均已落库。
-    connect(_chat, &ChatManager::messageToPersist,
-            this, [this](const MessageRecord &record) {
-                // 先查询对端最新端点信息，设备目录记录可能比消息记录更早写入。
-                const QVariantMap endpoint = _discovery->transferEndpoint(record.peerDeviceId);
-                _dataBroker->persistChatMessage(record, endpoint);
-            });
-
-    loadRecentChatHistories();
-
-    connect(_transfer, &TransferSessionManager::transferToPersist,
-            this, [this](const TransferRecord &record) {
-                // 传输结束时同步写入设备目录，保证外键引用完整。
-                const QVariantMap endpoint = _discovery->transferEndpoint(record.peerDeviceId);
-                _dataBroker->persistTransferRecord(record, endpoint);
-            });
-
-    connect(_transfer, &TransferSessionManager::transferHistoryDeleteRequested,
-            this, [this](const QStringList &recordIds) {
-                if (recordIds.isEmpty()) {
-                    return;  // 空列表无需提交 Worker 任务
-                }
-
-                _dataBroker->deleteTransfers(recordIds);  // 批量删除投递到 Worker 线程
-            });
-
-    loadRecentTransferHistories();
-
-    _history->cleanupExpiredRecords();  // 启动时立即清理一次过期历史
-    _retentionTimer->setInterval(60 * 60 * 1000);  // 历史保留清理间隔：1 小时
-    connect(_retentionTimer, &QTimer::timeout,
-            _history, &HistoryController::cleanupExpiredRecords);
-    _retentionTimer->start();
+    // 按当前配置启动协调连接；此后配置变化由编排器即时响应
+    _rendezvousCoordinator->applyConfig();
 }
 
 // 析构函数
@@ -345,106 +219,20 @@ bool AppController::uiReady() const
     return _uiReady;
 }
 
-// 请求退出应用
+// 请求退出应用（排空与兜底策略由 ShutdownController 承担）
 void AppController::quit()
 {
-    if (_quitRequested) {
-        return;
-    }
-    _quitRequested = true;
-    qDebug() << "AppController::quit invoked from QML";
-
-    if (!_dataBroker) {
-        QCoreApplication::exit(0);
-        return;
-    }
-
-    // 单次触发的排空信号 + QueuedConnection，确保退出发生在事件循环空闲时。
-    connect(_dataBroker, &LocalDataBroker::drained,
-            this, [] { QCoreApplication::exit(0); },
-            static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
-    _dataBroker->beginShutdown();  // 通知 Worker 线程排空剩余任务后停止
-
-    // 极端情况下 Worker 线程没有及时响应，也不能让托盘进程永久留在后台。
-    QTimer::singleShot(3000, this, [] { QCoreApplication::exit(0); });  // 3 秒兜底强制退出
+    _shutdownController->requestQuit();
 }
 
 // 清除配置、历史数据库和日志后退出应用
 void AppController::clearLocalCache()
 {
-    if (_cacheClearRequested) {
-        return;
-    }
-    _cacheClearRequested = true;
-    _quitRequested = true;
-    qInfo() << "[Cache] 开始清除本地缓存";
-
-    auto finishClear = [this] {
-        if (_cacheClearFinished) {
-            return;
-        }
-        _cacheClearFinished = true;
-        if (_dataBroker) {
-            _dataBroker->closeStorage();
-        }
-        removeLocalCacheFiles();
-        QCoreApplication::exit(0);
-    };
-
-    if (!_dataBroker) {
-        finishClear();
-        return;
-    }
-
-    connect(_dataBroker, &LocalDataBroker::drained,
-            this, finishClear,
-            static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
-    _dataBroker->beginShutdown();
-
-    // 存储线程异常无响应时仍执行清理，避免用户无法退出清除流程。
-    QTimer::singleShot(3000, this, finishClear);
+    _shutdownController->requestClearCacheAndQuit();
 }
 
 // 验证 QML 调用链路
 void AppController::test()
 {
     qDebug() << "AppController::test() invoked from QML - C++↔QML 通信正常";
-}
-
-// 删除本地持久化文件和目录
-void AppController::removeLocalCacheFiles()
-{
-    Logger::instance()->shutdown();  // 释放当前日志文件句柄后再删除 logs 目录
-    removeFileIfExists(activeConfigPath());
-    removeDirectoryIfExists(ApplicationPaths::configDir());
-    removeDirectoryIfExists(ApplicationPaths::databaseDir());
-    removeDirectoryIfExists(ApplicationPaths::logDir());
-}
-
-// 在存储线程读取最近历史并回投到主线程恢复模型
-void AppController::loadRecentChatHistories()
-{
-    if (!_dataBroker || !_dataBroker->isAvailable()) {
-        return;
-    }
-
-    _dataBroker->loadRecentChatHistories(
-        this, [this](const QHash<QString, QList<MessageRecord>> &histories) {
-            for (auto it = histories.cbegin(); it != histories.cend(); ++it) {
-                _chat->restoreMessages(it.key(), it.value());
-            }
-        });
-}
-
-// 在存储线程读取最近传输历史并回投到主线程恢复模型
-void AppController::loadRecentTransferHistories()
-{
-    if (!_dataBroker || !_dataBroker->isAvailable()) {
-        return;
-    }
-
-    _dataBroker->loadRecentTransferHistories(
-        this, [this](const QList<TransferRecord> &records) {
-            _transfer->restoreFinishedTransfers(records);
-        });
 }

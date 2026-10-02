@@ -80,6 +80,7 @@ signals:
 
 private:
     friend class AppController;
+    friend class HistoryWiring;  // 启动恢复由历史装配层代组合根调用
 
     enum class MessageStatus {
         Pending,

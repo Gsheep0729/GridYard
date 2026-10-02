@@ -1,6 +1,6 @@
 /**
 * @file    protocol.h
-* @version 6.6.2
+* @version 7.11.0
 * @date    2026-06-23
 * @author  GridYard Team
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
@@ -11,6 +11,8 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
+* [v7.11.0] GY   2026-10-02
+* * 新增默认协调房间名常量 kDefaultRendezvousRoom
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v4.16.3] GY   2026-06-23
@@ -61,6 +63,7 @@ inline constexpr quint16 kDefaultP2pPort       = 35100;   // TCP P2P 文件传�
 // 协调服务器默认端口
 inline constexpr quint16 kDefaultRendezvousPort = 45679;   // 协调节点（默认）
 inline constexpr quint16 kDefaultRelayPort      = 45679;   // 中继服务器（与协调节点同端口：协调模式内置中继分流，--mode relay 独立部署）
+inline constexpr const char *kDefaultRendezvousRoom = "default";  // 默认协调房间名
 
 // ---- V1.0 Type 码 --------------------------------------------------------
 inline constexpr quint32 kTypeHello        = 0x0001;   // UDP 广播：设备上线 / 心跳

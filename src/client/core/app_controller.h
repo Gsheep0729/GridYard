@@ -1,11 +1,18 @@
 /**
 * @file    app_controller.h
-* @version 7.5.0
+* @version 7.11.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
+* 作为组合根只负责创建子对象并装配依赖；协调编排、历史持久化装配、
+* 退出与缓存清理策略分别由 RendezvousCoordinator、HistoryWiring、
+* ShutdownController 承担。
+*
 * Change Log:
+* [v7.11.0] GY   2026-10-02
+* * 构造函数瘦身为纯装配：协调编排移入 RendezvousCoordinator（配置变化即时生效），
+*   历史持久化装配移入 HistoryWiring，退出与缓存清理移入 ShutdownController
 * [v7.5.0] GY   2026-07-21
 * * 集成 RendezvousClient，开机自动连接协调节点并注册
 * [v7.0.0] GY   2026-07-21
@@ -61,11 +68,13 @@ class QQmlApplicationEngine;
 class ConfigManager;
 class ChatManager;
 class DiscoveryService;
+class HistoryWiring;
 class LocalDataBroker;
 class P2pServer;
-class QTimer;
 class ReachabilityController;
 class RendezvousClient;
+class RendezvousCoordinator;
+class ShutdownController;
 class TransferSessionManager;
 
 class AppController : public QObject {
@@ -126,14 +135,8 @@ private:
     AppController(const AppController &)            = delete;
     AppController &operator=(const AppController &) = delete;
 
-    // 异步恢复最近设备的聊天记录
-    void loadRecentChatHistories();
-    // 异步恢复最近传输历史
-    void loadRecentTransferHistories();
     // 初始化 QML UI 层
     void initializeUi();
-    // 删除本地持久化文件和目录
-    void removeLocalCacheFiles();
 
     ConfigManager           *_config    = nullptr;  // 本机身份与配置来源
     DiscoveryService        *_discovery = nullptr;  // 在线设备发现服务
@@ -147,12 +150,11 @@ private:
     QQmlApplicationEngine *_uiEngine = nullptr;  // 由控制器持有的 QML UI 引擎
     HistoryController *_history = nullptr;  // 本地历史查询、清理与 QML 操作入口
     ReachabilityController *_reachability = nullptr;  // 网络可达性诊断控制器
-    RendezvousClient *_rendezvousClient = nullptr;  // 协调节点客户端
-    QTimer *_retentionTimer = nullptr;  // 周期性过期历史清理定时器
+    RendezvousClient *_rendezvousClient = nullptr;  // 协调节点客户端（与可达性、中继降级共享）
+    RendezvousCoordinator *_rendezvousCoordinator = nullptr;  // 协调节点编排（动态启停）
+    HistoryWiring *_historyWiring = nullptr;  // 本地历史持久化装配
+    ShutdownController *_shutdownController = nullptr;  // 退出排空与缓存清理
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
-    bool _quitRequested = false;  // 防止托盘退出动作重复请求排空同一任务队列
-    bool _cacheClearRequested = false;  // 防止重复触发清除缓存流程
-    bool _cacheClearFinished = false;  // 防止正常排空和超时兜底重复删除缓存
     bool _uiInitialized = false;  // 防止 QML 单例回调期间重复加载界面
     bool _uiReady = false;  // QML 根对象是否已成功创建
 };
