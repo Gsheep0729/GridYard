@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.cpp
-* @version 7.9.0
+* @version 7.14.2
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
 * Change Log:
+* [v7.14.2] GY   2026-10-03
+* * 节点超时秒数可注入供测试调小
 * [v7.9.0] GY   2026-07-26
 * * 缓存协调节点返回的多地址，供直连失败后的候选端点轮询
 * [v7.7.0] GY   2026-07-21
@@ -224,10 +226,18 @@ void DiscoveryService::onDatagramReceived()
     }
 }
 
+// 调整节点超时秒数
+void DiscoveryService::setNodeTimeoutSec(int seconds)
+{
+    if (seconds > 0) {
+        _nodeTimeoutSec = seconds;
+    }
+}
+
 // 清理超时未响应的离线节点
 void DiscoveryService::pruneOfflineNodes()
 {
-    const QDateTime threshold = QDateTime::currentDateTimeUtc().addSecs(-kNodeTimeoutSec);
+    const QDateTime threshold = QDateTime::currentDateTimeUtc().addSecs(-_nodeTimeoutSec);
     bool changed = false;
 
     QMutableHashIterator<QString, PeerInfo> it(_peers);

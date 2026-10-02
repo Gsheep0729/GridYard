@@ -13,6 +13,8 @@
 * Change Log:
 * [v7.14.0] GY   2026-10-03
 * * 新增协调管道与独立模式的令牌用例
+* [v7.14.2] GY   2026-10-03
+* * 新增独立监听模式无令牌基本转发用例
 * [v7.14.1] GY   2026-10-03
 * * 新增阻塞期取消可达用例：假中继不回 ready，取消请求即时生效
 * [v7.13.4] GY   2026-10-03
@@ -123,6 +125,7 @@ private slots:
     void testResponseBackpressureDisconnects();
     void testRelayPipeWithToken();
     void testStandaloneRelayWithToken();
+    void testStandaloneRelayForwarding();
     void testCancelDuringRelayWait();
 
 private:
@@ -826,6 +829,42 @@ void TestRelayChain::testCancelDuringRelayWait()
 
     workerThread.quit();
     QVERIFY(workerThread.wait(3000));
+}
+
+// 独立监听模式基本转发：不经协调节点，直连中继端口完成握手与双向字节转发
+void TestRelayChain::testStandaloneRelayForwarding()
+{
+    RelayServer relay{0, QString()};
+    QVERIFY(relay.start());
+
+    auto *sender = new QTcpSocket;
+    sender->connectToHost(QHostAddress::LocalHost, relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject createHello;
+    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    createHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-forward");
+    writeJsonLine(sender, createHello);
+
+    auto *receiver = new QTcpSocket;
+    receiver->connectToHost(QHostAddress::LocalHost, relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(receiver->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject joinHello;
+    joinHello[QStringLiteral("type")] = QStringLiteral("relay_join");
+    joinHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-forward");
+    writeJsonLine(receiver, joinHello);
+
+    QCOMPARE(readJsonLine(sender)[QStringLiteral("type")].toString(), QStringLiteral("relay_ready"));
+
+    sender->write("PING");
+    sender->flush();
+    QCOMPARE(waitBytes(receiver, 4), QByteArray("PING"));
+    receiver->write("PONG");
+    receiver->flush();
+    QCOMPARE(waitBytes(sender, 4), QByteArray("PONG"));
+
+    sender->disconnectFromHost();
+    receiver->disconnectFromHost();
+    QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 3000);
 }
 
 QTEST_MAIN(TestRelayChain)

@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.h
-* @version 7.9.0
+* @version 7.14.2
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
 * Change Log:
+* [v7.14.2] GY   2026-10-03
+* * 节点超时秒数可注入供测试调小
 * [v7.9.0] GY   2026-07-26
 * * 缓存协调节点返回的多地址，供直连失败后的候选端点轮询
 * [v7.5.0] GY   2026-07-21
@@ -54,6 +56,9 @@ public:
     DiscoveryService &operator=(const DiscoveryService &) = delete;
 
     // 获取当前在线节点列表（供 QML 绑定）
+    // 调整节点超时秒数（测试可调小；仅影响后续 prune 判定）
+    void setNodeTimeoutSec(int seconds);
+
     QVariantList peers() const;
 
     // 查询可用于发送传输的对端快照；目标不存在或离线时返回空 map
@@ -116,6 +121,7 @@ private:
 
     // 节点表：deviceId -> PeerInfo
     QHash<QString, PeerInfo> _peers;
+    int _nodeTimeoutSec = 15;          // 节点超时秒数，可注入短值供测试
     // 协调节点多地址缓存：deviceId -> 备用候选
     QHash<QString, RendezvousCandidates> _rendezvousCandidates;
 };

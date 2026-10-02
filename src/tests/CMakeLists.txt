@@ -465,3 +465,15 @@ target_include_directories(test_conversation_timeline_model PRIVATE
 )
 target_compile_features(test_conversation_timeline_model PRIVATE cxx_std_23)
 add_test(NAME test_conversation_timeline_model COMMAND test_conversation_timeline_model)
+
+# --- 测试超时上限：常规 300 秒，传输集成类放宽到 600 秒 ---
+set_tests_properties(test_file_transfer PROPERTIES TIMEOUT 600)
+set_tests_properties(test_relay_chain test_rendezvous_client test_rendezvous_coordinator
+    test_rendezvous_protocol test_integration test_session_manager test_storage_database
+    test_storage_device test_storage_message test_storage_transfer_history test_database_worker
+    PROPERTIES TIMEOUT 300)
+set_tests_properties(test_frame_codec test_chat_message test_chat_manager test_history_controller
+    test_edge_cases test_transfer test_endpoint_probe test_invite_codec test_config_manager
+    test_discovery test_reachability_controller test_peer_discovery_view_model
+    test_conversation_timeline_model
+    PROPERTIES TIMEOUT 300)
