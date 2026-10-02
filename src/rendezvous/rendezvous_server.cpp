@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 7.13.4
+* @version 7.14.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点服务器实现
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 令牌校验前置到中继分流之前
 * [v7.13.4] GY   2026-10-03
 * * 注册超限回错误响应；响应写积压超限断开；清理周期与注册表上限可调
 * [v7.12.0] GY   2026-10-02
@@ -22,6 +24,7 @@
 #include "online_registry.h"
 #include "rendezvous_limits.h"
 #include "rendezvous_protocol.h"
+#include "rendezvous_protocol_keys.h"
 
 #include <QHostAddress>
 #include <QJsonDocument>
@@ -83,9 +86,17 @@ void RendezvousSession::processLine(const QByteArray &line)
 // 处理 JSON 请求消息
 void RendezvousSession::processRequest(const QJsonObject &json)
 {
+    // 所有请求（含中继握手）先验令牌：令牌校验必须发生在分流之前，
+    // 否则配了 --token 的服务器会被中继管道绕过认证
+    const QString providedToken = RendezvousProtocol::extractToken(json);
+    if (!RendezvousProtocol::validateToken(providedToken, _token)) {
+        sendResponse(RendezvousProtocol::buildError(QStringLiteral("无效的访问口令")));
+        return;
+    }
+
     // 中继管道连接：剥离握手行后整条移交，后续字节流不再按 JSON 行解析
-    const QString rawType = json[QStringLiteral("type")].toString();
-    if (rawType == QStringLiteral("relay_create") || rawType == QStringLiteral("relay_join")) {
+    const QString rawType = json[gy::rendezvous::kKeyType].toString();
+    if (rawType == gy::rendezvous::kTypeRelayCreate || rawType == gy::rendezvous::kTypeRelayJoin) {
         const QByteArray pending = pendingBytes();
         QTcpSocket *pipeSocket = takeSocket();
         emit relayPipeRequested(pipeSocket, json, pending);
@@ -98,13 +109,6 @@ void RendezvousSession::processRequest(const QJsonObject &json)
 
     if (type == RendezvousProtocol::MessageType::Error) {
         sendResponse(RendezvousProtocol::buildError(errorString));
-        return;
-    }
-
-    // 验证 token
-    const QString providedToken = RendezvousProtocol::extractToken(json);
-    if (!RendezvousProtocol::validateToken(providedToken, _token)) {
-        sendResponse(RendezvousProtocol::buildError(QStringLiteral("无效的访问口令")));
         return;
     }
 

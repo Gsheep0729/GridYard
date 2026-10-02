@@ -1,6 +1,6 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.13.4
+* @version 7.14.0
 * @date    2026-07-26
 * @author  GY
 * @brief   Relay 降级链路测试
@@ -11,6 +11,8 @@
 * TTL 夹紧、relay_id 复用竞态、响应写积压断开、会话等待超时）。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 新增协调管道与独立模式的令牌用例
 * [v7.13.4] GY   2026-10-03
 * * 新增 Phase1-D 加固用例：注册表上限、TTL 夹紧、id 复用竞态、写积压断开、等待超时
 * [v7.12.0] GY   2026-10-02
@@ -116,6 +118,8 @@ private slots:
     void testRelaySessionWaitTimeout();
     void testRelayIdReuseStaleCloseIgnored();
     void testResponseBackpressureDisconnects();
+    void testRelayPipeWithToken();
+    void testStandaloneRelayWithToken();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -688,6 +692,93 @@ void TestRelayChain::testResponseBackpressureDisconnects()
     QVERIFY2(elapsed.elapsed() < 20000, "服务端应在超时前因写积压断开慢客户端");
     QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::UnconnectedState, 5000);
     socket->deleteLater();
+}
+
+// 协调节点配 token：带令牌的中继握手放行，错令牌回 relay_error
+void TestRelayChain::testRelayPipeWithToken()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QStringLiteral("secret")};
+    QVERIFY(server.start());
+    const quint16 port = server.serverPort();
+
+    RelayServer relay{port, QStringLiteral("secret"), &server};
+    QObject::connect(&server, &RendezvousServer::relayPipeRequested,
+                     &relay, &RelayServer::adoptConnection);
+
+    // 错令牌在协调会话的分流之前就被控制面拒绝，收到通用 error 响应
+    auto *bad = new QTcpSocket;
+    bad->connectToHost(QHostAddress::LocalHost, port);
+    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject badHello;
+    badHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    badHello[QStringLiteral("relay_id")] = QStringLiteral("relay-token-bad");
+    badHello[QStringLiteral("token")] = QStringLiteral("wrong");
+    writeJsonLine(bad, badHello);
+    const QJsonObject badReply = readJsonLine(bad);
+    QCOMPARE(badReply[QStringLiteral("type")].toString(), QStringLiteral("error"));
+    bad->deleteLater();
+
+    // 带正确令牌的握手正常建会话并转发
+    auto *sender = new QTcpSocket;
+    sender->connectToHost(QHostAddress::LocalHost, port);
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject createHello;
+    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    createHello[QStringLiteral("relay_id")] = QStringLiteral("relay-token-ok");
+    createHello[QStringLiteral("token")] = QStringLiteral("secret");
+    writeJsonLine(sender, createHello);
+
+    auto *receiver = new QTcpSocket;
+    receiver->connectToHost(QHostAddress::LocalHost, port);
+    QTRY_VERIFY_WITH_TIMEOUT(receiver->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject joinHello;
+    joinHello[QStringLiteral("type")] = QStringLiteral("relay_join");
+    joinHello[QStringLiteral("relay_id")] = QStringLiteral("relay-token-ok");
+    joinHello[QStringLiteral("token")] = QStringLiteral("secret");
+    writeJsonLine(receiver, joinHello);
+
+    QCOMPARE(readJsonLine(sender)[QStringLiteral("type")].toString(), QStringLiteral("relay_ready"));
+    sender->write("PING");
+    sender->flush();
+    QCOMPARE(waitBytes(receiver, 4), QByteArray("PING"));
+
+    sender->disconnectFromHost();
+    receiver->disconnectFromHost();
+    QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 3000);
+}
+
+// 独立监听模式配 token：握手行走 LineSession 路径同样校验
+void TestRelayChain::testStandaloneRelayWithToken()
+{
+    RelayServer relay{0, QStringLiteral("secret")};
+    QVERIFY(relay.start());
+
+    // 错令牌被拒
+    auto *bad = new QTcpSocket;
+    bad->connectToHost(QHostAddress::LocalHost, relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject badHello;
+    badHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    badHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-bad");
+    writeJsonLine(bad, badHello);
+    const QJsonObject badReply = readJsonLine(bad);
+    QCOMPARE(badReply[QStringLiteral("type")].toString(), QStringLiteral("relay_error"));
+    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == QAbstractSocket::UnconnectedState, 3000);
+    bad->deleteLater();
+
+    // 正确令牌建会话
+    auto *sender = new QTcpSocket;
+    sender->connectToHost(QHostAddress::LocalHost, relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject createHello;
+    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    createHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-ok");
+    createHello[QStringLiteral("token")] = QStringLiteral("secret");
+    writeJsonLine(sender, createHello);
+    QTRY_COMPARE_WITH_TIMEOUT(relay.sessionCount(), 1, 3000);
+
+    sender->disconnectFromHost();
+    QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 3000);
 }
 
 QTEST_MAIN(TestRelayChain)

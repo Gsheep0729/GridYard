@@ -1,12 +1,17 @@
 /**
 * @file    test_rendezvous_client.cpp
-* @version 7.13.0
+* @version 7.14.0
 * @date    2026-10-02
 * @author  GY
 * @brief   协调节点客户端测试
 *
 * 用真实 RendezvousServer（随机端口）验证客户端协议链路：连接注册、
-* 候选设备列表解析、中继邀请受理、主动断开与连接失败报错。
+* 候选设备列表解析、中继邀请受理、主动断开与连接失败报错，
+* 以及访问令牌的携带与校验（配 token 正常往返、错 token 被拒）。
+*
+* Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 新增访问令牌往返与错误令牌被拒用例
 */
 
 #include <QtTest/QtTest>
@@ -27,6 +32,8 @@ private slots:
     void testDisconnectStopsSession();
     void testConnectRefusedReportsError();
     void testPeerEndpointToVariantMap();
+    void testRegisterWithTokenSucceeds();
+    void testRegisterWithWrongTokenRejected();
 
 private:
     // 连接协调服务器并完成注册（阻塞等待两个信号）
@@ -161,6 +168,47 @@ void TestRendezvousClient::testPeerEndpointToVariantMap()
     QCOMPARE(map.value("addresses").toStringList().size(), 2);
     QCOMPARE(map.value("tcpPort").toUInt(), 35100u);
     QCOMPARE(map.value("discoveryPort").toUInt(), 45678u);
+}
+
+// 服务器配 token、客户端携带相同 token 时注册应正常往返
+void TestRendezvousClient::testRegisterWithTokenSucceeds()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QStringLiteral("secret")};
+    QVERIFY(server.start());
+
+    RendezvousClient client;
+    client.setToken(QStringLiteral("secret"));
+    QSignalSpy ackSpy(&client, &RendezvousClient::registerAckReceived);
+    connectAndRegister(client, &server, QStringLiteral("dev-token"));
+
+    QVERIFY(ackSpy.count() >= 1);
+    QVERIFY(client.isConnected());
+
+    // 带令牌的会话还应能正常查询设备列表
+    QSignalSpy peersSpy(&client, &RendezvousClient::peersReceived);
+    client.listPeers(QStringLiteral("room-gy"));
+    QVERIFY2(peersSpy.wait(3000), "带正确令牌的 list_peers 应正常应答");
+}
+
+// 客户端令牌与服务器不一致时所有控制消息被拒
+void TestRendezvousClient::testRegisterWithWrongTokenRejected()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QStringLiteral("secret")};
+    QVERIFY(server.start());
+
+    RendezvousClient client;
+    client.setToken(QStringLiteral("wrong"));
+    QSignalSpy errorSpy(&client, &RendezvousClient::errorOccurred);
+    QSignalSpy ackSpy(&client, &RendezvousClient::registerAckReceived);
+    QSignalSpy connectedSpy(&client, &RendezvousClient::connected);
+    client.connectToServer(QStringLiteral("127.0.0.1"), server.serverPort());
+    QVERIFY2(connectedSpy.wait(3000), "客户端应能建立 TCP 连接");
+
+    client.registerDevice(QStringLiteral("room-gy"), QStringLiteral("dev-wrong"),
+                          QStringLiteral("设备-wrong"), {QStringLiteral("127.0.0.1")},
+                          35100, 45678);
+    QVERIFY2(errorSpy.wait(3000), "错令牌的注册应收到错误响应");
+    QVERIFY2(ackSpy.count() == 0, "错令牌的注册不应收到 register_ack");
 }
 
 QTEST_MAIN(TestRendezvousClient)

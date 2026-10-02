@@ -1,11 +1,13 @@
 /**
 * @file    relay_server.cpp
-* @version 7.13.4
+* @version 7.14.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 激活握手令牌校验，独立模式不再无认证
 * [v7.13.4] GY   2026-10-03
 * * 会话关闭判等改对象指针；积压回滚补断信号；等待时长迁常量并可调
 * [v7.12.0] GY   2026-10-02
@@ -20,6 +22,7 @@
 
 #include "relay_server.h"
 #include "rendezvous_limits.h"
+#include "rendezvous_protocol_keys.h"
 
 #include <QHostAddress>
 #include <QJsonDocument>
@@ -145,7 +148,7 @@ void RelaySession::notifyReady()
     _idleTimer->stop();
 
     QJsonObject ready;
-    ready[QStringLiteral("type")] = QStringLiteral("relay_ready");
+    ready[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayReady;
     _sender->write(QJsonDocument(ready).toJson(QJsonDocument::Compact) + '\n');
 
     if (!_senderBacklog.isEmpty()) {
@@ -186,7 +189,7 @@ void RelaySession::abort(const QString &code, const QString &message)
 void RelaySession::broadcastError(const QString &code, const QString &message)
 {
     QJsonObject error;
-    error[QStringLiteral("type")] = QStringLiteral("relay_error");
+    error[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayError;
     error[QStringLiteral("code")] = code;
     error[QStringLiteral("message")] = message;
 
@@ -390,15 +393,29 @@ void RelayServer::onNewConnection()
 void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
                                    const QByteArray &pendingData)
 {
-    const QString type = json[QStringLiteral("type")].toString();
-    const QString relayId = json[QStringLiteral("relay_id")].toString();
+    const QString type = json[gy::rendezvous::kKeyType].toString();
+    const QString relayId = json[gy::rendezvous::kKeyRelayId].toString();
+
+    // 期望令牌非空时统一校验：协调分流与独立监听两条路径都经本入口，
+    // 校验失败回 relay_error 后断开，消除独立模式无认证的死角
+    if (!_token.isEmpty() && json[gy::rendezvous::kKeyToken].toString() != _token) {
+        qWarning() << "[RelayServer] 中继握手令牌校验失败，拒绝连接";
+        QJsonObject error;
+        error[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayError;
+        error[QStringLiteral("code")] = QStringLiteral("unauthorized");
+        error[QStringLiteral("message")] = QStringLiteral("访问令牌错误");
+        socket->write(QJsonDocument(error).toJson(QJsonDocument::Compact) + '\n');
+        socket->flush();
+        dropConnection(socket, QStringLiteral("访问令牌错误"));
+        return;
+    }
 
     if (relayId.isEmpty()) {
         qWarning() << "[RelayServer] 缺少 relay_id";
         dropConnection(socket, QStringLiteral("缺少 relay_id"));
         return;
     }
-    if (type != QStringLiteral("relay_create") && type != QStringLiteral("relay_join")) {
+    if (type != gy::rendezvous::kTypeRelayCreate && type != gy::rendezvous::kTypeRelayJoin) {
         qWarning() << "[RelayServer] 未知的中继握手类型" << type;
         dropConnection(socket, QStringLiteral("未知握手类型"));
         return;
@@ -420,7 +437,7 @@ void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
         emit sessionCreated(relayId);
     }
 
-    const bool isSender = (type == QStringLiteral("relay_create"));
+    const bool isSender = (type == gy::rendezvous::kTypeRelayCreate);
     const bool added = isSender ? session->addSender(socket, pendingData)
                                 : session->addReceiver(socket, pendingData);
 

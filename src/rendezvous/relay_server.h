@@ -1,6 +1,6 @@
 /**
 * @file    relay_server.h
-* @version 7.13.4
+* @version 7.14.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器
@@ -13,6 +13,8 @@
 * 会话数与积压均有上限。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 激活握手令牌校验，独立模式不再无认证
 * [v7.13.4] GY   2026-10-03
 * * 会话关闭判等改对象指针，消除 relay_id 复用窗口的误删；积压回滚补断信号
 * * 会话等待时长与邀请 TTL 等常量迁入 rendezvous_limits.h 并支持测试调小
