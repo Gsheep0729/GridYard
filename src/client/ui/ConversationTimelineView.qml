@@ -99,7 +99,8 @@ Item {
                 peerDeviceName: session.peerDeviceName,
                 isDirectory: session.isDirectory,
                 fileList: session.fileList,
-                canDeleteLocalFile: session.canDeleteLocalFile
+                canDeleteLocalFile: session.canDeleteLocalFile,
+                errorMsg: session.errorMsg || ""
             })
         }
 
@@ -169,6 +170,32 @@ Item {
         onContentHeightChanged: {
             if (timelineView.followLatest) {
                 Qt.callLater(timelineView.scrollToLatest)
+            }
+        }
+
+        // 顶部加载行：滚动加载更早的历史消息时给出反馈
+        header: Item {
+            width: timelineList.width
+            height: AppController.historyController.loading ? 28 : 0
+            visible: height > 0
+
+            Row {
+                anchors.centerIn: parent
+                spacing: Style.Space.sm
+
+                BusyIndicator {
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: 16
+                    implicitHeight: 16
+                    running: AppController.historyController.loading
+                }
+
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("正在加载更早的消息...")
+                    font.pixelSize: 12
+                    color: Style.Color.textWeak
+                }
             }
         }
 
@@ -324,6 +351,7 @@ Item {
                     isDirectory: Boolean(timelineDelegate.modelData.isDirectory)
                     fileList: timelineDelegate.modelData.fileList || []
                     canDeleteLocalFile: Boolean(timelineDelegate.modelData.canDeleteLocalFile)
+                    errorMsg: String(timelineDelegate.modelData.errorMsg || "")
                     expanded: timelineView.expandedSessions[timelineDelegate.modelData.sessionId] === true
                     onExpansionRequested: function(expanded) {
                         timelineView.expansionRequested(timelineDelegate.modelData.sessionId, expanded)

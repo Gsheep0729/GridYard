@@ -1,7 +1,7 @@
 /**
  * @file    AcceptDialog.qml
- * @version 6.6.2
- * @date    2026-06-17
+ * @version 7.11.0
+ * @date    2026-10-02
  * @author  GridYard Team
  * @brief   接收确认弹窗
  *
@@ -9,6 +9,8 @@
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
+ * [v7.11.0] GY   2026-10-02
+ * * 发送方取消传输后自动关闭弹窗并通知主窗口提示
  * [v6.6.2] GY   2026-06-25
  * * 同步文件头版本与当前主版本
  * [v4.16.0] DuRuoxian   2026-06-18
@@ -49,6 +51,9 @@ Dialog {
     property real   totalBytes: 0
     property bool   isDirectory: false  // 为 true 时展示目录预览而非单文件大小
     property var    fileList: []  // 文件夹场景下的根目录条目预览列表
+
+    // 会话已过期（发送方取消或超时）时通知主窗口提示
+    signal transferStale()
 
     contentItem: ColumnLayout {
         spacing: Style.Space.lg
@@ -224,5 +229,28 @@ Dialog {
     onRejected: {
         // 用户拒绝
         AppController.transferController.rejectReceiveSession(sessionId)
+    }
+
+    // 会话过期感知：弹窗打开期间会话被发送方取消或超时终结时，
+    // 接受/拒绝都会被后端静默忽略，因此主动关闭并提示用户
+    Connections {
+        target: AppController.transferController
+
+        function onSessionsChanged(): void {
+            if (!acceptDialog.opened) {
+                return
+            }
+            const sessions = AppController.transferController.sessions
+            for (let i = 0; i < sessions.length; i++) {
+                if (sessions[i].sessionId === acceptDialog.sessionId) {
+                    if (sessions[i].status === "waiting_confirm") {
+                        return  // 会话仍在等待确认，弹窗继续有效
+                    }
+                    break
+                }
+            }
+            acceptDialog.close()
+            acceptDialog.transferStale()
+        }
     }
 }

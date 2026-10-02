@@ -1,13 +1,15 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 7.9.0
- * @date    2026-06-17
+ * @version 7.11.0
+ * @date    2026-10-02
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v7.11.0] GY   2026-10-02
+ * * 失败和取消的卡片展示具体原因，状态标签改用反白文字
  * [v7.9.0] GY   2026-07-26
  * * 新增 awaiting_relay 状态展示，等待中继决策时提供取消入口
  * [v6.6.2] GY   2026-06-25
@@ -56,6 +58,7 @@ Frame {
     required property bool   canDeleteLocalFile  // 仅接收成功时为 true
     property string createdAt: ""
     property string peerDeviceName: ""
+    property string errorMsg: ""  // 失败/取消时的具体原因，由会话数据透传
 
     property bool expanded: false  // 文件夹内容是否展开
     signal expansionRequested(bool expanded)
@@ -145,7 +148,8 @@ Frame {
             // 方向标识：发送用上箭头，接收用下箭头，颜色区分方向
             Label {
                 text: taskCard.taskType === "send" ? "↑" : "↓"
-                color: taskCard.taskType === "send" ? Style.Color.primary : "#8B5CF6"
+                color: taskCard.taskType === "send"
+                       ? Style.Color.primary : Style.Color.receiveAccent
                 font.pixelSize: 16
                 font.bold: true
                 Layout.alignment: Qt.AlignVCenter
@@ -199,7 +203,7 @@ Frame {
                     anchors.centerIn: parent
                     text: taskCard.statusText()
                     font.pixelSize: 11
-                    color: Style.Color.surface
+                    color: Style.Color.textOnAccent
                     font.bold: true
                 }
             }
@@ -285,6 +289,30 @@ Frame {
                 visible: taskCard.status === "transferring" || taskCard.status === "waiting_confirm"
                          || taskCard.status === "awaiting_relay"
                 onClicked: AppController.transferController.cancelSession(taskCard.sessionId)
+            }
+        }
+
+        // 失败/取消/拒绝的原因行：让用户知道为什么没有成功
+        RowLayout {
+            Layout.fillWidth: true
+            visible: taskCard.isFinished && taskCard.errorMsg.length > 0
+            spacing: Style.Space.xs
+
+            Label {
+                text: "!"
+                font.pixelSize: 11
+                font.bold: true
+                color: Style.Color.error
+                Layout.preferredWidth: 14
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: taskCard.errorMsg
+                color: Style.Color.textSecondary
+                font.pixelSize: 12
+                wrapMode: Text.WrapAnywhere
             }
         }
 

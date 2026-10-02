@@ -1,14 +1,16 @@
 /**
  * @file    PeerListView.qml
- * @version 6.7.0
- * @date    2026-06-28
+ * @version 7.11.0
+ * @date    2026-10-02
  * @author  GridYard Team
  * @brief   设备列表组件
  *
  * 绑定 AppController.peerDiscoveryViewModel.peers 显示在线和历史设备。
- * 支持手动刷新。
+ * 提供搜索过滤、手动刷新和添加设备入口。
  *
  * Change Log:
+ * [v7.11.0] GY   2026-10-02
+ * * 空状态分层引导并接入添加设备弹窗，搜索区改为弹性布局
  * [v6.7.0] GY   2026-06-28
  * * 设备列表支持显示离线历史设备
  * [v6.6.2] GY   2026-06-25
@@ -29,6 +31,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "../utils/Style.js" as Style
 
@@ -66,69 +69,76 @@ Rectangle {
     }
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
-    signal fileDropped(string deviceId, string filePath)  // 拖拽文件到设备卡片时触发
+    signal filesDropped(string deviceId, var urls)  // 拖拽文件到设备卡片时触发，由 Main 统一裁决
 
     color: Style.Color.surfaceMid
 
-    // 搜索区：包含搜索输入框和刷新按钮
-    Rectangle {
+    // 搜索区：搜索输入框 + 刷新按钮
+    Item {
         id: searchArea
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.margins: 8
-        height: 70
-        color: Style.Color.transparent
-        Row{
-            anchors.centerIn: parent
-            spacing: 15
+        anchors.margins: Style.Space.sm
+        height: 48
+
+        RowLayout {
+            anchors.fill: parent
+            spacing: Style.Space.sm
 
             // 搜索输入框容器：管理焦点和悬停视觉反馈
             Rectangle {
                 id: searchBox
-                width: 150; height: 25
-                radius: 4
-                color: _activeFocus
-                       ? Style.Color.surfaceMid
-                       : (_hovered ? Style.Color.surfaceSoft : Style.Color.select)
-                border.width: _activeFocus? 1.5 : 0  // 获焦时显示边框
-                border.color: Style.Color.textfield
-                property bool _hovered: false
-                property bool _activeFocus: false
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: Style.Radius.sm
+                color: Style.Color.window
+                border.width: searchInput.activeFocus ? 1.5 : 1
+                border.color: searchInput.activeFocus
+                              ? Style.Color.primary : Style.Color.border
 
-                Behavior on color {
+                Behavior on border.color {
                     ColorAnimation { duration: Style.Motion.base }
                 }
 
                 TextField {
                     id: searchInput
                     anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
+                    anchors.leftMargin: Style.Space.md
+                    anchors.rightMargin: Style.Space.md
                     verticalAlignment: Text.AlignVCenter
-                    placeholderText: qsTr("搜索")
+                    placeholderText: qsTr("搜索设备名或 IP")
                     font.pixelSize: 13
                     color: Style.Color.textMain
                     clip: true
+                    selectByMouse: true
                     background: Item {}
-
-                    onActiveFocusChanged: searchBox._activeFocus = activeFocus
                 }
 
-                HoverHandler {
-                    cursorShape: Qt.IBeamCursor
-                    onHoveredChanged: searchBox._hovered = hovered
-                }
-
-                TapHandler {
-                    onTapped: searchInput.forceActiveFocus()
+                // 清空按钮：输入内容时出现
+                ToolButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.Space.xs
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 20; height: 20
+                    visible: searchInput.text.length > 0
+                    text: "×"
+                    font.pixelSize: 13
+                    onClicked: {
+                        searchInput.clear()
+                        searchInput.forceActiveFocus()
+                    }
                 }
             }
+
             // 刷新设备按钮：同时刷新在线发现和本地历史设备
             ToolButton {
                 id: refreshPeersButton
-                width: 25; height: 25
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 icon.name: "view-refresh"
+                icon.width: 16
+                icon.height: 16
                 ToolTip.text: qsTr("刷新设备列表")
                 ToolTip.visible: hovered
                 onClicked: AppController.peerDiscoveryViewModel.refresh()
@@ -140,9 +150,9 @@ Rectangle {
     Label {
         id: deviceTitle
         anchors.left: parent.left
-        anchors.leftMargin: 16
+        anchors.leftMargin: Style.Space.lg
         anchors.top: searchArea.bottom
-        anchors.topMargin: 4
+        anchors.topMargin: Style.Space.xs
         text: qsTr("设备")
         font.pixelSize: 13
         font.bold: true
@@ -152,7 +162,7 @@ Rectangle {
     // 设备数量标签：显示过滤后的设备数量
     Label {
         anchors.right: parent.right
-        anchors.rightMargin: 16
+        anchors.rightMargin: Style.Space.lg
         anchors.verticalCenter: deviceTitle.verticalCenter
         text: qsTr("%1 台").arg(peerListView._filteredCount)
         font.pixelSize: 12
@@ -165,7 +175,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: deviceTitle.bottom
-        anchors.bottom: parent.bottom
+        anchors.bottom: addDeviceBar.top
         clip: true
         model: AppController.peerDiscoveryViewModel.peers
         delegate: Item {
@@ -195,20 +205,132 @@ Rectangle {
                 onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
                     peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)
                 }
-                onFileDropped: function(deviceId, filePath) {
-                    peerListView.fileDropped(deviceId, filePath)
+                onFilesDropped: function(deviceId, urls) {
+                    peerListView.filesDropped(deviceId, urls)
                 }
             }
         }
 
-        // 空列表提示：搜索无结果或尚未发现设备时显示
-        Label {
+        // 空状态：搜索无结果与尚未发现设备分别引导
+        ColumnLayout {
             anchors.centerIn: parent
-            text: peerListView._searchKeyword.length > 0
-                  ? qsTr("没有匹配的设备") : qsTr("正在搜索设备...")
-            color: Style.Color.textWeak
-            font.pixelSize: 14
+            width: Math.min(parent.width - Style.Space.xl * 2, 190)
+            spacing: Style.Space.sm
             visible: peerListView._filteredCount === 0
+
+            // 搜索无结果
+            ColumnLayout {
+                visible: peerListView._searchKeyword.length > 0
+                spacing: Style.Space.xs
+                Layout.alignment: Qt.AlignHCenter
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("没有匹配的设备")
+                    color: Style.Color.textWeak
+                    font.pixelSize: 14
+                    font.bold: true
+                }
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("换个关键词试试")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 12
+                }
+            }
+
+            // 尚未发现任何设备：给新用户明确的下一步
+            ColumnLayout {
+                visible: peerListView._searchKeyword.length === 0
+                spacing: Style.Space.sm
+                Layout.alignment: Qt.AlignHCenter
+
+                BusyIndicator {
+                    Layout.alignment: Qt.AlignHCenter
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    running: peerListView._filteredCount === 0
+                             && peerListView._searchKeyword.length === 0
+                }
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("正在搜索附近设备...")
+                    color: Style.Color.textWeak
+                    font.pixelSize: 14
+                    font.bold: true
+                }
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("请确认对方已打开 GridYard 并连接同一网络；跨网段可通过邀请码添加")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("添加设备")
+                    highlighted: true
+                    onClicked: addDeviceDialog.open()
+                }
+            }
         }
+    }
+
+    // 底部固定入口：任何时候都能添加设备
+    Rectangle {
+        id: addDeviceBar
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 44
+        color: Style.Color.transparent
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: Style.Color.border
+        }
+
+        ItemDelegate {
+            id: addDeviceItem
+            anchors.fill: parent
+            hoverEnabled: true
+
+            RowLayout {
+                anchors.centerIn: parent
+                spacing: Style.Space.xs
+
+                Label {
+                    text: "+"
+                    font.pixelSize: 15
+                    font.bold: true
+                    color: addDeviceItem.hovered
+                           ? Style.Color.primary : Style.Color.textSecondary
+                }
+
+                Label {
+                    text: qsTr("添加设备")
+                    font.pixelSize: 13
+                    color: addDeviceItem.hovered
+                           ? Style.Color.primary : Style.Color.textSecondary
+                }
+            }
+
+            onClicked: addDeviceDialog.open()
+        }
+    }
+
+    AddDeviceDialog {
+        id: addDeviceDialog
+        anchors.centerIn: Overlay.overlay
+
+        onDeviceAdded: AppController.peerDiscoveryViewModel.refresh()
     }
 }

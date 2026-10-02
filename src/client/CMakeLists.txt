@@ -77,12 +77,12 @@ set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/PeerListView.qml
     ui/SettingsDialog.qml
     ui/AcceptDialog.qml
-    ui/TransferPanel.qml
+    ui/AddDeviceDialog.qml
+    ui/DeviceHistoryDialog.qml
     ui/TransferHistoryView.qml
     ui/TransferTaskCard.qml
     ui/DeviceSessionView.qml
     ui/ConversationTimelineView.qml  # 统一会话时间线：消息与传输卡片混排
-    ui/ChatView.qml
     ui/FileTypeIcon.qml
 )
 

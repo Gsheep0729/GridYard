@@ -1,7 +1,7 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.4.0
- * @date    2026-07-21
+ * @version 7.11.0
+ * @date    2026-10-02
  * @author  GridYard Team
  * @brief   设置对话框
  *
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.11.0] GY   2026-10-02
+ * * 标注端口与协调服务器修改需重启生效，清除缓存改为危险色按钮
  * [v7.4.0] GY   2026-07-21
  * * 新增协调服务器配置区块（地址、端口、Relay 策略）
  * [v6.8.1] GY   2026-06-28
@@ -38,6 +40,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
+import "../utils/FormatUtils.js" as FormatUtils
 import "../utils/Style.js" as Style
 
 Dialog {
@@ -104,18 +107,9 @@ Dialog {
         _tempRelayMode = ConfigManager.relayMode
     }
 
-    // 将 FolderDialog 返回的 URL 转成本地路径，保留中文和空格等字符
-    // FolderDialog.selectedFolder 是 URL 格式（file:///...），中文和空格会被 percent-encode
+    // 将 FolderDialog 返回的 URL 转成本地路径，统一走 FormatUtils 避免多处实现漂移
     function localPathFromUrl(fileUrl: url): string {
-        const text = fileUrl.toString()
-        if (text.startsWith("file:///")) {
-            const path = Qt.platform.os === "windows" ? text.substring(8) : text.substring(7)
-            return decodeURIComponent(path)
-        }
-        if (text.startsWith("file://")) {
-            return "//" + decodeURIComponent(text.substring(7))
-        }
-        return decodeURIComponent(text)
+        return FormatUtils.localPathFromUrl(fileUrl)
     }
 
     background: Rectangle {
@@ -394,7 +388,7 @@ Dialog {
                         }
 
                         Label {
-                            text: qsTr("TCP 端口用于局域网设备间的数据通信。")
+                            text: qsTr("TCP 端口用于局域网设备间的数据通信；修改端口后需重启应用生效。")
                             color: Style.Color.textMuted
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
@@ -444,7 +438,7 @@ Dialog {
                             }
 
                             Label {
-                                text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备。")
+                                text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备；修改后需重启应用生效。")
                                 color: Style.Color.textMuted
                                 font.pixelSize: 13
                                 wrapMode: Text.Wrap
@@ -571,10 +565,28 @@ Dialog {
                         }
                     }
 
+                    // 危险操作用语义化红色按钮，与删除确认弹窗的确认按钮一致
                     Button {
+                        id: clearCacheButton
                         text: qsTr("清除缓存")
-                        highlighted: true
                         onClicked: clearCacheDialog.open()
+
+                        contentItem: Label {
+                            text: clearCacheButton.text
+                            font: clearCacheButton.font
+                            color: Style.Color.textOnAccent
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        background: Rectangle {
+                            implicitWidth: 88
+                            implicitHeight: 32
+                            radius: Style.Radius.xs
+                            color: clearCacheButton.down
+                                   ? Style.Color.errorPressed
+                                   : (clearCacheButton.hovered ? "#DC2626" : Style.Color.error)
+                        }
                     }
                 }
             }
@@ -671,7 +683,7 @@ Dialog {
         title: qsTr("清除缓存")
         modal: true
         anchors.centerIn: parent
-        width: Math.min(420, settingsDialog.width - 48)
+        width: 420
         padding: Style.Space.lg
 
         contentItem: Label {

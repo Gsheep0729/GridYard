@@ -1,13 +1,16 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 6.7.0
- * @date    2026-06-28
+ * @version 7.11.0
+ * @date    2026-10-02
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
  *
- * 按设备展示聊天消息和传输任务，并提供文本、文件和文件夹发送入口。
+ * 按设备展示聊天消息和传输任务，并提供文本、文件和文件夹发送入口；
+ * 设备离线时在页内给出明确状态提示。
  *
  * Change Log:
+ * [v7.11.0] GY   2026-10-02
+ * * 增加离线横幅和历史记录入口，字符计数改为接近上限时出现，补齐禁用提示
  * [v6.7.0] GY   2026-06-28
  * * 同步统一会话页到 6.7.0 交付版本
  * [v6.6.3] GY   2026-06-28
@@ -62,6 +65,8 @@ Frame {
    readonly property bool canSendChat: isOnline
                                       && messageInput.text.trim().length > 0
                                       && messageInput.text.length <= 4000
+   // 接近协议上限时才显示字符计数，避免常驻噪音
+   readonly property bool showCharCounter: messageInput.text.length > 3600
 
    // 校验输入后发送文本消息并清空输入框
    function sendChatMessage(): void {
@@ -101,7 +106,7 @@ Frame {
 
    signal sendFileRequested()
    signal sendFolderRequested()
-   signal fileDropped(string filePath)
+   signal filesDropped(var urls)  // 拖拽内容原样冒泡，由 Main.qml 统一裁决
 
    ColumnLayout {
        anchors.fill: parent
@@ -115,7 +120,7 @@ Frame {
 
            RowLayout {
                anchors.fill: parent
-               anchors.leftMargin: Style.Space.md
+               anchors.leftMargin: Style.Space.lg
                anchors.rightMargin: Style.Space.md
                anchors.topMargin: Style.Space.sm
                anchors.bottomMargin: Style.Space.sm
@@ -134,10 +139,23 @@ Frame {
                        elide: Text.ElideRight
                    }
 
-                   Label {
-                       text: deviceSessionView.ipAddress
-                       color: Style.Color.textMuted
-                       font.pixelSize: 12
+                   RowLayout {
+                       spacing: Style.Space.xs
+
+                       // 在线状态圆点：与会话列表中的表达保持一致
+                       Rectangle {
+                           Layout.preferredWidth: 7
+                           Layout.preferredHeight: 7
+                           radius: 3.5
+                           color: deviceSessionView.isOnline
+                                  ? Style.Color.success : Style.Color.textWeak
+                       }
+
+                       Label {
+                           text: deviceSessionView.ipAddress
+                           color: Style.Color.textMuted
+                           font.pixelSize: 12
+                       }
                    }
                }
 
@@ -148,10 +166,23 @@ Frame {
                    font.bold: true
                }
 
+               // 历史记录入口：查看跨重启保留的聊天与传输历史
+               ToolButton {
+                   text: qsTr("历史")
+                   Layout.preferredHeight: 32
+                   ToolTip.text: qsTr("查看与该设备的历史记录")
+                   ToolTip.visible: hovered
+                   onClicked: deviceHistoryDialog.open()
+               }
+
                ToolButton {
                    text: qsTr("清理")
                    enabled: deviceSessionView.finishedCount > 0
                    Layout.preferredHeight: 32
+                   ToolTip.text: deviceSessionView.finishedCount > 0
+                                 ? qsTr("清理已结束的传输记录")
+                                 : qsTr("当前没有已结束的传输记录")
+                   ToolTip.visible: hovered
                    onClicked: clearMenu.open()
 
                    Menu {
@@ -179,6 +210,41 @@ Frame {
            color: Style.Color.border
        }
 
+       // 离线横幅：说明当前状态和恢复条件
+       Rectangle {
+           Layout.fillWidth: true
+           Layout.preferredHeight: deviceSessionView.isOnline ? 0 : 30
+           color: Style.Color.warningSoft
+           clip: true
+
+           Behavior on Layout.preferredHeight {
+               NumberAnimation { duration: Style.Motion.base }
+           }
+
+           RowLayout {
+               anchors.fill: parent
+               anchors.leftMargin: Style.Space.lg
+               anchors.rightMargin: Style.Space.lg
+               spacing: Style.Space.xs
+               visible: !deviceSessionView.isOnline
+
+               Rectangle {
+                   Layout.preferredWidth: 6
+                   Layout.preferredHeight: 6
+                   radius: 3
+                   color: Style.Color.warning
+               }
+
+               Label {
+                   Layout.fillWidth: true
+                   text: qsTr("设备当前离线，消息和文件暂时无法发送；对方上线后会自动恢复")
+                   font.pixelSize: 12
+                   color: Style.Color.textSecondary
+                   elide: Text.ElideRight
+               }
+           }
+       }
+
        // ===== 统一会话时间线 =====
        Item {
            Layout.fillWidth: true
@@ -198,18 +264,7 @@ Frame {
                keys: ["text/uri-list"]  // 接受文件管理器拖入的 URI 列表
 
                onDropped: function(drop) {
-                   if (!deviceSessionView.isOnline) {
-                       return  // 设备离线时忽略拖拽
-                   }
-                   const urls = drop.urls
-                   for (let i = 0; i < urls.length; i++) {
-                       let path = urls[i].toString()
-                       // 去除 file:// 协议前缀，保留本地绝对路径
-                       if (path.startsWith("file://")) {
-                           path = path.substring(7)
-                       }
-                       deviceSessionView.fileDropped(path)
-                   }
+                   deviceSessionView.filesDropped(drop.urls)
                }
            }
        }
@@ -307,7 +362,7 @@ Frame {
                        anchors.top: messageInput.top
                        visible: messageInput.text.length === 0
                        text: deviceSessionView.isOnline
-                             ? qsTr("输入消息") : qsTr("设备离线，无法发送")
+                             ? qsTr("输入消息，回车发送") : qsTr("设备离线，无法发送")
                        color: deviceSessionView.isOnline ? Style.Color.textWeak : Style.Color.error
                        font.pixelSize: 14
                        elide: Text.ElideRight
@@ -321,10 +376,13 @@ Frame {
 
                    // 发送按钮：输入校验通过时可用
                    ToolButton {
+                       id: chatSendButton
                        icon.name: "mail-send"
                        enabled: deviceSessionView.canSendChat
-                       ToolTip.text: qsTr("发送消息")
-                       ToolTip.visible: hovered
+                       ToolTip.text: deviceSessionView.isOnline
+                                     ? qsTr("发送消息")
+                                     : qsTr("设备离线，无法发送")
+                       ToolTip.visible: chatSendButton.hovered
                        onClicked: deviceSessionView.sendChatMessage()
                        Layout.alignment: Qt.AlignHCenter
                    }
@@ -332,9 +390,11 @@ Frame {
                    // 字符计数器：接近上限时提醒用户
                    Label {
                        text: "%1/4000".arg(messageInput.text.length)
-                       color: Style.Color.textWeak
+                       color: messageInput.text.length >= 4000
+                              ? Style.Color.error : Style.Color.textWeak
                        font.pixelSize: 10
                        Layout.alignment: Qt.AlignHCenter
+                       visible: deviceSessionView.showCharCounter
                    }
                }
            }
@@ -362,6 +422,13 @@ Frame {
                deviceSessionView.chatError = errorMessage  // 在输入框下方显示错误提示
            }
        }
+   }
+
+   DeviceHistoryDialog {
+       id: deviceHistoryDialog
+       anchors.centerIn: Overlay.overlay
+       deviceId: deviceSessionView.deviceId
+       deviceName: deviceSessionView.deviceName
    }
 
    // ===== 清空确认弹窗（Frame 级别）=====

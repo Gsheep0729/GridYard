@@ -1,13 +1,16 @@
 /**
  * @file    TransferHistoryView.qml
- * @version 6.6.2
- * @date    2026-06-25
+ * @version 7.11.0
+ * @date    2026-10-02
  * @author  GridYard Team
- * @brief   当前设备的传输历史视图
+ * @brief   传输历史视图
  *
- * 展示当前设备的传输历史筛选、刷新、删除和清空入口。
+ * 展示传输历史筛选、刷新、删除和清空入口；通过 peerDeviceId
+ * 筛选指定设备的历史，空字符串时显示全部设备。
  *
  * Change Log:
+ * [v7.11.0] GY   2026-10-02
+ * * 状态列改为中文文案，筛选与设备变化后自动刷新，补齐加载与空状态
  * [v6.6.2] GY   2026-06-25
  * * 补齐文件头注释，说明组件职责
  */
@@ -33,7 +36,17 @@ Frame {
         })
     }
 
+    onPeerDeviceIdChanged: refresh()
     Component.onCompleted: refresh()  // 组件加载时自动查询第一页
+
+    // 状态筛选映射：显示文本 -> 查询状态值
+    readonly property var _statusOptions: [
+        { label: qsTr("全部"), value: "" },
+        { label: qsTr("已完成"), value: "completed" },
+        { label: qsTr("失败"), value: "failed" },
+        { label: qsTr("已取消"), value: "cancelled" },
+        { label: qsTr("已拒绝"), value: "rejected" }
+    ]
 
     ColumnLayout {
         anchors.fill: parent
@@ -44,41 +57,39 @@ Frame {
 
             Label {
                 text: qsTr("传输历史")
-                font.pixelSize: 16
+                font.pixelSize: 14
                 font.bold: true
                 color: Style.Color.textMain
             }
 
             Item { Layout.fillWidth: true }
 
-            // 状态筛选下拉框：将显示文本映射为查询状态值
+            // 状态筛选下拉框
             ComboBox {
                 id: statusFilter
-                model: [qsTr("全部"), qsTr("完成"), qsTr("失败"), qsTr("取消"), qsTr("拒绝")]
+                model: root._statusOptions
+                textRole: "label"
                 onActivated: {
-                    root.selectedStatus = ["", "completed", "failed", "cancelled", "rejected"][currentIndex]
+                    root.selectedStatus = root._statusOptions[currentIndex].value
                     root.refresh()
                 }
             }
 
             // 手动刷新按钮
             ToolButton {
-                text: qsTr("刷新")
+                icon.name: "view-refresh"
+                ToolTip.text: qsTr("刷新历史列表")
+                ToolTip.visible: hovered
                 onClicked: root.refresh()
             }
 
             // 清空全部历史按钮：弹出确认对话框
             ToolButton {
                 text: qsTr("清空历史")
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("删除全部传输历史记录，不影响文件")
                 onClicked: clearDialog.open()
             }
-        }
-
-        // 加载指示器：异步查询进行中时显示
-        BusyIndicator {
-            Layout.alignment: Qt.AlignHCenter
-            running: AppController.historyController.loading
-            visible: running
         }
 
         // 历史记录列表：绑定 HistoryController.transfers
@@ -90,7 +101,33 @@ Frame {
             spacing: Style.Space.sm
             model: AppController.historyController.transfers
 
+            // 查询进行中时顶部显示加载行，避免用户误以为无数据
+            header: Item {
+                width: historyList.width
+                height: AppController.historyController.loading ? 28 : 0
+                visible: height > 0
+
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: Style.Space.sm
+
+                    BusyIndicator {
+                        implicitWidth: 16
+                        implicitHeight: 16
+                        running: AppController.historyController.loading
+                    }
+
+                    Label {
+                        text: qsTr("正在加载...")
+                        font.pixelSize: 12
+                        color: Style.Color.textWeak
+                    }
+                }
+            }
+
             delegate: Rectangle {
+                id: historyCard
+
                 required property string recordId
                 required property string peerName
                 required property int direction
@@ -103,7 +140,7 @@ Frame {
 
                 width: historyList.width
                 implicitHeight: cardContent.implicitHeight + Style.Space.md * 2
-                color: Style.Color.surface
+                color: Style.Color.surfaceSoft
                 radius: Style.Radius.sm
                 border.color: Style.Color.border
 
@@ -115,54 +152,110 @@ Frame {
 
                     RowLayout {
                         Layout.fillWidth: true
+                        spacing: Style.Space.sm
+
+                        // 方向标识：发送/接收用带色标签区分
+                        Rectangle {
+                            Layout.preferredWidth: directionTag.implicitWidth + 10
+                            Layout.preferredHeight: directionTag.implicitHeight + 4
+                            radius: Style.Radius.xs
+                            color: historyCard.direction === 1
+                                   ? Style.Color.primary : Style.Color.receiveAccent
+
+                            Label {
+                                id: directionTag
+                                anchors.centerIn: parent
+                                text: historyCard.direction === 1 ? qsTr("发送") : qsTr("接收")
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: Style.Color.textOnAccent
+                            }
+                        }
+
                         Label {
                             Layout.fillWidth: true
-                            text: "%1 · %2".arg(peerName).arg(direction === 1 ? qsTr("发送") : qsTr("接收"))
+                            text: historyCard.peerName
                             font.bold: true
                             color: Style.Color.textMain
                             elide: Text.ElideRight
                         }
+
+                        Label {
+                            text: FormatUtils.formatTime(historyCard.startedAt)
+                            font.pixelSize: 11
+                            color: Style.Color.textWeak
+                        }
+
                         ToolButton {
                             text: qsTr("删除")
-                            onClicked: AppController.historyController.deleteTransfer(recordId)
+                            ToolTip.text: qsTr("删除这条记录")
+                            ToolTip.visible: hovered
+                            onClicked: AppController.historyController.deleteTransfer(historyCard.recordId)
                         }
                     }
 
                     Label {
                         Layout.fillWidth: true
-                        text: displayName
+                        text: historyCard.displayName
                         color: Style.Color.textSecondary
+                        font.pixelSize: 13
                         elide: Text.ElideRight
                     }
-                    Label {
-                        text: qsTr("%1 个文件 · %2 · %3").arg(fileCount)
-                              .arg(FormatUtils.formatBytes(totalBytes))
-                              .arg(status)
-                        color: Style.Color.textMuted
-                        font.pixelSize: 12
-                    }
-                    Label {
-                        visible: errorMessage.length > 0
+
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: errorMessage
+                        spacing: Style.Space.sm
+
+                        Label {
+                            text: qsTr("%1 个文件 · %2").arg(historyCard.fileCount)
+                                  .arg(FormatUtils.formatBytes(historyCard.totalBytes))
+                            color: Style.Color.textMuted
+                            font.pixelSize: 12
+                        }
+
+                        Label {
+                            text: FormatUtils.transferStatusText(historyCard.status)
+                            color: historyCard.status === "completed"
+                                   ? Style.Color.success : Style.Color.error
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    Label {
+                        visible: historyCard.errorMessage.length > 0
+                        Layout.fillWidth: true
+                        text: historyCard.errorMessage
                         color: Style.Color.error
                         wrapMode: Text.WrapAnywhere
                         font.pixelSize: 12
-                    }
-                    Label {
-                        text: FormatUtils.formatTime(startedAt)
-                        color: Style.Color.textWeak
-                        font.pixelSize: 11
                     }
                 }
             }
 
             // 空列表提示：查询无结果且加载完成时显示
-            Label {
+            ColumnLayout {
                 anchors.centerIn: parent
                 visible: historyList.count === 0 && !AppController.historyController.loading
-                text: qsTr("还没有传输历史")
-                color: Style.Color.textWeak
+                spacing: Style.Space.xs
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: root.selectedStatus.length > 0
+                          ? qsTr("没有符合筛选条件的历史") : qsTr("还没有传输历史")
+                    color: Style.Color.textWeak
+                    font.pixelSize: 14
+                    font.bold: true
+                }
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("传输完成后会自动记录在这里")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 12
+                }
             }
         }
     }
@@ -172,6 +265,7 @@ Frame {
         id: clearDialog
         modal: true
         title: qsTr("清空传输历史")
+        width: 380
         standardButtons: Dialog.Cancel | Dialog.Ok
         anchors.centerIn: Overlay.overlay
         contentItem: Label {

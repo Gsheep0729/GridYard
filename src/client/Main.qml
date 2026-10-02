@@ -1,15 +1,18 @@
 /**
  * @file    Main.qml
- * @version 7.9.0
- * @date    2026-06-28
+ * @version 7.11.0
+ * @date    2026-10-02
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
  * 标题通过 AppController.applicationName/Version 绑定，
  * 关窗时由用户选择隐藏到后台或退出程序。
  * 左侧显示在线设备列表，右侧显示设备会话页。
+ * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
  * Change Log:
+ * [v7.11.0] GY   2026-10-02
+ * * 统一拖拽裁决与路径解码，完成通知改为非阻塞卡片，提示移到底部
  * [v7.9.0] GY   2026-07-26
  * * 接管 Relay 降级决策：自动中继直接重试，询问策略弹窗确认
  * [v6.8.1] GY   2026-06-28
@@ -51,10 +54,12 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import Qt.labs.platform as Platform
 import cqnu.gridyard.client 1.0
+import "utils/FormatUtils.js" as FormatUtils
 import "utils/Style.js" as Style
 
 ApplicationWindow {
@@ -68,6 +73,12 @@ ApplicationWindow {
     title:   "%1 v%2".arg(AppController.applicationName)
                      .arg(AppController.applicationVersion)
     color: Style.Color.pageBg
+
+    // 统一 Material 控件主题色：默认粉紫与应用蓝色主色冲突，
+    // 在根窗口设置后向全部子控件传播
+    Material.theme: Material.Light
+    Material.primary: Style.Color.primary
+    Material.accent: Style.Color.primary
 
     // 窗口首次显示后记录常规标志位，供临时置顶后恢复使用
     Component.onCompleted: {
@@ -136,6 +147,21 @@ ApplicationWindow {
     function requestApplicationQuit(): void {
         _allowWindowClose = true
         AppController.quit()
+    }
+
+    // 底部 Toast 包装：错误停留更久，成功短暂反馈
+    function showToast(message: string, isError: bool): void {
+        toastPopup.isError = isError
+        toastLabel.text = message
+        toastPopup.open()
+    }
+
+    function showErrorToast(message: string): void {
+        mainWindow.showToast(message, true)
+    }
+
+    function showSuccessToast(message: string): void {
+        mainWindow.showToast(message, false)
     }
 
     // 关闭确认弹窗聚焦定时器：短暂延迟后聚焦弹窗内容，避免窗口切换导致焦点丢失
@@ -215,19 +241,48 @@ ApplicationWindow {
         _targetIsOnline = false
     }
 
-    // 将 FileDialog/FolderDialog 返回的 URL 转成本地路径
-    // Qt.labs.platform 的 selectedFolder 带 file:// 前缀且对中文/空格做 percent-encode，
-    // 直接截断会残留编码字符，必须先 decode
+    // 将 FileDialog/FolderDialog 返回的 URL 转成本地路径，统一走 FormatUtils
     function localPathFromUrl(fileUrl: url): string {
-        const text = fileUrl.toString()
-        if (text.startsWith("file:///")) {
-            const path = Qt.platform.os === "windows" ? text.substring(8) : text.substring(7)
-            return decodeURIComponent(path)
+        return FormatUtils.localPathFromUrl(fileUrl)
+    }
+
+    // 拖拽发送统一裁决：解码 URL、过滤非文件项、检查设备在线后再创建会话
+    // DeviceCard / DeviceSessionView 只负责冒泡，不再各自处理路径和在线状态
+    function handleDroppedFiles(deviceId: string, urls: var): void {
+        const paths = []
+        for (let i = 0; i < urls.length; i++) {
+            const text = urls[i].toString()
+            if (text.startsWith("file://")) {
+                paths.push(FormatUtils.localPathFromUrl(urls[i]))
+            }
+            // 非文件 URI（如拖入文本、网页）静默忽略
         }
-        if (text.startsWith("file://")) {
-            return "//" + decodeURIComponent(text.substring(7))
+        if (paths.length === 0) {
+            mainWindow.showSuccessToast(qsTr("请拖入文件或文件夹"))
+            return
         }
-        return decodeURIComponent(text)
+
+        // 从设备列表找到目标设备，检查在线状态
+        const peers = AppController.peerDiscoveryViewModel.peers
+        let target = null
+        for (let i = 0; i < peers.length; i++) {
+            if (peers[i].deviceId === deviceId) {
+                target = peers[i]
+                break
+            }
+        }
+        if (target && !target.isOnline) {
+            mainWindow.showErrorToast(qsTr("%1 当前离线，无法接收文件").arg(target.deviceName))
+            return
+        }
+        if (deviceId === mainWindow._targetDeviceId && !mainWindow._targetIsOnline) {
+            mainWindow.showErrorToast(qsTr("%1 当前离线，无法接收文件").arg(mainWindow._targetDeviceName))
+            return
+        }
+
+        for (let i = 0; i < paths.length; i++) {
+            AppController.transferController.createSendSession(deviceId, paths[i])
+        }
     }
 
     Dialog {
@@ -260,6 +315,7 @@ ApplicationWindow {
             Button {
                 visible: trayIcon.available
                 text: qsTr("隐藏到后台")
+                highlighted: true  // 误关窗口的主路径，突出显示
                 onClicked: {
                     closeChoiceDialog.close()
                     mainWindow.hideToTray()
@@ -331,28 +387,28 @@ ApplicationWindow {
             anchors.fill: parent
    //         anchors.margins: 5
             spacing: Style.Space.md
-            RowLayout{
-                Layout.fillWidth: true
-                Layout.preferredHeight: 60
-                spacing: 25
-                //左侧头像
-                Rectangle{
-                    Layout.alignment: Qt.AlignCenter
-                    Layout.preferredHeight: 56
-                    Layout.preferredWidth: 56
-                    radius: 4
-                    color: Style.Color.primary
-                    Label{
-                        anchors.centerIn: parent
-                        text: "我"
-                        color: "#FFFFFF"
-                        font.pixelSize: 14
-                        font.bold: true
+                RowLayout{
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 60
+                    spacing: 25
+                    //左侧头像
+                    Rectangle{
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredHeight: 56
+                        Layout.preferredWidth: 56
+                        radius: 28
+                        color: Style.Color.primary
+                        Label{
+                            anchors.centerIn: parent
+                            text: "我"
+                            color: Style.Color.textOnAccent
+                            font.pixelSize: 14
+                            font.bold: true
+                        }
                     }
-                }
                 //中间信息列
                     ColumnLayout {
-                        Layout.alignment: Qt.AlignVertical
+                        Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: true
                         spacing:2
                         Label {
@@ -452,6 +508,7 @@ ApplicationWindow {
             anchors.topMargin: 16
             anchors.horizontalCenter: parent.horizontalCenter
             width: 36; height: 36
+            radius: 18
             color: Style.Color.primary
 
             property bool _hovered: false
@@ -459,7 +516,7 @@ ApplicationWindow {
             Label {
                 anchors.centerIn: parent
                 text: "我"
-                color: "#FFFFFF"
+                color: Style.Color.textOnAccent
                 font.pixelSize: 12
                 font.bold: true
             }
@@ -560,12 +617,10 @@ ApplicationWindow {
         selectedDeviceId: mainWindow._targetDeviceId
 
         onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
-            console.log("选中设备:", deviceId)
             mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
         }
-        // 拖拽文件到设备列表项时，先选中该设备再创建发送会话
-        onFileDropped: function(deviceId, filePath) {
-            console.log("拖拽文件到设备:", deviceId, filePath)
+        // 拖拽文件到设备列表项：先选中该设备，再统一裁决并创建发送会话
+        onFilesDropped: function(deviceId, urls) {
             const peers = AppController.peerDiscoveryViewModel.peers
             for (let i = 0; i < peers.length; i++) {
                 if (peers[i].deviceId === deviceId) {
@@ -574,7 +629,7 @@ ApplicationWindow {
                     break
                 }
             }
-            AppController.transferController.createSendSession(deviceId, filePath)
+            mainWindow.handleDroppedFiles(deviceId, urls)
         }
     }
 
@@ -639,15 +694,19 @@ ApplicationWindow {
 
             onSendFileRequested: fileDialog.open()
             onSendFolderRequested: folderDialog.open()
-            onFileDropped: function(filePath) {
-                AppController.transferController.createSendSession(mainWindow._targetDeviceId, filePath)
+            onFilesDropped: function(urls) {
+                mainWindow.handleDroppedFiles(mainWindow._targetDeviceId, urls)
             }
         }
     }
 
     // ======== 弹窗（不变） ========
 
-    AcceptDialog { id: acceptDialog }
+    AcceptDialog {
+        id: acceptDialog
+        // 发送方取消传输：弹窗已自动关闭，这里补一条提示说明原因
+        onTransferStale: mainWindow.showErrorToast(qsTr("对方已取消本次传输"))
+    }
 
     // 直连失败后的中继确认弹窗（AskBeforeRelay 策略）
     Dialog {
@@ -668,6 +727,14 @@ ApplicationWindow {
                 text: qsTr("与目标设备直连失败，是否通过中继服务器转发本次传输？转发速度可能受限于服务器带宽。")
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
+            }
+
+            Label {
+                text: qsTr("暂不处理将在约 2 分钟后自动取消传输，也可以随时在任务卡片上手动取消。")
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                font.pixelSize: 12
+                color: Style.Color.textMuted
             }
         }
 
@@ -695,38 +762,91 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
-        id: completeDialog
-        title: qsTr("接收完成")
-        modal: true
-        anchors.centerIn: parent
-        width: 360
-
+    // 接收完成通知卡：非阻塞展示，提供打开所在位置的快捷操作
+    Popup {
+        id: completeToast
         property string _filePath: ""
         property string _fileName: ""
 
+        x: parent ? parent.width - width - 24 : 0
+        y: parent ? parent.height - height - 24 : 0
+        width: Math.min(330, parent ? parent.width - 48 : 330)
+        padding: 14
+        modal: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        enter: Transition {
+            NumberAnimation {
+                property: "opacity"; from: 0; to: 1
+                duration: mainWindow.kPopupEnterDuration
+                easing.type: Easing.OutCubic
+            }
+        }
+        exit: Transition {
+            NumberAnimation {
+                property: "opacity"; from: 1; to: 0
+                duration: Style.Motion.fast
+            }
+        }
+
+        background: Rectangle {
+            color: Style.Color.window
+            radius: Style.Radius.md
+            border.color: Style.Color.border
+        }
+
         contentItem: ColumnLayout {
-            spacing: 12
+            spacing: Style.Space.xs
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.Space.sm
+
+                Label {
+                    text: qsTr("接收完成")
+                    font.pixelSize: 14
+                    font.bold: true
+                    color: Style.Color.success
+                    Layout.fillWidth: true
+                }
+
+                ToolButton {
+                    text: "✕"
+                    font.pixelSize: 12
+                    onClicked: completeToast.close()
+                }
+            }
+
             Label {
-                text: qsTr("文件 \"%1\" 已接收完成").arg(completeDialog._fileName)
-                wrapMode: Text.Wrap
+                text: completeToast._fileName
+                font.pixelSize: 13
+                color: Style.Color.textMain
+                elide: Text.ElideMiddle
                 Layout.fillWidth: true
             }
+
+            Label {
+                text: qsTr("文件已保存到接收目录")
+                font.pixelSize: 12
+                color: Style.Color.textMuted
+            }
+
+            Button {
+                text: qsTr("打开所在位置")
+                highlighted: true
+                Layout.alignment: Qt.AlignRight
+                onClicked: {
+                    ConfigManager.openFolder(completeToast._filePath)
+                    completeToast.close()
+                }
+            }
         }
 
-        footer: DialogButtonBox {
-            Button {
-                text: qsTr("确定")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-            Button {
-                text: qsTr("打开文件所在位置")
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-            }
+        Timer {
+            interval: 6000
+            running: completeToast.visible
+            onTriggered: completeToast.close()
         }
-
-        onAccepted: ConfigManager.openFolder(completeDialog._filePath)
-        onRejected: completeDialog.close()
     }
 
     Connections {
@@ -755,19 +875,18 @@ ApplicationWindow {
                                  qsTr("%1 想发送 %2 个文件").arg(senderName).arg(totalFiles))
         }
         function onTransferCompleted(sessionId: string, fileName: string, filePath: string): void {
-            completeDialog._fileName = fileName
-            completeDialog._filePath = filePath
-            completeDialog.open()
+            completeToast._fileName = fileName
+            completeToast._filePath = filePath
+            completeToast.open()
             trayIcon.showMessage(qsTr("传输完成"), qsTr("已完成一项文件传输"))
         }
-        function onErrorOccurred(message: string): void { errorLabel.text = message; errorPopup.open() }
-        function onMessageOccurred(message: string): void { successLabel.text = message; successPopup.open() }
+        function onErrorOccurred(message: string): void { mainWindow.showErrorToast(message) }
+        function onMessageOccurred(message: string): void { mainWindow.showSuccessToast(message) }
         function onRelayModeRequested(sessionId: string, deviceId: string): void {
             // 直连候选全部失败：按策略自动中继，或弹窗询问用户
             if (ConfigManager.relayMode === 1) {
                 AppController.transferController.retryViaRelay(sessionId)
-                successLabel.text = qsTr("直连失败，已自动切换中继传输")
-                successPopup.open()
+                mainWindow.showSuccessToast(qsTr("直连失败，已自动切换中继传输"))
                 return
             }
             relayConfirmDialog._sessionId = sessionId
@@ -790,17 +909,21 @@ ApplicationWindow {
     Connections {
         target: AppController
         function onLocalHistoryOperationFailed(): void {
-            errorLabel.text = qsTr("本地保存失败，历史可能缺失")
-            errorPopup.open()
-            trayIcon.showMessage(qsTr("本地历史"), errorLabel.text)
+            mainWindow.showErrorToast(qsTr("本地保存失败，历史可能缺失"))
+            trayIcon.showMessage(qsTr("本地历史"), qsTr("本地保存失败，历史可能缺失"))
         }
     }
 
+    // 底部轻提示 Toast：错误与成功共用，非阻塞自动消失
     Popup {
-        id: errorPopup
-        anchors.centerIn: parent
-        width: 300
-        height: errorLabel.implicitHeight + 48
+        id: toastPopup
+
+        property bool isError: true
+
+        x: parent ? (parent.width - width) / 2 : 0
+        y: parent ? parent.height - height - 32 : 0
+        width: Math.min(480, parent ? parent.width - 48 : 480)
+        padding: 12
         modal: false
         closePolicy: Popup.CloseOnPressOutside
 
@@ -811,58 +934,52 @@ ApplicationWindow {
                 easing.type: Easing.OutCubic
             }
         }
-
-        background: Rectangle { color: Style.Color.error; radius: Style.Radius.sm }
-
-        contentItem: Label {
-            id: errorLabel
-            color: "#FFFFFF"
-            font.pixelSize: 14
-            wrapMode: Text.Wrap
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            padding: 12
-        }
-
-        Timer {
-            interval: 3000
-            running: errorPopup.visible
-            onTriggered: errorPopup.close()
-        }
-    }
-
-    Popup {
-        id: successPopup
-        anchors.centerIn: parent
-        width: 300
-        height: successLabel.implicitHeight + 48
-        modal: false
-        closePolicy: Popup.CloseOnPressOutside
-
-        enter: Transition {
+        exit: Transition {
             NumberAnimation {
-                property: "opacity"; from: 0; to: 1
-                duration: mainWindow.kPopupEnterDuration
-                easing.type: Easing.OutCubic
+                property: "opacity"; from: 1; to: 0
+                duration: Style.Motion.fast
             }
         }
 
-        background: Rectangle { color: Style.Color.success; radius: Style.Radius.sm }
+        background: Rectangle {
+            color: toastPopup.isError ? Style.Color.error : Style.Color.success
+            radius: Style.Radius.sm
+        }
 
-        contentItem: Label {
-            id: successLabel
-            color: "#FFFFFF"
-            font.pixelSize: 14
-            wrapMode: Text.Wrap
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            padding: 12
+        contentItem: RowLayout {
+            spacing: Style.Space.sm
+
+            Rectangle {
+                Layout.preferredWidth: 18
+                Layout.preferredHeight: 18
+                radius: 9
+                color: Style.Color.textOnAccent
+                opacity: 0.25
+
+                Label {
+                    anchors.centerIn: parent
+                    text: toastPopup.isError ? "!" : "✓"
+                    color: toastPopup.isError ? Style.Color.error : Style.Color.success
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+            }
+
+            Label {
+                id: toastLabel
+                Layout.fillWidth: true
+                color: Style.Color.textOnAccent
+                font.pixelSize: 13
+                wrapMode: Text.Wrap
+                verticalAlignment: Text.AlignVCenter
+            }
         }
 
         Timer {
-            interval: 3000
-            running: successPopup.visible
-            onTriggered: successPopup.close()
+            id: toastTimer
+            interval: toastPopup.isError ? 4500 : 3000
+            running: toastPopup.visible
+            onTriggered: toastPopup.close()
         }
     }
 }
