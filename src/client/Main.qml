@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.11.0
+ * @version 7.13.0
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -11,6 +11,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
  * Change Log:
+ * [v7.13.0] GY   2026-10-02
+ * * 本机信息弹窗设备名改用 textMain，修复启动时 undefined 到 QColor 的告警
  * [v7.11.0] GY   2026-10-02
  * * 统一拖拽裁决与路径解码，完成通知改为非阻塞卡片，提示移到底部
  * [v7.9.0] GY   2026-07-26
@@ -414,7 +416,7 @@ ApplicationWindow {
                         Label {
                             Layout.fillWidth: true
                             text: ConfigManager.deviceName
-                            color: Style.Color.text
+                            color: Style.Color.textMain
                             font.pixelSize: 14
                             font.bold: true
                             elide: Text.ElideRight  // 文字太长时显示省略号

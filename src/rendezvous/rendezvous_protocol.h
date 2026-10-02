@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_protocol.h
-* @version 7.9.0
+* @version 7.13.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点协议处理
@@ -9,6 +9,8 @@
 * 和中继邀请信令（relay_invite / relay_poll）。
 *
 * Change Log:
+* [v7.13.0] GY   2026-10-02
+* * 同步文件头版本与当前主版本
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请与轮询消息的解析和构建
 * [v7.2.0] GY   2026-07-21

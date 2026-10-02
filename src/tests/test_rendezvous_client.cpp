@@ -153,7 +153,7 @@ void TestRendezvousClient::testPeerEndpointToVariantMap()
     peer.addresses = QStringList{QStringLiteral("10.0.0.5"), QStringLiteral("192.168.1.5")};
     peer.tcpPort = 35100;
     peer.discoveryPort = 45678;
-    peer.lastSeen = QDateTime(QDate(2026, 10, 2), QTime(8, 0, 0), Qt::UTC);
+    peer.lastSeen = QDateTime(QDate(2026, 10, 2), QTime(8, 0, 0), QTimeZone::UTC);
 
     const QVariantMap map = RendezvousClient::peerEndpointToVariantMap(peer);
     QCOMPARE(map.value("deviceId").toString(), QStringLiteral("dev-x"));

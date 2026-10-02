@@ -1,6 +1,6 @@
 /**
 * @file    logger.cpp
-* @version 6.7.0
+* @version 7.13.0
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   运行日志工具实现
@@ -9,6 +9,8 @@
 * 日志文件按日期自动命名，支持跨天自动切换。线程安全（QMutex）。
 *
 * Change Log:
+* [v7.13.0] GY   2026-10-02
+* * 模块名仅从消息开头提取，避免 QML 告警正文被截断成模块标签
 * [v6.7.0] GY   2026-06-28
 * * 增加日志系统显式关闭入口，支持清除缓存前释放日志文件
 * [v6.6.2] GY   2026-06-25
@@ -128,14 +130,18 @@ void Logger::messageHandler(QtMsgType type,
     QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
     QString level = levelString(type);
 
-    // 从消息中提取模块名（[ModuleName] 格式），便于日志过滤
+    // 从消息中提取模块名（仅当消息以 [Module] 开头时），便于日志过滤；
+    // QML 引擎的告警不带分类前缀、消息体内自带方括号（如 Unable to assign [undefined] to QColor），
+    // 不能从中间截取，否则前半段报错会被当成模块名吞掉
     QString module;
     QString content = msg;
-    int start = msg.indexOf('[');
-    int end = msg.indexOf(']');
-    if (start >= 0 && end > start) {
-        module = msg.mid(start + 1, end - start - 1);
-        content = msg.mid(end + 1).trimmed();
+    if (msg.startsWith('[')) {
+        int start = msg.indexOf('[');
+        int end = msg.indexOf(']');
+        if (start == 0 && end > start) {
+            module = msg.mid(1, end - 1);
+            content = msg.mid(end + 1).trimmed();
+        }
     }
 
     // 格式化日志行：有模块名时显示模块标签，无模块名时直接拼接原始消息
