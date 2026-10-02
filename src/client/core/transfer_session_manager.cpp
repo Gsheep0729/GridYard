@@ -813,15 +813,15 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
 
     // 连接接收完成信号，生成最终快照并触发持久化
     connect(worker, &FileReceiverWorker::transferFinished,
-            this, [this, sessionId, worker](bool success, gy::protocol::ErrorCode errorCode,
-                                            const QString &errorMsg, const QString &savedPath) {
+            this, [this, sessionId](bool success, gy::protocol::ErrorCode errorCode,
+                                    const QString &errorMsg, const QString &savedPath) {
         qDebug() << "[TransferSession] 接收传输完成，成功:" << success << "错误:" << errorMsg;
         const QVariantMap snapshot = _model->sessionById(sessionId);
         const QString finalStatus = normalizedFinalStatus(success, errorCode,
                                                           snapshot.value(kStatus).toString());
         finalizeSession(sessionId, finalStatus, errorCode, errorMsg, savedPath);
-
-        worker->deleteLater();
+        // worker 的销毁由 P2pServer 的线程清理链负责（thread finished → deleteLater），
+        // 这里不再重复删除：本处理器排队执行时 worker 可能已被该链销毁
     });
 
     if (_config && _config->autoAcceptFiles()) {
