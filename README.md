@@ -32,7 +32,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 | 类别 | 选型 |
 |:-----|:-----|
 | 语言标准 | C++23 |
-| GUI 框架 | Qt 6.11（全 QML 路线） |
+| GUI 框架 | Qt 6.11（QML 界面，Widgets 仅系统托盘依赖） |
 | 构建系统 | CMake 4.2.3 + Ninja |
 | 编译器 | GCC 16.1 |
 | 数据库 | SQLite（WAL 模式） |
@@ -141,9 +141,9 @@ GridYard 采用四层架构，职责严格隔离：
 
 ```mermaid
 graph TD
-    ENTRY["main.cpp<br/>QGuiApplication"]
+    ENTRY["main.cpp<br/>QApplication"]
     subgraph 表现层["表现层 · QML + JavaScript"]
-        UI["Main.qml · DeviceSessionView<br/>ChatView · TransferPanel"]
+        UI["Main.qml · DeviceSessionView<br/>ConversationTimelineView 等 QML 组件"]
     end
     subgraph 应用逻辑层["应用逻辑层 · Controller + Manager"]
         APP["AppController（组合根 / QML 单例）<br/>TransferSessionManager · ChatManager"]
@@ -165,7 +165,7 @@ graph TD
 
 **分层约束**
 
-- `main.cpp` 只负责创建 `QGuiApplication`、解析启动参数、初始化日志和显式创建 `AppController`
+- `main.cpp` 只负责创建 `QApplication`（界面全 QML，Widgets 模块仅为系统托盘的 Qt.labs.platform 依赖）、解析启动参数、初始化日志和显式创建 `AppController`
 - `AppController` 是客户端组合根，负责初始化应用层对象和 UI 层
 - QML 禁止直接访问 `QSqlDatabase`、SQL 或文件系统
 - 应用层只依赖 Repository 接口，不感知 SQLite 实现细节
