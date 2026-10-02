@@ -347,6 +347,23 @@ target_include_directories(test_rendezvous_client PRIVATE
 target_compile_features(test_rendezvous_client PRIVATE cxx_std_23)
 add_test(NAME test_rendezvous_client COMMAND test_rendezvous_client)
 
+
+# --- 协调节点协议编解码测试 ---
+qt_add_executable(test_rendezvous_protocol test_rendezvous_protocol.cpp)
+target_link_libraries(test_rendezvous_protocol PRIVATE
+    gy_rendezvous
+    gy_shared
+    Qt6::Test
+    Qt6::Core
+    Qt6::Network
+)
+target_include_directories(test_rendezvous_protocol PRIVATE
+    ${CMAKE_SOURCE_DIR}/rendezvous
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_rendezvous_protocol PRIVATE cxx_std_23)
+add_test(NAME test_rendezvous_protocol COMMAND test_rendezvous_protocol)
+
 # --- 网络可达性控制器测试 ---
 qt_add_executable(test_reachability_controller test_reachability_controller.cpp
     ${CLIENT_CORE_DIR}/reachability_controller.cpp
