@@ -1,6 +1,6 @@
 /**
  * @file    ConversationTimelineView.qml
- * @version 6.7.0
+ * @version 7.13.0
  * @date    2026-06-28
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
@@ -8,6 +8,8 @@
  * 将聊天消息和文件传输任务按时间混排展示，形成单一会话流。
  *
  * Change Log:
+ * [v7.13.0] GY   2026-10-02
+ * * 时间线改绑 C++ 合并模型，进度刷新只更新对应行，不再全量重建
  * [v6.7.0] GY   2026-06-28
  * * 连续同方向聊天消息只在第一条显示头像
  * [v6.6.3] GY   2026-06-28
@@ -28,108 +30,27 @@ Item {
 
     required property string deviceId
     property var expandedSessions: ({})  // 传输任务展开状态，由外层会话页持有
-    property var timelineItems: []        // 聊天消息和传输任务合并后的展示列表
     property bool followLatest: true      // 用户在底部附近时自动跟随最新内容
 
     signal expansionRequested(string sessionId, bool expanded)
 
-    // 设备切换时立即重建时间线，历史加载延迟到绑定传播完成后执行
+    // 聊天消息与传输任务按时间合并，行级增量通知由 C++ 模型负责
+    ConversationTimelineModel {
+        id: timelineModel
+
+        deviceId: timelineView.deviceId
+        chatController: AppController.chatController
+        transferSessions: AppController.transferController.sessionModel
+    }
+
+    // 设备切换后历史加载延迟到绑定传播完成后执行
     onDeviceIdChanged: {
-        rebuildTimeline()
         Qt.callLater(loadInitialHistory)
     }
 
     // 组件树构建完成后触发一次历史首页加载
     Component.onCompleted: {
-        rebuildTimeline()
         Qt.callLater(loadInitialHistory)
-    }
-
-    // 将 ISO 时间转为毫秒时间戳，解析失败时返回 0
-    function timestampOf(value: string): real {
-        const parsed = Date.parse(value)
-        return isNaN(parsed) ? 0 : parsed
-    }
-
-    // 判断是否为当前设备的传输记录
-    function isCurrentDeviceSession(session): bool {
-        return session.deviceId === timelineView.deviceId
-    }
-
-    // 合并聊天消息和传输会话，按时间戳排序，仅影响展示顺序
-    function rebuildTimeline(): void {
-        const items = []
-        // 从聊天控制器获取当前设备的消息列表
-        const messages = AppController.chatController.messagesForDevice(deviceId)
-        for (let i = 0; i < messages.length; i++) {
-            const message = messages[i]
-            items.push({
-                kind: "message",
-                stableIndex: i,
-                sortTime: timestampOf(message.sentAt),
-                messageId: message.messageId,
-                senderName: message.senderName,
-                content: message.content,
-                sentAt: message.sentAt,
-                isOutgoing: message.isOutgoing,
-                status: message.status
-            })
-        }
-
-        // 从传输控制器获取当前设备的传输会话，跳过其他设备的记录
-        const sessions = AppController.transferController.sessions
-        for (let j = 0; j < sessions.length; j++) {
-            const session = sessions[j]
-            if (!isCurrentDeviceSession(session)) {
-                continue
-            }
-
-            items.push({
-                kind: "transfer",
-                stableIndex: messages.length + j,
-                sortTime: timestampOf(session.createdAt),
-                sessionId: session.sessionId,
-                type: session.type,
-                fileName: session.fileName,
-                status: session.status,
-                progress: session.progress,
-                bytesTransferred: session.bytesTransferred,
-                totalBytes: session.totalBytes,
-                createdAt: session.createdAt,
-                peerDeviceName: session.peerDeviceName,
-                isDirectory: session.isDirectory,
-                fileList: session.fileList,
-                canDeleteLocalFile: session.canDeleteLocalFile,
-                errorMsg: session.errorMsg || ""
-            })
-        }
-
-        // 按时间戳升序排列，相同时保持原模型顺序（stableIndex）
-        items.sort(function(left, right) {
-            if (left.sortTime === right.sortTime) {
-                return left.stableIndex - right.stableIndex
-            }
-            return left.sortTime - right.sortTime
-        })
-
-        // 连续同方向消息只在首条显示头像，避免视觉重复
-        for (let k = 0; k < items.length; k++) {
-            if (items[k].kind !== "message") {
-                continue
-            }
-
-            const previous = k > 0 ? items[k - 1] : null
-            items[k].showAvatar = (previous === null
-                    || previous.kind !== "message"
-                    || previous.isOutgoing !== items[k].isOutgoing
-                    || previous.senderName !== items[k].senderName)
-        }
-
-        timelineItems = items
-        // 列表在底部附近时自动滚动到最新内容
-        if (followLatest) {
-            Qt.callLater(scrollToLatest)
-        }
     }
 
     // 当前聊天消息为空时加载本地历史首页
@@ -155,7 +76,7 @@ Item {
         anchors.margins: Style.Space.lg
         clip: true
         spacing: Style.Space.md
-        model: timelineView.timelineItems  // 统一时间线数据源，包含消息和传输两种 kind
+        model: timelineModel  // 统一时间线数据源，包含消息和传输两种 kind
 
         // 监听滚动位置：判断是否在底部附近，以及是否触发向上翻页
         onContentYChanged: {
@@ -202,15 +123,35 @@ Item {
         delegate: Item {
             id: timelineDelegate
 
-            required property var modelData
-            readonly property bool isMessage: modelData.kind === "message"  // 区分消息和传输两种卡片
-            readonly property bool isOutgoingMessage: isMessage && modelData.isOutgoing
-            readonly property bool shouldShowAvatar: isMessage && modelData.showAvatar
+            required property int index
+            required property var kind
+            required property var showAvatar
+            required property var senderName
+            required property var content
+            required property var sentAt
+            required property var isOutgoing
+            required property var status
+            required property var sessionId
+            required property var type
+            required property var fileName
+            required property var progress
+            required property var bytesTransferred
+            required property var totalBytes
+            required property var createdAt
+            required property var peerDeviceName
+            required property var isDirectory
+            required property var fileList
+            required property var canDeleteLocalFile
+            required property var errorMsg
+
+            readonly property bool isMessage: kind === "message"  // 区分消息和传输两种卡片
+            readonly property bool isOutgoingMessage: isMessage && isOutgoing
+            readonly property bool shouldShowAvatar: isMessage && showAvatar
             // 安全字段：防御 undefined/null 导致 QML 绑定崩溃
-            readonly property string safeSenderName: isMessage ? String(modelData.senderName || "") : ""
-            readonly property string safeContent: isMessage ? String(modelData.content || "") : ""
-            readonly property string safeSentAt: isMessage ? String(modelData.sentAt || "") : ""
-            readonly property int safeMessageStatus: isMessage ? Number(modelData.status || 0) : 0
+            readonly property string safeSenderName: isMessage ? String(senderName || "") : ""
+            readonly property string safeContent: isMessage ? String(content || "") : ""
+            readonly property string safeSentAt: isMessage ? String(sentAt || "") : ""
+            readonly property int safeMessageStatus: isMessage ? Number(status || 0) : 0
 
             width: timelineList.width
             height: isMessage
@@ -338,23 +279,23 @@ Item {
                     id: transferCard
 
                     width: Math.min(parent.width * 0.86, Math.max(280, parent.width * 0.76))
-                    anchors.right: timelineDelegate.modelData.type === "send" ? parent.right : undefined
-                    sessionId: String(timelineDelegate.modelData.sessionId || "")
-                    taskType: String(timelineDelegate.modelData.type || "")
-                    taskName: String(timelineDelegate.modelData.fileName || "")
-                    status: String(timelineDelegate.modelData.status || "")
-                    progress: Number(timelineDelegate.modelData.progress || 0)
-                    bytesTransferred: timelineDelegate.modelData.bytesTransferred || 0
-                    totalBytes: timelineDelegate.modelData.totalBytes || 0
-                    createdAt: String(timelineDelegate.modelData.createdAt || "")
-                    peerDeviceName: String(timelineDelegate.modelData.peerDeviceName || "")
-                    isDirectory: Boolean(timelineDelegate.modelData.isDirectory)
-                    fileList: timelineDelegate.modelData.fileList || []
-                    canDeleteLocalFile: Boolean(timelineDelegate.modelData.canDeleteLocalFile)
-                    errorMsg: String(timelineDelegate.modelData.errorMsg || "")
-                    expanded: timelineView.expandedSessions[timelineDelegate.modelData.sessionId] === true
+                    anchors.right: timelineDelegate.type === "send" ? parent.right : undefined
+                    sessionId: String(timelineDelegate.sessionId || "")
+                    taskType: String(timelineDelegate.type || "")
+                    taskName: String(timelineDelegate.fileName || "")
+                    status: String(timelineDelegate.status || "")
+                    progress: Number(timelineDelegate.progress || 0)
+                    bytesTransferred: timelineDelegate.bytesTransferred || 0
+                    totalBytes: timelineDelegate.totalBytes || 0
+                    createdAt: String(timelineDelegate.createdAt || "")
+                    peerDeviceName: String(timelineDelegate.peerDeviceName || "")
+                    isDirectory: Boolean(timelineDelegate.isDirectory)
+                    fileList: timelineDelegate.fileList || []
+                    canDeleteLocalFile: Boolean(timelineDelegate.canDeleteLocalFile)
+                    errorMsg: String(timelineDelegate.errorMsg || "")
+                    expanded: timelineView.expandedSessions[timelineDelegate.sessionId] === true
                     onExpansionRequested: function(expanded) {
-                        timelineView.expansionRequested(timelineDelegate.modelData.sessionId, expanded)
+                        timelineView.expansionRequested(timelineDelegate.sessionId, expanded)
                     }
                 }
             }
@@ -379,24 +320,6 @@ Item {
                 font.pixelSize: 13
                 Layout.alignment: Qt.AlignHCenter
             }
-        }
-    }
-
-    Connections {
-        target: AppController.chatController
-
-        function onMessagesChanged(changedDeviceId: string): void {
-            if (changedDeviceId === timelineView.deviceId) {
-                timelineView.rebuildTimeline()
-            }
-        }
-    }
-
-    Connections {
-        target: AppController.transferController
-
-        function onSessionsChanged(): void {
-            timelineView.rebuildTimeline()
         }
     }
 }

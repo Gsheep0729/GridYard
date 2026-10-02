@@ -21,6 +21,8 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/chat_controller.cpp
     core/chat_message_model.h
     core/chat_message_model.cpp
+    core/conversation_timeline_model.h
+    core/conversation_timeline_model.cpp
     core/history_controller.h
     core/history_controller.cpp
     core/config_manager.h
