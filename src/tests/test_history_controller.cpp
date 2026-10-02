@@ -1,12 +1,14 @@
 /**
- * @file    test_history_controller.cpp
- * @version 6.6.2
- * @date    2026-06-28
- * @author  GY
- * @brief   HistoryController 本地历史视图与保留清理测试
- *
- * Change Log:
- * [v6.6.2] GY 2026-06-28
+* @file    test_history_controller.cpp
+* @version 7.13.2
+* @date    2026-06-28
+* @author  GY
+* @brief   HistoryController 本地历史视图与保留清理测试
+*
+* Change Log:
+* [v7.13.2] GY 2026-10-03
+* * 增加存储降级契约测试：不可用时回调恰好一次且历史页不卡加载
+* [v6.6.2] GY 2026-06-28
  * * 测试改为通过 LocalDataBroker 访问历史数据，避免直接组装 DatabaseWorker 和 Repository
  * [v6.4.0] GY 2026-06-25
  * * 新增本地历史控制器测试
@@ -27,6 +29,7 @@
 #include "sqlite_transfer_history_repository.h"
 
 #include <QSignalSpy>
+#include <QFile>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -51,6 +54,8 @@ private slots:
     void testClearAllTransfersPreservesDevices();
     void testRetentionDaysCleansExpired();
     void testConfigManagerRetentionDaysPersists();
+    void testUnavailableBrokerCallbacksFire();
+    void testHistoryControllerRecoversAfterDegradedQuery();
 
 private:
     std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
@@ -424,6 +429,148 @@ void TestHistoryController::testConfigManagerRetentionDaysPersists()
 
     qunsetenv("GRIDYARD_CONFIG");
     qunsetenv("GRIDYARD_NAME");
+}
+
+void TestHistoryController::testUnavailableBrokerCallbacksFire()
+{
+    // 用普通文件充当数据库父目录，mkpath 必定失败，构造不可用的存储实例
+    QFile blocker(_temporaryDir.path() + "/not-a-dir");
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.close();
+
+    LocalDataBroker broker;
+    QString error;
+    QVERIFY(!broker.initialize(_temporaryDir.path() + "/not-a-dir/db.sqlite", &error));
+    QVERIFY(!broker.isAvailable());
+
+    // 契约：任何路径下回调恰好一次，降级时必须以失败回调
+    int chatHistoryCalls = 0;
+    bool chatHistorySucceeded = true;
+    broker.loadRecentChatHistories(&broker,
+        [&](const QHash<QString, QList<MessageRecord>> &, bool succeeded) {
+            ++chatHistoryCalls;
+            chatHistorySucceeded = succeeded;
+        });
+
+    int transferHistoryCalls = 0;
+    bool transferHistorySucceeded = true;
+    broker.loadRecentTransferHistories(&broker,
+        [&](const QList<TransferRecord> &, bool succeeded) {
+            ++transferHistoryCalls;
+            transferHistorySucceeded = succeeded;
+        });
+
+    int peersCalls = 0;
+    bool peersSucceeded = true;
+    broker.loadRecentPeers(&broker, 10,
+        [&](const QList<PeerRecord> &, bool succeeded) {
+            ++peersCalls;
+            peersSucceeded = succeeded;
+        });
+
+    int messageCalls = 0;
+    bool messageSucceeded = true;
+    broker.loadMessages(&broker, MessageCursor{}, 10,
+        [&](const QList<MessageRecord> &, bool succeeded) {
+            ++messageCalls;
+            messageSucceeded = succeeded;
+        });
+
+    int transferCalls = 0;
+    bool transferSucceeded = true;
+    broker.queryTransfers(&broker, TransferQuery{}, 10,
+        [&](const QList<TransferRecord> &, bool succeeded) {
+            ++transferCalls;
+            transferSucceeded = succeeded;
+        });
+
+    int deleteMessageCalls = 0;
+    bool deleteMessageSucceeded = true;
+    broker.deleteMessage(&broker, "missing-msg", [&](bool succeeded) {
+        ++deleteMessageCalls;
+        deleteMessageSucceeded = succeeded;
+    });
+
+    int deleteConversationCalls = 0;
+    bool deleteConversationSucceeded = true;
+    broker.deleteConversation(&broker, "peer-X", [&](bool succeeded) {
+        ++deleteConversationCalls;
+        deleteConversationSucceeded = succeeded;
+    });
+
+    int deleteTransferCalls = 0;
+    bool deleteTransferSucceeded = true;
+    broker.deleteTransfer(&broker, "record-x", [&](bool succeeded) {
+        ++deleteTransferCalls;
+        deleteTransferSucceeded = succeeded;
+    });
+
+    int clearMessagesCalls = 0;
+    bool clearMessagesSucceeded = true;
+    broker.clearAllMessages(&broker, [&](bool succeeded) {
+        ++clearMessagesCalls;
+        clearMessagesSucceeded = succeeded;
+    });
+
+    int clearTransfersCalls = 0;
+    bool clearTransfersSucceeded = true;
+    broker.clearAllTransfers(&broker, [&](bool succeeded) {
+        ++clearTransfersCalls;
+        clearTransfersSucceeded = succeeded;
+    });
+
+    // 回调经 QueuedConnection 回投，轮询事件循环等待全部到达
+    QTRY_COMPARE(chatHistoryCalls, 1);
+    QTRY_COMPARE(transferHistoryCalls, 1);
+    QTRY_COMPARE(peersCalls, 1);
+    QTRY_COMPARE(messageCalls, 1);
+    QTRY_COMPARE(transferCalls, 1);
+    QTRY_COMPARE(deleteMessageCalls, 1);
+    QTRY_COMPARE(deleteConversationCalls, 1);
+    QTRY_COMPARE(deleteTransferCalls, 1);
+    QTRY_COMPARE(clearMessagesCalls, 1);
+    QTRY_COMPARE(clearTransfersCalls, 1);
+    QCOMPARE(chatHistorySucceeded, false);
+    QCOMPARE(transferHistorySucceeded, false);
+    QCOMPARE(peersSucceeded, false);
+    QCOMPARE(messageSucceeded, false);
+    QCOMPARE(transferSucceeded, false);
+    QCOMPARE(deleteMessageSucceeded, false);
+    QCOMPARE(deleteConversationSucceeded, false);
+    QCOMPARE(deleteTransferSucceeded, false);
+    QCOMPARE(clearMessagesSucceeded, false);
+    QCOMPARE(clearTransfersSucceeded, false);
+}
+
+void TestHistoryController::testHistoryControllerRecoversAfterDegradedQuery()
+{
+    QFile blocker(_temporaryDir.path() + "/degraded-dir");
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.close();
+
+    LocalDataBroker broker;
+    QString error;
+    QVERIFY(!broker.initialize(_temporaryDir.path() + "/degraded-dir/db.sqlite", &error));
+
+    ChatManager chat;
+    HistoryController controller(&chat, nullptr, nullptr, &broker);
+
+    QSignalSpy failureSpy(&controller, &HistoryController::operationFailed);
+    controller.loadMoreMessages("peer-X");
+    // 降级下回调立即失败，loading 必须复位而不是永久卡住
+    QTRY_COMPARE(controller.loading(), false);
+    QCOMPARE(failureSpy.count(), 1);
+
+    // loading 复位后再次发起查询不能被守卫拦截
+    controller.loadMoreMessages("peer-X");
+    QTRY_COMPARE(failureSpy.count(), 2);
+    QCOMPARE(controller.loading(), false);
+
+    // 传输历史查询同样能正常发起并失败返回
+    controller.queryTransfers();
+    QTRY_COMPARE(failureSpy.count(), 3);
+    QCOMPARE(controller.loading(), false);
+    QVERIFY(controller.transfers().isEmpty());
 }
 
 std::unique_ptr<SqliteDatabaseBroker> TestHistoryController::openDatabase(

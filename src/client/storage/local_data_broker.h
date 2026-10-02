@@ -1,14 +1,17 @@
 /**
 * @file    local_data_broker.h
-* @version 6.7.0
+* @version 7.13.2
 * @date    2026-06-28
 * @author  GridYard Team
 * @brief   本地数据层代管者
 *
 * LocalDataBroker 负责初始化 SQLite 存储、Repository、数据库任务线程，
 * 并向应用层提供本地历史持久化、查询、删除和启动恢复入口。
+* 所有带回调的接口承诺任何路径下恰好回调一次，存储不可用时回调失败。
 *
 * Change Log:
+* [v7.13.2] GY   2026-10-03
+* * 恢复类回调签名补充成功位，存储不可用时统一回调失败而非静默丢弃
 * [v6.7.0] GY   2026-06-28
 * * 增加显式关闭存储线程入口，支持清除本地缓存前释放数据库连接
 * * 增加最近设备目录异步加载入口
@@ -46,8 +49,9 @@ private:
     Q_OBJECT
 
 public:
-    using ChatHistoriesCallback = std::function<void(const QHash<QString, QList<MessageRecord>> &)>;
-    using TransferHistoriesCallback = std::function<void(const QList<TransferRecord> &)>;
+    // 回调末位参数为成功标志，false 表示本次查询或操作失败
+    using ChatHistoriesCallback = std::function<void(const QHash<QString, QList<MessageRecord>> &, bool)>;
+    using TransferHistoriesCallback = std::function<void(const QList<TransferRecord> &, bool)>;
     using PeersCallback = std::function<void(const QList<PeerRecord> &, bool)>;
     using MessagesCallback = std::function<void(const QList<MessageRecord> &, bool)>;
     using TransfersCallback = std::function<void(const QList<TransferRecord> &, bool)>;

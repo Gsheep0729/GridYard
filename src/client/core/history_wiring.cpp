@@ -1,11 +1,13 @@
 /**
 * @file    history_wiring.cpp
-* @version 7.11.0
+* @version 7.13.2
 * @date    2026-10-02
 * @author  GridYard Team
 * @brief   本地历史持久化装配实现
 *
 * Change Log:
+* [v7.13.2] GY   2026-10-03
+* * 启动恢复回调适配成功位，存储不可用时记录失败不再静默
 * [v7.11.0] GY   2026-10-02
 * * 自 AppController 拆出历史持久化装配与保留期清理
 */
@@ -115,12 +117,16 @@ void HistoryWiring::connectPersistence()
 // 在存储线程读取最近聊天记录并回投到主线程恢复模型
 void HistoryWiring::loadRecentChatHistories()
 {
-    if (!_dataBroker || !_dataBroker->isAvailable()) {
+    if (!_dataBroker) {
         return;
     }
 
     _dataBroker->loadRecentChatHistories(
-        this, [this](const QHash<QString, QList<MessageRecord>> &histories) {
+        this, [this](const QHash<QString, QList<MessageRecord>> &histories, bool succeeded) {
+            if (!succeeded) {
+                qWarning() << "[Storage] 启动恢复聊天历史失败";
+                return;
+            }
             for (auto it = histories.cbegin(); it != histories.cend(); ++it) {
                 _chat->restoreMessages(it.key(), it.value());
             }
@@ -130,12 +136,16 @@ void HistoryWiring::loadRecentChatHistories()
 // 在存储线程读取最近传输历史并回投到主线程恢复模型
 void HistoryWiring::loadRecentTransferHistories()
 {
-    if (!_dataBroker || !_dataBroker->isAvailable()) {
+    if (!_dataBroker) {
         return;
     }
 
     _dataBroker->loadRecentTransferHistories(
-        this, [this](const QList<TransferRecord> &records) {
+        this, [this](const QList<TransferRecord> &records, bool succeeded) {
+            if (!succeeded) {
+                qWarning() << "[Storage] 启动恢复传输历史失败";
+                return;
+            }
             _transfer->restoreFinishedTransfers(records);
         });
 }

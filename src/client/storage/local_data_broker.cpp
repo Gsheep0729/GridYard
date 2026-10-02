@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.cpp
-* @version 6.7.0
+* @version 7.13.2
 * @date    2026-06-28
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
@@ -9,6 +9,8 @@
 * 避免 AppController 直接持有数据管理层细节。
 *
 * Change Log:
+* [v7.13.2] GY   2026-10-03
+* * 存储不可用分支统一回调失败，消除降级时回调丢失导致的界面假死
 * [v6.7.0] GY   2026-06-28
 * * 增加显式关闭存储线程入口，支持清除本地缓存前释放数据库连接
 * * 增加最近设备目录异步加载入口
@@ -184,7 +186,14 @@ void LocalDataBroker::deleteTransfers(const QStringList &recordIds)
 void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
                                               const ChatHistoriesCallback &callback)
 {
-    if (!_storage->isAvailable() || !_messageRepository || !_deviceRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_messageRepository || !_deviceRepository) {
+        // 降级时也必须回调一次，否则调用方的等待状态无法复位
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -212,7 +221,7 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
             }
 
             QMetaObject::invokeMethod(receiver, [callback, histories] {
-                callback(histories);
+                callback(histories, true);
             }, Qt::QueuedConnection);
             return true;
         });
@@ -222,7 +231,14 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
 void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
                                                   const TransferHistoriesCallback &callback)
 {
-    if (!_storage->isAvailable() || !_transferRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_transferRepository) {
+        // 降级时也必须回调一次，否则调用方的等待状态无法复位
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -236,7 +252,7 @@ void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
             }
 
             QMetaObject::invokeMethod(receiver, [callback, records] {
-                callback(records);
+                callback(records, true);
             }, Qt::QueuedConnection);
             return true;
         });
@@ -271,7 +287,13 @@ void LocalDataBroker::loadRecentPeers(QObject *receiver, int limit,
 void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &cursor, int limit,
                                    const MessagesCallback &callback)
 {
-    if (!_storage->isAvailable() || !_messageRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_messageRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -293,7 +315,13 @@ void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &curso
 void LocalDataBroker::queryTransfers(QObject *receiver, const TransferQuery &query, int limit,
                                      const TransfersCallback &callback)
 {
-    if (!_storage->isAvailable() || !_transferRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_transferRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -314,7 +342,13 @@ void LocalDataBroker::queryTransfers(QObject *receiver, const TransferQuery &que
 void LocalDataBroker::deleteMessage(QObject *receiver, const QString &messageId,
                                     const OperationCallback &callback)
 {
-    if (!_storage->isAvailable() || !_messageRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_messageRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -333,7 +367,13 @@ void LocalDataBroker::deleteMessage(QObject *receiver, const QString &messageId,
 void LocalDataBroker::deleteConversation(QObject *receiver, const QString &deviceId,
                                          const OperationCallback &callback)
 {
-    if (!_storage->isAvailable() || !_messageRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_messageRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -352,7 +392,13 @@ void LocalDataBroker::deleteConversation(QObject *receiver, const QString &devic
 void LocalDataBroker::deleteTransfer(QObject *receiver, const QString &recordId,
                                      const OperationCallback &callback)
 {
-    if (!_storage->isAvailable() || !_transferRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_transferRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -370,7 +416,13 @@ void LocalDataBroker::deleteTransfer(QObject *receiver, const QString &recordId,
 // 异步清空全部聊天记录（保留设备目录）
 void LocalDataBroker::clearAllMessages(QObject *receiver, const OperationCallback &callback)
 {
-    if (!_storage->isAvailable() || !_messageRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_messageRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -388,7 +440,13 @@ void LocalDataBroker::clearAllMessages(QObject *receiver, const OperationCallbac
 // 异步清空全部传输历史（保留设备目录）
 void LocalDataBroker::clearAllTransfers(QObject *receiver, const OperationCallback &callback)
 {
-    if (!_storage->isAvailable() || !_transferRepository || !receiver) {
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_transferRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
         return;
     }
 

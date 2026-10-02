@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_database_broker.cpp
-* @version 6.6.2
+* @version 7.13.2
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理实现
@@ -10,6 +10,8 @@
 * 应用退出时自动关闭并移除连接名。
 *
 * Change Log:
+* [v7.13.2] GY   2026-10-03
+* * Worker 线程连接打开失败时写入错误信息，避免上层误判为成功
 * [v6.8.1] GY   2026-06-29
 * * 析构时同步关闭当前线程工作连接，避免连接名复用指向旧数据库
 * [v6.6.2] GY   2026-06-25
@@ -175,7 +177,14 @@ QSqlDatabase SqliteDatabaseBroker::connectionForWorkerThread(QString *errorMessa
     }
 
     database.setDatabaseName(_databasePath);
-    if (!database.open() || !configureConnection(database, errorMessage)) {
+    if (!database.open()) {
+        // 打开失败必须落字错误信息，上层依赖 errorMessage 为空判定成功
+        if (errorMessage) {
+            *errorMessage = database.lastError().text();
+        }
+        return {};
+    }
+    if (!configureConnection(database, errorMessage)) {
         return {};
     }
     return database;
