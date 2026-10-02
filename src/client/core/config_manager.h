@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.h
-* @version 7.4.0
-* @date    2026-07-21
+* @version 7.13.0
+* @date    2026-10-02
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
@@ -10,6 +10,8 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+* [v7.13.0] GY   2026-10-02
+* * 放开测试白名单以支持可达性控制器与发现视图模型的用例
 * [v7.4.0] GY   2026-07-21
 * * 新增 Reachability 配置分组：rendezvousEnabled、rendezvousHost、rendezvousPort、relayMode
 * [v6.6.2] GY   2026-06-25
@@ -138,6 +140,8 @@ private:
     // 允许测试代码访问私有构造函数
     friend class TestDiscovery;
     friend class TestIntegration;
+    friend class TestReachabilityController;
+    friend class TestPeerDiscoveryViewModel;
 
     void ensureDeviceId();
 

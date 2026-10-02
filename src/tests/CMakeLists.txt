@@ -328,6 +328,80 @@ target_include_directories(test_rendezvous_coordinator PRIVATE
 target_compile_features(test_rendezvous_coordinator PRIVATE cxx_std_23)
 add_test(NAME test_rendezvous_coordinator COMMAND test_rendezvous_coordinator)
 
+# --- 协调节点客户端测试 ---
+qt_add_executable(test_rendezvous_client test_rendezvous_client.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_rendezvous_client PRIVATE
+    gy_shared
+    gy_rendezvous
+    Qt6::Test
+    Qt6::Core
+    Qt6::Network
+)
+target_include_directories(test_rendezvous_client PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_rendezvous_client PRIVATE cxx_std_23)
+add_test(NAME test_rendezvous_client COMMAND test_rendezvous_client)
+
+# --- 网络可达性控制器测试 ---
+qt_add_executable(test_reachability_controller test_reachability_controller.cpp
+    ${CLIENT_CORE_DIR}/reachability_controller.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/endpoint_probe.cpp
+    ${CLIENT_NET_DIR}/invite_codec.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_reachability_controller PRIVATE
+    gy_shared
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Qml
+)
+target_include_directories(test_reachability_controller PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_reachability_controller PRIVATE cxx_std_23)
+add_test(NAME test_reachability_controller COMMAND test_reachability_controller)
+
+# --- 设备发现视图模型测试 ---
+qt_add_executable(test_peer_discovery_view_model test_peer_discovery_view_model.cpp
+    ${CLIENT_CORE_DIR}/peer_discovery_view_model.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+)
+target_link_libraries(test_peer_discovery_view_model PRIVATE
+    gy_shared
+    gy_storage
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Sql
+)
+target_include_directories(test_peer_discovery_view_model PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_peer_discovery_view_model PRIVATE cxx_std_23)
+add_test(NAME test_peer_discovery_view_model COMMAND test_peer_discovery_view_model)
+
 # --- 统一时间线模型测试 ---
 qt_add_executable(test_conversation_timeline_model test_conversation_timeline_model.cpp
     ${CLIENT_CORE_DIR}/chat_manager.cpp
