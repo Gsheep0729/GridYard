@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_client.h
-* @version 7.9.0
+* @version 7.14.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点客户端
@@ -14,6 +14,8 @@
 * 每 5 秒心跳刷新 TTL 并顺带轮询中继邀请，断线后自动重连。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 所有控制报文统一注入访问令牌字段，配合服务端 token 认证
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请请求与按心跳周期轮询待领取邀请
 * [v7.5.0] GY   2026-07-21
@@ -55,6 +57,8 @@ public:
 
     // 连接协调服务器
     Q_INVOKABLE void connectToServer(const QString &host, int port);
+    // 设置访问令牌：非空时随每个控制报文发送，须在 connectToServer 前调用
+    void setToken(const QString &token);
     // 断开连接
     Q_INVOKABLE void disconnectFromServer();
 
@@ -120,6 +124,7 @@ private:
     bool _reconnectScheduled = false;
     QString _serverHost;
     int _serverPort = 0;
+    QString _token;              // 访问令牌，空表示服务器未启用认证
     QString _room;               // 房间名，用于心跳重注册
     QString _deviceId;           // 本机设备 ID
     QString _deviceName;         // 本机设备名

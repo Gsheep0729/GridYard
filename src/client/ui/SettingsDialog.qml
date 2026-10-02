@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.13.0
+ * @version 7.14.0
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 协调服务器区块新增访问令牌输入框
  * [v7.13.0] GY   2026-10-02
  * * 六张分组卡片改用 SettingsCard 外壳组件
  * [v7.11.0] GY   2026-10-02
@@ -64,6 +66,7 @@ Dialog {
     property bool   _tempRendezvousEnabled: ConfigManager.rendezvousEnabled
     property string _tempRendezvousHost: ConfigManager.rendezvousHost
     property int    _tempRendezvousPort: ConfigManager.rendezvousPort
+    property string _tempRendezvousToken: ConfigManager.rendezvousToken
     property int    _tempRelayMode: ConfigManager.relayMode
 
     // 表单校验：设备名非空、接收路径非空、端口在合法范围内
@@ -82,6 +85,7 @@ Dialog {
                                     || _tempRendezvousEnabled !== ConfigManager.rendezvousEnabled
                                     || _tempRendezvousHost !== ConfigManager.rendezvousHost
                                     || _tempRendezvousPort !== ConfigManager.rendezvousPort
+                                    || _tempRendezvousToken !== ConfigManager.rendezvousToken
                                     || _tempRelayMode !== ConfigManager.relayMode
     readonly property int kColorDuration: Style.Motion.base
     readonly property int kEnterDuration: 200  // 弹窗入场动画时长
@@ -106,6 +110,7 @@ Dialog {
         _tempRendezvousEnabled = ConfigManager.rendezvousEnabled
         _tempRendezvousHost = ConfigManager.rendezvousHost
         _tempRendezvousPort = ConfigManager.rendezvousPort
+        _tempRendezvousToken = ConfigManager.rendezvousToken
         _tempRelayMode = ConfigManager.relayMode
     }
 
@@ -442,6 +447,22 @@ Dialog {
                     Item { Layout.fillWidth: true }
 
                     Label {
+                        text: qsTr("访问令牌")
+                        font.pixelSize: 13
+                        color: Style.Color.textSecondary
+                    }
+
+                    TextField {
+                        id: rendezvousTokenField
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+                        text: settingsDialog._tempRendezvousToken
+                        placeholderText: qsTr("与服务器 --token 一致，留空表示未启用")
+                        selectByMouse: true
+                        onTextChanged: settingsDialog._tempRendezvousToken = text
+                    }
+
+                    Label {
                         text: qsTr("Relay 策略")
                         font.pixelSize: 13
                         color: Style.Color.textSecondary
@@ -594,6 +615,7 @@ Dialog {
                     ConfigManager.rendezvousEnabled = settingsDialog._tempRendezvousEnabled
                     ConfigManager.rendezvousHost = settingsDialog._tempRendezvousHost
                     ConfigManager.rendezvousPort = settingsDialog._tempRendezvousPort
+                    ConfigManager.rendezvousToken = settingsDialog._tempRendezvousToken
                     ConfigManager.relayMode = settingsDialog._tempRelayMode
                     settingsDialog.accept()
                 }

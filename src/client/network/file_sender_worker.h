@@ -71,6 +71,9 @@ public:
     FileSenderWorker(const FileSenderWorker &)            = delete;
     FileSenderWorker &operator=(const FileSenderWorker &) = delete;
 
+    // 设置中继握手的访问令牌，须在 moveToThread 之后、startTransfer 之前调用
+    void setRelayToken(const QString &token);
+
 public slots:
     // 启动传输（在工作线程中调用，支持文件或目录）
     void startTransfer(const QString &host, quint16 port, const QString &path,
@@ -147,6 +150,7 @@ private:
     bool         _sendScheduled = false;  // 是否已投递下一块发送任务
     bool         _finished = false;        // 是否已发射过 transferFinished，防止取消/断开路径重复终结
     QString      _relayId;                 // 中继会话 ID，非空表示经中继服务器转发
+    QString      _relayToken;              // 中继握手的访问令牌，由会话管理器在启动前注入
     bool         _relayReady = false;      // 中继两端是否已齐备（收到 relay_ready）
     QByteArray   _relayLineBuffer;         // 中继控制行的半行缓冲
     qint64       _totalBytes = 0;         // 本次传输的文件总字节数

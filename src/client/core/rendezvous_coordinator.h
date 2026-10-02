@@ -1,15 +1,17 @@
 /**
 * @file    rendezvous_coordinator.h
-* @version 7.11.0
+* @version 7.14.0
 * @date    2026-10-02
 * @author  GridYard Team
 * @brief   协调节点编排器
 *
 * 封装协调服务器的连接、注册、候选拉取与中继邀请接线：
-* 按配置启停协调连接，监听 rendezvousEnabled/Host/Port 配置变化即时生效，
+* 按配置启停协调连接，监听 rendezvousEnabled/Host/Port/Token 配置变化即时生效，
 * 不再需要重启应用。协调客户端对象本身由组合根持有，多个模块共享。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 访问令牌纳入防抖比较与连接下发
 * [v7.11.0] GY   2026-10-02
 * * 自 AppController 拆出协调编排，修复修改协调配置需要重启才能生效的问题
 */
@@ -53,4 +55,5 @@ private:
     bool _active = false;           // 协调连接是否处于启用状态
     QString _activeHost;            // 当前启用的服务器地址（防抖：目标未变不重连）
     quint16 _activePort = 0;        // 当前启用的服务器端口
+    QString _activeToken;           // 当前启用的访问令牌
 };

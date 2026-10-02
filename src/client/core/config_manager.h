@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.h
-* @version 7.13.0
+* @version 7.14.0
 * @date    2026-10-02
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
@@ -10,6 +10,8 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 新增协调服务器访问令牌配置项
 * [v7.13.0] GY   2026-10-02
 * * 放开测试白名单以支持可达性控制器与发现视图模型的用例
 * [v7.4.0] GY   2026-07-21
@@ -59,6 +61,7 @@ class ConfigManager : public QObject {
     Q_PROPERTY(bool     rendezvousEnabled READ rendezvousEnabled WRITE setRendezvousEnabled NOTIFY rendezvousEnabledChanged)
     Q_PROPERTY(QString  rendezvousHost   READ rendezvousHost   WRITE setRendezvousHost   NOTIFY rendezvousHostChanged)
     Q_PROPERTY(int      rendezvousPort   READ rendezvousPort   WRITE setRendezvousPort   NOTIFY rendezvousPortChanged)
+    Q_PROPERTY(QString  rendezvousToken  READ rendezvousToken  WRITE setRendezvousToken  NOTIFY rendezvousTokenChanged)
     Q_PROPERTY(RelayMode relayMode       READ relayMode       WRITE setRelayMode       NOTIFY relayModeChanged)
 
 public:
@@ -87,6 +90,8 @@ public:
     QString rendezvousHost() const;
     // 获取协调服务器端口
     int rendezvousPort() const;
+    // 获取协调服务器访问令牌
+    QString rendezvousToken() const;
     // 获取 Relay 策略
     RelayMode relayMode() const;
 
@@ -106,6 +111,8 @@ public:
     void setRendezvousHost(const QString &host);
     // 设置协调服务器端口
     void setRendezvousPort(int port);
+    // 设置协调服务器访问令牌
+    void setRendezvousToken(const QString &token);
     // 设置 Relay 策略
     void setRelayMode(RelayMode mode);
 
@@ -130,6 +137,7 @@ signals:
     void rendezvousEnabledChanged();
     void rendezvousHostChanged();
     void rendezvousPortChanged();
+    void rendezvousTokenChanged();
     void relayModeChanged();
 
 private:
@@ -158,5 +166,6 @@ private:
     bool _rendezvousEnabled = false;   // 是否启用协调服务器
     QString _rendezvousHost = "127.0.0.1"; // 协调服务器地址
     int _rendezvousPort = 45780;      // 协调服务器端口（避免与 UDP 发现 45678 混淆）
+    QString _rendezvousToken;         // 协调服务器访问令牌，空表示服务器未启用认证
     RelayMode _relayMode = RelayMode::AskBeforeRelay; // Relay 策略
 };

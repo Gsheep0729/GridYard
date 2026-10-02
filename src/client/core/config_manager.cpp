@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.cpp
-* @version 7.13.0
+* @version 7.14.0
 * @date    2026-10-02
 * @author  GridYard Team
 * @brief   应用配置管理器实现
@@ -10,6 +10,8 @@
 * GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 新增协调服务器访问令牌配置项
 * [v7.13.0] GY   2026-10-02
 * * 收敛各 setter 重复的 QSettings 打开逻辑，refreshLocalIp 优先取默认路由接口地址
 * [v7.4.0] GY   2026-07-21
@@ -110,6 +112,7 @@ ConfigManager::ConfigManager(QObject *parent)
     _rendezvousEnabled = settings.value("reachability/rendezvousEnabled", false).toBool();
     _rendezvousHost = settings.value("reachability/rendezvousHost", "127.0.0.1").toString();
     _rendezvousPort = settings.value("reachability/rendezvousPort", gy::protocol::kDefaultRendezvousPort).toInt();
+    _rendezvousToken = settings.value("reachability/rendezvousToken").toString();
     int relayModeInt = settings.value("reachability/relayMode", static_cast<int>(RelayMode::AskBeforeRelay)).toInt();
     _relayMode = static_cast<RelayMode>(relayModeInt);
 
@@ -362,6 +365,12 @@ int ConfigManager::rendezvousPort() const
     return _rendezvousPort;
 }
 
+// 获取协调服务器访问令牌
+QString ConfigManager::rendezvousToken() const
+{
+    return _rendezvousToken;
+}
+
 // 获取 Relay 策略
 RelayMode ConfigManager::relayMode() const
 {
@@ -394,6 +403,15 @@ void ConfigManager::setRendezvousPort(int port)
     _rendezvousPort = port;
     openSettings().setValue("reachability/rendezvousPort", port);
     emit rendezvousPortChanged();
+}
+
+// 设置协调服务器访问令牌并持久化
+void ConfigManager::setRendezvousToken(const QString &token)
+{
+    if (_rendezvousToken == token) return;
+    _rendezvousToken = token;
+    openSettings().setValue("reachability/rendezvousToken", token);
+    emit rendezvousTokenChanged();
 }
 
 // 设置 Relay 策略并持久化

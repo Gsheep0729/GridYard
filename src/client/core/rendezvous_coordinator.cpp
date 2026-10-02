@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_coordinator.cpp
-* @version 7.11.0
+* @version 7.14.0
 * @date    2026-10-02
 * @author  GridYard Team
 * @brief   协调节点编排器实现
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 访问令牌随连接下发并在配置变化时重连
 * [v7.11.0] GY   2026-10-02
 * * 自 AppController 拆出协调编排，修复修改协调配置需要重启才能生效的问题
 */
@@ -50,6 +52,8 @@ RendezvousCoordinator::RendezvousCoordinator(ConfigManager *config, DiscoverySer
             this,    &RendezvousCoordinator::applyConfig);
     connect(_config, &ConfigManager::rendezvousPortChanged,
             this,    &RendezvousCoordinator::applyConfig);
+    connect(_config, &ConfigManager::rendezvousTokenChanged,
+            this,    &RendezvousCoordinator::applyConfig);
 
     // 连接成功后注册本机端点并查询一次在线设备
     connect(_rendezvous, &RendezvousClient::connected, this, [this]() {
@@ -86,7 +90,8 @@ void RendezvousCoordinator::applyConfig()
 
     const QString host = _config->rendezvousHost();
     const quint16 port = static_cast<quint16>(_config->rendezvousPort());
-    if (_active && host == _activeHost && port == _activePort) {
+    const QString token = _config->rendezvousToken();
+    if (_active && host == _activeHost && port == _activePort && token == _activeToken) {
         return;  // 目标未变，避免设置页连续修改触发重复重连
     }
     stopRendezvous();
@@ -100,6 +105,8 @@ void RendezvousCoordinator::startRendezvous(const QString &host, quint16 port)
     _active = true;
     _activeHost = host;
     _activePort = port;
+    _activeToken = _config->rendezvousToken();
+    _rendezvous->setToken(_activeToken);
     _rendezvous->connectToServer(host, static_cast<int>(port));
     if (!_queryTimer->isActive()) {
         _queryTimer->start();
@@ -116,6 +123,7 @@ void RendezvousCoordinator::stopRendezvous()
     _active = false;
     _activeHost.clear();
     _activePort = 0;
+    _activeToken.clear();
     _queryTimer->stop();
     // 手动断开后客户端不再自动重连，重新启用由 applyConfig 驱动
     _rendezvous->disconnectFromServer();

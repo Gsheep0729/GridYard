@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.10.0
+* @version 7.14.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * 启动发送 worker 前注入中继握手令牌
 * [v7.10.0] GY   2026-10-02
 * * 会话存储与增量通知委托给 TransferSessionModel
 * * 记录映射与文件清理策略委托给 TransferSessionMapper
@@ -303,6 +305,10 @@ void TransferSessionManager::startSendWorker(const QVariantMap &session,
 
     // 创建 FileSenderWorker 并在工作线程中运行
     auto *worker = new FileSenderWorker{};
+    // 中继握手的令牌在移线程前注入，避开跨线程读取配置
+    if (_config) {
+        worker->setRelayToken(_config->rendezvousToken());
+    }
     auto *thread = new QThread{this};
 
     worker->moveToThread(thread);

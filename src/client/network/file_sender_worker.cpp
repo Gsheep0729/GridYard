@@ -1,6 +1,6 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.9.0
+* @version 7.14.0
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
@@ -10,6 +10,8 @@
 * 支持多文件/目录传输、背压控制、取消操作和超时检测。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * relay_create 握手行携带访问令牌
 * [v7.9.0] GY   2026-07-26
 * * 候选端点按序轮询连接；中继模式下完成 relay_create/relay_ready 握手
 * [v6.6.2] GY   2026-06-25
@@ -40,6 +42,7 @@
 */
 
 #include "file_sender_worker.h"
+#include "rendezvous_protocol_keys.h"
 #include "frame_codec.h"
 #include "protocol.h"
 
@@ -212,12 +215,21 @@ void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpo
     _timeoutTimer->start(kTimeoutMs);
 }
 
+// 设置中继握手的访问令牌
+void FileSenderWorker::setRelayToken(const QString &token)
+{
+    _relayToken = token;
+}
+
 // 中继握手：发送 relay_create 行并等待 relay_ready，失败时终结会话
 bool FileSenderWorker::waitForRelayReady()
 {
     QJsonObject hello;
-    hello[QStringLiteral("type")] = QStringLiteral("relay_create");
-    hello[QStringLiteral("relay_id")] = _relayId;
+    hello[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayCreate;
+    hello[gy::rendezvous::kKeyRelayId] = _relayId;
+    if (!_relayToken.isEmpty()) {
+        hello[gy::rendezvous::kKeyToken] = _relayToken;
+    }
     QByteArray helloLine = QJsonDocument(hello).toJson(QJsonDocument::Compact) + '\n';
     if (_socket->write(helloLine) != helloLine.size()) {
         finish(false, gy::protocol::ErrorCode::ConnectionLost,

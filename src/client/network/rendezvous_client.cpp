@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_client.cpp
-* @version 7.9.0
+* @version 7.14.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点客户端实现
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * sendJson 统一注入访问令牌，覆盖注册/查询/邀请/轮询四类报文
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请请求与按心跳周期轮询待领取邀请
 * [v7.5.0] GY   2026-07-21
@@ -14,6 +16,7 @@
 
 #include "rendezvous_client.h"
 #include "config_manager.h"
+#include "rendezvous_protocol_keys.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -48,6 +51,12 @@ void RendezvousClient::connectToServer(const QString &host, int port)
 
     qDebug() << "RendezvousClient: 连接协调服务器" << host << ":" << port;
     _socket->connectToHost(host, port);
+}
+
+// 设置访问令牌
+void RendezvousClient::setToken(const QString &token)
+{
+    _token = token;
 }
 
 void RendezvousClient::disconnectFromServer()
@@ -206,7 +215,13 @@ void RendezvousClient::sendJson(const QJsonObject &json)
         return;
     }
 
-    QJsonDocument doc(json);
+    // 所有控制报文在此统一注入令牌，服务器未启用认证时字段为空即不发送
+    QJsonObject authenticated = json;
+    if (!_token.isEmpty()) {
+        authenticated[gy::rendezvous::kKeyToken] = _token;
+    }
+
+    QJsonDocument doc(authenticated);
     QByteArray data = doc.toJson(QJsonDocument::Compact);
     data.append("\n");  // 每条消息以换行符分隔
     _socket->write(data);

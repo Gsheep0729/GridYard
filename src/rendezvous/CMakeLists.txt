@@ -25,7 +25,7 @@ add_library(gy_rendezvous STATIC
     relay_server.cpp
 )
 
-target_link_libraries(gy_rendezvous PUBLIC Qt6::Core Qt6::Network)
+target_link_libraries(gy_rendezvous PUBLIC Qt6::Core Qt6::Network gy_protocol_contracts)
 target_include_directories(gy_rendezvous PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(gridyard_rendezvous WIN32 main.cpp)

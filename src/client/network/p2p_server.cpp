@@ -1,6 +1,6 @@
 /**
 * @file    p2p_server.cpp
-* @version 7.9.0
+* @version 7.14.0
 * @date    2026-06-23
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
@@ -11,6 +11,8 @@
 * 中继降级的连接在完成 relay_join 握手后也进入同一条首帧路由。
 *
 * Change Log:
+* [v7.14.0] GY   2026-10-03
+* * relay_join 握手行携带访问令牌
 * [v7.9.0] GY   2026-07-26
 * * 新增 joinRelaySession：中继加入的连接复用首帧路由，等待期放宽到 30 秒
 * [v6.6.2] GY   2026-06-25
@@ -32,6 +34,7 @@
 */
 
 #include "p2p_server.h"
+#include "rendezvous_protocol_keys.h"
 #include "chat_message.h"
 #include "config_manager.h"
 #include "file_receiver_worker.h"
@@ -155,8 +158,13 @@ void P2pServer::joinRelaySession(const QString &host, quint16 port, const QStrin
     connect(socket, &QTcpSocket::connected, this, [this, socket, relayId, timer]() {
         qDebug() << "[P2pServer] 已连接中继服务器，发送 relay_join";
         QJsonObject hello;
-        hello[QStringLiteral("type")] = QStringLiteral("relay_join");
-        hello[QStringLiteral("relay_id")] = relayId;
+        hello[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayJoin;
+        hello[gy::rendezvous::kKeyRelayId] = relayId;
+        // 服务器未启用认证时令牌为空，字段不发送
+        const QString token = _config ? _config->rendezvousToken() : QString();
+        if (!token.isEmpty()) {
+            hello[gy::rendezvous::kKeyToken] = token;
+        }
         const QByteArray line = QJsonDocument(hello).toJson(QJsonDocument::Compact) + '\n';
         socket->write(line);
 
