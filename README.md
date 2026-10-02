@@ -198,6 +198,9 @@ graph LR
 
 ## 协议设计
 
+> TCP/UDP 业务协议见下文；协调节点与中继的信令协议（relay_invite / relay_poll /
+> relay_create 等）与资源防线另见 `doc/dev-manual/规格与设计/GridYard_协调节点与中继服务设计.md`。
+
 GridYard 使用自研 TLV（Type-Length-Value）二进制协议：
 
 | 字段 | 长度 | 字节序 | 说明 |
