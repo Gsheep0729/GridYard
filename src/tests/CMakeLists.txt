@@ -419,6 +419,18 @@ target_include_directories(test_peer_discovery_view_model PRIVATE
 target_compile_features(test_peer_discovery_view_model PRIVATE cxx_std_23)
 add_test(NAME test_peer_discovery_view_model COMMAND test_peer_discovery_view_model)
 
+# --- DatabaseWorker 语义测试 ---
+qt_add_executable(test_database_worker test_database_worker.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_database_worker PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_database_worker PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_database_worker PRIVATE cxx_std_23)
+add_test(NAME test_database_worker COMMAND test_database_worker)
+
 # --- 统一时间线模型测试 ---
 qt_add_executable(test_conversation_timeline_model test_conversation_timeline_model.cpp
     ${CLIENT_CORE_DIR}/chat_manager.cpp
