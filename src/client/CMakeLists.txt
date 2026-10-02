@@ -77,6 +77,7 @@ set(GRIDYARD_CLIENT_QML_ENTRY_FILES
 set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/DeviceCard.qml
     ui/PeerListView.qml
+    ui/SettingsCard.qml
     ui/SettingsDialog.qml
     ui/AcceptDialog.qml
     ui/AddDeviceDialog.qml

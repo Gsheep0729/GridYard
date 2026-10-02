@@ -10,6 +10,7 @@
  * Change Log:
  * [v7.13.0] GY   2026-10-02
  * * 时间线改绑 C++ 合并模型，进度刷新只更新对应行，不再全量重建
+ * * 气泡与头像的反白文字统一使用 textOnAccent 语义色
  * [v6.7.0] GY   2026-06-28
  * * 连续同方向聊天消息只在第一条显示头像
  * [v6.6.3] GY   2026-06-28
@@ -221,7 +222,7 @@ Item {
                                 anchors.fill: parent
                                 anchors.margins: Style.Space.md
                                 text: timelineDelegate.safeContent
-                                color: timelineDelegate.isOutgoingMessage ? Style.Color.window : Style.Color.textMain
+                                color: timelineDelegate.isOutgoingMessage ? Style.Color.textOnAccent : Style.Color.textMain
                                 font.pixelSize: 14
                                 wrapMode: Text.WrapAnywhere
                                 textFormat: Text.PlainText
@@ -260,7 +261,7 @@ Item {
                         Label {
                             anchors.centerIn: parent
                             text: qsTr("我")
-                            color: Style.Color.window
+                            color: Style.Color.textOnAccent
                             font.pixelSize: 12
                             font.bold: true
                         }

@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.11.0
+ * @version 7.13.0
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.13.0] GY   2026-10-02
+ * * 六张分组卡片改用 SettingsCard 外壳组件
  * [v7.11.0] GY   2026-10-02
  * * 标注端口与协调服务器修改需重启生效，清除缓存改为危险色按钮
  * [v7.4.0] GY   2026-07-21
@@ -187,152 +189,115 @@ Dialog {
             Item { Layout.preferredHeight: Style.Space.sm }  // 顶部留白
 
             // 设备信息卡片：设备名编辑、校验提示
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: deviceSection.implicitHeight + 32
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.border
-                border.width: 1
+            SettingsCard {
+                Label {
+                    text: qsTr("设备身份")
+                    font.pixelSize: 15
+                    font.bold: true
+                    color: Style.Color.textMain
+                }
 
-                ColumnLayout {
-                    id: deviceSection
-                    anchors.fill: parent
-                    anchors.margins: Style.Space.lg
-                    spacing: Style.Space.md
+                Label {
+                    text: qsTr("设置一个易于识别的名称，以便在局域网中发现。")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 13
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
 
-                    Label {
-                        text: qsTr("设备身份")
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: Style.Color.textMain
-                    }
+                TextField {
+                    id: deviceNameField
+                    Layout.fillWidth: true
+                    text: settingsDialog._tempDeviceName
+                    placeholderText: qsTr("输入设备名称")
+                    selectByMouse: true
+                    onTextChanged: settingsDialog._tempDeviceName = text
+                }
 
-                    Label {
-                        text: qsTr("设置一个易于识别的名称，以便在局域网中发现。")
-                        color: Style.Color.textMuted
-                        font.pixelSize: 13
-                        wrapMode: Text.Wrap
-                        Layout.fillWidth: true
-                    }
-
-                    TextField {
-                        id: deviceNameField
-                        Layout.fillWidth: true
-                        text: settingsDialog._tempDeviceName
-                        placeholderText: qsTr("输入设备名称")
-                        selectByMouse: true
-                        onTextChanged: settingsDialog._tempDeviceName = text
-                    }
-
-                    Label {
-                        visible: settingsDialog._tempDeviceName.trim().length === 0
-                        text: qsTr("设备名称不能为空")
-                        color: Style.Color.error
-                        font.pixelSize: 11
-                        font.bold: true
-                    }
+                Label {
+                    visible: settingsDialog._tempDeviceName.trim().length === 0
+                    text: qsTr("设备名称不能为空")
+                    color: Style.Color.error
+                    font.pixelSize: 11
+                    font.bold: true
                 }
             }
 
             // 文件接收卡片：接收路径选择、自动接受开关
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: receiveSection.implicitHeight + 32
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.border
-                border.width: 1
+            SettingsCard {
+                Label {
+                    text: qsTr("存储与接收")
+                    font.pixelSize: 15
+                    font.bold: true
+                    color: Style.Color.textMain
+                }
 
-                ColumnLayout {
-                    id: receiveSection
-                    anchors.fill: parent
-                    anchors.margins: Style.Space.lg
-                    spacing: Style.Space.md
+                Label {
+                    text: qsTr("配置文件保存路径及自动化接收行为。")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 13
+                }
 
-                    Label {
-                        text: qsTr("存储与接收")
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: Style.Color.textMain
-                    }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.Space.sm
 
-                    Label {
-                        text: qsTr("配置文件保存路径及自动化接收行为。")
-                        color: Style.Color.textMuted
+                    TextField {
+                        id: receivePathField
+                        Layout.fillWidth: true
+                        text: settingsDialog._tempReceivePath
+                        readOnly: true
+                        selectByMouse: true
                         font.pixelSize: 13
                     }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Style.Space.sm
+                    Button {
+                        text: qsTr("更改目录")
+                        onClicked: folderDialog.open()
+                    }
+                }
 
-                        TextField {
-                            id: receivePathField
-                            Layout.fillWidth: true
-                            text: settingsDialog._tempReceivePath
-                            readOnly: true
-                            selectByMouse: true
-                            font.pixelSize: 13
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Style.Color.borderSoft
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.Space.lg
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.Space.xs
+
+                        Label {
+                            text: qsTr("自动接受文件")
+                            font.bold: true
+                            font.pixelSize: 14
+                            color: Style.Color.textSecondary
                         }
 
-                        Button {
-                            text: qsTr("更改目录")
-                            onClicked: folderDialog.open()
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("跳过确认弹窗，直接保存文件。")
+                            color: Style.Color.textWeak
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
                         }
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 1
-                        color: Style.Color.borderSoft
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Style.Space.lg
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: Style.Space.xs
-
-                            Label {
-                                text: qsTr("自动接受文件")
-                                font.bold: true
-                                font.pixelSize: 14
-                                color: Style.Color.textSecondary
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: qsTr("跳过确认弹窗，直接保存文件。")
-                                color: Style.Color.textWeak
-                                font.pixelSize: 12
-                                wrapMode: Text.Wrap
-                            }
-                        }
-
-                        Switch {
-                            checked: settingsDialog._tempAutoAcceptFiles
-                            onToggled: settingsDialog._tempAutoAcceptFiles = checked
-                        }
+                    Switch {
+                        checked: settingsDialog._tempAutoAcceptFiles
+                        onToggled: settingsDialog._tempAutoAcceptFiles = checked
                     }
                 }
             }
 
-            // 网络设置卡片
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: historySection.implicitHeight + 32
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.border
-                border.width: 1
-
+            // 历史保留期限卡片
+            SettingsCard {
                 RowLayout {
-                    id: historySection
-                    anchors.fill: parent
-                    anchors.margins: Style.Space.lg
+                    Layout.fillWidth: true
                     spacing: Style.Space.lg
 
                     ColumnLayout {
@@ -361,19 +326,10 @@ Dialog {
                 }
             }
 
-            // 网络设置卡片
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: networkSection.implicitHeight + 32
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.border
-                border.width: 1
-
+            // 传输服务卡片
+            SettingsCard {
                 RowLayout {
-                    id: networkSection
-                    anchors.fill: parent
-                    anchors.margins: Style.Space.lg
+                    Layout.fillWidth: true
                     spacing: 24
 
                     ColumnLayout {
@@ -408,141 +364,118 @@ Dialog {
             }
 
             // 协调服务器卡片
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: rendezvousSection.implicitHeight + 32
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.border
-                border.width: 1
-
-                ColumnLayout {
-                    id: rendezvousSection
-                    anchors.fill: parent
-                    anchors.margins: Style.Space.lg
+            SettingsCard {
+                RowLayout {
                     spacing: Style.Space.md
+                    Layout.fillWidth: true
 
-                    RowLayout {
-                        spacing: Style.Space.md
+                    ColumnLayout {
+                        spacing: Style.Space.xs
                         Layout.fillWidth: true
 
-                        ColumnLayout {
-                            spacing: Style.Space.xs
-                            Layout.fillWidth: true
-
-                            Label {
-                                text: qsTr("协调服务器")
-                                font.pixelSize: 15
-                                font.bold: true
-                                color: Style.Color.textMain
-                            }
-
-                            Label {
-                                text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备；修改后需重启应用生效。")
-                                color: Style.Color.textMuted
-                                font.pixelSize: 13
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
-                            }
+                        Label {
+                            text: qsTr("协调服务器")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
                         }
 
-                        Switch {
-                            checked: settingsDialog._tempRendezvousEnabled
-                            onToggled: settingsDialog._tempRendezvousEnabled = checked
+                        Label {
+                            text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备；修改后需重启应用生效。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
                         }
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 1
-                        color: Style.Color.borderSoft
-                        visible: settingsDialog._tempRendezvousEnabled
+                    Switch {
+                        checked: settingsDialog._tempRendezvousEnabled
+                        onToggled: settingsDialog._tempRendezvousEnabled = checked
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Style.Color.borderSoft
+                    visible: settingsDialog._tempRendezvousEnabled
+                }
+
+                GridLayout {
+                    columns: 3
+                    columnSpacing: Style.Space.md
+                    rowSpacing: Style.Space.sm
+                    visible: settingsDialog._tempRendezvousEnabled
+
+                    Label {
+                        text: qsTr("服务器地址")
+                        font.pixelSize: 13
+                        color: Style.Color.textSecondary
                     }
 
-                    GridLayout {
-                        columns: 3
-                        columnSpacing: Style.Space.md
-                        rowSpacing: Style.Space.sm
-                        visible: settingsDialog._tempRendezvousEnabled
-
-                        Label {
-                            text: qsTr("服务器地址")
-                            font.pixelSize: 13
-                            color: Style.Color.textSecondary
-                        }
-
-                        TextField {
-                            id: rendezvousHostField
-                            Layout.columnSpan: 2
-                            Layout.fillWidth: true
-                            text: settingsDialog._tempRendezvousHost
-                            placeholderText: qsTr("例如：10.10.10.100")
-                            selectByMouse: true
-                            onTextChanged: settingsDialog._tempRendezvousHost = text
-                        }
-
-                        Label {
-                            text: qsTr("服务器端口")
-                            font.pixelSize: 13
-                            color: Style.Color.textSecondary
-                        }
-
-                        SpinBox {
-                            id: rendezvousPortSpinBox
-                            from: 1024
-                            to: 65535
-                            value: settingsDialog._tempRendezvousPort
-                            editable: true
-                            onValueModified: settingsDialog._tempRendezvousPort = value
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        Label {
-                            text: qsTr("Relay 策略")
-                            font.pixelSize: 13
-                            color: Style.Color.textSecondary
-                        }
-
-                        ComboBox {
-                            id: relayModeComboBox
-                            Layout.columnSpan: 2
-                            Layout.fillWidth: true
-                            model: [
-                                { label: qsTr("询问后中继（默认）"), value: 0 },
-                                { label: qsTr("自动中继"), value: 1 },
-                                { label: qsTr("从不中继"), value: 2 }
-                            ]
-                            textRole: "label"
-                            currentIndex: settingsDialog._tempRelayMode
-                            onActivated: settingsDialog._tempRelayMode = model[currentIndex].value
-                        }
+                    TextField {
+                        id: rendezvousHostField
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+                        text: settingsDialog._tempRendezvousHost
+                        placeholderText: qsTr("例如：10.10.10.100")
+                        selectByMouse: true
+                        onTextChanged: settingsDialog._tempRendezvousHost = text
                     }
 
                     Label {
-                        text: qsTr("提示：自动中继会直接通过服务器转发流量，速度可能受限。")
-                        font.pixelSize: 12
-                        color: Style.Color.warning
-                        wrapMode: Text.Wrap
-                        Layout.fillWidth: true
-                        visible: settingsDialog._tempRendezvousEnabled && settingsDialog._tempRelayMode !== 2
+                        text: qsTr("服务器端口")
+                        font.pixelSize: 13
+                        color: Style.Color.textSecondary
                     }
+
+                    SpinBox {
+                        id: rendezvousPortSpinBox
+                        from: 1024
+                        to: 65535
+                        value: settingsDialog._tempRendezvousPort
+                        editable: true
+                        onValueModified: settingsDialog._tempRendezvousPort = value
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Label {
+                        text: qsTr("Relay 策略")
+                        font.pixelSize: 13
+                        color: Style.Color.textSecondary
+                    }
+
+                    ComboBox {
+                        id: relayModeComboBox
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+                        model: [
+                            { label: qsTr("询问后中继（默认）"), value: 0 },
+                            { label: qsTr("自动中继"), value: 1 },
+                            { label: qsTr("从不中继"), value: 2 }
+                        ]
+                        textRole: "label"
+                        currentIndex: settingsDialog._tempRelayMode
+                        onActivated: settingsDialog._tempRelayMode = model[currentIndex].value
+                    }
+                }
+
+                Label {
+                    text: qsTr("提示：自动中继会直接通过服务器转发流量，速度可能受限。")
+                    font.pixelSize: 12
+                    color: Style.Color.warning
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    visible: settingsDialog._tempRendezvousEnabled && settingsDialog._tempRelayMode !== 2
                 }
             }
 
             // 清除缓存卡片
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: cacheSection.implicitHeight + 32
-                color: Style.Color.surface
-                radius: Style.Radius.lg
-                border.color: Style.Color.border
-                border.width: 1
-
+            SettingsCard {
                 RowLayout {
-                    id: cacheSection
-                    anchors.fill: parent
-                    anchors.margins: Style.Space.lg
+                    Layout.fillWidth: true
                     spacing: Style.Space.lg
 
                     ColumnLayout {
