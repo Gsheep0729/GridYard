@@ -220,7 +220,7 @@ void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpo
     }
 
     // 启动超时定时器
-    _timeoutTimer->start(kTimeoutMs);
+    _timeoutTimer->start(_timeoutMs);
 }
 
 // 设置中继握手的访问令牌
@@ -234,6 +234,14 @@ void FileSenderWorker::setRelayToken(const QString &token)
 void FileSenderWorker::requestCancel()
 {
     _cancelRequested.store(true);
+}
+
+// 设置传输超时毫秒数
+void FileSenderWorker::setTimeoutMs(int timeoutMs)
+{
+    if (timeoutMs > 0) {
+        _timeoutMs = timeoutMs;
+    }
 }
 
 // 中继握手：发送 relay_create 行并等待 relay_ready，失败时终结会话
@@ -323,7 +331,7 @@ void FileSenderWorker::onReadyRead()
     _codec->feed(_socket->readAll());
 
     if (_transferActive) {
-        _timeoutTimer->start(kTimeoutMs);
+        _timeoutTimer->start(_timeoutMs);
     }
 }
 
@@ -338,10 +346,13 @@ void FileSenderWorker::onDisconnected()
 // 处理传输超时，清理资源并通知超时失败
 void FileSenderWorker::onTimeout()
 {
-    if (_transferActive) {
-        qWarning() << "FileSenderWorker: 传输超时";
-        finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
+    if (_finished) {
+        return;
     }
+    // 超时覆盖两类停滞：等待响应期间（传输未激活，对端连接后不应答）与
+    // 数据传输期间（已激活，对端停止确认），否则前者会无限悬挂
+    qWarning() << "FileSenderWorker: 传输超时";
+    finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
 }
 
 // 处理数据写入完成回调，写队列有空间时调度发送下一块
@@ -351,7 +362,7 @@ void FileSenderWorker::onBytesWritten(qint64)
         return;
     }
 
-    _timeoutTimer->start(kTimeoutMs);
+    _timeoutTimer->start(_timeoutMs);
     if (!_waitingForFileAck && _socket->bytesToWrite() <= kMaxQueuedBytes) {
         scheduleNextChunk();
     }
@@ -421,7 +432,7 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         if (accepted) {
             emit requestAccepted();
             _transferActive = true;
-            _timeoutTimer->start(kTimeoutMs);
+            _timeoutTimer->start(_timeoutMs);
             if (_fileList.isEmpty()) {
                 if (!sendTransferDone()) {
                     return;
@@ -603,7 +614,7 @@ void FileSenderWorker::sendNextChunk()
         emit progressChanged(_bytesSent, _totalBytes);
     }
 
-    _timeoutTimer->start(kTimeoutMs);
+    _timeoutTimer->start(_timeoutMs);
 
     if (isLastChunk == 1) {
         _waitingForFileAck = true;

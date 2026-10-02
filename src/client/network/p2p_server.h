@@ -59,6 +59,8 @@ public:
     bool start();
     // 停止服务器
     void stop();
+    // 获取监听端口（start 前 start() 用端口 0 时为系统分配值）
+    quint16 serverPort() const;
     // 通过中继服务器加入指定会话（接收端中继降级入口），就绪后按首帧分流处理
     void joinRelaySession(const QString &host, quint16 port, const QString &relayId);
 

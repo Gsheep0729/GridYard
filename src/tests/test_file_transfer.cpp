@@ -8,6 +8,8 @@
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v7.14.2] GY   2026-10-03
+* * 占位超时用例改为真实短超时行为，新增并发双传输端到端用例
 * [v6.3.0] GY   2026-06-25
 * * 新增结束态传输快照信号测试
 * [v5.0.0] GY   2026-06-24
@@ -81,6 +83,7 @@ private slots:
     void testCancelTransfer();
     void testConnectionLost();
     void testTransferTimeout();
+    void testConcurrentTransfers();
     void testLargeFileTransfer();
     void testSha256Verification();
     void testZeroByteFileTransfer();
@@ -809,13 +812,112 @@ void TestFileTransfer::testConnectionLost()
 
 void TestFileTransfer::testTransferTimeout()
 {
-    // 验证超时机制存在
-    // 真正的超时测试需要等待 30 秒，这里只验证机制正确性
-    FileSenderWorker sender;
+    // 真实超时行为：接收端只监听不应答，发送端注入 300ms 短超时后
+    // 应以 TransferTimeout 终结，而不是等满默认 30 秒
+    QTcpServer silentServer;
+    QVERIFY(silentServer.listen(QHostAddress::LocalHost, 0));
 
-    // 验证 sender 有超时处理能力
-    QVERIFY(sender.metaObject()->indexOfSlot("onTimeout()") >= 0);
+    QString sendPath = _sendDir->path() + "/timeout.txt";
+    createTestFile(sendPath, "timeout-payload");
+
+    FileSenderWorker sender;
+    sender.setTimeoutMs(300);  // 注入 300 毫秒级短超时
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    const quint16 port = silentServer.serverPort();
+    QObject::connect(&senderThread, &QThread::started, &sender, [&sender, port, &sendPath]() {
+        sender.startTransfer(QStringLiteral("127.0.0.1"), port, sendPath,
+                             QStringLiteral("timeout-sender"), QStringLiteral("TimeoutSender"));
+    });
+    senderThread.start();
+
+    // 超时应远快于默认 30 秒，5 秒断言窗口足够
+    QVERIFY2(senderSpy.wait(5000), "短超时应在 5 秒内触发终结");
+    QCOMPARE(senderSpy.count(), 1);
+    QCOMPARE(senderSpy.first().at(0).toBool(), false);
+    QCOMPARE(senderSpy.first().at(1).toInt(),
+             static_cast<int>(gy::protocol::ErrorCode::TransferTimeout));
+
+    stopSenderThread(sender, senderThread);
 }
+
+// 并发双传输：两个发送 worker 同时向两个接收服务器传输，双双成功且内容一致
+void TestFileTransfer::testConcurrentTransfers()
+{
+    const QByteArray payloadA = "concurrent-payload-alpha";
+    const QByteArray payloadB = "concurrent-payload-beta-42";
+    const QString pathA = _sendDir->path() + "/conc-a.txt";
+    const QString pathB = _sendDir->path() + "/conc-b.txt";
+    createTestFile(pathA, payloadA);
+    createTestFile(pathB, payloadB);
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setTcpPort(0);
+    P2pServer serverA(_config);
+    QVERIFY(serverA.start());
+    _config->setTcpPort(0);
+    P2pServer serverB(_config);
+    QVERIFY(serverB.start());
+    const quint16 portA = serverA.serverPort();
+    const quint16 portB = serverB.serverPort();
+
+    // 两个接收端都在收到请求后立即接受（先注入接收路径再接受）
+    const QString recvRoot = _recvDir->path();
+    auto acceptHandler = [&recvRoot](FileReceiverWorker *worker, const QVariantMap &) {
+        QMetaObject::invokeMethod(worker, [worker, recvRoot]() {
+            worker->setReceivePath(recvRoot);
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
+    };
+    QObject::connect(&serverA, &P2pServer::transferRequestReceived, &serverA, acceptHandler);
+    QObject::connect(&serverB, &P2pServer::transferRequestReceived, &serverB, acceptHandler);
+
+    // 两个发送 worker 在各自线程同时发起传输
+    FileSenderWorker senderA;
+    FileSenderWorker senderB;
+    QSignalSpy spyA(&senderA, &FileSenderWorker::transferFinished);
+    QSignalSpy spyB(&senderB, &FileSenderWorker::transferFinished);
+    QThread threadA;
+    QThread threadB;
+    senderA.moveToThread(&threadA);
+    senderB.moveToThread(&threadB);
+    threadA.start();
+    threadB.start();
+    QMetaObject::invokeMethod(&senderA, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"), Q_ARG(quint16, portA),
+                              Q_ARG(QString, pathA),
+                              Q_ARG(QString, "conc-sender-a"), Q_ARG(QString, "SenderA"));
+    QMetaObject::invokeMethod(&senderB, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"), Q_ARG(quint16, portB),
+                              Q_ARG(QString, pathB),
+                              Q_ARG(QString, "conc-sender-b"), Q_ARG(QString, "SenderB"));
+
+    // 双双成功（QSignalSpy::wait 只等新信号，并发完成用 QTRY 轮询计数）
+    QTRY_COMPARE_WITH_TIMEOUT(spyA.count(), 1, 15000);
+    QTRY_COMPARE_WITH_TIMEOUT(spyB.count(), 1, 15000);
+    QVERIFY(spyA.first().at(0).toBool());
+    QVERIFY(spyB.first().at(0).toBool());
+
+    // 接收内容与 SHA-256 一致
+    const QString savedA = _recvDir->path() + "/conc-a.txt";
+    const QString savedB = _recvDir->path() + "/conc-b.txt";
+    QCOMPARE(DirSerializer::computeSha256(savedA), DirSerializer::computeSha256(pathA));
+    QCOMPARE(DirSerializer::computeSha256(savedB), DirSerializer::computeSha256(pathB));
+    QFile fileA(savedA);
+    QVERIFY(fileA.open(QIODevice::ReadOnly));
+    QCOMPARE(fileA.readAll(), payloadA);
+    fileA.close();
+    QFile fileB(savedB);
+    QVERIFY(fileB.open(QIODevice::ReadOnly));
+    QCOMPARE(fileB.readAll(), payloadB);
+    fileB.close();
+
+    stopSenderThread(senderA, threadA);
+    stopSenderThread(senderB, threadB);
+}
+
 
 void TestFileTransfer::testLargeFileTransfer()
 {

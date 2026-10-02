@@ -79,6 +79,8 @@ public:
 
     // 设置中继握手的访问令牌，须在 moveToThread 之后、startTransfer 之前调用
     void setRelayToken(const QString &token);
+    // 设置传输超时毫秒数（默认 30 秒，测试注入短超时），须在 startTransfer 之前调用
+    void setTimeoutMs(int timeoutMs);
     // 请求取消：可在任意线程调用（含阻塞等待期间），只置位原子标志，
     // 实际终结由工作线程在阻塞等待的轮询间隙检查该标志后完成
     void requestCancel();
@@ -164,6 +166,7 @@ private:
     // 跨线程仅约定"置位即请求取消"这一单向语义，依赖原子默认顺序一致性，
     // 不与其他状态构成复合同步
     std::atomic_bool _cancelRequested{false};
+    int _timeoutMs = 30000;           // 传输无进展超时（默认 30 秒），可注入短值供测试
     bool         _relayReady = false;      // 中继两端是否已齐备（收到 relay_ready）
     QByteArray   _relayLineBuffer;         // 中继控制行的半行缓冲
     qint64       _totalBytes = 0;         // 本次传输的文件总字节数

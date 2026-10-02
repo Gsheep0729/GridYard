@@ -128,6 +128,12 @@ void P2pServer::stop()
     }
 }
 
+// 获取监听端口
+quint16 P2pServer::serverPort() const
+{
+    return _server ? _server->serverPort() : 0;
+}
+
 // 通过中继服务器加入指定会话：连接、发送 relay_join 握手后交给首帧路由
 void P2pServer::joinRelaySession(const QString &host, quint16 port, const QString &relayId)
 {
