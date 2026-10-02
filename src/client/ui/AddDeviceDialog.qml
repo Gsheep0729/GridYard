@@ -1,17 +1,19 @@
 /**
- * @file    AddDeviceDialog.qml
- * @version 7.11.0
- * @date    2026-10-02
- * @author  GY
- * @brief   添加设备对话框
- *
- * 提供三种跨网段添加设备的方式：复制本机邀请码、粘贴对方邀请码导入、
- * 手动输入 IP 和端口。结果通过行内提示反馈，成功后自动关闭。
- *
- * Change Log:
- * [v7.11.0] GY   2026-10-02
- * * 初始版本，为邀请连接与手动添加设备提供界面入口
- */
+* @file    AddDeviceDialog.qml
+* @version 7.13.2
+* @date    2026-10-02
+* @author  GY
+* @brief   添加设备对话框
+*
+* 提供三种跨网段添加设备的方式：复制本机邀请码、粘贴对方邀请码导入、
+* 手动输入 IP 和端口。结果通过行内提示反馈，成功后自动关闭。
+*
+* Change Log:
+* [v7.13.2] GY   2026-10-03
+* * 修复探测期间关窗吞掉添加结果的问题，成功分支不再依赖弹窗存续
+* [v7.11.0] GY   2026-10-02
+* * 初始版本，为邀请连接与手动添加设备提供界面入口
+*/
 
 import QtQuick
 import QtQuick.Controls
@@ -323,26 +325,24 @@ Dialog {
         target: AppController.reachabilityController
 
         function onInviteImported(success: bool, deviceId: string, errorString: string): void {
-            if (!addDeviceDialog.opened) {
-                return
-            }
             if (success) {
+                // 成功结果不受弹窗存续限制：副作用已在 C++ 侧发生，关闭状态下也要通知列表刷新
                 addDeviceDialog.close()
                 addDeviceDialog.deviceAdded()
-            } else {
+            } else if (addDeviceDialog.opened) {
+                // 失败提示仅在弹窗仍打开时写行内错误，关窗后无处展示，忽略合理
                 addDeviceDialog._importError = errorString.length > 0
                                                ? errorString : qsTr("邀请码无效，请检查后重试")
             }
         }
 
         function onManualEndpointTestResult(success: bool, errorString: string): void {
-            if (!addDeviceDialog.opened) {
-                return
-            }
             if (success) {
+                // 成功结果不受弹窗存续限制：探测期间关窗也不能吞掉添加结果
                 addDeviceDialog.close()
                 addDeviceDialog.deviceAdded()
-            } else {
+            } else if (addDeviceDialog.opened) {
+                // 失败提示仅在弹窗仍打开时写行内错误，关窗后无处展示，忽略合理
                 addDeviceDialog._manualError = errorString.length > 0
                                                ? errorString : qsTr("无法连接该地址")
             }
