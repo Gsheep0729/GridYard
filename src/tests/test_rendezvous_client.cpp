@@ -1,6 +1,6 @@
 /**
 * @file    test_rendezvous_client.cpp
-* @version 7.14.0
+* @version 7.14.2
 * @date    2026-10-02
 * @author  GY
 * @brief   协调节点客户端测试
@@ -10,6 +10,8 @@
 * 以及访问令牌的携带与校验（配 token 正常往返、错 token 被拒）。
 *
 * Change Log:
+* [v7.14.2] GY   2026-10-03
+* * 新增断线重连成功路径用例
 * [v7.14.0] GY   2026-10-03
 * * 新增访问令牌往返与错误令牌被拒用例
 */
@@ -34,6 +36,7 @@ private slots:
     void testPeerEndpointToVariantMap();
     void testRegisterWithTokenSucceeds();
     void testRegisterWithWrongTokenRejected();
+    void testReconnectAfterServerRestart();
 
 private:
     // 连接协调服务器并完成注册（阻塞等待两个信号）
@@ -209,6 +212,29 @@ void TestRendezvousClient::testRegisterWithWrongTokenRejected()
                           35100, 45678);
     QVERIFY2(errorSpy.wait(3000), "错令牌的注册应收到错误响应");
     QVERIFY2(ackSpy.count() == 0, "错令牌的注册不应收到 register_ack");
+}
+
+// 断线重连成功路径：服务器销毁导致断开后，客户端按 3 秒延迟自动重连恢复
+void TestRendezvousClient::testReconnectAfterServerRestart()
+{
+    quint16 port = 0;
+    RendezvousClient client;
+    {
+        RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+        QVERIFY(server.start());
+        port = server.serverPort();
+
+        client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(port));
+        QTRY_VERIFY_WITH_TIMEOUT(client.isConnected(), 3000);
+        // 作用域结束销毁服务器，会话随之断开，触发客户端的自动重连计划
+    }
+
+    QTRY_VERIFY_WITH_TIMEOUT(!client.isConnected(), 5000);
+
+    // 新服务器占用同一端口后，重连延迟（约 3 秒）内应自动恢复连接
+    RendezvousServer restarted{QStringLiteral("127.0.0.1"), port, QString()};
+    QVERIFY(restarted.start());
+    QTRY_VERIFY_WITH_TIMEOUT(client.isConnected(), 8000);
 }
 
 QTEST_MAIN(TestRendezvousClient)
