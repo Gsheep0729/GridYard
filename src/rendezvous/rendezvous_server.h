@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_server.h
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点服务器
@@ -9,8 +9,12 @@
 * 并提供中继邀请（relay_invite / relay_poll）信令。
 * 首行类型为 relay_create / relay_join 的连接剥离握手后移交中继服务器，
 * 使协调与中继可共用同一端口。
+* 会话继承 LineSession，具备行长度上限、握手/空闲超时与连接数上限。
 *
 * Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 会话迁移到 LineSession 基类，补齐行上限、握手/空闲超时与连接数上限
+* * 移除存而不用的 _host 与空槽 onSessionFinished
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请信令与同端口中继连接移交
 * * 会话断开后释放会话与 socket，修复长驻进程的连接泄漏
@@ -26,15 +30,17 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
+#include "line_session.h"
+
 class OnlineRegistry;
 class RendezvousProtocol;
 
-class RendezvousSession : public QObject {
+class RendezvousSession : public LineSession {
     Q_OBJECT
 
 public:
-    explicit RendezvousSession(QTcpSocket *socket, OnlineRegistry *registry, const QString &token, QObject *parent = nullptr);
-    virtual ~RendezvousSession() override = default;
+    explicit RendezvousSession(QTcpSocket *socket, OnlineRegistry *registry, const QString &token,
+                               int handshakeTimeoutMs, int idleTimeoutMs, QObject *parent = nullptr);
 
     void start();
 
@@ -43,31 +49,31 @@ signals:
     // 中继管道连接移交：握手行已剥离，socket 与剩余字节一并交给中继服务器
     void relayPipeRequested(QTcpSocket *socket, const QJsonObject &hello, const QByteArray &pendingData);
 
-private slots:
-    void onReadyRead();
-    void onDisconnected();
-
 private:
+    void processLine(const QByteArray &line);
     void processRequest(const QJsonObject &json);
     void sendResponse(const QJsonObject &json);
 
-    QTcpSocket *_socket = nullptr;
     OnlineRegistry *_registry = nullptr;
     QString _token;
-    QByteArray _buffer;
+    int _handshakeTimeoutMs = 0;
+    int _idleTimeoutMs = 0;
 };
 
 class RendezvousServer : public QObject {
     Q_OBJECT
 
 public:
-    explicit RendezvousServer(const QString &host, quint16 port, const QString &token, QObject *parent = nullptr);
+    explicit RendezvousServer(const QString &host, quint16 port, const QString &token,
+                              int maxSessions = -1, QObject *parent = nullptr);
     virtual ~RendezvousServer() override = default;
 
     bool start();
     void stop();
     bool isListening() const;
     quint16 serverPort() const;
+    // 调整会话握手与空闲超时（测试可调小；对新建立的会话生效）
+    void setSessionTimeouts(int handshakeTimeoutMs, int idleTimeoutMs);
 
 signals:
     void serverStarted(bool success, const QString &error);
@@ -78,13 +84,14 @@ signals:
 
 private slots:
     void onNewConnection();
-    void onSessionFinished();
 
 private:
     QTcpServer *_server = nullptr;
-    QString _host;
     quint16 _port = 0;
     QString _token;
     OnlineRegistry *_registry = nullptr;
     QList<RendezvousSession *> _sessions;
+    int _maxSessions = 0;             // 并发会话上限
+    int _handshakeTimeoutMs = 0;      // 首行握手超时
+    int _idleTimeoutMs = 0;           // 会话空闲超时
 };

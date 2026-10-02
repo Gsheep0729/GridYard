@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点和中继服务入口
@@ -11,6 +11,8 @@
 * - 中继模式：仅提供流式中继转发服务
 *
 * Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 同端口内置中继获得会话与握手等待上限保护
 * [v7.9.0] GY   2026-07-26
 * * 协调节点模式同端口内置中继，支撑 Relay 降级完整链路
 * [v7.8.1] GY   2026-07-26
@@ -36,7 +38,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app{argc, argv};
     app.setApplicationName(QStringLiteral("gridyard-rendezvous"));
-    app.setApplicationVersion(QStringLiteral("7.9.0"));
+    app.setApplicationVersion(QStringLiteral("7.12.0"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("GridYard 协调节点/中继服务"));

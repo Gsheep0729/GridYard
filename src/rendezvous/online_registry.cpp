@@ -1,11 +1,13 @@
 /**
 * @file    online_registry.cpp
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点在线设备注册表实现
 *
 * Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 房间存储改为二级哈希，消除复合键前缀扫描在 room 含 ":" 时的隔离绕过
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请的登记、领取与过期回收
 * [v7.2.0] GY   2026-07-21
@@ -26,17 +28,10 @@ OnlineRegistry::OnlineRegistry(int defaultTtlSeconds, QObject *parent)
 {
 }
 
-// 生成 room:deviceId 复合键
-QString OnlineRegistry::makeKey(const QString &room, const QString &deviceId)
-{
-    return room + QStringLiteral(":") + deviceId;
-}
-
 // 注册或更新设备
 bool OnlineRegistry::upsertPeer(const QString &room, const PeerInfo &peer)
 {
-    const QString key = makeKey(room, peer.deviceId);
-    _peers.insert(key, peer);
+    _rooms[room][peer.deviceId] = peer;
 
     qDebug() << "[OnlineRegistry] 注册设备" << peer.deviceId
              << "到房间" << room << "，TTL" << peer.ttlSeconds << "秒";
@@ -47,11 +42,12 @@ bool OnlineRegistry::upsertPeer(const QString &room, const PeerInfo &peer)
 QList<OnlineRegistry::PeerInfo> OnlineRegistry::peersForRoom(const QString &room) const
 {
     QList<PeerInfo> result;
-    const QString prefix = room + QStringLiteral(":");
+    const QHash<QString, PeerInfo> &devices = _rooms.value(room);
 
-    for (auto it = _peers.lowerBound(prefix); it != _peers.end() && it.key().startsWith(prefix); ++it) {
-        if (!isExpired(it.value())) {
-            result.append(it.value());
+    result.reserve(devices.size());
+    for (const PeerInfo &peer : devices) {
+        if (!isExpired(peer)) {
+            result.append(peer);
         }
     }
 
@@ -61,9 +57,12 @@ QList<OnlineRegistry::PeerInfo> OnlineRegistry::peersForRoom(const QString &room
 // 判断设备是否在房间内且未过期
 bool OnlineRegistry::hasPeer(const QString &room, const QString &deviceId) const
 {
-    const QString key = makeKey(room, deviceId);
-    const auto it = _peers.constFind(key);
-    return it != _peers.constEnd() && !isExpired(it.value());
+    const auto roomIt = _rooms.constFind(room);
+    if (roomIt == _rooms.constEnd()) {
+        return false;
+    }
+    const auto deviceIt = roomIt->constFind(deviceId);
+    return deviceIt != roomIt->constEnd() && !isExpired(deviceIt.value());
 }
 
 // 登记一条中继邀请，等待目标设备轮询领取
@@ -104,18 +103,24 @@ QList<OnlineRegistry::RelayInvite> OnlineRegistry::consumeRelayInvites(
 int OnlineRegistry::pruneExpired()
 {
     int pruned = 0;
-    QList<QString> expiredKeys;
 
-    for (auto it = _peers.constBegin(); it != _peers.constEnd(); ++it) {
-        if (isExpired(it.value())) {
-            expiredKeys.append(it.key());
-            qDebug() << "[OnlineRegistry] 清理过期设备" << it.value().deviceId;
+    for (auto roomIt = _rooms.begin(); roomIt != _rooms.end();) {
+        auto &devices = roomIt.value();
+        for (auto deviceIt = devices.begin(); deviceIt != devices.end();) {
+            if (isExpired(deviceIt.value())) {
+                qDebug() << "[OnlineRegistry] 清理过期设备" << deviceIt->deviceId;
+                deviceIt = devices.erase(deviceIt);
+                pruned++;
+            } else {
+                ++deviceIt;
+            }
         }
-    }
-
-    for (const QString &key : expiredKeys) {
-        _peers.remove(key);
-        pruned++;
+        // 空房间一并回收，避免长驻进程累积空容器
+        if (devices.isEmpty()) {
+            roomIt = _rooms.erase(roomIt);
+        } else {
+            ++roomIt;
+        }
     }
 
     // 过期邀请同样回收，避免目标设备离线后邀请无限堆积
@@ -136,13 +141,17 @@ int OnlineRegistry::pruneExpired()
 // 设备总数量
 int OnlineRegistry::totalCount() const
 {
-    return _peers.size();
+    int total = 0;
+    for (const auto &devices : _rooms) {
+        total += devices.size();
+    }
+    return total;
 }
 
 // 指定房间的设备数量
 int OnlineRegistry::roomCount(const QString &room) const
 {
-    return peersForRoom(room).size();
+    return _rooms.value(room).size();
 }
 
 // 判断设备是否已过期

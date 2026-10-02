@@ -1,12 +1,17 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-26
 * @author  GY
 * @brief   Relay 降级链路测试
 *
 * 测试用例：中继邀请登记与领取、协调端口复用的中继管道、
-* 端到端经中继的文件传输（真实 RendezvousClient + RelayServer + P2pServer + FileSenderWorker）。
+* 端到端经中继的文件传输（真实 RendezvousClient + RelayServer + P2pServer + FileSenderWorker）、
+* 服务端加固（房间隔离、超长行断开、握手/空闲超时、会话数上限）。
+*
+* Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 新增服务端加固用例：房间隔离、超长行、超时、会话上限
 */
 
 #include <QtTest/QtTest>
@@ -97,6 +102,10 @@ private slots:
     void testInvitePollFlow();
     void testRelayPipeOnRendezvousPort();
     void testEndToEndFileTransferThroughRelay();
+    void testRoomIsolation();
+    void testOversizeLineDrops();
+    void testSessionTimeouts();
+    void testSessionCap();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -336,6 +345,146 @@ void TestRelayChain::testEndToEndFileTransferThroughRelay()
 
     workerThread.quit();
     QVERIFY(workerThread.wait(3000));
+}
+
+
+// 房间隔离：room 含 ":" 时不与其他房间互通（二级哈希存储，无前缀扫描绕过）
+void TestRelayChain::testRoomIsolation()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    QVERIFY(server.start());
+    const quint16 port = server.serverPort();
+
+    // 在房间 a 与房间 a:b 各注册一台设备（非 void lambda，不能使用 QTest 断言宏）
+    auto registerInRoom = [&port](const QString &room, const QString &deviceId) -> QTcpSocket *{
+        auto *socket = new QTcpSocket;
+        socket->connectToHost(QHostAddress::LocalHost, port);
+        QElapsedTimer elapsed;
+        elapsed.start();
+        while (socket->state() != QAbstractSocket::ConnectedState && !elapsed.hasExpired(3000)) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        }
+        if (socket->state() != QAbstractSocket::ConnectedState) {
+            qWarning() << "房间测试连接超时";
+            return socket;  // 后续 writeJsonLine 是无害的空操作，用例会在断言处失败
+        }
+        QJsonObject request;
+        request[QStringLiteral("type")] = QStringLiteral("register");
+        request[QStringLiteral("room")] = room;
+        request[QStringLiteral("device_id")] = deviceId;
+        request[QStringLiteral("device_name")] = deviceId;
+        writeJsonLine(socket, request);
+        const QString responseType = readJsonLine(socket)[QStringLiteral("type")].toString();
+        if (responseType != QStringLiteral("register_ack")) {
+            qWarning() << "房间测试注册失败:" << responseType;
+        }
+        return socket;
+    };
+    auto *roomA = registerInRoom(QStringLiteral("a"), QStringLiteral("device-a"));
+    auto *roomAB = registerInRoom(QStringLiteral("a:b"), QStringLiteral("device-ab"));
+
+    // 在房间 a 查询：只能看到房间 a 的设备，绝不能看到 a:b 的
+    auto *querier = registerInRoom(QStringLiteral("a"), QStringLiteral("device-querier"));
+    QJsonObject listRequest;
+    listRequest[QStringLiteral("type")] = QStringLiteral("list_peers");
+    listRequest[QStringLiteral("room")] = QStringLiteral("a");
+    listRequest[QStringLiteral("device_id")] = QStringLiteral("device-querier");
+    writeJsonLine(querier, listRequest);
+
+    const QJsonObject response = readJsonLine(querier);
+    QCOMPARE(response[QStringLiteral("type")].toString(), QStringLiteral("peers"));
+    const QJsonArray items = response[QStringLiteral("items")].toArray();
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.first().toObject()[QStringLiteral("device_id")].toString(),
+             QStringLiteral("device-a"));
+
+    roomA->close();
+    roomAB->close();
+    querier->close();
+    roomA->deleteLater();
+    roomAB->deleteLater();
+    querier->deleteLater();
+}
+
+// 超长控制行：服务端主动断开，不做无界缓冲
+void TestRelayChain::testOversizeLineDrops()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    QVERIFY(server.start());
+
+    auto *socket = new QTcpSocket;
+    socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+
+    // 发送超过 64KB 上限且不含换行的数据
+    socket->write(QByteArray(128 * 1024, 'x'));
+    socket->flush();
+
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::UnconnectedState, 5000);
+    socket->deleteLater();
+}
+
+// 握手与空闲超时：不发首行或注册后长期沉默的连接被回收
+void TestRelayChain::testSessionTimeouts()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    QVERIFY(server.start());
+    server.setSessionTimeouts(400, 500);  // 缩短超时便于测试
+
+    // 握手超时：连接后不发送任何数据
+    auto *silent = new QTcpSocket;
+    silent->connectToHost(QHostAddress::LocalHost, server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(silent->state() == QAbstractSocket::ConnectedState, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(silent->state() == QAbstractSocket::UnconnectedState, 3000);
+    silent->deleteLater();
+
+    // 空闲超时：注册成功后不再发送任何行
+    auto *idle = new QTcpSocket;
+    idle->connectToHost(QHostAddress::LocalHost, server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(idle->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject request;
+    request[QStringLiteral("type")] = QStringLiteral("register");
+    request[QStringLiteral("room")] = QStringLiteral("default");
+    request[QStringLiteral("device_id")] = QStringLiteral("idle-device");
+    writeJsonLine(idle, request);
+    QCOMPARE(readJsonLine(idle)[QStringLiteral("type")].toString(), QStringLiteral("register_ack"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(idle->state() == QAbstractSocket::UnconnectedState, 5000);
+    idle->deleteLater();
+}
+
+// 会话数上限：超出上限的新连接被直接拒绝
+void TestRelayChain::testSessionCap()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString(), 2};
+    QVERIFY(server.start());
+
+    QList<QTcpSocket *> sockets;
+    const auto connectClient = [&server, &sockets](const QString &deviceId) {
+        auto *socket = new QTcpSocket;
+        socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+        QJsonObject request;
+        request[QStringLiteral("type")] = QStringLiteral("register");
+        request[QStringLiteral("room")] = QStringLiteral("default");
+        request[QStringLiteral("device_id")] = deviceId;
+        writeJsonLine(socket, request);
+        QCOMPARE(readJsonLine(socket)[QStringLiteral("type")].toString(), QStringLiteral("register_ack"));
+        sockets.append(socket);
+    };
+
+    // 前两个会话正常建立
+    connectClient(QStringLiteral("cap-a"));
+    connectClient(QStringLiteral("cap-b"));
+
+    // 第三个连接被服务端拒绝（连接被关闭，无法收到注册确认）
+    auto *rejected = new QTcpSocket;
+    rejected->connectToHost(QHostAddress::LocalHost, server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == QAbstractSocket::ConnectedState, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == QAbstractSocket::UnconnectedState, 3000);
+    rejected->deleteLater();
+
+    qDeleteAll(sockets);
 }
 
 QTEST_MAIN(TestRelayChain)

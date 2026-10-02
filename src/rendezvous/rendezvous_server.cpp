@@ -1,11 +1,14 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点服务器实现
 *
 * Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 会话迁移到 LineSession 基类，补齐行上限、握手/空闲超时与连接数上限
+* * 移除存而不用的 _host 与空槽 onSessionFinished
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请信令与同端口中继连接移交
 * * 会话断开后释放会话与 socket，修复长驻进程的连接泄漏
@@ -15,65 +18,56 @@
 
 #include "rendezvous_server.h"
 #include "online_registry.h"
+#include "rendezvous_limits.h"
 #include "rendezvous_protocol.h"
 
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QTimer>
 
+using namespace gy::rendezvous;
+
 // 会话构造函数
-RendezvousSession::RendezvousSession(QTcpSocket *socket, OnlineRegistry *registry, const QString &token, QObject *parent)
-    : QObject{parent}
-    , _socket{socket}
+RendezvousSession::RendezvousSession(QTcpSocket *socket, OnlineRegistry *registry, const QString &token,
+                                     int handshakeTimeoutMs, int idleTimeoutMs, QObject *parent)
+    : LineSession{socket, kMaxRendezvousLineBytes, parent}
     , _registry{registry}
     , _token{token}
+    , _handshakeTimeoutMs{handshakeTimeoutMs}
+    , _idleTimeoutMs{idleTimeoutMs}
 {
-    connect(_socket, &QTcpSocket::readyRead, this, &RendezvousSession::onReadyRead);
-    connect(_socket, &QTcpSocket::disconnected, this, &RendezvousSession::onDisconnected);
+    connect(this, &LineSession::lineReady, this, &RendezvousSession::processLine);
+    connect(this, &LineSession::closed, this, &RendezvousSession::finished);
 }
 
-// 启动会话处理
+// 启动会话处理：开启首行握手超时
 void RendezvousSession::start()
 {
-    qDebug() << "[RendezvousSession] 新会话来自" << _socket->peerAddress().toString();
+    qDebug() << "[RendezvousSession] 新会话来自" << socket()->peerAddress().toString();
+    startHandshakeTimeout(_handshakeTimeoutMs);
 }
 
-// 处理收到的数据，按行解析 JSON 请求
-void RendezvousSession::onReadyRead()
+// 处理一条控制行：刷新空闲超时并按 JSON 解析
+void RendezvousSession::processLine(const QByteArray &line)
 {
-    _buffer.append(_socket->readAll());
-
-    // 按行处理请求（每个请求一行 JSON）
-    while (_buffer.contains('\n')) {
-        int newlineIndex = _buffer.indexOf('\n');
-        QByteArray line = _buffer.left(newlineIndex);
-        _buffer = _buffer.mid(newlineIndex + 1);
-
-        QJsonParseError error;
-        QJsonDocument doc = QJsonDocument::fromJson(line, &error);
-
-        if (error.error != QJsonParseError::NoError) {
-            sendResponse(RendezvousProtocol::buildError(QStringLiteral("无效的 JSON: ") + error.errorString()));
-            continue;
-        }
-
-        if (!doc.isObject()) {
-            sendResponse(RendezvousProtocol::buildError(QStringLiteral("请求必须是 JSON 对象")));
-            continue;
-        }
-
-        processRequest(doc.object());
+    if (_idleTimeoutMs > 0) {
+        startIdleTimeout(_idleTimeoutMs);
     }
-}
 
-// 处理连接断开
-void RendezvousSession::onDisconnected()
-{
-    qDebug() << "[RendezvousSession] 会话断开" << _socket->peerAddress().toString();
-    // socket 无父对象，断开后立即释放，避免长驻进程累积连接对象
-    _socket->deleteLater();
-    _socket = nullptr;
-    emit finished();
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(line, &error);
+
+    if (error.error != QJsonParseError::NoError) {
+        sendResponse(RendezvousProtocol::buildError(QStringLiteral("无效的 JSON: ") + error.errorString()));
+        return;
+    }
+
+    if (!doc.isObject()) {
+        sendResponse(RendezvousProtocol::buildError(QStringLiteral("请求必须是 JSON 对象")));
+        return;
+    }
+
+    processRequest(doc.object());
 }
 
 // 处理 JSON 请求消息
@@ -82,11 +76,10 @@ void RendezvousSession::processRequest(const QJsonObject &json)
     // 中继管道连接：剥离握手行后整条移交，后续字节流不再按 JSON 行解析
     const QString rawType = json[QStringLiteral("type")].toString();
     if (rawType == QStringLiteral("relay_create") || rawType == QStringLiteral("relay_join")) {
-        disconnect(_socket, nullptr, this, nullptr);
-        emit relayPipeRequested(_socket, json, _buffer);
-        _buffer.clear();
-        _socket = nullptr;
-        emit finished();
+        const QByteArray pending = pendingBytes();
+        QTcpSocket *pipeSocket = takeSocket();
+        emit relayPipeRequested(pipeSocket, json, pending);
+        emit closed();  // 会话职责已移交，通知服务器回收本对象
         return;
     }
 
@@ -172,24 +165,28 @@ void RendezvousSession::processRequest(const QJsonObject &json)
 // 发送 JSON 响应
 void RendezvousSession::sendResponse(const QJsonObject &json)
 {
-    if (!_socket) {
+    if (!socket()) {
         return;  // 会话已移交或断开
     }
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact) + '\n';
-    _socket->write(data);
-    _socket->flush();
+    socket()->write(data);
+    socket()->flush();
 }
 
 // -------------------- RendezvousServer --------------------
 
 // 构造函数
-RendezvousServer::RendezvousServer(const QString &host, quint16 port, const QString &token, QObject *parent)
+RendezvousServer::RendezvousServer(const QString &host, quint16 port, const QString &token,
+                                   int maxSessions, QObject *parent)
     : QObject{parent}
-    , _host{host}
     , _port{port}
     , _token{token}
     , _registry{new OnlineRegistry{30, this}}
+    , _maxSessions{maxSessions > 0 ? maxSessions : kMaxRendezvousSessions}
+    , _handshakeTimeoutMs{kRendezvousHandshakeTimeoutMs}
+    , _idleTimeoutMs{kRendezvousIdleTimeoutMs}
 {
+    Q_UNUSED(host);
     _server = new QTcpServer{this};
 }
 
@@ -232,35 +229,48 @@ quint16 RendezvousServer::serverPort() const
     return _server->serverPort();
 }
 
+// 调整会话握手与空闲超时
+void RendezvousServer::setSessionTimeouts(int handshakeTimeoutMs, int idleTimeoutMs)
+{
+    _handshakeTimeoutMs = handshakeTimeoutMs;
+    _idleTimeoutMs = idleTimeoutMs;
+}
+
 // 处理新的客户端连接
 void RendezvousServer::onNewConnection()
 {
-    QTcpSocket *socket = _server->nextPendingConnection();
-    if (!socket) {
-        return;
+    while (_server->hasPendingConnections()) {
+        QTcpSocket *socket = _server->nextPendingConnection();
+        if (!socket) {
+            continue;
+        }
+
+        // 并发会话达到上限时直接拒绝，防止连接堆积拖垮服务
+        if (_sessions.size() >= _maxSessions) {
+            qWarning() << "[RendezvousServer] 会话数达到上限" << _maxSessions << "，拒绝新连接";
+            socket->disconnectFromHost();
+            socket->deleteLater();
+            continue;
+        }
+
+        QString address = socket->peerAddress().toString();
+        qDebug() << "[RendezvousServer] 新连接来自" << address;
+        emit clientConnected(address);
+
+        RendezvousSession *session = new RendezvousSession{socket, _registry, _token,
+                                                           _handshakeTimeoutMs, _idleTimeoutMs, this};
+        _sessions.append(session);
+
+        connect(session, &RendezvousSession::finished, this, [this, session, address]() {
+            _sessions.removeAll(session);
+            session->deleteLater();
+            emit clientDisconnected(address);
+        });
+
+        // 会话移交的中继管道连接转发给接入方（同端口复用）
+        connect(session, &RendezvousSession::relayPipeRequested,
+                this,    &RendezvousServer::relayPipeRequested);
+
+        session->start();
     }
-
-    QString address = socket->peerAddress().toString();
-    qDebug() << "[RendezvousServer] 新连接来自" << address;
-    emit clientConnected(address);
-
-    RendezvousSession *session = new RendezvousSession{socket, _registry, _token, this};
-    _sessions.append(session);
-
-    connect(session, &RendezvousSession::finished, this, [this, session, address]() {
-        _sessions.removeAll(session);
-        session->deleteLater();
-        emit clientDisconnected(address);
-    });
-
-    // 会话移交的中继管道连接转发给接入方（同端口复用）
-    connect(session, &RendezvousSession::relayPipeRequested,
-            this,    &RendezvousServer::relayPipeRequested);
-
-    session->start();
-}
-
-// 处理会话关闭事件
-void RendezvousServer::onSessionFinished()
-{
 }

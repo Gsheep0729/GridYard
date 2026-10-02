@@ -1,6 +1,6 @@
 /**
 * @file    relay_server.h
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器
@@ -9,8 +9,13 @@
 * 中继只转发在线字节流，不落盘文件内容。
 * 两端齐备后向发送端回一行 relay_ready 门控传输开始，任一端离开立即
 * 通知并关闭对端，未完成会话超时回收。
+* 握手等待复用 LineSession（行上限 + 超时），转发带写队列背压，
+* 会话数与积压均有上限。
 *
 * Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 握手等待迁移到 LineSession 基类，补齐会话数与积压上限
+* * 转发增加写队列背压与读缓冲上限，消除大文件转发内存无界增长
 * [v7.9.0] GY   2026-07-26
 * * 会话就绪通知与对端关闭传播，支持同端口复用时的外部连接接入
 * * 首行握手改异步读取，未完成会话增加超时回收
@@ -25,10 +30,13 @@
 #include <QList>
 #include <QMap>
 #include <QObject>
+#include <QSet>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QString>
 #include <QTimer>
+
+#include "line_session.h"
 
 class RelaySession : public QObject {
     Q_OBJECT
@@ -58,7 +66,10 @@ private slots:
     void onReceiverDisconnected();
 
 private:
-    void relayData(QTcpSocket *from, QTcpSocket *to);
+    // 把 from 缓冲里的字节向 to 转发；对端写队列超限时暂停，等待排空续传
+    void pump(QTcpSocket *from, QTcpSocket *to);
+    // 会话未齐备时缓存积压字节，超限返回 false
+    bool appendBacklog(QByteArray &backlog, const QByteArray &data);
 
     QString _relayId;
     QTcpSocket *_sender = nullptr;
@@ -79,6 +90,8 @@ public:
     void stop();
     quint16 serverPort() const;
     int sessionCount() const;
+    // 调整并发中继会话上限（对新建会话生效）
+    void setMaxSessions(int maxSessions);
 
     // 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
     void adoptConnection(QTcpSocket *socket, const QJsonObject &hello, const QByteArray &pendingData);
@@ -102,5 +115,6 @@ private:
     quint16 _port = 0;
     QString _token;
     QMap<QString, RelaySession *> _sessions;
-    QHash<QTcpSocket *, QByteArray> _helloBuffers;  // 等待首行 JSON 的连接缓冲
+    QSet<LineSession *> _pendingHellos;  // 等待握手首行的连接
+    int _maxSessions = 0;
 };

@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 4.2.3)
 
-project(gridyard_rendezvous VERSION 7.9.0 LANGUAGES CXX)
+project(gridyard_rendezvous VERSION 7.12.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,6 +14,9 @@ find_package(Qt6 REQUIRED COMPONENTS Core Network)
 add_library(gy_rendezvous STATIC
     online_registry.h
     online_registry.cpp
+    rendezvous_limits.h
+    line_session.h
+    line_session.cpp
     rendezvous_protocol.h
     rendezvous_protocol.cpp
     rendezvous_server.h

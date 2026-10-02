@@ -1,11 +1,14 @@
 /**
 * @file    relay_server.cpp
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 *
 * Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 握手等待迁移到 LineSession 基类，补齐会话数与积压上限
+* * 转发增加写队列背压与读缓冲上限，消除大文件转发内存无界增长
 * [v7.9.0] GY   2026-07-26
 * * 会话就绪通知、对端关闭传播与未完成会话超时回收
 * * 握手首行改异步读取，新增同端口复用的连接接入入口
@@ -14,16 +17,14 @@
 */
 
 #include "relay_server.h"
+#include "rendezvous_limits.h"
 
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
 
-// 会话等待对端加入的超时时间：覆盖发送端 30 秒就绪等待和接收端轮询延迟
-static constexpr int kSessionIdleTimeoutMs = 60000;
-// 握手首行等待超时
-static constexpr int kHelloTimeoutMs = 5000;
+using namespace gy::rendezvous;
 
 // -------------------- RelaySession --------------------
 
@@ -35,7 +36,7 @@ RelaySession::RelaySession(const QString &relayId, QObject *parent)
     // 只有一端连接的会话可能永远等不到对端，超时后回收，避免 socket 长期悬挂
     _idleTimer = new QTimer{this};
     _idleTimer->setSingleShot(true);
-    _idleTimer->setInterval(kSessionIdleTimeoutMs);
+    _idleTimer->setInterval(60000);
     connect(_idleTimer, &QTimer::timeout, this, [this]() {
         if (!isComplete()) {
             qWarning() << "[RelaySession]" << _relayId << "等待对端加入超时，回收会话";
@@ -72,13 +73,17 @@ bool RelaySession::addSender(QTcpSocket *socket, const QByteArray &pendingData)
 
     _sender = socket;
     _sender->setParent(this);
+    // 读缓冲封顶：转发暂停时形成 TCP 背压，内存有界
+    _sender->setReadBufferSize(kRelayPipeReadBufferBytes);
 
     connect(_sender, &QTcpSocket::readyRead, this, &RelaySession::onSenderReadyRead);
+    connect(_sender, &QTcpSocket::bytesWritten, this, &RelaySession::onReceiverReadyRead);
     connect(_sender, &QTcpSocket::disconnected, this, &RelaySession::onSenderDisconnected);
 
     // 同端口复用场景下握手行之后可能已捎带少量字节，缓存到齐备后转发
-    if (!pendingData.isEmpty()) {
-        _senderBacklog.append(pendingData);
+    if (!appendBacklog(_senderBacklog, pendingData)) {
+        _sender = nullptr;
+        return false;
     }
 
     qDebug() << "[RelaySession]" << _relayId << "发送端已连接";
@@ -95,16 +100,32 @@ bool RelaySession::addReceiver(QTcpSocket *socket, const QByteArray &pendingData
 
     _receiver = socket;
     _receiver->setParent(this);
+    _receiver->setReadBufferSize(kRelayPipeReadBufferBytes);
 
     connect(_receiver, &QTcpSocket::readyRead, this, &RelaySession::onReceiverReadyRead);
+    connect(_receiver, &QTcpSocket::bytesWritten, this, &RelaySession::onSenderReadyRead);
     connect(_receiver, &QTcpSocket::disconnected, this, &RelaySession::onReceiverDisconnected);
 
-    if (!pendingData.isEmpty()) {
-        _receiverBacklog.append(pendingData);
+    if (!appendBacklog(_receiverBacklog, pendingData)) {
+        _receiver = nullptr;
+        return false;
     }
 
     qDebug() << "[RelaySession]" << _relayId << "接收端已连接";
     notifyReady();
+    return true;
+}
+
+// 会话未齐备时缓存积压字节，超限拒绝接入
+bool RelaySession::appendBacklog(QByteArray &backlog, const QByteArray &data)
+{
+    if (backlog.size() + data.size() > kMaxRelayBacklogBytes) {
+        qWarning() << "[RelaySession]" << _relayId << "积压超过上限，拒绝连接";
+        return false;
+    }
+    if (!data.isEmpty()) {
+        backlog.append(data);
+    }
     return true;
 }
 
@@ -173,23 +194,29 @@ void RelaySession::broadcastError(const QString &code, const QString &message)
     }
 }
 
-// 处理发送端可读事件，转发数据到接收端
+// 处理发送端可读事件，向接收端方向转发
 void RelaySession::onSenderReadyRead()
 {
-    relayData(_sender, _receiver);
+    pump(_sender, _receiver);
 }
 
-// 处理接收端可读事件，转发数据到发送端
+// 处理接收端可读事件，向发送端方向转发
 void RelaySession::onReceiverReadyRead()
 {
-    relayData(_receiver, _sender);
+    pump(_receiver, _sender);
 }
 
-// 按方向转发可读字节
-void RelaySession::relayData(QTcpSocket *from, QTcpSocket *to)
+// 把 from 缓冲里的字节向 to 转发；对端写队列超限时暂停，其排空后由 bytesWritten 续传
+void RelaySession::pump(QTcpSocket *from, QTcpSocket *to)
 {
-    if (!from || !to) {
+    if (!from || !to || !isComplete()) {
         return;
+    }
+    if (from->bytesAvailable() == 0) {
+        return;
+    }
+    if (to->bytesToWrite() >= kMaxRelayPeerWriteQueue) {
+        return;  // 等待 to 的 bytesWritten 再次触发本方向
     }
 
     const QByteArray data = from->readAll();
@@ -234,6 +261,7 @@ RelayServer::RelayServer(quint16 port, const QString &token, QObject *parent)
     : QObject{parent}
     , _port{port}
     , _token{token}
+    , _maxSessions{kMaxRelaySessions}
 {
     _server = new QTcpServer{this};
 }
@@ -284,6 +312,14 @@ int RelayServer::sessionCount() const
     return _sessions.size();
 }
 
+// 调整并发中继会话上限
+void RelayServer::setMaxSessions(int maxSessions)
+{
+    if (maxSessions > 0) {
+        _maxSessions = maxSessions;
+    }
+}
+
 // 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
 void RelayServer::adoptConnection(QTcpSocket *socket, const QJsonObject &hello,
                                   const QByteArray &pendingData)
@@ -291,7 +327,7 @@ void RelayServer::adoptConnection(QTcpSocket *socket, const QJsonObject &hello,
     handleRelayHello(socket, hello, pendingData);
 }
 
-// 处理新的客户端连接，异步等待握手首行
+// 处理新的客户端连接：握手等待交给 LineSession（行上限 + 超时）
 void RelayServer::onNewConnection()
 {
     while (_server->hasPendingConnections()) {
@@ -301,47 +337,38 @@ void RelayServer::onNewConnection()
         }
 
         qDebug() << "[RelayServer] 新连接来自" << socket->peerAddress().toString();
-        socket->setParent(this);
 
-        auto *timer = new QTimer{socket};
-        timer->setSingleShot(true);
-        connect(timer, &QTimer::timeout, this, [this, socket]() {
-            dropConnection(socket, QStringLiteral("握手超时"));
-        });
-        connect(socket, &QTcpSocket::readyRead, this, [this, socket, timer]() {
-            auto it = _helloBuffers.find(socket);
-            if (it == _helloBuffers.end()) {
-                return;
-            }
-            it->append(socket->readAll());
+        // 握手等待连接同样有上限，防止空连接堆积
+        if (_pendingHellos.size() >= _maxSessions) {
+            qWarning() << "[RelayServer] 握手等待达到上限，拒绝新连接";
+            dropConnection(socket, QStringLiteral("握手等待达到上限"));
+            continue;
+        }
 
-            const int newlineIndex = it->indexOf('\n');
-            if (newlineIndex < 0) {
-                return;
-            }
-            const QByteArray line = it->left(newlineIndex);
-            const QByteArray leftover = it->mid(newlineIndex + 1);
-            _helloBuffers.erase(it);
-            timer->stop();
-            timer->deleteLater();
+        auto *hello = new LineSession{socket, kMaxRelayHelloBytes, this};
+        _pendingHellos.insert(hello);
 
+        connect(hello, &LineSession::lineReady, this, [this, hello](const QByteArray &line) {
             QJsonParseError error;
             QJsonDocument doc = QJsonDocument::fromJson(line, &error);
             if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-                qWarning() << "[RelayServer] 无效的 JSON 握手";
-                dropConnection(socket, QStringLiteral("无效握手"));
+                hello->finishWithError(QStringLiteral("无效握手"));
                 return;
             }
 
-            handleRelayHello(socket, doc.object(), leftover);
+            // 拿到合法握手：socket 移交中继会话，等待对象完成使命
+            _pendingHellos.remove(hello);
+            const QByteArray leftover = hello->pendingBytes();
+            QTcpSocket *pipe = hello->takeSocket();
+            hello->deleteLater();
+            handleRelayHello(pipe, doc.object(), leftover);
         });
-        connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-        connect(socket, &QObject::destroyed, this, [this, socket]() {
-            _helloBuffers.remove(socket);
+        connect(hello, &LineSession::closed, this, [this, hello]() {
+            _pendingHellos.remove(hello);
+            hello->deleteLater();
         });
 
-        _helloBuffers.insert(socket, {});
-        timer->start(kHelloTimeoutMs);
+        hello->startHandshakeTimeout(kRelayHelloTimeoutMs);
     }
 }
 
@@ -366,6 +393,12 @@ void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
     // 查找或创建会话；接收端先于发送端到达时同样允许先建会话
     RelaySession *session = _sessions.value(relayId);
     if (!session) {
+        // 并发会话达到上限时拒绝新建，已有会话不受影响
+        if (_sessions.size() >= _maxSessions) {
+            qWarning() << "[RelayServer] 会话数达到上限" << _maxSessions << "，拒绝新会话";
+            dropConnection(socket, QStringLiteral("会话数达到上限"));
+            return;
+        }
         session = new RelaySession{relayId, this};
         connect(session, &RelaySession::sessionClosed, this, &RelayServer::onSessionClosed);
         _sessions.insert(relayId, session);
@@ -387,8 +420,6 @@ void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
 void RelayServer::dropConnection(QTcpSocket *socket, const QString &reason)
 {
     qWarning() << "[RelayServer] 关闭中继连接:" << reason;
-    _helloBuffers.remove(socket);
-    socket->disconnect(this);
     socket->disconnectFromHost();
     socket->deleteLater();
 }

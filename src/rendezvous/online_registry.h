@@ -1,14 +1,17 @@
 /**
 * @file    online_registry.h
-* @version 7.9.0
+* @version 7.12.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点在线设备注册表
 *
-* 内存中的在线设备表，以 room + deviceId 为 key 存储。
-* 维护设备的候选端点和 TTL 过期清理，同时保管待领取的中继邀请。
+* 内存中的在线设备表，以 room -> deviceId 两级哈希存储，
+* 房间名可以包含任意字符。维护设备的候选端点、TTL 过期清理，
+* 同时保管待领取的中继邀请。
 *
 * Change Log:
+* [v7.12.0] GY   2026-10-02
+* * 房间存储改为二级哈希，消除复合键前缀扫描在 room 含 ":" 时的隔离绕过
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请登记与按目标设备一次性领取
 * [v7.2.0] GY   2026-07-21
@@ -18,10 +21,9 @@
 #pragma once
 
 #include <QDateTime>
+#include <QHash>
 #include <QList>
-#include <QMap>
 #include <QObject>
-#include <QPair>
 #include <QString>
 #include <QStringList>
 
@@ -81,9 +83,8 @@ public:
 
 private:
     bool isExpired(const PeerInfo &peer) const;
-    static QString makeKey(const QString &room, const QString &deviceId);
 
     int _defaultTtlSeconds = 30;
-    QMap<QString, PeerInfo> _peers;  // room:deviceId -> peer
-    QMap<QString, RelayInvite> _relayInvites;  // relayId -> invite，过期由 pruneExpired 统一回收
+    QHash<QString, QHash<QString, PeerInfo>> _rooms;  // room -> (deviceId -> peer)
+    QHash<QString, RelayInvite> _relayInvites;        // relayId -> invite，过期由 pruneExpired 统一回收
 };
