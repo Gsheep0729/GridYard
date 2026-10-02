@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.13.0
+ * @version 7.13.1
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -11,6 +11,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
  * Change Log:
+ * [v7.13.1] GY   2026-10-02
+ * * Toast 连续提示时重置自动关闭计时，修复第二条被旧计时截断
  * [v7.13.0] GY   2026-10-02
  * * 本机信息弹窗设备名改用 textMain，修复启动时 undefined 到 QColor 的告警
  * [v7.11.0] GY   2026-10-02
@@ -156,6 +158,7 @@ ApplicationWindow {
         toastPopup.isError = isError
         toastLabel.text = message
         toastPopup.open()
+        toastTimer.restart()  // 连续提示时重置计时，避免第二条被上一条的旧计时提前关掉
     }
 
     function showErrorToast(message: string): void {
