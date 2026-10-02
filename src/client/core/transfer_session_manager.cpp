@@ -1,11 +1,16 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.9.0
+* @version 7.10.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.10.0] GY   2026-10-02
+* * 会话存储与增量通知委托给 TransferSessionModel
+* * 记录映射与文件清理策略委托给 TransferSessionMapper
+* * 接收 worker 改为独立映射管理，会话行不再内嵌 worker 指针
+* * 会话字段名与状态值收敛为 gy::session 具名常量
 * [v7.9.0] GY   2026-07-26
 * * Relay 降级链路落地：直连候选轮询失败后按策略进入 awaiting_relay，
 *   经协调服务器邀请建立中继传输
@@ -56,13 +61,13 @@
 #include "file_sender_worker.h"
 #include "p2p_server.h"
 #include "rendezvous_client.h"
+#include "transfer_session_mapper.h"
+#include "transfer_session_model.h"
 
-// 确保 QVariant::fromValue 能处理 FileReceiverWorker*
+// 确保跨线程信号投递与测试中 QVariant 取回可用
 Q_DECLARE_METATYPE(FileReceiverWorker*)
 
 #include <QDebug>
-#include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QSet>
 #include <QThread>
@@ -73,40 +78,37 @@ Q_DECLARE_METATYPE(FileReceiverWorker*)
 #include <algorithm>
 #include <utility>
 
+using namespace gy::session;
+
 namespace {
 
 // 判断会话状态是否为已结束（完成、失败、拒绝、取消）
 bool isFinishedStatus(const QString &status)
 {
-    return status == "completed" || status == "failed"
-           || status == "rejected" || status == "cancelled";
+    return status == kStatusCompleted || status == kStatusFailed
+           || status == kStatusRejected || status == kStatusCancelled;
 }
-
-// 等待用户做出中继决策的超时时间
-static constexpr int kRelayDecisionTimeoutMs = 120000;
-// 等待协调服务器受理中继邀请的超时
-static constexpr int kRelayInviteTimeoutMs = 5000;
 
 // 根据 Worker 结果归一化最终状态，避免取消和拒绝被错误折叠成 failed
 QString normalizedFinalStatus(bool success, gy::protocol::ErrorCode errorCode,
                               const QString &currentStatus)
 {
-    if (currentStatus == "cancelled") {
-        return "cancelled";
+    if (currentStatus == kStatusCancelled) {
+        return kStatusCancelled;
     }
-    if (currentStatus == "rejected") {
-        return "rejected";
+    if (currentStatus == kStatusRejected) {
+        return kStatusRejected;
     }
     if (success) {
-        return "completed";
+        return kStatusCompleted;
     }
     if (errorCode == gy::protocol::ErrorCode::UserRejected) {
-        return "rejected";
+        return kStatusRejected;
     }
     if (errorCode == gy::protocol::ErrorCode::UserCancelled) {
-        return "cancelled";
+        return kStatusCancelled;
     }
-    return "failed";
+    return kStatusFailed;
 }
 
 // 统计发送任务中的真实文件数和总字节数，为早失败场景保留完整历史快照
@@ -134,12 +136,6 @@ QPair<int, qint64> transferStatsForPath(const QString &path)
     return {fileCount, totalBytes};
 }
 
-// 从会话字段读取 UTC 时间
-QDateTime sessionTime(const QVariantMap &session, const QString &key)
-{
-    return QDateTime::fromString(session.value(key).toString(), Qt::ISODateWithMs);
-}
-
 // 构建文件夹根目录预览（只显示顶层文件和目录）
 QVariantList buildRootPreview(const QStringList &paths)
 {
@@ -165,22 +161,30 @@ QVariantList buildRootPreview(const QStringList &paths)
     return result;
 }
 
+// 等待用户做出中继决策的超时时间
+static constexpr int kRelayDecisionTimeoutMs = 120000;
+// 等待协调服务器受理中继邀请的超时
+static constexpr int kRelayInviteTimeoutMs = 5000;
+
 }
 
 // 构造函数
 TransferSessionManager::TransferSessionManager(QObject *parent)
     : QObject{parent}
+    , _model{new TransferSessionModel{this}}
 {
 }
 
 // 获取会话列表（供 QML 绑定）
 QVariantList TransferSessionManager::sessions() const
 {
-    QVariantList list;
-    for (const QVariantMap &session : _sessions) {
-        list.append(session);
-    }
-    return list;
+    return _model->sessions();
+}
+
+// 获取承载会话行的增量通知模型
+TransferSessionModel *TransferSessionManager::sessionModel() const
+{
+    return _model;
 }
 
 // 初始化：绑定配置、发现服务、P2P 服务器和协调客户端
@@ -249,22 +253,22 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     QVariantMap session;
-    session["sessionId"] = sessionId;
-    session["type"]      = "send";
-    session["deviceId"]  = deviceId;
-    session["peerDeviceName"] = peerName;
-    session["filePath"]  = filePath;
-    session["fileName"]  = QFileInfo{filePath}.fileName();
-    session["isDirectory"] = QFileInfo{filePath}.isDir();
-    session["fileCount"] = fileCount;
-    session["status"]    = "connecting";
-    session["progress"]  = 0;
-    session["bytesTransferred"] = 0;
-    session["totalBytes"] = totalBytes;
-    session["createdAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    session["fileList"]  = QVariantList{};
-    session["localPath"] = "";
-    session["canDeleteLocalFile"] = false;
+    session[kSessionId] = sessionId;
+    session[kType]      = kTypeSend;
+    session[kDeviceId]  = deviceId;
+    session[kPeerDeviceName] = peerName;
+    session[kFilePath]  = filePath;
+    session[kFileName]  = QFileInfo{filePath}.fileName();
+    session[kIsDirectory] = QFileInfo{filePath}.isDir();
+    session[kFileCount] = fileCount;
+    session[kStatus]    = kStatusConnecting;
+    session[kProgress]  = 0;
+    session[kBytesTransferred] = 0;
+    session[kTotalBytes] = totalBytes;
+    session[kCreatedAt] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    session[kFileList]  = QVariantList{};
+    session[kLocalPath] = "";
+    session[kCanDeleteLocalFile] = false;
 
     // 委托 ConfigManager 填充发送方信息（Tell, Don't Ask）
     _config->fillSenderInfo(session);
@@ -276,15 +280,15 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
         for (const auto &item : fileList) {
             paths.append(item.relativePath);
         }
-        session["fileList"] = buildRootPreview(paths);
+        session[kFileList] = buildRootPreview(paths);
     }
 
-    _sessions.append(session);
+    _model->appendSession(session);
     emit sessionsChanged();
 
     qDebug() << "[TransferSession] 会话已创建，ID:" << sessionId;
 
-    startSendWorker(_sessions.last(), endpoints, QString(), true);
+    startSendWorker(session, endpoints, QString(), true);
 }
 
 // 创建发送 worker 并在工作线程中运行；allowRelayFallback 标记直连失败后可降级
@@ -292,10 +296,10 @@ void TransferSessionManager::startSendWorker(const QVariantMap &session,
                                              const QList<QPair<QString, quint16>> &endpoints,
                                              const QString &relayId, bool allowRelayFallback)
 {
-    const QString sessionId = session["sessionId"].toString();
-    const QString filePath = session["filePath"].toString();
-    const QString senderDeviceId = session["senderDeviceId"].toString();
-    const QString senderName = session["senderName"].toString();
+    const QString sessionId = session.value(kSessionId).toString();
+    const QString filePath = session.value(kFilePath).toString();
+    const QString senderDeviceId = session.value(kSenderDeviceId).toString();
+    const QString senderName = session.value(kSenderName).toString();
 
     // 创建 FileSenderWorker 并在工作线程中运行
     auto *worker = new FileSenderWorker{};
@@ -319,43 +323,35 @@ void TransferSessionManager::startSendWorker(const QVariantMap &session,
 
     connect(worker, &FileSenderWorker::progressChanged,
             this, [this, sessionId](qint64 bytesSent, qint64 totalBytes) {
-        // 遍历会话列表找到匹配的发送会话并更新进度
-        for (int i = 0; i < _sessions.size(); ++i) {
-            if (_sessions[i]["sessionId"].toString() == sessionId) {
-                const QString previousStatus = _sessions[i]["status"].toString();
-                const int previousProgress = _sessions[i]["progress"].toInt();
-                const qint64 previousTotalBytes = _sessions[i]["totalBytes"].toLongLong();
-                const int progress = totalBytes > 0 ? (bytesSent * 100 / totalBytes) : 0;  // 百分比计算
+        // 就地更新发送会话进度，模型只发出该行的 dataChanged
+        _model->updateSession(sessionId, [this, bytesSent, totalBytes](QVariantMap &session) {
+            const QString previousStatus = session.value(kStatus).toString();
+            const int previousProgress = session.value(kProgress).toInt();
+            const qint64 previousTotalBytes = session.value(kTotalBytes).toLongLong();
+            const int progress = totalBytes > 0 ? (bytesSent * 100 / totalBytes) : 0;  // 百分比计算
 
-                _sessions[i]["status"] = "transferring";
-                _sessions[i]["progress"] = progress;
-                _sessions[i]["bytesTransferred"] = bytesSent;
-                _sessions[i]["totalBytes"] = totalBytes;
-                // 仅在状态、进度或总字节数实际变化时通知 QML，避免文件夹传输任务频繁闪烁
-                if (previousStatus != "transferring"
-                    || previousProgress != progress
-                    || previousTotalBytes != totalBytes) {
-                    emit sessionsChanged();
-                }
-                break;
+            session[kStatus] = kStatusTransferring;
+            session[kProgress] = progress;
+            session[kBytesTransferred] = bytesSent;
+            session[kTotalBytes] = totalBytes;
+            // 仅在状态、进度或总字节数实际变化时通知 QML，避免文件夹传输任务频繁闪烁
+            if (previousStatus != kStatusTransferring
+                || previousProgress != progress
+                || previousTotalBytes != totalBytes) {
+                emit sessionsChanged();
             }
-        }
+        });
     });
 
     connect(worker, &FileSenderWorker::transferFinished,
             this, [this, sessionId, thread, allowRelayFallback](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         // 先读取当前会话状态，用户手动取消/拒绝的状态不应被 Worker 结果覆盖
-        QString currentStatus = "failed";
-        for (const QVariantMap &session : std::as_const(_sessions)) {
-            if (session["sessionId"].toString() == sessionId) {
-                currentStatus = session["status"].toString();
-                break;
-            }
-        }
+        const QVariantMap snapshot = _model->sessionById(sessionId);
+        const QString currentStatus = snapshot.value(kStatus).toString();
 
         // 直连阶段失败时按 Relay 策略进入中继降级决策，不立即终结会话；
         // 用户主动取消/拒绝、或中继阶段自身的失败不再次降级
-        if (!success && allowRelayFallback && currentStatus == "connecting"
+        if (!success && allowRelayFallback && currentStatus == kStatusConnecting
             && errorCode != gy::protocol::ErrorCode::UserCancelled
             && errorCode != gy::protocol::ErrorCode::UserRejected
             && relayDegradationAvailable()) {
@@ -389,59 +385,46 @@ bool TransferSessionManager::relayDegradationAvailable() const
 // 直连失败后进入等待中继决策状态，并启动决策超时保护
 void TransferSessionManager::enterAwaitingRelay(const QString &sessionId)
 {
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() != sessionId) {
-            continue;
-        }
-
-        _sessions[i]["status"] = "awaiting_relay";
-        _sessions[i]["errorMsg"] = tr("直连失败，等待中继决策");
-        emit sessionsChanged();
-
-        // QML 长时间不响应（弹窗被忽略、AutoRelay 入口缺失）时自动失败，避免会话悬挂
-        auto *timer = new QTimer{this};
-        timer->setSingleShot(true);
-        connect(timer, &QTimer::timeout, this, [this, sessionId]() {
-            QTimer *pendingTimer = _relayDecisionTimers.take(sessionId);
-            if (pendingTimer) {
-                pendingTimer->deleteLater();
-            }
-            for (int j = 0; j < _sessions.size(); ++j) {
-                if (_sessions[j]["sessionId"].toString() == sessionId
-                    && _sessions[j]["status"].toString() == "awaiting_relay") {
-                    finalizeSession(sessionId, "failed", gy::protocol::ErrorCode::TransferTimeout,
-                                    tr("等待中继确认超时"));
-                    break;
-                }
-            }
-        });
-        timer->start(kRelayDecisionTimeoutMs);
-        _relayDecisionTimers[sessionId] = timer;
-
-        const QString deviceId = _sessions[i]["deviceId"].toString();
-        qDebug() << "[TransferSession] 直连失败，进入中继决策状态" << sessionId;
-        emit relayModeRequested(sessionId, deviceId);
+    const bool updated = _model->updateSession(sessionId, [](QVariantMap &session) {
+        session[kStatus] = kStatusAwaitingRelay;
+        session[kErrorMsg] = QObject::tr("直连失败，等待中继决策");
+    });
+    if (!updated) {
         return;
     }
+    emit sessionsChanged();
+
+    // QML 长时间不响应（弹窗被忽略、AutoRelay 入口缺失）时自动失败，避免会话悬挂
+    auto *timer = new QTimer{this};
+    timer->setSingleShot(true);
+    connect(timer, &QTimer::timeout, this, [this, sessionId]() {
+        QTimer *pendingTimer = _relayDecisionTimers.take(sessionId);
+        if (pendingTimer) {
+            pendingTimer->deleteLater();
+        }
+        if (_model->sessionById(sessionId).value(kStatus).toString() == kStatusAwaitingRelay) {
+            finalizeSession(sessionId, kStatusFailed, gy::protocol::ErrorCode::TransferTimeout,
+                            tr("等待中继确认超时"));
+        }
+    });
+    timer->start(kRelayDecisionTimeoutMs);
+    _relayDecisionTimers[sessionId] = timer;
+
+    const QString deviceId = _model->sessionById(sessionId).value(kDeviceId).toString();
+    qDebug() << "[TransferSession] 直连失败，进入中继决策状态" << sessionId;
+    emit relayModeRequested(sessionId, deviceId);
 }
 
 // 用户确认后经中继通道重新建立发送（直连失败降级入口）
 void TransferSessionManager::retryViaRelay(const QString &sessionId)
 {
-    int sessionIndex = -1;
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() == sessionId) {
-            sessionIndex = i;
-            break;
-        }
-    }
-
-    if (sessionIndex < 0) {
+    const QVariantMap snapshot = _model->sessionById(sessionId);
+    if (snapshot.isEmpty()) {
         emit errorOccurred(tr("会话不存在，无法使用中继"));
         return;
     }
-    if (_sessions[sessionIndex]["type"].toString() != "send"
-        || _sessions[sessionIndex]["status"].toString() != "awaiting_relay") {
+    if (snapshot.value(kType).toString() != kTypeSend
+        || snapshot.value(kStatus).toString() != kStatusAwaitingRelay) {
         emit errorOccurred(tr("会话已结束，无法使用中继"));
         return;
     }
@@ -449,21 +432,23 @@ void TransferSessionManager::retryViaRelay(const QString &sessionId)
     if (!_rendezvous || !_rendezvous->isConnected()) {
         // 协调服务器不可用时中继无从建立，直接终结并说明原因
         clearRelayPendingState(sessionId);
-        finalizeSession(sessionId, "failed", gy::protocol::ErrorCode::ConnectionLost,
+        finalizeSession(sessionId, kStatusFailed, gy::protocol::ErrorCode::ConnectionLost,
                         tr("协调服务器未连接，无法使用中继"));
         return;
     }
 
     clearRelayPendingState(sessionId);  // 决策已做出，超时保护随之撤销
 
-    const QString deviceId = _sessions[sessionIndex]["deviceId"].toString();
-    const QString fileName = _sessions[sessionIndex]["fileName"].toString();
-    const qint64 totalBytes = _sessions[sessionIndex]["totalBytes"].toLongLong();
+    const QString deviceId = snapshot.value(kDeviceId).toString();
+    const QString fileName = snapshot.value(kFileName).toString();
+    const qint64 totalBytes = snapshot.value(kTotalBytes).toLongLong();
 
     const QString relayId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    _sessions[sessionIndex]["relayId"] = relayId;
-    _sessions[sessionIndex]["status"] = "connecting";
-    _sessions[sessionIndex]["errorMsg"] = tr("正在建立中继通道");
+    _model->updateSession(sessionId, [&relayId](QVariantMap &session) {
+        session[kRelayId] = relayId;
+        session[kStatus] = kStatusConnecting;
+        session[kErrorMsg] = QObject::tr("正在建立中继通道");
+    });
     emit sessionsChanged();
 
     // 受理超时保护：5 秒内未收到协调服务器确认则终结会话
@@ -509,16 +494,10 @@ void TransferSessionManager::onRelayInviteAck(const QString &relayId)
         return;  // 迟到的确认
     }
 
-    int sessionIndex = -1;
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() == sessionId) {
-            sessionIndex = i;
-            break;
-        }
-    }
-    if (sessionIndex < 0
-        || _sessions[sessionIndex]["status"].toString() != "connecting"
-        || _sessions[sessionIndex]["relayId"].toString() != relayId) {
+    const QVariantMap snapshot = _model->sessionById(sessionId);
+    if (snapshot.isEmpty()
+        || snapshot.value(kStatus).toString() != kStatusConnecting
+        || snapshot.value(kRelayId).toString() != relayId) {
         return;  // 会话已终结或已发起新一轮中继
     }
 
@@ -528,7 +507,7 @@ void TransferSessionManager::onRelayInviteAck(const QString &relayId)
                       static_cast<quint16>(_config->rendezvousPort())});
 
     qDebug() << "[TransferSession] 中继邀请已受理，建立中继发送" << sessionId;
-    startSendWorker(_sessions[sessionIndex], endpoints, relayId, false);
+    startSendWorker(snapshot, endpoints, relayId, false);
 }
 
 // 中继邀请未在期限内得到协调服务器受理
@@ -542,145 +521,154 @@ void TransferSessionManager::onRelayInviteTimeout(const QString &relayId)
         return;
     }
 
-    finalizeSession(sessionId, "failed", gy::protocol::ErrorCode::TransferTimeout,
+    finalizeSession(sessionId, kStatusFailed, gy::protocol::ErrorCode::TransferTimeout,
                     tr("协调服务器未响应中继请求"));
 }
 
 // 接收会话（用户确认接收文件）
 void TransferSessionManager::acceptReceiveSession(const QString &sessionId)
 {
-    // 查找会话对应的 worker
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() == sessionId &&
-            _sessions[i]["type"].toString() == "receive") {
-
-            if (isFinishedStatus(_sessions[i]["status"].toString())) {
-                break;  // 会话已结束，worker 已释放，忽略迟到的接受
-            }
-            FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
-            if (worker) {
-                // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
-                QMetaObject::invokeMethod(worker, [worker]() {
-                    worker->acceptTransfer();
-                }, Qt::QueuedConnection);
-                _sessions[i]["status"] = "transferring";
-                emit sessionsChanged();
-            }
-            break;
-        }
+    const QVariantMap snapshot = _model->sessionById(sessionId);
+    if (snapshot.isEmpty() || snapshot.value(kType).toString() != kTypeReceive) {
+        return;
     }
+    if (isFinishedStatus(snapshot.value(kStatus).toString())) {
+        return;  // 会话已结束，worker 已释放，忽略迟到的接受
+    }
+    FileReceiverWorker *worker = _receiveWorkers.value(sessionId);
+    if (!worker) {
+        return;
+    }
+
+    // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+    QMetaObject::invokeMethod(worker, [worker]() {
+        worker->acceptTransfer();
+    }, Qt::QueuedConnection);
+    _model->updateSession(sessionId, [](QVariantMap &session) {
+        session[kStatus] = kStatusTransferring;
+    });
+    emit sessionsChanged();
 }
 
 // 拒绝接收会话
 void TransferSessionManager::rejectReceiveSession(const QString &sessionId)
 {
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() == sessionId &&
-            _sessions[i]["type"].toString() == "receive") {
-
-            if (isFinishedStatus(_sessions[i]["status"].toString())) {
-                break;  // 会话已结束，worker 已释放，忽略迟到的拒绝
-            }
-            FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
-            if (worker) {
-                // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
-                QMetaObject::invokeMethod(worker, [worker]() {
-                    worker->rejectTransfer();
-                }, Qt::QueuedConnection);
-                _sessions[i]["status"] = "rejected";
-                emit sessionsChanged();
-            }
-            break;
-        }
+    const QVariantMap snapshot = _model->sessionById(sessionId);
+    if (snapshot.isEmpty() || snapshot.value(kType).toString() != kTypeReceive) {
+        return;
     }
+    if (isFinishedStatus(snapshot.value(kStatus).toString())) {
+        return;  // 会话已结束，worker 已释放，忽略迟到的拒绝
+    }
+    FileReceiverWorker *worker = _receiveWorkers.value(sessionId);
+    if (!worker) {
+        return;
+    }
+
+    // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+    QMetaObject::invokeMethod(worker, [worker]() {
+        worker->rejectTransfer();
+    }, Qt::QueuedConnection);
+    _model->updateSession(sessionId, [](QVariantMap &session) {
+        session[kStatus] = kStatusRejected;
+    });
+    emit sessionsChanged();
 }
 
 // 取消传输会话
 void TransferSessionManager::cancelSession(const QString &sessionId)
 {
-    // 查找会话
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() == sessionId) {
-            if (isFinishedStatus(_sessions[i]["status"].toString())) {
-                break;  // 已结束会话不能再取消，其 worker 可能已释放
-            }
-            QString type = _sessions[i]["type"].toString();
+    const QVariantMap snapshot = _model->sessionById(sessionId);
+    if (snapshot.isEmpty()) {
+        return;
+    }
+    if (isFinishedStatus(snapshot.value(kStatus).toString())) {
+        return;  // 已结束会话不能再取消，其 worker 可能已释放
+    }
+    const QString type = snapshot.value(kType).toString();
 
-            // 取消也撤销未决的中继决策/邀请等待
-            clearRelayPendingState(sessionId);
+    // 取消也撤销未决的中继决策/邀请等待
+    clearRelayPendingState(sessionId);
 
-            if (type == "send") {
-                // 发送方：通过 worker 发送 Cancel 帧
-                FileSenderWorker *worker = _sendWorkers.value(sessionId);
-                if (worker) {
-                    QMetaObject::invokeMethod(worker, "cancel");
-                }
-            } else if (type == "receive") {
-                // 接收方：拒绝传输（会触发对方超时或连接断开）
-                FileReceiverWorker *worker = _sessions[i]["worker"].value<FileReceiverWorker*>();
-                if (worker) {
-                    // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
-                    QMetaObject::invokeMethod(worker, [worker]() {
-                        worker->rejectTransfer(tr("用户取消"));
-                    }, Qt::QueuedConnection);
-                }
-            }
-
-            // 更新状态
-            _sessions[i]["status"] = "cancelled";
-            emit sessionsChanged();
-
-            qDebug() << "TransferSessionManager: 取消会话" << sessionId;
-            break;
+    if (type == kTypeSend) {
+        // 发送方：通过 worker 发送 Cancel 帧
+        FileSenderWorker *worker = _sendWorkers.value(sessionId);
+        if (worker) {
+            QMetaObject::invokeMethod(worker, "cancel");
+        }
+    } else if (type == kTypeReceive) {
+        // 接收方：拒绝传输（会触发对方超时或连接断开）
+        FileReceiverWorker *worker = _receiveWorkers.value(sessionId);
+        if (worker) {
+            // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+            QMetaObject::invokeMethod(worker, [worker]() {
+                worker->rejectTransfer(QObject::tr("用户取消"));
+            }, Qt::QueuedConnection);
         }
     }
+
+    // 更新状态
+    _model->updateSession(sessionId, [](QVariantMap &session) {
+        session[kStatus] = kStatusCancelled;
+    });
+    emit sessionsChanged();
+
+    qDebug() << "TransferSessionManager: 取消会话" << sessionId;
 }
 
 // 移除已结束的传输记录
 void TransferSessionManager::removeSession(const QString &sessionId)
 {
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() == sessionId) {
-            const QString status = _sessions[i]["status"].toString();
-
-            // 只允许移除已完成、失败、取消的会话
-            if (isFinishedStatus(status)) {
-                const QString recordId = _sessions[i]["recordId"].toString();
-                _sessions.removeAt(i);
-                emit sessionsChanged();
-                if (!recordId.isEmpty()) {
-                    emit transferHistoryDeleteRequested({recordId});
-                }
-                qDebug() << "TransferSessionManager: 移除会话" << sessionId;
-            } else {
-                qWarning() << "TransferSessionManager: 无法移除进行中的会话" << sessionId;
-            }
-            break;
-        }
+    const QVariantMap snapshot = _model->sessionById(sessionId);
+    if (snapshot.isEmpty()) {
+        return;
     }
+
+    // 只允许移除已完成、失败、取消的会话
+    if (!isFinishedStatus(snapshot.value(kStatus).toString())) {
+        qWarning() << "TransferSessionManager: 无法移除进行中的会话" << sessionId;
+        return;
+    }
+
+    const QString recordId = snapshot.value(kRecordId).toString();
+    _model->removeSession(sessionId);
+    emit sessionsChanged();
+    if (!recordId.isEmpty()) {
+        emit transferHistoryDeleteRequested({recordId});
+    }
+    qDebug() << "TransferSessionManager: 移除会话" << sessionId;
 }
 
 // 移除传输记录并删除已接收的本地文件
 void TransferSessionManager::removeSessionAndDeleteFile(const QString &sessionId)
 {
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() != sessionId) {
-            continue;
-        }
-
-        if (!deleteReceivedFile(_sessions[i])) {
-            return;
-        }
-
-        const QString recordId = _sessions[i]["recordId"].toString();
-        _sessions.removeAt(i);
-        emit sessionsChanged();
-        if (!recordId.isEmpty()) {
-            emit transferHistoryDeleteRequested({recordId});
-        }
-        emit messageOccurred(tr("已删除本地文件并移除传输记录"));
+    const QVariantMap snapshot = _model->sessionById(sessionId);
+    if (snapshot.isEmpty()) {
         return;
     }
+
+    QString failedPath;
+    switch (TransferSessionMapper::deleteReceivedFile(snapshot, &failedPath)) {
+    case TransferSessionMapper::DeleteResult::Deleted:
+        break;
+    case TransferSessionMapper::DeleteResult::NotEligible:
+        emit errorOccurred(tr("该记录没有可删除的已接收文件"));
+        return;
+    case TransferSessionMapper::DeleteResult::InvalidPath:
+        emit errorOccurred(tr("本地保存路径无效或文件不存在，未移除记录"));
+        return;
+    case TransferSessionMapper::DeleteResult::RemoveFailed:
+        emit errorOccurred(tr("无法删除本地文件：%1").arg(failedPath));
+        return;
+    }
+
+    const QString recordId = snapshot.value(kRecordId).toString();
+    _model->removeSession(sessionId);
+    emit sessionsChanged();
+    if (!recordId.isEmpty()) {
+        emit transferHistoryDeleteRequested({recordId});
+    }
+    emit messageOccurred(tr("已删除本地文件并移除传输记录"));
 }
 
 // 清空所有已结束的传输记录（可选删除已接收文件）
@@ -689,82 +677,70 @@ void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles, con
     int removedCount = 0;
     int deletedCount = 0;
     QStringList recordIds;
+    QStringList removedSessionIds;
 
-    // 倒序移除，避免删除元素后改变后续索引
-    for (int i = _sessions.size() - 1; i >= 0; --i) {
-        if (!isFinishedStatus(_sessions[i]["status"].toString())) {
+    // 先基于快照决定要移除哪些会话（含文件删除），再从模型中精确移除，
+    // 删除失败的记录保持原样，便于用户重新处理
+    const QVariantList snapshot = _model->sessions();
+    for (const QVariant &entry : snapshot) {
+        const QVariantMap session = entry.toMap();
+        if (!isFinishedStatus(session.value(kStatus).toString())) {
             continue;
         }
-        if (!deviceId.isEmpty() && _sessions[i]["deviceId"].toString() != deviceId) {
+        if (!deviceId.isEmpty() && session.value(kDeviceId).toString() != deviceId) {
             continue;
         }
 
-        if (deleteReceivedFiles && _sessions[i]["canDeleteLocalFile"].toBool()) {
-            if (!deleteReceivedFile(_sessions[i])) {
+        if (deleteReceivedFiles && session.value(kCanDeleteLocalFile).toBool()) {
+            QString failedPath;
+            const auto result = TransferSessionMapper::deleteReceivedFile(session, &failedPath);
+            if (result == TransferSessionMapper::DeleteResult::InvalidPath) {
+                emit errorOccurred(tr("本地保存路径无效或文件不存在，未移除记录"));
+                continue;
+            }
+            if (result != TransferSessionMapper::DeleteResult::Deleted) {
+                emit errorOccurred(tr("无法删除本地文件：%1").arg(failedPath));
                 continue;
             }
             ++deletedCount;
         }
 
-        const QString recordId = _sessions[i]["recordId"].toString();
+        const QString recordId = session.value(kRecordId).toString();
         if (!recordId.isEmpty()) {
             recordIds.append(recordId);
         }
-        _sessions.removeAt(i);
+        removedSessionIds.append(session.value(kSessionId).toString());
         ++removedCount;
     }
 
-    if (removedCount > 0) {
-        emit sessionsChanged();
-        if (!recordIds.isEmpty()) {
-            emit transferHistoryDeleteRequested(recordIds);
-        }
-        emit messageOccurred(deleteReceivedFiles
-                             ? tr("已清理 %1 条记录并删除 %2 个本地项目")
-                                   .arg(removedCount).arg(deletedCount)
-                             : tr("已清理 %1 条传输记录").arg(removedCount));
-    }
-}
-
-// 删除已接收的本地文件（仅允许接收成功的记录）
-bool TransferSessionManager::deleteReceivedFile(const QVariantMap &session)
-{
-    if (!session["canDeleteLocalFile"].toBool()
-        || session["type"].toString() != "receive"
-        || session["status"].toString() != "completed") {
-        emit errorOccurred(tr("该记录没有可删除的已接收文件"));
-        return false;
+    if (removedCount == 0) {
+        return;
     }
 
-    const QString localPath = QDir::cleanPath(session["localPath"].toString());
-    const QFileInfo info{localPath};
-    if (!info.isAbsolute() || localPath == QDir::rootPath() || !info.exists()) {
-        emit errorOccurred(tr("本地保存路径无效或文件不存在，未移除记录"));
-        return false;
+    for (const QString &id : removedSessionIds) {
+        _model->removeSession(id);
     }
-
-    // 符号链接按文件删除，避免递归进入链接目标
-    const bool removed = info.isDir() && !info.isSymLink()
-                         ? QDir{localPath}.removeRecursively()
-                         : QFile::remove(localPath);
-    if (!removed) {
-        emit errorOccurred(tr("无法删除本地文件：%1").arg(localPath));
-        return false;
+    emit sessionsChanged();
+    if (!recordIds.isEmpty()) {
+        emit transferHistoryDeleteRequested(recordIds);
     }
-    return true;
+    emit messageOccurred(deleteReceivedFiles
+                         ? tr("已清理 %1 条记录并删除 %2 个本地项目")
+                               .arg(removedCount).arg(deletedCount)
+                         : tr("已清理 %1 条传输记录").arg(removedCount));
 }
 
 // 处理新的传输请求（创建接收会话，通知 UI 弹窗确认）
 void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worker,
                                                         const QVariantMap &request)
 {
-    const QString sessionId = request["sessionId"].toString();
-    const QString senderDeviceId = request["senderDeviceId"].toString();
-    const QString senderName = request["senderName"].toString();
-    const QString fileName = request["fileName"].toString();
-    const qint64 fileSize = request["fileSize"].toLongLong();
-    const int totalFiles = request["totalFiles"].toInt();
-    const qint64 totalBytes = request["totalBytes"].toLongLong();
+    const QString sessionId = request.value(kSessionId).toString();
+    const QString senderDeviceId = request.value(kSenderDeviceId).toString();
+    const QString senderName = request.value(kSenderName).toString();
+    const QString fileName = request.value(kFileName).toString();
+    const qint64 fileSize = request.value(kFileSize).toLongLong();
+    const int totalFiles = request.value(kTotalFiles).toInt();
+    const qint64 totalBytes = request.value(kTotalBytes).toLongLong();
     qDebug() << "[TransferSession] 收到传输请求";
     qDebug() << "[TransferSession] 发送方设备ID:" << senderDeviceId;
     qDebug() << "[TransferSession] 发送方:" << senderName;
@@ -782,21 +758,22 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     }
 
     QVariantMap session = request;
-    session["type"]      = "receive";
-    session["deviceId"]  = senderDeviceId;
-    session["peerDeviceName"] = senderName;
-    session["senderName"] = senderName;
-    session["filePath"]  = "";
-    session["status"]    = "waiting_confirm";
-    session["progress"]  = 0;
-    session["bytesTransferred"] = 0;
-    session["worker"]    = QVariant::fromValue(worker);
-    session["createdAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    session["fileCount"] = totalFiles;
-    session["localPath"] = "";
-    session["canDeleteLocalFile"] = false;
+    session[kType]      = kTypeReceive;
+    session[kDeviceId]  = senderDeviceId;
+    session[kPeerDeviceName] = senderName;
+    session[kSenderName] = senderName;
+    session[kFilePath]  = "";
+    session[kStatus]    = kStatusWaitingConfirm;
+    session[kProgress]  = 0;
+    session[kBytesTransferred] = 0;
+    session[kCreatedAt] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    session[kFileCount] = totalFiles;
+    session[kLocalPath] = "";
+    session[kCanDeleteLocalFile] = false;
 
-    _sessions.append(session);
+    // 接收 worker 以独立映射管理生命周期，会话行不再内嵌 worker 指针
+    _receiveWorkers[sessionId] = worker;
+    _model->appendSession(session);
     emit sessionsChanged();
 
     qDebug() << "[TransferSession] 接收会话已创建，ID:" << sessionId;
@@ -804,26 +781,23 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     // 连接接收进度信号（通过 QMetaObject 跨线程投递回主线程）
     connect(worker, &FileReceiverWorker::progressChanged,
             this, [this, sessionId](qint64 bytesReceived, qint64 totalBytes) {
-        for (int i = 0; i < _sessions.size(); ++i) {
-            if (_sessions[i]["sessionId"].toString() == sessionId) {
-                const QString previousStatus = _sessions[i]["status"].toString();
-                const int previousProgress = _sessions[i]["progress"].toInt();
-                const qint64 previousTotalBytes = _sessions[i]["totalBytes"].toLongLong();
-                const int progress = totalBytes > 0 ? (bytesReceived * 100 / totalBytes) : 0;
+        _model->updateSession(sessionId, [this, bytesReceived, totalBytes](QVariantMap &session) {
+            const QString previousStatus = session.value(kStatus).toString();
+            const int previousProgress = session.value(kProgress).toInt();
+            const qint64 previousTotalBytes = session.value(kTotalBytes).toLongLong();
+            const int progress = totalBytes > 0 ? (bytesReceived * 100 / totalBytes) : 0;
 
-                _sessions[i]["status"] = "transferring";
-                _sessions[i]["progress"] = progress;
-                _sessions[i]["bytesTransferred"] = bytesReceived;
-                _sessions[i]["totalBytes"] = totalBytes;
-                // 仅在可见字段变化时通知 QML，减少高频进度更新导致的不必要刷新
-                if (previousStatus != "transferring"
-                    || previousProgress != progress
-                    || previousTotalBytes != totalBytes) {
-                    emit sessionsChanged();
-                }
-                break;
+            session[kStatus] = kStatusTransferring;
+            session[kProgress] = progress;
+            session[kBytesTransferred] = bytesReceived;
+            session[kTotalBytes] = totalBytes;
+            // 仅在可见字段变化时通知 QML，减少高频进度更新导致的不必要刷新
+            if (previousStatus != kStatusTransferring
+                || previousProgress != progress
+                || previousTotalBytes != totalBytes) {
+                emit sessionsChanged();
             }
-        }
+        });
     });
 
     // 连接接收完成信号，生成最终快照并触发持久化
@@ -831,14 +805,9 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
             this, [this, sessionId, worker](bool success, gy::protocol::ErrorCode errorCode,
                                             const QString &errorMsg, const QString &savedPath) {
         qDebug() << "[TransferSession] 接收传输完成，成功:" << success << "错误:" << errorMsg;
-        QString currentStatus = "failed";
-        for (const QVariantMap &session : std::as_const(_sessions)) {
-            if (session["sessionId"].toString() == sessionId) {
-                currentStatus = session["status"].toString();
-                break;
-            }
-        }
-        const QString finalStatus = normalizedFinalStatus(success, errorCode, currentStatus);
+        const QVariantMap snapshot = _model->sessionById(sessionId);
+        const QString finalStatus = normalizedFinalStatus(success, errorCode,
+                                                          snapshot.value(kStatus).toString());
         finalizeSession(sessionId, finalStatus, errorCode, errorMsg, savedPath);
 
         worker->deleteLater();
@@ -850,10 +819,10 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
         emit messageOccurred(tr("已自动接受 \"%1\"，正在保存").arg(fileName));
     } else {
         // 通知 QML 弹窗确认
-        const QVariantList previewFiles = _sessions.last()["fileList"].toList();
+        const QVariantList previewFiles = session.value(kFileList).toList();
         emit receiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
                                     fileSize, totalFiles, totalBytes,
-                                    _sessions.last()["isDirectory"].toBool(), previewFiles);
+                                    session.value(kIsDirectory).toBool(), previewFiles);
     }
 
     qDebug() << "TransferSessionManager: 收到接收请求" << sessionId
@@ -865,14 +834,10 @@ void TransferSessionManager::restoreFinishedTransfers(const QList<TransferRecord
 {
     bool changed = false;
     for (auto it = records.crbegin(); it != records.crend(); ++it) {
-        const bool exists = std::any_of(_sessions.cbegin(), _sessions.cend(),
-                                        [&it](const QVariantMap &session) {
-                                            return session["sessionId"].toString() == it->sessionId;
-                                        });
-        if (exists) {
+        if (_model->hasSession(it->sessionId)) {
             continue;
         }
-        _sessions.append(sessionFromRecord(*it));
+        _model->appendSession(TransferSessionMapper::sessionFromRecord(*it));
         changed = true;
     }
 
@@ -887,94 +852,56 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
                                              const QString &errorMessage,
                                              const QString &savedPath)
 {
-    for (int i = 0; i < _sessions.size(); ++i) {
-        if (_sessions[i]["sessionId"].toString() != sessionId) {
-            continue;
-        }
+    bool found = false;
+    QVariantMap updated;
+    _model->updateSession(sessionId, [&](QVariantMap &session) {
+        found = true;
 
-        // 会话终结时兜底清理中继相关等待状态
-        clearRelayPendingState(sessionId);
-
-        _sessions[i]["status"] = finalStatus;
-        _sessions[i]["progress"] = finalStatus == "completed" ? 100 : _sessions[i]["progress"].toInt();
-        _sessions[i]["errorMsg"] = errorMessage;
-        _sessions[i]["errorCode"] = static_cast<quint16>(errorCode);
-        // 会话结束后接收 worker 即将 deleteLater，清空指针避免后续 cancel/accept 操作已释放对象
-        _sessions[i].remove("worker");
-        if (finalStatus == "completed") {
-            _sessions[i]["bytesTransferred"] = _sessions[i]["totalBytes"];
+        session[kStatus] = finalStatus;
+        session[kProgress] = finalStatus == kStatusCompleted ? 100 : session.value(kProgress).toInt();
+        session[kErrorMsg] = errorMessage;
+        session[kErrorCode] = static_cast<quint16>(errorCode);
+        if (finalStatus == kStatusCompleted) {
+            session[kBytesTransferred] = session.value(kTotalBytes);
         }
         if (!savedPath.isEmpty()) {
-            _sessions[i]["localPath"] = savedPath;
-            _sessions[i]["canDeleteLocalFile"] = finalStatus == "completed";  // 仅接收成功时允许删除本地文件
+            session[kLocalPath] = savedPath;
+            session[kCanDeleteLocalFile] = finalStatus == kStatusCompleted;  // 仅接收成功时允许删除本地文件
         }
 
-        QString recordId = _sessions[i]["recordId"].toString();
+        QString recordId = session.value(kRecordId).toString();
         if (recordId.isEmpty()) {
             recordId = QUuid::createUuid().toString(QUuid::WithoutBraces);  // 首次完成时生成持久化记录 ID
-            _sessions[i]["recordId"] = recordId;
+            session[kRecordId] = recordId;
         }
+        updated = session;
+    });
 
-        emit sessionsChanged();
-
-        if (finalStatus == "completed") {
-            if (_sessions[i]["type"].toString() == "receive" && _config) {
-                emit transferCompleted(sessionId, _sessions[i]["fileName"].toString(),
-                                       _config->receivePath());
-            }
-            emit messageOccurred(_sessions[i]["type"].toString() == "send"
-                                     ? tr("文件 \"%1\" 发送成功").arg(_sessions[i]["fileName"].toString())
-                                     : tr("文件 \"%1\" 接收成功").arg(_sessions[i]["fileName"].toString()));
-        } else if (_sessions[i]["type"].toString() == "send") {
-            emit errorOccurred(tr("发送失败：%1").arg(errorMessage));
-        } else {
-            emit errorOccurred(tr("接收失败：%1").arg(errorMessage));
-        }
-
-        TransferRecord record;
-        record.recordId = recordId;
-        record.sessionId = _sessions[i]["sessionId"].toString();
-        record.peerDeviceId = _sessions[i]["deviceId"].toString();
-        record.peerName = _sessions[i]["peerDeviceName"].toString();
-        record.direction = _sessions[i]["type"].toString() == "send"
-                               ? RecordDirection::Outgoing
-                               : RecordDirection::Incoming;
-        record.displayName = _sessions[i]["fileName"].toString();
-        record.isDirectory = _sessions[i]["isDirectory"].toBool();
-        record.fileCount = _sessions[i]["fileCount"].toInt();
-        record.totalBytes = _sessions[i]["totalBytes"].toLongLong();
-        record.status = finalStatus;
-        record.startedAt = sessionTime(_sessions[i], "createdAt");
-        record.finishedAt = QDateTime::currentDateTimeUtc();
-        record.errorCode = finalStatus == "completed" ? 0 : static_cast<int>(errorCode);
-        record.errorMessage = finalStatus == "completed" ? QString{} : errorMessage;
-        emit transferToPersist(record);
+    if (!found) {
         return;
     }
-}
 
-// 将一条历史记录恢复成 QML 可消费的会话项
-QVariantMap TransferSessionManager::sessionFromRecord(const TransferRecord &record) const
-{
-    QVariantMap session;
-    session["recordId"] = record.recordId;
-    session["sessionId"] = record.sessionId;
-    session["type"] = record.direction == RecordDirection::Outgoing ? "send" : "receive";
-    session["deviceId"] = record.peerDeviceId;
-    session["peerDeviceName"] = record.peerName;
-    session["filePath"] = "";
-    session["fileName"] = record.displayName;
-    session["isDirectory"] = record.isDirectory;
-    session["fileCount"] = record.fileCount;
-    session["status"] = record.status;
-    session["progress"] = record.status == "completed" ? 100 : 0;
-    session["bytesTransferred"] = record.status == "completed" ? record.totalBytes : 0;
-    session["totalBytes"] = record.totalBytes;
-    session["createdAt"] = record.startedAt.toUTC().toString(Qt::ISODateWithMs);
-    session["fileList"] = QVariantList{};
-    session["localPath"] = "";
-    session["canDeleteLocalFile"] = false;
-    session["errorCode"] = record.errorCode;
-    session["errorMsg"] = record.errorMessage;
-    return session;
+    // 会话终结时兜底清理中继相关等待状态
+    clearRelayPendingState(sessionId);
+    // 接收 worker 已终结，从映射中移除，后续 cancel/accept 不再触达该对象
+    _receiveWorkers.remove(sessionId);
+
+    emit sessionsChanged();
+
+    const bool isSend = updated.value(kType).toString() == kTypeSend;
+    const QString displayName = updated.value(kFileName).toString();
+    if (finalStatus == kStatusCompleted) {
+        if (!isSend && _config) {
+            emit transferCompleted(sessionId, displayName, _config->receivePath());
+        }
+        emit messageOccurred(isSend
+                                 ? tr("文件 \"%1\" 发送成功").arg(displayName)
+                                 : tr("文件 \"%1\" 接收成功").arg(displayName));
+    } else if (isSend) {
+        emit errorOccurred(tr("发送失败：%1").arg(errorMessage));
+    } else {
+        emit errorOccurred(tr("接收失败：%1").arg(errorMessage));
+    }
+
+    emit transferToPersist(TransferSessionMapper::recordFromSession(updated));
 }

@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 7.9.0
+* @version 7.10.0
 * @date    2026-07-21
 * @author  GY
 * @brief   GridYard 客户端程序入口
@@ -17,6 +17,8 @@
 *   --name <name>       指定设备名称
 *
 * Change Log:
+* [v7.10.0] GY   2026-10-02
+* * 版本同步到 v7.10.0
 * [v7.9.0] GY   2026-07-26
 * * 版本同步到 v7.9.0，文件头版本与 Change Log 对齐
 * [v6.8.1] GY   2026-06-28
@@ -109,7 +111,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("7.9.0");
+    QGuiApplication::setApplicationVersion("7.10.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
     // 统一设置窗口图标，覆盖任务栏和窗口标题栏
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));

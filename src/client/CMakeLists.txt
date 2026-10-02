@@ -37,6 +37,10 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/transfer_controller.cpp
     core/transfer_session_manager.h
     core/transfer_session_manager.cpp
+    core/transfer_session_mapper.h
+    core/transfer_session_mapper.cpp
+    core/transfer_session_model.h
+    core/transfer_session_model.cpp
 )
 
 set(GRIDYARD_CLIENT_NETWORK_SOURCES

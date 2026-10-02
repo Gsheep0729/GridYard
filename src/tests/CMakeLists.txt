@@ -105,6 +105,8 @@ qt_add_executable(test_history_controller test_history_controller.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
     ${CLIENT_NET_DIR}/chat_connection.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
@@ -205,6 +207,8 @@ qt_add_executable(test_file_transfer test_file_transfer.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_sender_worker.cpp
@@ -228,6 +232,8 @@ qt_add_executable(test_session_manager test_session_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_sender_worker.cpp
@@ -250,6 +256,8 @@ qt_add_executable(test_integration test_integration.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_sender_worker.cpp

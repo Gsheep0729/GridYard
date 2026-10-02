@@ -1,11 +1,20 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.9.0
+* @version 7.10.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器
 *
+* 编排传输会话的建立、确认、取消与终结，并将运行期会话行委托给
+* TransferSessionModel 存储与增量通知，记录映射委托给 TransferSessionMapper。
+* 发送与接收 worker 分别以独立映射管理生命周期。
+*
 * Change Log:
+* [v7.10.0] GY   2026-10-02
+* * 拆分 God Object：会话存储与通知移入 TransferSessionModel，
+*   记录映射与文件清理策略移入 TransferSessionMapper，
+*   接收 worker 改为独立映射管理（根治会话行内悬空指针），
+*   魔法字段名收敛为 gy::session 具名常量
 * [v7.9.0] GY   2026-07-26
 * * Relay 降级链路落地：直连候选轮询失败后按策略进入 awaiting_relay，
 *   经协调服务器邀请建立中继传输（retryViaRelay）
@@ -43,6 +52,7 @@
 
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QPair>
 #include <QStringList>
@@ -60,13 +70,17 @@ class FileSenderWorker;
 class P2pServer;
 class QTimer;
 class RendezvousClient;
+class TransferSessionModel;
 
 class TransferSessionManager : public QObject {
 private:
     Q_OBJECT
 
 public:
+    // 返回会话快照列表（兼容 QML 拉取式消费与测试）
     QVariantList sessions() const;
+    // 返回承载会话行的增量通知模型（所有权归本管理器）
+    TransferSessionModel *sessionModel() const;
 
     // 初始化（由 AppController 调用；协调客户端用于中继降级信令，可为空）
     void init(ConfigManager *config, DiscoveryService *discovery, P2pServer *p2pServer,
@@ -128,10 +142,6 @@ private:
     void finalizeSession(const QString &sessionId, const QString &finalStatus,
                          gy::protocol::ErrorCode errorCode, const QString &errorMessage,
                          const QString &savedPath = {});
-    // 将一条历史记录恢复成 QML 可消费的会话项
-    QVariantMap sessionFromRecord(const TransferRecord &record) const;
-    // 删除失败时保留记录，便于用户重新处理
-    bool deleteReceivedFile(const QVariantMap &session);
     // 创建发送 worker 并在工作线程中运行；allowRelayFallback 标记直连失败后可降级
     void startSendWorker(const QVariantMap &session,
                          const QList<QPair<QString, quint16>> &endpoints,
@@ -151,10 +161,11 @@ private:
     DiscoveryService *_discovery = nullptr; // 在线设备与发送端点查询服务
     P2pServer        *_p2pServer = nullptr; // 入站传输请求来源
     RendezvousClient *_rendezvous = nullptr; // 协调节点客户端（中继降级信令）
+    TransferSessionModel *_model = nullptr; // 会话行存储与 QML 增量通知
 
-    QList<QVariantMap> _sessions;  // QML 绑定的发送、接收和历史会话列表
-    QHash<QString, FileSenderWorker*> _sendWorkers;  // 发送方 worker 映射（sessionId -> worker）
-    QHash<QString, QTimer*> _relayDecisionTimers;    // awaiting_relay 决策超时（sessionId -> timer）
-    QHash<QString, QString> _pendingRelayInvites;    // 等待受理的中继邀请（relayId -> sessionId）
-    QHash<QString, QTimer*> _relayInviteTimers;      // 中继邀请受理超时（relayId -> timer）
+    QHash<QString, FileSenderWorker*> _sendWorkers;      // 发送方 worker 映射（sessionId -> worker）
+    QHash<QString, FileReceiverWorker*> _receiveWorkers; // 接收方 worker 映射（sessionId -> worker）
+    QHash<QString, QTimer*> _relayDecisionTimers;        // awaiting_relay 决策超时（sessionId -> timer）
+    QHash<QString, QString> _pendingRelayInvites;        // 等待受理的中继邀请（relayId -> sessionId）
+    QHash<QString, QTimer*> _relayInviteTimers;          // 中继邀请受理超时（relayId -> timer）
 };

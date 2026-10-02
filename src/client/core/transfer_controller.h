@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.h
-* @version 7.9.0
+* @version 7.10.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 *
 * Change Log:
+* [v7.10.0] GY   2026-10-02
+* * 新增 sessionModel 属性，QML 可绑定增量通知的会话模型
 * [v7.9.0] GY   2026-07-26
 * * 新增 retryViaRelay 入口，QML 确认后驱动中继重试
 * [v7.8.0] GY   2026-07-21
@@ -16,9 +18,12 @@
 
 #pragma once
 
+#include <QAbstractItemModel>
 #include <QObject>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
+
+#include "transfer_session_model.h"
 
 class TransferSessionManager;
 
@@ -27,6 +32,7 @@ private:
     Q_OBJECT
     QML_ANONYMOUS
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
+    Q_PROPERTY(QAbstractItemModel* sessionModel READ sessionModel CONSTANT)
 
 public:
     explicit TransferController(TransferSessionManager *manager, QObject *parent = nullptr);
@@ -37,6 +43,9 @@ public:
 
     // 获取 QML 可绑定的传输会话列表
     QVariantList sessions() const;
+
+    // 获取承载会话行的增量通知模型
+    QAbstractItemModel *sessionModel() const;
 
     // 创建发送会话
     Q_INVOKABLE void createSendSession(const QString &deviceId, const QString &filePath);

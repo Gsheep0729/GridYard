@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.9.0
+* @version 7.10.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 *
 * Change Log:
+* [v7.10.0] GY   2026-10-02
+* * 新增 sessionModel 属性透传
 * [v7.9.0] GY   2026-07-26
 * * 新增 retryViaRelay 透传
 * [v7.8.0] GY   2026-07-21
@@ -48,6 +50,12 @@ TransferController::TransferController(TransferSessionManager *manager, QObject 
 QVariantList TransferController::sessions() const
 {
     return _manager ? _manager->sessions() : QVariantList{};
+}
+
+// 获取承载会话行的增量通知模型
+QAbstractItemModel *TransferController::sessionModel() const
+{
+    return _manager ? _manager->sessionModel() : nullptr;
 }
 
 // 创建发送会话
