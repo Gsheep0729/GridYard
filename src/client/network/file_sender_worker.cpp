@@ -1,6 +1,6 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.14.0
+* @version 7.14.1
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
@@ -10,6 +10,8 @@
 * 支持多文件/目录传输、背压控制、取消操作和超时检测。
 *
 * Change Log:
+* [v7.14.1] GY   2026-10-03
+* * 候选连接与中继等待循环检查取消标志，阻塞期取消可达
 * [v7.14.0] GY   2026-10-03
 * * relay_create 握手行携带访问令牌
 * [v7.9.0] GY   2026-07-26
@@ -173,6 +175,12 @@ void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpo
     bool connected = false;
     QString lastError;
     for (const auto &endpoint : endpoints) {
+        // 阻塞等待不可中断，只能在重试之间检查取消标志（见护栏第 7 条）
+        if (_cancelRequested.load()) {
+            _socket->abort();
+            finish(false, gy::protocol::ErrorCode::UserCancelled, tr("已取消"));
+            return;
+        }
         qDebug() << "[FileSender] 正在连接到" << endpoint.first << ":" << endpoint.second;
         _socket->connectToHost(endpoint.first, endpoint.second);
         // 连接建立最多等待 5 秒，避免离线设备导致发送线程长时间卡住。
@@ -221,6 +229,13 @@ void FileSenderWorker::setRelayToken(const QString &token)
     _relayToken = token;
 }
 
+// 请求取消：任意线程可调，只置位原子标志；
+// 实际终结由工作线程在阻塞等待间隙检查标志后走 finish() 统一出口
+void FileSenderWorker::requestCancel()
+{
+    _cancelRequested.store(true);
+}
+
 // 中继握手：发送 relay_create 行并等待 relay_ready，失败时终结会话
 bool FileSenderWorker::waitForRelayReady()
 {
@@ -241,6 +256,12 @@ bool FileSenderWorker::waitForRelayReady()
     QElapsedTimer elapsed;
     elapsed.start();
     while (!_relayReady) {
+        // 忙等期间事件循环不跑，排队的 cancel() 不可达，靠原子标志感知取消
+        if (_cancelRequested.load()) {
+            _socket->abort();
+            finish(false, gy::protocol::ErrorCode::UserCancelled, tr("已取消"));
+            return false;
+        }
         if (_socket->state() != QAbstractSocket::ConnectedState) {
             finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("中继连接已断开"));
             return false;
@@ -683,6 +704,7 @@ void FileSenderWorker::cancel()
     if (_finished) {
         return;
     }
+    _cancelRequested.store(true);
     // 先发取消帧（此时 socket 尚未关闭），再走统一终结出口。
     // finish() 内部 cleanup 会把 _transferActive 置 false，随后 disconnectFromHost
     // 触发的 onDisconnected 因此不会再次终结，配合 _finished 标志杜绝重复发射。

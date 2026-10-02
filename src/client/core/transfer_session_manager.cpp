@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.14.0
+* @version 7.14.1
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.14.1] GY   2026-10-03
+* * 取消发送会话时先跨线程置位取消标志，阻塞期取消可达
 * [v7.14.0] GY   2026-10-03
 * * 启动发送 worker 前注入中继握手令牌
 * [v7.10.0] GY   2026-10-02
@@ -597,9 +599,12 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
     clearRelayPendingState(sessionId);
 
     if (type == kTypeSend) {
-        // 发送方：通过 worker 发送 Cancel 帧
         FileSenderWorker *worker = _sendWorkers.value(sessionId);
         if (worker) {
+            // 先跨线程置位原子取消标志：worker 可能正卡在不可中断的阻塞等待里，
+            // 排队的 cancel() 槽要等事件循环恢复才能送达，置位则立即生效
+            worker->requestCancel();
+            // 事件循环空闲时由 cancel() 槽补发取消帧，已终结则自动跳过
             QMetaObject::invokeMethod(worker, "cancel");
         }
     } else if (type == kTypeReceive) {

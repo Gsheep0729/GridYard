@@ -13,6 +13,8 @@
 * Change Log:
 * [v7.14.0] GY   2026-10-03
 * * 新增协调管道与独立模式的令牌用例
+* [v7.14.1] GY   2026-10-03
+* * 新增阻塞期取消可达用例：假中继不回 ready，取消请求即时生效
 * [v7.13.4] GY   2026-10-03
 * * 新增 Phase1-D 加固用例：注册表上限、TTL 夹紧、id 复用竞态、写积压断开、等待超时
 * [v7.12.0] GY   2026-10-02
@@ -32,6 +34,7 @@
 #include "config_manager.h"
 #include "file_receiver_worker.h"
 #include "file_sender_worker.h"
+#include "protocol.h"
 #include "online_registry.h"
 #include "p2p_server.h"
 #include "relay_server.h"
@@ -120,6 +123,7 @@ private slots:
     void testResponseBackpressureDisconnects();
     void testRelayPipeWithToken();
     void testStandaloneRelayWithToken();
+    void testCancelDuringRelayWait();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -779,6 +783,49 @@ void TestRelayChain::testStandaloneRelayWithToken()
 
     sender->disconnectFromHost();
     QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 3000);
+}
+
+// 阻塞期取消可达：假中继只接受连接不回 relay_ready，
+// 发送 worker 卡在中继等待期时跨线程置位取消标志应立即终结会话
+void TestRelayChain::testCancelDuringRelayWait()
+{
+    // 只监听不受理：内核完成握手后连接进入积压队列，发送端永远等不到 relay_ready
+    QTcpServer fakeRelay;
+    QVERIFY(fakeRelay.listen(QHostAddress::LocalHost, 0));
+
+    const QString sourcePath = _tempDir->path() + "/cancel-source.bin";
+    QFile source{sourcePath};
+    QVERIFY(source.open(QIODevice::WriteOnly));
+    QCOMPARE(source.write(QByteArray(64, 'x')), qint64(64));
+    source.close();
+
+    FileSenderWorker senderWorker;
+    QThread workerThread;
+    senderWorker.moveToThread(&workerThread);
+    const quint16 port = fakeRelay.serverPort();
+    QObject::connect(&workerThread, &QThread::started, &senderWorker, [&senderWorker, port, sourcePath]() {
+        senderWorker.startTransfer({{QStringLiteral("127.0.0.1"), port}},
+                                   sourcePath, QStringLiteral("device-a"),
+                                   QStringLiteral("A"), QStringLiteral("cancel-relay"));
+    });
+    QSignalSpy finishedSpy(&senderWorker, &FileSenderWorker::transferFinished);
+    workerThread.start();
+
+    // 等发送端进入中继等待期，再模拟 UI 线程的跨线程取消请求
+    QTest::qWait(500);
+    QElapsedTimer elapsed;
+    elapsed.start();
+    senderWorker.requestCancel();
+
+    // 取消应在远小于 30 秒中继等待上限内生效，且恰好终结一次
+    QVERIFY2(finishedSpy.wait(5000), "取消请求应在 5 秒内终结传输");
+    QVERIFY2(elapsed.elapsed() < 10000, "取消应远快于 30 秒等待上限");
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(finishedSpy.first().at(0).toBool(), false);
+    QCOMPARE(finishedSpy.first().at(1).toInt(), static_cast<int>(gy::protocol::ErrorCode::UserCancelled));
+
+    workerThread.quit();
+    QVERIFY(workerThread.wait(3000));
 }
 
 QTEST_MAIN(TestRelayChain)

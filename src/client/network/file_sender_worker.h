@@ -1,6 +1,6 @@
 /**
 * @file    file_sender_worker.h
-* @version 7.9.0
+* @version 7.14.1
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
@@ -11,6 +11,10 @@
 * 取消操作和超时检测。
 *
 * Change Log:
+* [v7.14.1] GY   2026-10-03
+* * 新增跨线程取消请求标志与中继握手令牌注入入口
+* [v7.14.0] GY   2026-10-03
+* * relay_create 握手行携带访问令牌
 * [v7.9.0] GY   2026-07-26
 * * 支持候选端点按序轮询与中继握手（relay_create + relay_ready 门控）
 * [v6.6.2] GY   2026-06-25
@@ -43,6 +47,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "dir_serializer.h"
 #include "protocol.h"
 
@@ -73,6 +79,9 @@ public:
 
     // 设置中继握手的访问令牌，须在 moveToThread 之后、startTransfer 之前调用
     void setRelayToken(const QString &token);
+    // 请求取消：可在任意线程调用（含阻塞等待期间），只置位原子标志，
+    // 实际终结由工作线程在阻塞等待的轮询间隙检查该标志后完成
+    void requestCancel();
 
 public slots:
     // 启动传输（在工作线程中调用，支持文件或目录）
@@ -151,6 +160,10 @@ private:
     bool         _finished = false;        // 是否已发射过 transferFinished，防止取消/断开路径重复终结
     QString      _relayId;                 // 中继会话 ID，非空表示经中继服务器转发
     QString      _relayToken;              // 中继握手的访问令牌，由会话管理器在启动前注入
+    // 取消请求标志：UI 线程经 requestCancel() 置位，工作线程在阻塞等待间隙轮询。
+    // 跨线程仅约定"置位即请求取消"这一单向语义，依赖原子默认顺序一致性，
+    // 不与其他状态构成复合同步
+    std::atomic_bool _cancelRequested{false};
     bool         _relayReady = false;      // 中继两端是否已齐备（收到 relay_ready）
     QByteArray   _relayLineBuffer;         // 中继控制行的半行缓冲
     qint64       _totalBytes = 0;         // 本次传输的文件总字节数
