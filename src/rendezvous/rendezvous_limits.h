@@ -9,6 +9,8 @@
 * 服务端据此抵御慢连接与恶意流量，测试可按需调小阈值。
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * 新增 TTL 夹紧区间、房间/设备数上限、响应写队列上限与会话等待/清理周期常量
 * [v7.12.0] GY   2026-10-02
 * * Stage P2-3：集中定义服务端加固所需的上限常量
 */
@@ -41,5 +43,23 @@ inline constexpr int kMaxRelaySessions = 128;
 inline constexpr qint64 kMaxRelayPeerWriteQueue = 8 * 1024 * 1024;
 // 中继积压上限：会话未齐备前缓存的字节数，超限视为异常客户端
 inline constexpr qsizetype kMaxRelayBacklogBytes = 1024 * 1024;
+
+// 设备自报 TTL 的夹紧区间：下限防零值回退默认，上限防"永不过期"注入
+inline constexpr int kMinPeerTtlSeconds = 1;
+inline constexpr int kMaxPeerTtlSeconds = 300;
+
+// 房间数与每房设备数上限：注册无认证时的内存防注入约束
+inline constexpr int kMaxRegistryRooms = 256;
+inline constexpr int kMaxDevicesPerRoom = 128;
+
+// 协调响应写队列上限：客户端消费过慢时直接断开，防止单连接拖垮服务端内存
+inline constexpr qint64 kMaxResponseWriteQueueBytes = 1024 * 1024;
+
+// 中继会话等待对端加入的超时
+inline constexpr int kRelaySessionWaitMs = 60000;
+// 协调节点过期数据清理周期
+inline constexpr int kRegistryPruneIntervalMs = 10000;
+// 中继邀请有效期：接收端按心跳周期轮询，60 秒足够覆盖短暂离线
+inline constexpr int kRelayInviteTtlSeconds = 60;
 
 }

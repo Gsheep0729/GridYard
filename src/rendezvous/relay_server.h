@@ -1,6 +1,6 @@
 /**
 * @file    relay_server.h
-* @version 7.12.0
+* @version 7.13.4
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器
@@ -13,6 +13,9 @@
 * 会话数与积压均有上限。
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * 会话关闭判等改对象指针，消除 relay_id 复用窗口的误删；积压回滚补断信号
+* * 会话等待时长与邀请 TTL 等常量迁入 rendezvous_limits.h 并支持测试调小
 * [v7.12.0] GY   2026-10-02
 * * 握手等待迁移到 LineSession 基类，补齐会话数与积压上限
 * * 转发增加写队列背压与读缓冲上限，消除大文件转发内存无界增长
@@ -37,12 +40,15 @@
 #include <QTimer>
 
 #include "line_session.h"
+#include "rendezvous_limits.h"
 
 class RelaySession : public QObject {
     Q_OBJECT
 
 public:
-    explicit RelaySession(const QString &relayId, QObject *parent = nullptr);
+    explicit RelaySession(const QString &relayId,
+                          int waitMs = gy::rendezvous::kRelaySessionWaitMs,
+                          QObject *parent = nullptr);
     virtual ~RelaySession() override;
 
     QString relayId() const { return _relayId; }
@@ -92,6 +98,8 @@ public:
     int sessionCount() const;
     // 调整并发中继会话上限（对新建会话生效）
     void setMaxSessions(int maxSessions);
+    // 调整会话等待对端加入的超时（测试可调小；对新建会话生效）
+    void setSessionWaitMs(int waitMs);
 
     // 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
     void adoptConnection(QTcpSocket *socket, const QJsonObject &hello, const QByteArray &pendingData);
@@ -117,4 +125,5 @@ private:
     QMap<QString, RelaySession *> _sessions;
     QSet<LineSession *> _pendingHellos;  // 等待握手首行的连接
     int _maxSessions = 0;
+    int _sessionWaitMs = gy::rendezvous::kRelaySessionWaitMs;  // 新建会话等待对端的超时
 };

@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_server.h
-* @version 7.12.0
+* @version 7.13.4
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点服务器
@@ -12,6 +12,8 @@
 * 会话继承 LineSession，具备行长度上限、握手/空闲超时与连接数上限。
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * 注册超限回错误响应；响应写积压超限断开连接；清理周期与注册表上限可调
 * [v7.12.0] GY   2026-10-02
 * * 会话迁移到 LineSession 基类，补齐行上限、握手/空闲超时与连接数上限
 * * 移除存而不用的 _host 与空槽 onSessionFinished
@@ -31,6 +33,7 @@
 #include <QTcpSocket>
 
 #include "line_session.h"
+#include "rendezvous_limits.h"
 
 class OnlineRegistry;
 class RendezvousProtocol;
@@ -43,6 +46,8 @@ public:
                                int handshakeTimeoutMs, int idleTimeoutMs, QObject *parent = nullptr);
 
     void start();
+    // 调整响应写队列上限（测试可调小）
+    void setMaxResponseQueueBytes(qint64 maxBytes);
 
 signals:
     void finished();
@@ -58,6 +63,7 @@ private:
     QString _token;
     int _handshakeTimeoutMs = 0;
     int _idleTimeoutMs = 0;
+    qint64 _maxResponseQueueBytes = gy::rendezvous::kMaxResponseWriteQueueBytes;  // 响应写积压上限
 };
 
 class RendezvousServer : public QObject {
@@ -74,6 +80,12 @@ public:
     quint16 serverPort() const;
     // 调整会话握手与空闲超时（测试可调小；对新建立的会话生效）
     void setSessionTimeouts(int handshakeTimeoutMs, int idleTimeoutMs);
+    // 调整注册表房间数与每房设备数上限（测试可调小）
+    void setRegistryLimits(int maxRooms, int maxDevicesPerRoom);
+    // 调整过期数据清理周期（测试可调小）
+    void setPruneIntervalMs(int intervalMs);
+    // 调整响应写队列上限（测试可调小；对新建立的会话生效）
+    void setMaxResponseQueueBytes(qint64 maxBytes);
 
 signals:
     void serverStarted(bool success, const QString &error);
@@ -94,4 +106,6 @@ private:
     int _maxSessions = 0;             // 并发会话上限
     int _handshakeTimeoutMs = 0;      // 首行握手超时
     int _idleTimeoutMs = 0;           // 会话空闲超时
+    int _pruneIntervalMs = gy::rendezvous::kRegistryPruneIntervalMs;  // 过期清理周期
+    qint64 _maxResponseQueueBytes = gy::rendezvous::kMaxResponseWriteQueueBytes;  // 响应写积压上限
 };

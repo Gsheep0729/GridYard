@@ -1,11 +1,13 @@
 /**
 * @file    relay_server.cpp
-* @version 7.12.0
+* @version 7.13.4
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * 会话关闭判等改对象指针；积压回滚补断信号；等待时长迁常量并可调
 * [v7.12.0] GY   2026-10-02
 * * 握手等待迁移到 LineSession 基类，补齐会话数与积压上限
 * * 转发增加写队列背压与读缓冲上限，消除大文件转发内存无界增长
@@ -29,14 +31,14 @@ using namespace gy::rendezvous;
 // -------------------- RelaySession --------------------
 
 // 构造函数
-RelaySession::RelaySession(const QString &relayId, QObject *parent)
+RelaySession::RelaySession(const QString &relayId, int waitMs, QObject *parent)
     : QObject{parent}
     , _relayId{relayId}
 {
     // 只有一端连接的会话可能永远等不到对端，超时后回收，避免 socket 长期悬挂
     _idleTimer = new QTimer{this};
     _idleTimer->setSingleShot(true);
-    _idleTimer->setInterval(60000);
+    _idleTimer->setInterval(waitMs);
     connect(_idleTimer, &QTimer::timeout, this, [this]() {
         if (!isComplete()) {
             qWarning() << "[RelaySession]" << _relayId << "等待对端加入超时，回收会话";
@@ -82,6 +84,8 @@ bool RelaySession::addSender(QTcpSocket *socket, const QByteArray &pendingData)
 
     // 同端口复用场景下握手行之后可能已捎带少量字节，缓存到齐备后转发
     if (!appendBacklog(_senderBacklog, pendingData)) {
+        // 拒绝接入前先断开已连的信号，否则 socket 后续事件仍会打进本会话
+        _sender->disconnect(this);
         _sender = nullptr;
         return false;
     }
@@ -107,6 +111,8 @@ bool RelaySession::addReceiver(QTcpSocket *socket, const QByteArray &pendingData
     connect(_receiver, &QTcpSocket::disconnected, this, &RelaySession::onReceiverDisconnected);
 
     if (!appendBacklog(_receiverBacklog, pendingData)) {
+        // 拒绝接入前先断开已连的信号，否则 socket 后续事件仍会打进本会话
+        _receiver->disconnect(this);
         _receiver = nullptr;
         return false;
     }
@@ -320,6 +326,14 @@ void RelayServer::setMaxSessions(int maxSessions)
     }
 }
 
+// 调整会话等待对端加入的超时
+void RelayServer::setSessionWaitMs(int waitMs)
+{
+    if (waitMs > 0) {
+        _sessionWaitMs = waitMs;
+    }
+}
+
 // 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
 void RelayServer::adoptConnection(QTcpSocket *socket, const QJsonObject &hello,
                                   const QByteArray &pendingData)
@@ -399,7 +413,7 @@ void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
             dropConnection(socket, QStringLiteral("会话数达到上限"));
             return;
         }
-        session = new RelaySession{relayId, this};
+        session = new RelaySession{relayId, _sessionWaitMs, this};
         connect(session, &RelaySession::sessionClosed, this, &RelayServer::onSessionClosed);
         _sessions.insert(relayId, session);
         qDebug() << "[RelayServer] 创建新中继会话" << relayId;
@@ -428,8 +442,12 @@ void RelayServer::dropConnection(QTcpSocket *socket, const QString &reason)
 void RelayServer::onSessionClosed()
 {
     RelaySession *session = qobject_cast<RelaySession *>(sender());
-    // 一端断开会经由对端关闭路径二次触发 sessionClosed，只有首次有效
-    if (!session || !_sessions.contains(session->relayId())) {
+    if (!session) {
+        return;
+    }
+    // 按对象指针判等：一端断开会二次触发 sessionClosed，relay_id 复用窗口内
+    // 注册表里的同名键可能已指向新会话，此时旧会话的迟到关闭不得误删新会话
+    if (_sessions.value(session->relayId()) != session) {
         return;
     }
     QString relayId = session->relayId();

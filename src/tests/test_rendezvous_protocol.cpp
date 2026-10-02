@@ -1,12 +1,16 @@
 /**
 * @file    test_rendezvous_protocol.cpp
-* @version 7.13.1
+* @version 7.13.4
 * @date    2026-10-02
 * @author  GY
 * @brief   协调节点协议编解码测试
 *
 * 测试用例：请求类型解析（含未知类型报错）、注册确认与候选列表构建、
-* PeerInfo / RelayInvite 提取与构建的往返一致、token 校验规则。
+* PeerInfo / RelayInvite 提取与构建的往返一致、token 校验规则、TTL 夹紧。
+*
+* Change Log:
+* [v7.13.4] GY   2026-10-03
+* * 新增 extractPeerInfo 的 TTL 夹紧用例
 */
 
 #include <QtTest/QtTest>
@@ -29,6 +33,7 @@ private slots:
     void testBuildRelayInvitesAndError();
     void testExtractStringFields();
     void testValidateToken();
+    void testExtractPeerInfoClampsTtl();
 };
 
 // 四种请求类型都能被正确解析
@@ -194,6 +199,27 @@ void TestRendezvousProtocol::testValidateToken()
     QVERIFY(RendezvousProtocol::validateToken(QStringLiteral("secret"), QStringLiteral("secret")));
     QVERIFY(!RendezvousProtocol::validateToken(QStringLiteral("wrong"), QStringLiteral("secret")));
     QVERIFY(!RendezvousProtocol::validateToken(QString(), QStringLiteral("secret")));
+}
+
+// 客户端自报 TTL 被服务端夹紧到 [1, 300]，缺失时回退默认 30
+void TestRendezvousProtocol::testExtractPeerInfoClampsTtl()
+{
+    QJsonObject request;
+    request["device_id"] = QStringLiteral("dev-ttl");
+
+    QJsonObject huge = request;
+    huge["ttl_seconds"] = 999999;
+    QCOMPARE(RendezvousProtocol::extractPeerInfo(huge).ttlSeconds, 300);
+
+    QJsonObject negative = request;
+    negative["ttl_seconds"] = -5;
+    QCOMPARE(RendezvousProtocol::extractPeerInfo(negative).ttlSeconds, 1);
+
+    QJsonObject zero = request;
+    zero["ttl_seconds"] = 0;
+    QCOMPARE(RendezvousProtocol::extractPeerInfo(zero).ttlSeconds, 1);
+
+    QCOMPARE(RendezvousProtocol::extractPeerInfo(request).ttlSeconds, 30);
 }
 
 QTEST_MAIN(TestRendezvousProtocol)

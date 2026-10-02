@@ -1,6 +1,6 @@
 /**
 * @file    online_registry.h
-* @version 7.12.0
+* @version 7.13.4
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点在线设备注册表
@@ -10,6 +10,8 @@
 * 同时保管待领取的中继邀请。
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * upsertPeer 增加房间数与每房设备数上限，邀请 TTL 可配置
 * [v7.12.0] GY   2026-10-02
 * * 房间存储改为二级哈希，消除复合键前缀扫描在 room 含 ":" 时的隔离绕过
 * [v7.9.0] GY   2026-07-26
@@ -59,8 +61,13 @@ public:
 
     explicit OnlineRegistry(int defaultTtlSeconds = 30, QObject *parent = nullptr);
 
-    // 注册或更新设备
+    // 注册或更新设备；房间数或每房设备数达到上限时拒绝新条目
     bool upsertPeer(const QString &room, const PeerInfo &peer);
+
+    // 调整房间数与每房设备数上限（测试可调小；对后续注册生效）
+    void setRegistryLimits(int maxRooms, int maxDevicesPerRoom);
+    // 调整中继邀请有效期（测试可调小）
+    void setRelayInviteTtlSeconds(int ttlSeconds);
 
     // 获取房间内所有未过期的设备
     QList<PeerInfo> peersForRoom(const QString &room) const;
@@ -85,6 +92,9 @@ private:
     bool isExpired(const PeerInfo &peer) const;
 
     int _defaultTtlSeconds = 30;
+    int _maxRooms = 0;              // 房间数上限，0 表示未初始化（构造时取常量默认）
+    int _maxDevicesPerRoom = 0;     // 每房设备数上限
+    int _relayInviteTtlSeconds = 0; // 中继邀请有效期，0 表示未初始化
     QHash<QString, QHash<QString, PeerInfo>> _rooms;  // room -> (deviceId -> peer)
     QHash<QString, RelayInvite> _relayInvites;        // relayId -> invite，过期由 pruneExpired 统一回收
 };

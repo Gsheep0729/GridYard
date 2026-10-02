@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 7.12.0
+* @version 7.13.4
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点服务器实现
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * 注册超限回错误响应；响应写积压超限断开；清理周期与注册表上限可调
 * [v7.12.0] GY   2026-10-02
 * * 会话迁移到 LineSession 基类，补齐行上限、握手/空闲超时与连接数上限
 * * 移除存而不用的 _host 与空槽 onSessionFinished
@@ -45,6 +47,14 @@ void RendezvousSession::start()
 {
     qDebug() << "[RendezvousSession] 新会话来自" << socket()->peerAddress().toString();
     startHandshakeTimeout(_handshakeTimeoutMs);
+}
+
+// 调整响应写队列上限
+void RendezvousSession::setMaxResponseQueueBytes(qint64 maxBytes)
+{
+    if (maxBytes > 0) {
+        _maxResponseQueueBytes = maxBytes;
+    }
 }
 
 // 处理一条控制行：刷新空闲超时并按 JSON 解析
@@ -107,7 +117,10 @@ void RendezvousSession::processRequest(const QJsonObject &json)
     switch (type) {
     case RendezvousProtocol::MessageType::Register: {
         OnlineRegistry::PeerInfo peer = RendezvousProtocol::extractPeerInfo(json);
-        _registry->upsertPeer(room, peer);
+        if (!_registry->upsertPeer(room, peer)) {
+            sendResponse(RendezvousProtocol::buildError(QStringLiteral("房间或设备数量已达上限")));
+            break;
+        }
         sendResponse(RendezvousProtocol::buildRegisterAck(peer.ttlSeconds > 0 ? peer.ttlSeconds : 30));
         break;
     }
@@ -168,6 +181,12 @@ void RendezvousSession::sendResponse(const QJsonObject &json)
     if (!socket()) {
         return;  // 会话已移交或断开
     }
+    // 写队列积压说明客户端消费过慢，断开以保护服务端内存
+    if (socket()->bytesToWrite() >= _maxResponseQueueBytes) {
+        qWarning() << "[RendezvousSession] 响应写积压超过上限，断开连接";
+        socket()->abort();
+        return;
+    }
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact) + '\n';
     socket()->write(data);
     socket()->flush();
@@ -204,7 +223,7 @@ bool RendezvousServer::start()
     // 定期清理过期设备和中继邀请
     QTimer *pruneTimer = new QTimer{this};
     connect(pruneTimer, &QTimer::timeout, _registry, &OnlineRegistry::pruneExpired);
-    pruneTimer->start(10000);  // 每 10 秒清理一次
+    pruneTimer->start(_pruneIntervalMs);
 
     emit serverStarted(true, QString());
     return true;
@@ -236,6 +255,28 @@ void RendezvousServer::setSessionTimeouts(int handshakeTimeoutMs, int idleTimeou
     _idleTimeoutMs = idleTimeoutMs;
 }
 
+// 调整注册表房间数与每房设备数上限
+void RendezvousServer::setRegistryLimits(int maxRooms, int maxDevicesPerRoom)
+{
+    _registry->setRegistryLimits(maxRooms, maxDevicesPerRoom);
+}
+
+// 调整过期数据清理周期
+void RendezvousServer::setPruneIntervalMs(int intervalMs)
+{
+    if (intervalMs > 0) {
+        _pruneIntervalMs = intervalMs;
+    }
+}
+
+// 调整响应写队列上限
+void RendezvousServer::setMaxResponseQueueBytes(qint64 maxBytes)
+{
+    if (maxBytes > 0) {
+        _maxResponseQueueBytes = maxBytes;
+    }
+}
+
 // 处理新的客户端连接
 void RendezvousServer::onNewConnection()
 {
@@ -259,6 +300,7 @@ void RendezvousServer::onNewConnection()
 
         RendezvousSession *session = new RendezvousSession{socket, _registry, _token,
                                                            _handshakeTimeoutMs, _idleTimeoutMs, this};
+        session->setMaxResponseQueueBytes(_maxResponseQueueBytes);
         _sessions.append(session);
 
         connect(session, &RendezvousSession::finished, this, [this, session, address]() {

@@ -1,11 +1,13 @@
 /**
 * @file    online_registry.cpp
-* @version 7.12.0
+* @version 7.13.4
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点在线设备注册表实现
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * upsertPeer 增加房间数与每房设备数上限，邀请 TTL 从常量改为可配置
 * [v7.12.0] GY   2026-10-02
 * * 房间存储改为二级哈希，消除复合键前缀扫描在 room 含 ":" 时的隔离绕过
 * [v7.9.0] GY   2026-07-26
@@ -15,22 +17,55 @@
 */
 
 #include "online_registry.h"
+#include "rendezvous_limits.h"
 
 #include <QDebug>
-
-// 中继邀请的有效期：接收端按心跳周期轮询，60 秒足够覆盖短暂离线
-static constexpr int kRelayInviteTtlSeconds = 60;
 
 // 构造函数
 OnlineRegistry::OnlineRegistry(int defaultTtlSeconds, QObject *parent)
     : QObject{parent}
     , _defaultTtlSeconds{defaultTtlSeconds}
+    , _maxRooms{gy::rendezvous::kMaxRegistryRooms}
+    , _maxDevicesPerRoom{gy::rendezvous::kMaxDevicesPerRoom}
+    , _relayInviteTtlSeconds{gy::rendezvous::kRelayInviteTtlSeconds}
 {
+}
+
+// 调整房间数与每房设备数上限
+void OnlineRegistry::setRegistryLimits(int maxRooms, int maxDevicesPerRoom)
+{
+    if (maxRooms > 0) {
+        _maxRooms = maxRooms;
+    }
+    if (maxDevicesPerRoom > 0) {
+        _maxDevicesPerRoom = maxDevicesPerRoom;
+    }
+}
+
+// 调整中继邀请有效期
+void OnlineRegistry::setRelayInviteTtlSeconds(int ttlSeconds)
+{
+    if (ttlSeconds > 0) {
+        _relayInviteTtlSeconds = ttlSeconds;
+    }
 }
 
 // 注册或更新设备
 bool OnlineRegistry::upsertPeer(const QString &room, const PeerInfo &peer)
 {
+    const auto roomIt = _rooms.constFind(room);
+    if (roomIt != _rooms.constEnd()) {
+        // 已注册设备的心跳刷新不受上限限制，否则正常客户端反而被拒
+        if (!roomIt->contains(peer.deviceId) && roomIt->size() >= _maxDevicesPerRoom) {
+            qWarning() << "[OnlineRegistry] 房间" << room << "设备数达到上限，拒绝"
+                       << peer.deviceId;
+            return false;
+        }
+    } else if (_rooms.size() >= _maxRooms) {
+        qWarning() << "[OnlineRegistry] 房间数达到上限，拒绝新房间" << room;
+        return false;
+    }
+
     _rooms[room][peer.deviceId] = peer;
 
     qDebug() << "[OnlineRegistry] 注册设备" << peer.deviceId
@@ -126,7 +161,7 @@ int OnlineRegistry::pruneExpired()
     // 过期邀请同样回收，避免目标设备离线后邀请无限堆积
     const QDateTime now = QDateTime::currentDateTimeUtc();
     for (auto it = _relayInvites.begin(); it != _relayInvites.end();) {
-        if (it->createdAt.addSecs(kRelayInviteTtlSeconds) < now) {
+        if (it->createdAt.addSecs(_relayInviteTtlSeconds) < now) {
             qDebug() << "[OnlineRegistry] 清理过期中继邀请" << it.key();
             it = _relayInvites.erase(it);
             pruned++;

@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_protocol.cpp
-* @version 7.13.0
+* @version 7.13.4
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点协议处理实现
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * extractPeerInfo 对客户端自报 TTL 做服务端夹紧
 * [v7.13.0] GY   2026-10-02
 * * 同步文件头版本与当前主版本
 * [v7.9.0] GY   2026-07-26
@@ -15,6 +17,7 @@
 */
 
 #include "rendezvous_protocol.h"
+#include "rendezvous_limits.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -143,7 +146,10 @@ OnlineRegistry::PeerInfo RendezvousProtocol::extractPeerInfo(const QJsonObject &
     peer.tcpPort = static_cast<quint16>(json[QStringLiteral("tcp_port")].toInt());
     peer.discoveryPort = static_cast<quint16>(json[QStringLiteral("discovery_port")].toInt(45678));
     peer.registeredAt = QDateTime::currentDateTimeUtc();
-    peer.ttlSeconds = json[QStringLiteral("ttl_seconds")].toInt(30);
+    // TTL 是客户端自报字段，服务端必须夹紧，防止注入"永不过期"的伪设备
+    peer.ttlSeconds = qBound(gy::rendezvous::kMinPeerTtlSeconds,
+                             json[QStringLiteral("ttl_seconds")].toInt(30),
+                             gy::rendezvous::kMaxPeerTtlSeconds);
 
     return peer;
 }

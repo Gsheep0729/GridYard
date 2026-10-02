@@ -1,15 +1,18 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.12.0
+* @version 7.13.4
 * @date    2026-07-26
 * @author  GY
 * @brief   Relay 降级链路测试
 *
 * 测试用例：中继邀请登记与领取、协调端口复用的中继管道、
 * 端到端经中继的文件传输（真实 RendezvousClient + RelayServer + P2pServer + FileSenderWorker）、
-* 服务端加固（房间隔离、超长行断开、握手/空闲超时、会话数上限）。
+* 服务端加固（房间隔离、超长行断开、握手/空闲超时、会话数上限、注册表上限、
+* TTL 夹紧、relay_id 复用竞态、响应写积压断开、会话等待超时）。
 *
 * Change Log:
+* [v7.13.4] GY   2026-10-03
+* * 新增 Phase1-D 加固用例：注册表上限、TTL 夹紧、id 复用竞态、写积压断开、等待超时
 * [v7.12.0] GY   2026-10-02
 * * 新增服务端加固用例：房间隔离、超长行、超时、会话上限
 */
@@ -27,6 +30,7 @@
 #include "config_manager.h"
 #include "file_receiver_worker.h"
 #include "file_sender_worker.h"
+#include "online_registry.h"
 #include "p2p_server.h"
 #include "relay_server.h"
 #include "rendezvous_client.h"
@@ -106,6 +110,12 @@ private slots:
     void testOversizeLineDrops();
     void testSessionTimeouts();
     void testSessionCap();
+    void testRegistryLimits();
+    void testRegisterRejectsWhenRoomFull();
+    void testRegisterAckClampsTtl();
+    void testRelaySessionWaitTimeout();
+    void testRelayIdReuseStaleCloseIgnored();
+    void testResponseBackpressureDisconnects();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -485,6 +495,199 @@ void TestRelayChain::testSessionCap()
     rejected->deleteLater();
 
     qDeleteAll(sockets);
+}
+
+// 注册表上限：房间数与每房设备数达到上限后拒绝新条目，已有设备刷新不受限
+void TestRelayChain::testRegistryLimits()
+{
+    OnlineRegistry registry;
+
+    registry.setRegistryLimits(1, 1);
+    OnlineRegistry::PeerInfo first;
+    first.deviceId = QStringLiteral("dev-1");
+    QVERIFY(registry.upsertPeer(QStringLiteral("room-a"), first));
+
+    OnlineRegistry::PeerInfo second;
+    second.deviceId = QStringLiteral("dev-2");
+    QVERIFY(!registry.upsertPeer(QStringLiteral("room-a"), second));
+
+    // 已注册设备重复注册（心跳刷新）不拒绝
+    QVERIFY(registry.upsertPeer(QStringLiteral("room-a"), first));
+
+    // 房间数已满，新房间整体拒绝
+    QVERIFY(!registry.upsertPeer(QStringLiteral("room-b"), second));
+    QCOMPARE(registry.roomCount(QStringLiteral("room-a")), 1);
+}
+
+// 服务端注册超限：第二台设备收到 error 响应而不是注册确认
+void TestRelayChain::testRegisterRejectsWhenRoomFull()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    QVERIFY(server.start());
+    server.setRegistryLimits(1, 1);
+
+    // 注册并断言响应类型；void lambda 内可安全使用 QTest 断言宏
+    const auto registerAndExpect = [&server](const QString &deviceId, const QString &expectedType) {
+        auto *socket = new QTcpSocket;
+        socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+        QJsonObject request;
+        request[QStringLiteral("type")] = QStringLiteral("register");
+        request[QStringLiteral("room")] = QStringLiteral("default");
+        request[QStringLiteral("device_id")] = deviceId;
+        writeJsonLine(socket, request);
+        QCOMPARE(readJsonLine(socket)[QStringLiteral("type")].toString(), expectedType);
+        socket->deleteLater();
+    };
+
+    registerAndExpect(QStringLiteral("limit-a"), QStringLiteral("register_ack"));
+    registerAndExpect(QStringLiteral("limit-b"), QStringLiteral("error"));
+    // 已注册设备重新注册是心跳刷新，不受上限影响
+    registerAndExpect(QStringLiteral("limit-a"), QStringLiteral("register_ack"));
+}
+
+// 自报超大 TTL 经线路被夹紧，注册确认回写的是夹紧后的值
+void TestRelayChain::testRegisterAckClampsTtl()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    QVERIFY(server.start());
+
+    auto *socket = new QTcpSocket;
+    socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+
+    QJsonObject request;
+    request[QStringLiteral("type")] = QStringLiteral("register");
+    request[QStringLiteral("room")] = QStringLiteral("default");
+    request[QStringLiteral("device_id")] = QStringLiteral("ttl-device");
+    request[QStringLiteral("ttl_seconds")] = 999999;
+    writeJsonLine(socket, request);
+
+    const QJsonObject ack = readJsonLine(socket);
+    QCOMPARE(ack[QStringLiteral("type")].toString(), QStringLiteral("register_ack"));
+    QCOMPARE(ack[QStringLiteral("ttl_seconds")].toInt(), 300);
+    socket->deleteLater();
+}
+
+// 会话等待超时：只有一端加入的会话在超时后被回收
+void TestRelayChain::testRelaySessionWaitTimeout()
+{
+    RelayServer relay{0, QString()};
+    QVERIFY(relay.start());
+    relay.setSessionWaitMs(200);
+
+    auto *sender = new QTcpSocket;
+    sender->connectToHost(QHostAddress::LocalHost, relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    QJsonObject createHello;
+    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    createHello[QStringLiteral("relay_id")] = QStringLiteral("wait-timeout");
+    writeJsonLine(sender, createHello);
+    QTRY_COMPARE_WITH_TIMEOUT(relay.sessionCount(), 1, 3000);
+
+    // 对端迟迟不来，超时后会话被回收并主动断开发送端
+    QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::UnconnectedState, 3000);
+    sender->deleteLater();
+}
+
+// relay_id 复用竞态：旧会话的迟到二次关闭不得误删同 id 新会话的注册表项
+void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
+{
+    RelayServer relay{0, QString()};
+    QVERIFY(relay.start());
+
+    // 本地馈送服务器造可控 socket 对：client 端交给中继，peer 端握在测试手里
+    QTcpServer feeder;
+    QVERIFY(feeder.listen(QHostAddress::LocalHost, 0));
+    const auto makePair = [&feeder](QTcpSocket **client, QTcpSocket **peer) {
+        auto *local = new QTcpSocket;
+        local->connectToHost(QHostAddress::LocalHost, feeder.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(local->state() == QAbstractSocket::ConnectedState, 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(feeder.hasPendingConnections(), 3000);
+        *client = local;
+        *peer = feeder.nextPendingConnection();
+    };
+
+    QTcpSocket *sockS = nullptr;
+    QTcpSocket *peerS = nullptr;
+    makePair(&sockS, &peerS);
+    QJsonObject createHello;
+    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    createHello[QStringLiteral("relay_id")] = QStringLiteral("reuse-id");
+    relay.adoptConnection(sockS, createHello, {});
+    QCOMPARE(relay.sessionCount(), 1);
+
+    // 后续复用所需的 socket 对提前建好，避免在关闭处理器里泵事件打乱时序
+    QTcpSocket *sockS2 = nullptr;
+    QTcpSocket *peerS2 = nullptr;
+    QTcpSocket *sockR2 = nullptr;
+    QTcpSocket *peerR2 = nullptr;
+    makePair(&sockS2, &peerS2);
+    makePair(&sockR2, &peerR2);
+
+    QJsonObject create2;
+    create2[QStringLiteral("type")] = QStringLiteral("relay_create");
+    create2[QStringLiteral("relay_id")] = QStringLiteral("reuse-id");
+
+    // 复用窗口模拟：第一次关闭的处理器里旧会话尚未析构，此刻同 id 新会话入表，
+    // 并让旧会话对象再发一次迟到的 sessionClosed
+    QSignalSpy closedSpy(&relay, &RelayServer::sessionClosed);
+    bool adopted = false;
+    QObject::connect(&relay, &RelayServer::sessionClosed, &relay, [&](const QString &) {
+        if (adopted) {
+            return;
+        }
+        adopted = true;
+        relay.adoptConnection(sockS2, create2, {});
+        // relay 的子会话按创建顺序排列：first 是旧会话 S1，second 是刚入表的 S2
+        const auto sessions = relay.findChildren<RelaySession *>();
+        QCOMPARE(sessions.size(), 2);
+        emit sessions.first()->sessionClosed();
+    });
+
+    // S1 的发送端断开触发第一次关闭；窗口内的迟到关闭应被指针判等挡下
+    peerS->abort();
+    QTRY_VERIFY_WITH_TIMEOUT(adopted, 3000);
+    QTest::qWait(50);
+
+    // 只有真正的第一次关闭对外发信号；迟到的关闭被挡下，S2 保持在表
+    QCOMPARE(closedSpy.count(), 1);
+    QCOMPARE(relay.sessionCount(), 1);
+
+    // S2 仍然可用：接收端加入后其发送端收到 relay_ready
+    QJsonObject join2;
+    join2[QStringLiteral("type")] = QStringLiteral("relay_join");
+    join2[QStringLiteral("relay_id")] = QStringLiteral("reuse-id");
+    relay.adoptConnection(sockR2, join2, {});
+    QVERIFY(waitBytes(peerS2, 10).contains("relay_ready"));
+    QCOMPARE(relay.sessionCount(), 1);
+}
+
+// 响应写积压超限：消费过慢的客户端被服务端主动断开
+void TestRelayChain::testResponseBackpressureDisconnects()
+{
+    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    QVERIFY(server.start());
+    server.setMaxResponseQueueBytes(16 * 1024);
+
+    // 客户端读缓冲封顶后停止消费，服务端写队列才会持续积压
+    auto *socket = new QTcpSocket;
+    socket->setReadBufferSize(1024);
+    socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+
+    QJsonObject bogus;
+    bogus[QStringLiteral("type")] = QStringLiteral("bogus");
+    QElapsedTimer elapsed;
+    elapsed.start();
+    while (socket->state() == QAbstractSocket::ConnectedState && elapsed.elapsed() < 20000) {
+        writeJsonLine(socket, bogus);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    }
+    QVERIFY2(elapsed.elapsed() < 20000, "服务端应在超时前因写积压断开慢客户端");
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::UnconnectedState, 5000);
+    socket->deleteLater();
 }
 
 QTEST_MAIN(TestRelayChain)
