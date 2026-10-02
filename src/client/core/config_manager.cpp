@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
-* @version 7.4.0
-* @date    2026-07-21
+* @version 7.13.0
+* @date    2026-10-02
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -10,6 +10,8 @@
 * GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
 *
 * Change Log:
+* [v7.13.0] GY   2026-10-02
+* * 收敛各 setter 重复的 QSettings 打开逻辑，refreshLocalIp 优先取默认路由接口地址
 * [v7.4.0] GY   2026-07-21
 * * 新增 Reachability 配置分组：rendezvousEnabled、rendezvousHost、rendezvousPort、relayMode
 * [v6.6.2] GY   2026-06-25
@@ -37,6 +39,8 @@
 #include <QHostInfo>
 #include <QJsonObject>
 #include <QNetworkInterface>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QUrl>
 #include <QUuid>
@@ -54,12 +58,34 @@ static QString resolveConfigPath()
     return ApplicationPaths::configDir() + "/gridyard.ini";
 }
 
+// 打开当前配置文件，读写点各自短暂打开，避免多处拼装 QSettings
+static QSettings openSettings()
+{
+    return QSettings(resolveConfigPath(), QSettings::IniFormat);
+}
+
+// 查询默认路由所在的网络接口名；非 Linux 或查询失败返回空
+static QString defaultRouteInterface()
+{
+    QProcess process;
+    process.start(QStringLiteral("ip"), {QStringLiteral("route"), QStringLiteral("show"), QStringLiteral("default")});
+    if (!process.waitForFinished(1000)) {
+        return QString();
+    }
+
+    // 输出形如 "default via 10.10.24.1 dev wlan0 proto dhcp ..."，取 dev 后的接口名
+    static const QRegularExpression pattern(QStringLiteral("\\bdev\\s+(\\S+)"));
+    const QRegularExpressionMatch match = pattern.match(
+        QString::fromUtf8(process.readAllStandardOutput()));
+    return match.hasMatch() ? match.captured(1) : QString();
+}
+
 // 构造函数：从 QSettings 加载配置，支持环境变量覆盖
 ConfigManager::ConfigManager(QObject *parent)
     : QObject{parent}
 {
-    // 创建 QSettings 对象，配置文件统一存放在系统配置目录
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
+    // 配置文件统一存放在系统配置目录
+    QSettings settings(openSettings());
 
     // 设备名：优先使用命令行参数，否则读配置，否则用主机名
     QString envName = qEnvironmentVariable("GRIDYARD_NAME");
@@ -158,18 +184,42 @@ QString ConfigManager::localIp() const
     return _localIp;
 }
 
-// 刷新本机 IP 地址（取第一个非回环 IPv4 地址）
+// 刷新本机 IP 地址，优先取默认路由接口，避免多网卡或 VPN 环境选错出口
 void ConfigManager::refreshLocalIp()
 {
-    const auto addresses = QNetworkInterface::allAddresses();
     QString newIp;
+    const QString routeInterface = defaultRouteInterface();
 
-    for (const QHostAddress &addr : addresses) {
-        // 取第一个非回环 IPv4 地址
-        if (addr.protocol() == QAbstractSocket::IPv4Protocol
-            && !addr.isLoopback()) {
-            newIp = addr.toString();
-            break;
+    // 与默认路由同接口的地址才是真实出口网段
+    if (!routeInterface.isEmpty()) {
+        const auto interfaces = QNetworkInterface::allInterfaces();
+        for (const QNetworkInterface &iface : interfaces) {
+            if (iface.name() != routeInterface
+                    || !(iface.flags() & QNetworkInterface::IsUp)) {
+                continue;
+            }
+            for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
+                if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol
+                        && !entry.ip().isLoopback()) {
+                    newIp = entry.ip().toString();
+                    break;
+                }
+            }
+            if (!newIp.isEmpty()) {
+                break;
+            }
+        }
+    }
+
+    // 兜底：没有默认路由信息时退回第一个非回环 IPv4
+    if (newIp.isEmpty()) {
+        const auto addresses = QNetworkInterface::allAddresses();
+        for (const QHostAddress &addr : addresses) {
+            if (addr.protocol() == QAbstractSocket::IPv4Protocol
+                && !addr.isLoopback()) {
+                newIp = addr.toString();
+                break;
+            }
         }
     }
 
@@ -197,8 +247,7 @@ void ConfigManager::setDeviceName(const QString &name)
     _deviceName = name;
 
     // 持久化到 QSettings
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("device/name", name);
+    openSettings().setValue("device/name", name);
 
     // 清除环境变量影响，确保下次启动时使用 QSettings 中的值
     qunsetenv("GRIDYARD_NAME");
@@ -218,8 +267,7 @@ void ConfigManager::setReceivePath(const QString &path)
     // 确保目录存在
     QDir().mkpath(path);
 
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("device/receivePath", path);
+    openSettings().setValue("device/receivePath", path);
 
     emit receivePathChanged();
 }
@@ -231,8 +279,7 @@ void ConfigManager::setAutoAcceptFiles(bool enabled)
 
     _autoAcceptFiles = enabled;
 
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("device/autoAcceptFiles", enabled);
+    openSettings().setValue("device/autoAcceptFiles", enabled);
 
     emit autoAcceptFilesChanged();
 }
@@ -244,8 +291,7 @@ void ConfigManager::setTcpPort(quint16 port)
 
     _tcpPort = port;
 
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("network/tcpPort", port);
+    openSettings().setValue("network/tcpPort", port);
 
     emit tcpPortChanged();
 }
@@ -257,15 +303,14 @@ void ConfigManager::setRetentionDays(int days)
     if (_retentionDays == days) return;
 
     _retentionDays = days;
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("history/retentionDays", days);
+    openSettings().setValue("history/retentionDays", days);
     emit retentionDaysChanged();
 }
 
 // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
 void ConfigManager::ensureDeviceId()
 {
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
+    QSettings settings(openSettings());
     _deviceId = settings.value("device/id").toString();
 
     // 首次运行时生成 UUID 并持久化，确保设备标识跨会话稳定
@@ -328,8 +373,7 @@ void ConfigManager::setRendezvousEnabled(bool enabled)
 {
     if (_rendezvousEnabled == enabled) return;
     _rendezvousEnabled = enabled;
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("reachability/rendezvousEnabled", enabled);
+    openSettings().setValue("reachability/rendezvousEnabled", enabled);
     emit rendezvousEnabledChanged();
 }
 
@@ -338,8 +382,7 @@ void ConfigManager::setRendezvousHost(const QString &host)
 {
     if (_rendezvousHost == host) return;
     _rendezvousHost = host;
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("reachability/rendezvousHost", host);
+    openSettings().setValue("reachability/rendezvousHost", host);
     emit rendezvousHostChanged();
 }
 
@@ -349,8 +392,7 @@ void ConfigManager::setRendezvousPort(int port)
     port = std::max(1, std::min(65535, port));
     if (_rendezvousPort == port) return;
     _rendezvousPort = port;
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("reachability/rendezvousPort", port);
+    openSettings().setValue("reachability/rendezvousPort", port);
     emit rendezvousPortChanged();
 }
 
@@ -359,7 +401,6 @@ void ConfigManager::setRelayMode(RelayMode mode)
 {
     if (_relayMode == mode) return;
     _relayMode = mode;
-    QSettings settings(resolveConfigPath(), QSettings::IniFormat);
-    settings.setValue("reachability/relayMode", static_cast<int>(mode));
+    openSettings().setValue("reachability/relayMode", static_cast<int>(mode));
     emit relayModeChanged();
 }

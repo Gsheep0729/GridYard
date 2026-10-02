@@ -1,13 +1,15 @@
 /**
 * @file    test_config_manager.cpp
-* @version 4.11.0
-* @date    2026-06-05
+* @version 7.13.0
+* @date    2026-10-02
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化
 *
 * Change Log:
+* [v7.13.0] GY   2026-10-02
+* * 本机 IP 用例改为校验刷新结果属于真实接口地址
 * [v4.11.0] GY   2026-06-13
 * * 新增自动接收文件配置测试
 * [v1.0] GY   2026-06-05
@@ -15,6 +17,7 @@
 */
 
 #include <QtTest/QtTest>
+#include <QNetworkInterface>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QSettings>
@@ -189,16 +192,28 @@ void TestConfigManager::testSignalEmission()
 
 void TestConfigManager::testLocalIp()
 {
-    // 本地 IP 可能为空（无网络）或有值
-    QString ip = _config->localIp();
-    // 不检查具体值，只验证不崩溃
-    Q_UNUSED(ip);
-
-    // 测试刷新方法
-    QSignalSpy spy(_config, &ConfigManager::localIpChanged);
     _config->refreshLocalIp();
-    // 信号可能发射也可能不发射（取决于 IP 是否变化）
-    Q_UNUSED(spy);
+
+    // 无网络环境允许为空；取到值时必须是真实接口上的地址
+    const QString ip = _config->localIp();
+    if (ip.isEmpty()) {
+        return;
+    }
+
+    bool belongsToInterface = false;
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : interfaces) {
+        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
+            if (entry.ip().toString() == ip) {
+                belongsToInterface = true;
+                break;
+            }
+        }
+        if (belongsToInterface) {
+            break;
+        }
+    }
+    QVERIFY2(belongsToInterface, "localIp 应是本机接口上的地址");
 }
 
 QTEST_MAIN(TestConfigManager)
