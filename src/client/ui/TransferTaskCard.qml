@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 6.6.2
+ * @version 7.9.0
  * @date    2026-06-17
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -8,6 +8,8 @@
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v7.9.0] GY   2026-07-26
+ * * 新增 awaiting_relay 状态展示，等待中继决策时提供取消入口
  * [v6.6.2] GY   2026-06-25
  * * 同步文件头版本与当前主版本
  * [v4.16.0] DuRuoxian   2026-06-18
@@ -45,7 +47,7 @@ Frame {
     required property string sessionId
     required property string taskType      // "send" 或 "receive"
     required property string taskName      // 显示的文件/文件夹名
-    required property string status        // connecting/waiting_confirm/transferring/completed/failed/rejected/cancelled
+    required property string status        // connecting/waiting_confirm/awaiting_relay/transferring/completed/failed/rejected/cancelled
     required property int    progress      // 0-100 百分比
     required property var    bytesTransferred
     required property var    totalBytes
@@ -82,6 +84,7 @@ Frame {
         switch (status) {
         case "connecting":      return qsTr("连接中...")
         case "waiting_confirm": return qsTr("等待确认")
+        case "awaiting_relay":  return qsTr("等待中继确认")
         case "transferring":    return qsTr("传输中")
         case "completed":       return qsTr("完成")
         case "failed":          return qsTr("失败")
@@ -94,7 +97,8 @@ Frame {
     function statusColor(): color {
         switch (status) {
         case "connecting":
-        case "waiting_confirm": return kWaitingColor
+        case "waiting_confirm":
+        case "awaiting_relay":  return kWaitingColor
         case "transferring":    return kRunningColor
         case "completed":       return kSuccessColor
         case "failed":
@@ -251,13 +255,16 @@ Frame {
         RowLayout {
             Layout.fillWidth: true
             visible: taskCard.status === "transferring" || taskCard.status === "waiting_confirm"
+                     || taskCard.status === "awaiting_relay"
 
             Label {
-                text: FormatUtils.formatBytes(taskCard.bytesTransferred)
-                      + " / " + FormatUtils.formatBytes(taskCard.totalBytes)
+                text: taskCard.status === "awaiting_relay"
+                      ? qsTr("直连失败，可选择经服务器中继")
+                      : FormatUtils.formatBytes(taskCard.bytesTransferred)
+                        + " / " + FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
                 color: Style.Color.textSecondary
-                visible: taskCard.status === "transferring"
+                visible: taskCard.status === "transferring" || taskCard.status === "awaiting_relay"
             }
 
             Item { Layout.fillWidth: true }
@@ -271,11 +278,12 @@ Frame {
                 visible: taskCard.status === "transferring"
             }
 
-            // 取消按钮：传输中或等待确认时可用
+            // 取消按钮：传输中、等待确认或等待中继决策时可用
             Button {
                 text: qsTr("取消")
                 flat: true
                 visible: taskCard.status === "transferring" || taskCard.status === "waiting_confirm"
+                         || taskCard.status === "awaiting_relay"
                 onClicked: AppController.transferController.cancelSession(taskCard.sessionId)
             }
         }

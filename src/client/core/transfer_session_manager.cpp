@@ -1,11 +1,14 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.8.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * Relay 降级链路落地：直连候选轮询失败后按策略进入 awaiting_relay，
+*   经协调服务器邀请建立中继传输
 * [v7.8.0] GY   2026-07-21
 * * 传输连接增加重试机制和候选端点超时
 * [v6.6.2] GY   2026-06-25
@@ -52,6 +55,7 @@
 #include "file_receiver_worker.h"
 #include "file_sender_worker.h"
 #include "p2p_server.h"
+#include "rendezvous_client.h"
 
 // 确保 QVariant::fromValue 能处理 FileReceiverWorker*
 Q_DECLARE_METATYPE(FileReceiverWorker*)
@@ -62,6 +66,7 @@ Q_DECLARE_METATYPE(FileReceiverWorker*)
 #include <QFileInfo>
 #include <QSet>
 #include <QThread>
+#include <QTimer>
 #include <QUuid>
 #include <QDateTime>
 
@@ -76,6 +81,11 @@ bool isFinishedStatus(const QString &status)
     return status == "completed" || status == "failed"
            || status == "rejected" || status == "cancelled";
 }
+
+// 等待用户做出中继决策的超时时间
+static constexpr int kRelayDecisionTimeoutMs = 120000;
+// 等待协调服务器受理中继邀请的超时
+static constexpr int kRelayInviteTimeoutMs = 5000;
 
 // 根据 Worker 结果归一化最终状态，避免取消和拒绝被错误折叠成 failed
 QString normalizedFinalStatus(bool success, gy::protocol::ErrorCode errorCode,
@@ -173,17 +183,24 @@ QVariantList TransferSessionManager::sessions() const
     return list;
 }
 
-// 初始化：绑定配置、发现服务和 P2P 服务器
+// 初始化：绑定配置、发现服务、P2P 服务器和协调客户端
 void TransferSessionManager::init(ConfigManager *config, DiscoveryService *discovery,
-                                   P2pServer *p2pServer)
+                                   P2pServer *p2pServer, RendezvousClient *rendezvousClient)
 {
     _config = config;
     _discovery = discovery;
     _p2pServer = p2pServer;
+    _rendezvous = rendezvousClient;
 
     // 连接 P2pServer 的传输请求信号
     connect(_p2pServer, &P2pServer::transferRequestReceived,
             this,       &TransferSessionManager::onTransferRequestReceived);
+
+    if (_rendezvous) {
+        // 中继邀请受理后建立中继发送链路
+        connect(_rendezvous, &RendezvousClient::relayInviteAckReceived,
+                this,        &TransferSessionManager::onRelayInviteAck);
+    }
 }
 
 // 创建发送会话（建立 TCP 连接并启动文件传输）
@@ -213,6 +230,20 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     qDebug() << "  设备名:" << peerName;
     qDebug() << "  IP 地址:" << host;
     qDebug() << "  端口:" << port;
+
+    // 候选端点：广播发现的直连 IP 优先，协调节点缓存的多地址作为备选
+    QList<QPair<QString, quint16>> endpoints;
+    endpoints.append({host, port});
+    quint16 alternatePort = 0;
+    const QStringList alternates = _discovery->rendezvousAlternateAddresses(deviceId, &alternatePort);
+    QSet<QString> seenHosts{host};
+    for (const QString &address : alternates) {
+        if (address.isEmpty() || seenHosts.contains(address)) {
+            continue;
+        }
+        seenHosts.insert(address);
+        endpoints.append({address, alternatePort != 0 ? alternatePort : port});
+    }
 
     // 创建发送会话
     QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -253,6 +284,19 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     qDebug() << "[TransferSession] 会话已创建，ID:" << sessionId;
 
+    startSendWorker(_sessions.last(), endpoints, QString(), true);
+}
+
+// 创建发送 worker 并在工作线程中运行；allowRelayFallback 标记直连失败后可降级
+void TransferSessionManager::startSendWorker(const QVariantMap &session,
+                                             const QList<QPair<QString, quint16>> &endpoints,
+                                             const QString &relayId, bool allowRelayFallback)
+{
+    const QString sessionId = session["sessionId"].toString();
+    const QString filePath = session["filePath"].toString();
+    const QString senderDeviceId = session["senderDeviceId"].toString();
+    const QString senderName = session["senderName"].toString();
+
     // 创建 FileSenderWorker 并在工作线程中运行
     auto *worker = new FileSenderWorker{};
     auto *thread = new QThread{this};
@@ -268,14 +312,9 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     // 保存 worker 引用
     _sendWorkers[sessionId] = worker;
 
-    // 从 session 中获取发送方信息（Tell, Don't Ask）
-    const QString senderDeviceId = session["senderDeviceId"].toString();
-    const QString senderName = session["senderName"].toString();
-
-    // 连接信号
     connect(thread, &QThread::started, worker,
-            [worker, host, port, filePath, senderDeviceId, senderName]() {
-        worker->startTransfer(host, port, filePath, senderDeviceId, senderName);  // 在工作线程中启动传输
+            [worker, endpoints, filePath, senderDeviceId, senderName, relayId]() {
+        worker->startTransfer(endpoints, filePath, senderDeviceId, senderName, relayId);
     });
 
     connect(worker, &FileSenderWorker::progressChanged,
@@ -304,7 +343,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     });
 
     connect(worker, &FileSenderWorker::transferFinished,
-            this, [this, sessionId, thread, worker](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
+            this, [this, sessionId, thread, allowRelayFallback](bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
         // 先读取当前会话状态，用户手动取消/拒绝的状态不应被 Worker 结果覆盖
         QString currentStatus = "failed";
         for (const QVariantMap &session : std::as_const(_sessions)) {
@@ -313,8 +352,18 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
                 break;
             }
         }
-        const QString finalStatus = normalizedFinalStatus(success, errorCode, currentStatus);  // 归一化最终状态
-        finalizeSession(sessionId, finalStatus, errorCode, errorMsg);  // 生成快照并通知持久化
+
+        // 直连阶段失败时按 Relay 策略进入中继降级决策，不立即终结会话；
+        // 用户主动取消/拒绝、或中继阶段自身的失败不再次降级
+        if (!success && allowRelayFallback && currentStatus == "connecting"
+            && errorCode != gy::protocol::ErrorCode::UserCancelled
+            && errorCode != gy::protocol::ErrorCode::UserRejected
+            && relayDegradationAvailable()) {
+            enterAwaitingRelay(sessionId);
+        } else {
+            const QString finalStatus = normalizedFinalStatus(success, errorCode, currentStatus);  // 归一化最终状态
+            finalizeSession(sessionId, finalStatus, errorCode, errorMsg);  // 生成快照并通知持久化
+        }
 
         // 清理 worker 引用
         _sendWorkers.remove(sessionId);
@@ -326,8 +375,175 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     // 启动线程
     thread->start();
 
-    qDebug() << "TransferSessionManager: 创建发送会话" << sessionId
-             << "目标" << deviceId << "文件" << filePath;
+    qDebug() << "TransferSessionManager: 启动发送 worker" << sessionId
+             << "候选端点" << endpoints.size() << "中继" << relayId;
+}
+
+// 判断当前是否具备中继降级条件：策略允许且协调服务器在线
+bool TransferSessionManager::relayDegradationAvailable() const
+{
+    return _config && _config->relayMode() != RelayMode::NeverRelay
+           && _rendezvous && _rendezvous->isConnected();
+}
+
+// 直连失败后进入等待中继决策状态，并启动决策超时保护
+void TransferSessionManager::enterAwaitingRelay(const QString &sessionId)
+{
+    for (int i = 0; i < _sessions.size(); ++i) {
+        if (_sessions[i]["sessionId"].toString() != sessionId) {
+            continue;
+        }
+
+        _sessions[i]["status"] = "awaiting_relay";
+        _sessions[i]["errorMsg"] = tr("直连失败，等待中继决策");
+        emit sessionsChanged();
+
+        // QML 长时间不响应（弹窗被忽略、AutoRelay 入口缺失）时自动失败，避免会话悬挂
+        auto *timer = new QTimer{this};
+        timer->setSingleShot(true);
+        connect(timer, &QTimer::timeout, this, [this, sessionId]() {
+            QTimer *pendingTimer = _relayDecisionTimers.take(sessionId);
+            if (pendingTimer) {
+                pendingTimer->deleteLater();
+            }
+            for (int j = 0; j < _sessions.size(); ++j) {
+                if (_sessions[j]["sessionId"].toString() == sessionId
+                    && _sessions[j]["status"].toString() == "awaiting_relay") {
+                    finalizeSession(sessionId, "failed", gy::protocol::ErrorCode::TransferTimeout,
+                                    tr("等待中继确认超时"));
+                    break;
+                }
+            }
+        });
+        timer->start(kRelayDecisionTimeoutMs);
+        _relayDecisionTimers[sessionId] = timer;
+
+        const QString deviceId = _sessions[i]["deviceId"].toString();
+        qDebug() << "[TransferSession] 直连失败，进入中继决策状态" << sessionId;
+        emit relayModeRequested(sessionId, deviceId);
+        return;
+    }
+}
+
+// 用户确认后经中继通道重新建立发送（直连失败降级入口）
+void TransferSessionManager::retryViaRelay(const QString &sessionId)
+{
+    int sessionIndex = -1;
+    for (int i = 0; i < _sessions.size(); ++i) {
+        if (_sessions[i]["sessionId"].toString() == sessionId) {
+            sessionIndex = i;
+            break;
+        }
+    }
+
+    if (sessionIndex < 0) {
+        emit errorOccurred(tr("会话不存在，无法使用中继"));
+        return;
+    }
+    if (_sessions[sessionIndex]["type"].toString() != "send"
+        || _sessions[sessionIndex]["status"].toString() != "awaiting_relay") {
+        emit errorOccurred(tr("会话已结束，无法使用中继"));
+        return;
+    }
+
+    if (!_rendezvous || !_rendezvous->isConnected()) {
+        // 协调服务器不可用时中继无从建立，直接终结并说明原因
+        clearRelayPendingState(sessionId);
+        finalizeSession(sessionId, "failed", gy::protocol::ErrorCode::ConnectionLost,
+                        tr("协调服务器未连接，无法使用中继"));
+        return;
+    }
+
+    clearRelayPendingState(sessionId);  // 决策已做出，超时保护随之撤销
+
+    const QString deviceId = _sessions[sessionIndex]["deviceId"].toString();
+    const QString fileName = _sessions[sessionIndex]["fileName"].toString();
+    const qint64 totalBytes = _sessions[sessionIndex]["totalBytes"].toLongLong();
+
+    const QString relayId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    _sessions[sessionIndex]["relayId"] = relayId;
+    _sessions[sessionIndex]["status"] = "connecting";
+    _sessions[sessionIndex]["errorMsg"] = tr("正在建立中继通道");
+    emit sessionsChanged();
+
+    // 受理超时保护：5 秒内未收到协调服务器确认则终结会话
+    _pendingRelayInvites[relayId] = sessionId;
+    auto *timer = new QTimer{this};
+    timer->setSingleShot(true);
+    connect(timer, &QTimer::timeout, this, [this, relayId]() {
+        onRelayInviteTimeout(relayId);
+    });
+    timer->start(kRelayInviteTimeoutMs);
+    _relayInviteTimers[relayId] = timer;
+
+    _rendezvous->requestRelayInvite(relayId, deviceId, fileName, totalBytes);
+}
+
+// 清理会话关联的中继决策与邀请等待状态
+void TransferSessionManager::clearRelayPendingState(const QString &sessionId)
+{
+    if (QTimer *timer = _relayDecisionTimers.take(sessionId)) {
+        timer->deleteLater();
+    }
+
+    for (auto it = _pendingRelayInvites.begin(); it != _pendingRelayInvites.end();) {
+        if (it.value() == sessionId) {
+            if (QTimer *timer = _relayInviteTimers.take(it.key())) {
+                timer->deleteLater();
+            }
+            it = _pendingRelayInvites.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+// 中继邀请已被协调服务器受理，建立中继发送
+void TransferSessionManager::onRelayInviteAck(const QString &relayId)
+{
+    const QString sessionId = _pendingRelayInvites.take(relayId);
+    if (QTimer *timer = _relayInviteTimers.take(relayId)) {
+        timer->deleteLater();
+    }
+    if (sessionId.isEmpty()) {
+        return;  // 迟到的确认
+    }
+
+    int sessionIndex = -1;
+    for (int i = 0; i < _sessions.size(); ++i) {
+        if (_sessions[i]["sessionId"].toString() == sessionId) {
+            sessionIndex = i;
+            break;
+        }
+    }
+    if (sessionIndex < 0
+        || _sessions[sessionIndex]["status"].toString() != "connecting"
+        || _sessions[sessionIndex]["relayId"].toString() != relayId) {
+        return;  // 会话已终结或已发起新一轮中继
+    }
+
+    // 中继与协调服务同端口复用，直接使用协调服务器地址
+    QList<QPair<QString, quint16>> endpoints;
+    endpoints.append({_config->rendezvousHost(),
+                      static_cast<quint16>(_config->rendezvousPort())});
+
+    qDebug() << "[TransferSession] 中继邀请已受理，建立中继发送" << sessionId;
+    startSendWorker(_sessions[sessionIndex], endpoints, relayId, false);
+}
+
+// 中继邀请未在期限内得到协调服务器受理
+void TransferSessionManager::onRelayInviteTimeout(const QString &relayId)
+{
+    const QString sessionId = _pendingRelayInvites.take(relayId);
+    if (QTimer *timer = _relayInviteTimers.take(relayId)) {
+        timer->deleteLater();
+    }
+    if (sessionId.isEmpty()) {
+        return;
+    }
+
+    finalizeSession(sessionId, "failed", gy::protocol::ErrorCode::TransferTimeout,
+                    tr("协调服务器未响应中继请求"));
 }
 
 // 接收会话（用户确认接收文件）
@@ -389,6 +605,9 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
                 break;  // 已结束会话不能再取消，其 worker 可能已释放
             }
             QString type = _sessions[i]["type"].toString();
+
+            // 取消也撤销未决的中继决策/邀请等待
+            clearRelayPendingState(sessionId);
 
             if (type == "send") {
                 // 发送方：通过 worker 发送 Cancel 帧
@@ -672,6 +891,9 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
         if (_sessions[i]["sessionId"].toString() != sessionId) {
             continue;
         }
+
+        // 会话终结时兜底清理中继相关等待状态
+        clearRelayPendingState(sessionId);
 
         _sessions[i]["status"] = finalStatus;
         _sessions[i]["progress"] = finalStatus == "completed" ? 100 : _sessions[i]["progress"].toInt();

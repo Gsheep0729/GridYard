@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_protocol.cpp
-* @version 7.2.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点协议处理实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增中继邀请与轮询消息的解析和构建
 * [v7.2.0] GY   2026-07-21
 * * Stage 7.2：新增协调节点协议处理
 */
@@ -25,6 +27,10 @@ RendezvousProtocol::MessageType RendezvousProtocol::parseRequest(const QJsonObje
         return MessageType::Register;
     } else if (type == QStringLiteral("list_peers")) {
         return MessageType::ListPeers;
+    } else if (type == QStringLiteral("relay_invite")) {
+        return MessageType::RelayInvite;
+    } else if (type == QStringLiteral("relay_poll")) {
+        return MessageType::RelayPoll;
     }
 
     *errorString = QStringLiteral("未知消息类型: ") + type;
@@ -56,6 +62,36 @@ QJsonObject RendezvousProtocol::buildPeersResponse(const QList<OnlineRegistry::P
         item[QStringLiteral("tcp_port")] = peer.tcpPort;
         item[QStringLiteral("discovery_port")] = peer.discoveryPort;
         item[QStringLiteral("updated_at")] = peer.registeredAt.toString(Qt::ISODate);
+        items.append(item);
+    }
+
+    json[QStringLiteral("items")] = items;
+    return json;
+}
+
+// 构建中继邀请受理响应
+QJsonObject RendezvousProtocol::buildRelayInviteAck(const QString &relayId)
+{
+    QJsonObject json;
+    json[QStringLiteral("type")] = QStringLiteral("relay_invite_ack");
+    json[QStringLiteral("relay_id")] = relayId;
+    return json;
+}
+
+// 构建轮询到的中继邀请列表响应
+QJsonObject RendezvousProtocol::buildRelayInvites(const QList<OnlineRegistry::RelayInvite> &invites)
+{
+    QJsonObject json;
+    json[QStringLiteral("type")] = QStringLiteral("relay_invites");
+
+    QJsonArray items;
+    for (const OnlineRegistry::RelayInvite &invite : invites) {
+        QJsonObject item;
+        item[QStringLiteral("relay_id")] = invite.relayId;
+        item[QStringLiteral("sender_device_id")] = invite.senderDeviceId;
+        item[QStringLiteral("target_device_id")] = invite.targetDeviceId;
+        item[QStringLiteral("file_name")] = invite.fileName;
+        item[QStringLiteral("total_bytes")] = invite.totalBytes;
         items.append(item);
     }
 
@@ -108,6 +144,18 @@ OnlineRegistry::PeerInfo RendezvousProtocol::extractPeerInfo(const QJsonObject &
     peer.ttlSeconds = json[QStringLiteral("ttl_seconds")].toInt(30);
 
     return peer;
+}
+
+// 提取中继邀请字段
+OnlineRegistry::RelayInvite RendezvousProtocol::extractRelayInvite(const QJsonObject &json)
+{
+    OnlineRegistry::RelayInvite invite;
+    invite.relayId = json[QStringLiteral("relay_id")].toString();
+    invite.senderDeviceId = json[QStringLiteral("sender_device_id")].toString();
+    invite.targetDeviceId = json[QStringLiteral("target_device_id")].toString();
+    invite.fileName = json[QStringLiteral("file_name")].toString();
+    invite.totalBytes = json[QStringLiteral("total_bytes")].toInteger();
+    return invite;
 }
 
 // 验证 token

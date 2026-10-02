@@ -1,6 +1,6 @@
 /**
 * @file    p2p_server.cpp
-* @version 6.6.2
+* @version 7.9.0
 * @date    2026-06-23
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
@@ -8,8 +8,11 @@
 * 首帧路由阶段只窥视 socket 中的完整 TLV 帧，不读取其字节。
 * 确认 Type 后再把原始 socket 交给文件接收 Worker 或聊天连接处理者，
 * 保证目标处理者能自行解析完整首帧。
+* 中继降级的连接在完成 relay_join 握手后也进入同一条首帧路由。
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增 joinRelaySession：中继加入的连接复用首帧路由，等待期放宽到 30 秒
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v5.0.0] FengChunlin   2026-06-23
@@ -17,7 +20,7 @@
 * [v4.16.1] GY   2026-06-21
 * * 使用请求快照转发接收信息，删除未使用的 isListening() 访问器
 * [v4.15.1] FengChunlin   2026-06-16
-* * 删除 _threads.append 调用，修正析构注释
+* * 删除未使用的 _threads.append 调用，修正析构注释
 * [v4.15.0] FengChunlin   2026-06-16
 * * 为每个连接创建独立的 QThread，实现接收侧后台化
 * * worker + socket 移到后台线程，写盘与 SHA-256 不阻塞 UI
@@ -37,10 +40,19 @@
 
 #include <QDataStream>
 #include <QDebug>
+#include <QJsonObject>
+#include <QJsonDocument>
 
 namespace {
 
-static constexpr int kFirstFrameTimeoutMs = 8000;
+// 直连首帧路由超时
+static constexpr int kDefaultFirstFrameTimeoutMs = 8000;
+// 中继加入后等待首帧的超时：需覆盖发送端 relay_ready 门控与请求准备时间
+static constexpr int kRelayFirstFrameTimeoutMs = 30000;
+// 中继服务器连接超时
+static constexpr int kRelayConnectTimeoutMs = 5000;
+// 同时挂起的中继加入数量上限，防止异常邀请占用连接资源
+static constexpr int kMaxPendingRelayJoins = 3;
 
 // 读取 TLV 帧头中的 Type 和 Payload 长度
 bool readFrameHeader(const QByteArray &header, quint32 *type, quint32 *payloadLength)
@@ -113,6 +125,77 @@ void P2pServer::stop()
     }
 }
 
+// 通过中继服务器加入指定会话：连接、发送 relay_join 握手后交给首帧路由
+void P2pServer::joinRelaySession(const QString &host, quint16 port, const QString &relayId)
+{
+    if (relayId.isEmpty()) {
+        return;
+    }
+
+    // 同一 relay_id 只加入一次，避免邀请重复投递引发重复连接
+    for (auto it = _relayJoins.cbegin(); it != _relayJoins.cend(); ++it) {
+        if (it.value() == relayId) {
+            qDebug() << "[P2pServer] 中继会话" << relayId << "已在加入流程中，忽略重复邀请";
+            return;
+        }
+    }
+    if (_relayJoins.size() >= kMaxPendingRelayJoins) {
+        qWarning() << "[P2pServer] 挂起的中继加入过多，忽略新邀请" << relayId;
+        return;
+    }
+
+    auto *socket = new QTcpSocket{this};
+    auto *timer = new QTimer{socket};
+    timer->setSingleShot(true);
+    _relayJoins.insert(socket, relayId);
+
+    connect(timer, &QTimer::timeout, this, [this, socket]() {
+        failRelayJoin(socket, tr("中继连接超时"));
+    });
+    connect(socket, &QTcpSocket::connected, this, [this, socket, relayId, timer]() {
+        qDebug() << "[P2pServer] 已连接中继服务器，发送 relay_join";
+        QJsonObject hello;
+        hello[QStringLiteral("type")] = QStringLiteral("relay_join");
+        hello[QStringLiteral("relay_id")] = relayId;
+        const QByteArray line = QJsonDocument(hello).toJson(QJsonDocument::Compact) + '\n';
+        socket->write(line);
+
+        // 握手行已发出，后续字节就是中继转发的标准 TLV 流；
+        // 会话两端齐备后发送端才开始传输，这里放宽等待期
+        _relayJoins.remove(socket);
+        timer->stop();
+        monitorFirstFrame(socket, kRelayFirstFrameTimeoutMs);
+    });
+    connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
+        if (_relayJoins.contains(socket)) {
+            failRelayJoin(socket, tr("中继连接已断开"));
+        }
+    });
+    connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError) {
+        if (_relayJoins.contains(socket)) {
+            failRelayJoin(socket, socket->errorString());
+        }
+    });
+
+    timer->start(kRelayConnectTimeoutMs);
+    socket->connectToHost(host, port);
+}
+
+// 结束一次未完成的中继加入：清理连接并通知失败
+void P2pServer::failRelayJoin(QTcpSocket *socket, const QString &reason)
+{
+    const QString relayId = _relayJoins.take(socket);
+    if (relayId.isEmpty()) {
+        return;  // 断连与错误信号可能先后触发，只处理一次
+    }
+
+    qWarning() << "[P2pServer] 中继加入失败" << relayId << ":" << reason;
+    emit relayJoinFailed(relayId, reason);
+    disconnect(socket, nullptr, this, nullptr);
+    socket->disconnectFromHost();
+    socket->deleteLater();
+}
+
 // 处理新入站连接，先等待完整首帧再分流
 void P2pServer::onNewConnection()
 {
@@ -135,12 +218,12 @@ void P2pServer::onNewConnection()
         socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
         socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
 
-        monitorFirstFrame(socket);
+        monitorFirstFrame(socket, kDefaultFirstFrameTimeoutMs);
     }
 }
 
 // 监听 socket，等待首个完整 TLV 帧
-void P2pServer::monitorFirstFrame(QTcpSocket *socket)
+void P2pServer::monitorFirstFrame(QTcpSocket *socket, int timeoutMs)
 {
     auto *firstFrameTimer = new QTimer{socket};
     firstFrameTimer->setSingleShot(true);
@@ -166,7 +249,7 @@ void P2pServer::monitorFirstFrame(QTcpSocket *socket)
         _firstFrameTimers.remove(socket);
     });
 
-    firstFrameTimer->start(kFirstFrameTimeoutMs);
+    firstFrameTimer->start(timeoutMs);
     routeFirstFrame(socket);
 }
 

@@ -112,6 +112,8 @@ qt_add_executable(test_history_controller test_history_controller.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
     ${CLIENT_CORE_DIR}/history_controller.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_history_controller PRIVATE
     gy_shared
@@ -207,6 +209,8 @@ qt_add_executable(test_file_transfer test_file_transfer.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_sender_worker.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_file_transfer PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
 target_include_directories(test_file_transfer PRIVATE
@@ -228,8 +232,10 @@ qt_add_executable(test_session_manager test_session_manager.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_sender_worker.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
-target_link_libraries(test_session_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_link_libraries(test_session_manager PRIVATE gy_shared gy_rendezvous Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
 target_include_directories(test_session_manager PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
@@ -248,6 +254,8 @@ qt_add_executable(test_integration test_integration.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_sender_worker.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_integration PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
 target_include_directories(test_integration PRIVATE
@@ -258,3 +266,29 @@ target_include_directories(test_integration PRIVATE
 )
 target_compile_features(test_integration PRIVATE cxx_std_23)
 add_test(NAME test_integration COMMAND test_integration)
+
+# --- 中继降级链路测试 ---
+qt_add_executable(test_relay_chain test_relay_chain.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_relay_chain PRIVATE
+    gy_rendezvous
+    gy_shared
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+)
+target_include_directories(test_relay_chain PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_relay_chain PRIVATE cxx_std_23)
+add_test(NAME test_relay_chain COMMAND test_relay_chain)

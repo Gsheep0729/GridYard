@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_client.cpp
-* @version 7.5.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点客户端实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增中继邀请请求与按心跳周期轮询待领取邀请
 * [v7.5.0] GY   2026-07-21
 * * Stage 7.5 Phase B：新增协调节点客户端
 */
@@ -113,6 +115,44 @@ void RendezvousClient::listPeers(const QString &room)
 
     sendJson(json);
     qDebug() << "RendezvousClient: 发送查询设备请求 room =" << room;
+}
+
+// 请求协调服务器向目标设备转发中继邀请
+void RendezvousClient::requestRelayInvite(const QString &relayId, const QString &targetDeviceId,
+                                          const QString &fileName, qint64 totalBytes)
+{
+    if (!_isConnected) {
+        qWarning() << "RendezvousClient: 未连接协调服务器，无法发送中继邀请";
+        return;
+    }
+
+    QJsonObject json;
+    json[QStringLiteral("type")] = QStringLiteral("relay_invite");
+    json[QStringLiteral("room")] = _room;
+    json[QStringLiteral("relay_id")] = relayId;
+    json[QStringLiteral("target_device_id")] = targetDeviceId;
+    json[QStringLiteral("sender_device_id")] = _deviceId;
+    json[QStringLiteral("sender_name")] = _deviceName;
+    json[QStringLiteral("file_name")] = fileName;
+    json[QStringLiteral("total_bytes")] = totalBytes;
+
+    sendJson(json);
+    qDebug() << "RendezvousClient: 已发送中继邀请" << relayId << "目标" << targetDeviceId;
+}
+
+// 按本机 deviceId 轮询待领取的中继邀请
+void RendezvousClient::sendRelayPoll()
+{
+    if (!_isConnected || _deviceId.isEmpty()) {
+        return;
+    }
+
+    QJsonObject json;
+    json[QStringLiteral("type")] = QStringLiteral("relay_poll");
+    json[QStringLiteral("room")] = _room;
+    json[QStringLiteral("device_id")] = _deviceId;
+
+    sendJson(json);
 }
 
 bool RendezvousClient::isConnected() const
@@ -258,6 +298,9 @@ void RendezvousClient::handleMessage(const QJsonObject &json)
             _heartbeatTimerId = startTimer(kHeartbeatIntervalMs);
         }
 
+        // 注册后立即轮询一次中继邀请，之后随心跳周期刷新
+        sendRelayPoll();
+
     } else if (type == QStringLiteral("peers")) {
         QList<QVariantMap> peers;
         const QJsonArray items = json[QStringLiteral("items")].toArray();
@@ -281,6 +324,28 @@ void RendezvousClient::handleMessage(const QJsonObject &json)
         qDebug() << "RendezvousClient: 收到候选设备列表，" << peers.count() << " 个设备";
         emit peersReceived(peers);
 
+    } else if (type == QStringLiteral("relay_invite_ack")) {
+        const QString relayId = json[QStringLiteral("relay_id")].toString();
+        qDebug() << "RendezvousClient: 中继邀请已受理" << relayId;
+        emit relayInviteAckReceived(relayId);
+
+    } else if (type == QStringLiteral("relay_invites")) {
+        QList<QVariantMap> invites;
+        const QJsonArray items = json[QStringLiteral("items")].toArray();
+        for (const QJsonValue &item : items) {
+            QJsonObject obj = item.toObject();
+            QVariantMap invite;
+            invite[QStringLiteral("relayId")] = obj[QStringLiteral("relay_id")].toString();
+            invite[QStringLiteral("senderDeviceId")] = obj[QStringLiteral("sender_device_id")].toString();
+            invite[QStringLiteral("fileName")] = obj[QStringLiteral("file_name")].toString();
+            invite[QStringLiteral("totalBytes")] = obj[QStringLiteral("total_bytes")].toInteger();
+            invites.append(invite);
+        }
+        if (!invites.isEmpty()) {
+            qDebug() << "RendezvousClient: 轮询到" << invites.count() << "条中继邀请";
+            emit relayInvitesReceived(invites);
+        }
+
     } else if (type == QStringLiteral("error")) {
         QString message = json[QStringLiteral("message")].toString();
         qWarning() << "RendezvousClient: 服务器错误" << message;
@@ -302,8 +367,9 @@ QVariantMap RendezvousClient::peerEndpointToVariantMap(const PeerEndpoint &peer)
 void RendezvousClient::timerEvent(QTimerEvent *event)
 {
     if (event->timerId() == _heartbeatTimerId && _isConnected) {
-        // 心跳时重新注册以刷新 TTL
+        // 心跳时重新注册以刷新 TTL，并顺带轮询中继邀请
         doRegister();
+        sendRelayPoll();
         return;
     }
     QObject::timerEvent(event);

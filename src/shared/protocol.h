@@ -60,7 +60,7 @@ inline constexpr quint16 kDefaultDiscoveryPort = 45678;   // UDP 设备发现
 inline constexpr quint16 kDefaultP2pPort       = 35100;   // TCP P2P 文件传输
 // 协调服务器默认端口
 inline constexpr quint16 kDefaultRendezvousPort = 45679;   // 协调节点（默认）
-inline constexpr quint16 kDefaultRelayPort      = 45679;   // 中继服务器（默认，与协调节点同端口不同进程）
+inline constexpr quint16 kDefaultRelayPort      = 45679;   // 中继服务器（与协调节点同端口：协调模式内置中继分流，--mode relay 独立部署）
 
 // ---- V1.0 Type 码 --------------------------------------------------------
 inline constexpr quint32 kTypeHello        = 0x0001;   // UDP 广播：设备上线 / 心跳

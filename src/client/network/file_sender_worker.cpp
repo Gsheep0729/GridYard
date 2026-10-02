@@ -1,15 +1,17 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 6.6.2
+* @version 7.9.0
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
-* 实现完整的文件发送流程：建立 TCP 连接、发送传输请求、等待响应、
-* 以 8MB 分块发送数据、处理确认帧。支持多文件/目录传输、背压控制、
-* 取消操作和超时检测。
+* 实现完整的文件发送流程：按候选端点顺序建立 TCP 连接、可选的中继握手、
+* 发送传输请求、等待响应、以 8MB 分块发送数据、处理确认帧。
+* 支持多文件/目录传输、背压控制、取消操作和超时检测。
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 候选端点按序轮询连接；中继模式下完成 relay_create/relay_ready 握手
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
@@ -42,6 +44,7 @@
 #include "protocol.h"
 
 #include <QDataStream>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -52,6 +55,10 @@
 
 // 传输超时时间：30 秒，超过该时间没有网络进展则判定失败
 static constexpr int kTimeoutMs = 30000;
+// 单个候选端点的连接超时
+static constexpr int kConnectTimeoutMs = 5000;
+// 中继等待接收端加入的超时：覆盖接收端轮询延迟（心跳周期）与用户确认链路
+static constexpr int kRelayReadyTimeoutMs = 30000;
 
 // 构造函数，初始化 TCP socket、FrameCodec 和超时定时器
 FileSenderWorker::FileSenderWorker(QObject *parent)
@@ -91,19 +98,30 @@ FileSenderWorker::~FileSenderWorker()
     cleanup();
 }
 
-// 发起文件传输：序列化文件列表、建立 TCP 连接、发送传输请求
+// 发起文件传输：序列化文件列表、按候选顺序建立 TCP 连接、发送传输请求
 void FileSenderWorker::startTransfer(const QString &host, quint16 port,
                                      const QString &path, const QString &senderDeviceId,
                                      const QString &senderName)
 {
+    startTransfer({{host, port}}, path, senderDeviceId, senderName);
+}
+
+// 发起文件传输：候选端点按序尝试，relayId 非空时先完成中继握手
+void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpoints,
+                                     const QString &path, const QString &senderDeviceId,
+                                     const QString &senderName, const QString &relayId)
+{
     qDebug() << "[FileSender] 开始传输流程";
-    qDebug() << "[FileSender] 目标地址:" << host << ":" << port;
+    qDebug() << "[FileSender] 候选端点数量:" << endpoints.size();
     qDebug() << "[FileSender] 文件路径:" << path;
 
     _rootPath = path;
     _senderDeviceId = senderDeviceId;
     _senderName = senderName;
     _sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    _relayId = relayId;
+    _relayReady = false;
+    _relayLineBuffer.clear();
 
     _fileList = gy::DirSerializer::serialize(path);
     const QFileInfo rootInfo{path};
@@ -148,18 +166,39 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
         return;
     }
 
-    // 连接到接收端
-    qDebug() << "[FileSender] 正在连接到" << host << ":" << port;
-    _socket->connectToHost(host, port);
-    // 连接建立最多等待 5 秒，避免离线设备导致发送线程长时间卡住。
-    if (!_socket->waitForConnected(5000)) {
-        qWarning() << "[FileSender] 连接失败:" << _socket->errorString();
+    // 候选端点按序连接，全部失败才算连接失败（候选轮询：直连优先，备选兜底）
+    bool connected = false;
+    QString lastError;
+    for (const auto &endpoint : endpoints) {
+        qDebug() << "[FileSender] 正在连接到" << endpoint.first << ":" << endpoint.second;
+        _socket->connectToHost(endpoint.first, endpoint.second);
+        // 连接建立最多等待 5 秒，避免离线设备导致发送线程长时间卡住。
+        if (_socket->waitForConnected(kConnectTimeoutMs)) {
+            connected = true;
+            break;
+        }
+        lastError = _socket->errorString();
+        qWarning() << "[FileSender] 候选端点连接失败:" << endpoint.first << lastError;
         _socket->abort();  // 放弃仍在进行的连接尝试，避免半开连接残留
-        finish(false, gy::protocol::ErrorCode::ConnectionTimeout, tr("连接超时: %1").arg(_socket->errorString()));
+    }
+
+    if (!connected) {
+        finish(false, gy::protocol::ErrorCode::ConnectionTimeout, tr("连接失败: %1").arg(lastError));
         return;
     }
 
     qDebug() << "[FileSender] 连接成功";
+
+    // 中继模式：先发送 relay_create 握手并等待接收端加入，会话就绪后再进入 TLV 流程，
+    // 否则中继会丢弃接收端加入之前到达的字节
+    if (!_relayId.isEmpty() && !waitForRelayReady()) {
+        return;
+    }
+    // relay_ready 行后可能同批到达少量 TLV 字节，补喂给解码器
+    if (!_relayLineBuffer.isEmpty()) {
+        _codec->feed(_relayLineBuffer);
+        _relayLineBuffer.clear();
+    }
 
     // 扩大收发缓冲到 4MB，配合分块发送降低大文件吞吐波动。
     _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
@@ -173,9 +212,81 @@ void FileSenderWorker::startTransfer(const QString &host, quint16 port,
     _timeoutTimer->start(kTimeoutMs);
 }
 
+// 中继握手：发送 relay_create 行并等待 relay_ready，失败时终结会话
+bool FileSenderWorker::waitForRelayReady()
+{
+    QJsonObject hello;
+    hello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    hello[QStringLiteral("relay_id")] = _relayId;
+    QByteArray helloLine = QJsonDocument(hello).toJson(QJsonDocument::Compact) + '\n';
+    if (_socket->write(helloLine) != helloLine.size()) {
+        finish(false, gy::protocol::ErrorCode::ConnectionLost,
+               tr("中继握手写入失败: %1").arg(_socket->errorString()));
+        return false;
+    }
+
+    qDebug() << "[FileSender] 已发送中继握手，等待接收端加入";
+    QElapsedTimer elapsed;
+    elapsed.start();
+    while (!_relayReady) {
+        if (_socket->state() != QAbstractSocket::ConnectedState) {
+            finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("中继连接已断开"));
+            return false;
+        }
+        if (elapsed.hasExpired(kRelayReadyTimeoutMs)) {
+            finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("等待接收端加入中继超时"));
+            return false;
+        }
+        if (!_socket->waitForReadyRead(500)) {
+            continue;
+        }
+        if (!processRelayControlData(_socket->readAll())) {
+            return false;  // processRelayControlData 内部已终结会话
+        }
+    }
+
+    qDebug() << "[FileSender] 中继会话就绪";
+    return true;
+}
+
+// 解析中继控制行（relay_ready / relay_error），返回 false 表示会话已终结
+bool FileSenderWorker::processRelayControlData(const QByteArray &data)
+{
+    _relayLineBuffer += data;
+
+    int newlineIndex;
+    while ((newlineIndex = _relayLineBuffer.indexOf('\n')) >= 0) {
+        const QByteArray line = _relayLineBuffer.left(newlineIndex);
+        _relayLineBuffer.remove(0, newlineIndex + 1);
+
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(line, &error);
+        if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+            continue;
+        }
+
+        const QString type = doc.object()[QStringLiteral("type")].toString();
+        if (type == QStringLiteral("relay_ready")) {
+            _relayReady = true;
+        } else if (type == QStringLiteral("relay_error")) {
+            finish(false, gy::protocol::ErrorCode::ConnectionLost,
+                   tr("中继传输失败: %1").arg(doc.object()[QStringLiteral("message")].toString()));
+            return false;
+        }
+    }
+
+    return true;
+}
+
 // 处理 socket 可读数据，喂入 FrameCodec 解码并重置超时
 void FileSenderWorker::onReadyRead()
 {
+    // 中继会话就绪前到达的是控制行，不能喂给 TLV 解码器
+    if (!_relayId.isEmpty() && !_relayReady) {
+        processRelayControlData(_socket->readAll());
+        return;
+    }
+
     _codec->feed(_socket->readAll());
 
     if (_transferActive) {

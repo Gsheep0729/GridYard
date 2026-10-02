@@ -1,15 +1,18 @@
 /**
 * @file    main.cpp
-* @version 7.3.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点和中继服务入口
 *
 * 支持两种模式：
-* - 协调节点模式（默认）：提供设备注册和候选端点拉取服务
-* - 中继模式：提供流式中继转发服务
+* - 协调节点模式（默认）：同端口提供设备注册、候选端点拉取、中继邀请信令
+*   和流式中继转发（按握手类型分流）
+* - 中继模式：仅提供流式中继转发服务
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 协调节点模式同端口内置中继，支撑 Relay 降级完整链路
 * [v7.8.1] GY   2026-07-26
 * * 修复服务器对象声明在 if/else 块内导致离开作用域即析构、事件循环空转不监听的问题
 * * 补充端口和运行模式参数校验
@@ -33,7 +36,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app{argc, argv};
     app.setApplicationName(QStringLiteral("gridyard-rendezvous"));
-    app.setApplicationVersion(QStringLiteral("7.8.1"));
+    app.setApplicationVersion(QStringLiteral("7.9.0"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("GridYard 协调节点/中继服务"));
@@ -106,12 +109,18 @@ int main(int argc, char *argv[])
         auto *rendezvous = new RendezvousServer{QStringLiteral("0.0.0.0"), port, token};
         server.reset(rendezvous);
 
+        // 协调节点模式同端口内置中继：分流出的 relay_create/relay_join 连接
+        // 移交给该实例（不独立监听，仅承接），校园网只需开放一个端口
+        auto *relay = new RelayServer{port, token, rendezvous};
+        QObject::connect(rendezvous, &RendezvousServer::relayPipeRequested,
+                         relay,    &RelayServer::adoptConnection);
+
         QObject::connect(rendezvous, &RendezvousServer::serverStarted, &app, [&app](bool success, const QString &error) {
             if (!success) {
                 qCritical() << "[Main] 协调节点服务启动失败:" << error;
                 QTimer::singleShot(0, &app, [] { QCoreApplication::exit(1); });
             } else {
-                qInfo() << "[Main] GridYard 协调节点服务已启动";
+                qInfo() << "[Main] GridYard 协调节点服务已启动（同端口内置中继）";
             }
         });
 

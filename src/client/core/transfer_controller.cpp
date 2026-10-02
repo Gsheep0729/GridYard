@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.8.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增 retryViaRelay 透传
 * [v7.8.0] GY   2026-07-21
 * * 新增 relayModeRequested 信号透传
 * [v6.6.2] GY   2026-06-27
@@ -101,5 +103,13 @@ void TransferController::clearFinishedSessions(bool deleteReceivedFiles, const Q
 {
     if (_manager) {
         _manager->clearFinishedSessions(deleteReceivedFiles, deviceId);
+    }
+}
+
+// 直连失败后经中继通道重新发送
+void TransferController::retryViaRelay(const QString &sessionId)
+{
+    if (_manager) {
+        _manager->retryViaRelay(sessionId);
     }
 }

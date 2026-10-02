@@ -1,11 +1,14 @@
 /**
 * @file    relay_server.cpp
-* @version 7.3.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 会话就绪通知、对端关闭传播与未完成会话超时回收
+* * 握手首行改异步读取，新增同端口复用的连接接入入口
 * [v7.3.0] GY   2026-07-21
 * * Stage 7.3：新增流式中继服务器
 */
@@ -15,8 +18,12 @@
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QTimer>
 #include <QUuid>
+
+// 会话等待对端加入的超时时间：覆盖发送端 30 秒就绪等待和接收端轮询延迟
+static constexpr int kSessionIdleTimeoutMs = 60000;
+// 握手首行等待超时
+static constexpr int kHelloTimeoutMs = 5000;
 
 // -------------------- RelaySession --------------------
 
@@ -25,6 +32,17 @@ RelaySession::RelaySession(const QString &relayId, QObject *parent)
     : QObject{parent}
     , _relayId{relayId}
 {
+    // 只有一端连接的会话可能永远等不到对端，超时后回收，避免 socket 长期悬挂
+    _idleTimer = new QTimer{this};
+    _idleTimer->setSingleShot(true);
+    _idleTimer->setInterval(kSessionIdleTimeoutMs);
+    connect(_idleTimer, &QTimer::timeout, this, [this]() {
+        if (!isComplete()) {
+            qWarning() << "[RelaySession]" << _relayId << "等待对端加入超时，回收会话";
+            abort(QStringLiteral("session_timeout"), QStringLiteral("等待对端加入超时"));
+        }
+    });
+    _idleTimer->start();
 }
 
 // 析构函数，清理 socket
@@ -46,7 +64,7 @@ bool RelaySession::isComplete() const
     return _sender != nullptr && _receiver != nullptr;
 }
 
-bool RelaySession::addSender(QTcpSocket *socket)
+bool RelaySession::addSender(QTcpSocket *socket, const QByteArray &pendingData)
 {
     if (_sender != nullptr) {
         return false;
@@ -58,12 +76,18 @@ bool RelaySession::addSender(QTcpSocket *socket)
     connect(_sender, &QTcpSocket::readyRead, this, &RelaySession::onSenderReadyRead);
     connect(_sender, &QTcpSocket::disconnected, this, &RelaySession::onSenderDisconnected);
 
+    // 同端口复用场景下握手行之后可能已捎带少量字节，缓存到齐备后转发
+    if (!pendingData.isEmpty()) {
+        _senderBacklog.append(pendingData);
+    }
+
     qDebug() << "[RelaySession]" << _relayId << "发送端已连接";
+    notifyReady();
     return true;
 }
 
 // 添加接收端连接
-bool RelaySession::addReceiver(QTcpSocket *socket)
+bool RelaySession::addReceiver(QTcpSocket *socket, const QByteArray &pendingData)
 {
     if (_receiver != nullptr) {
         return false;
@@ -75,8 +99,60 @@ bool RelaySession::addReceiver(QTcpSocket *socket)
     connect(_receiver, &QTcpSocket::readyRead, this, &RelaySession::onReceiverReadyRead);
     connect(_receiver, &QTcpSocket::disconnected, this, &RelaySession::onReceiverDisconnected);
 
+    if (!pendingData.isEmpty()) {
+        _receiverBacklog.append(pendingData);
+    }
+
     qDebug() << "[RelaySession]" << _relayId << "接收端已连接";
+    notifyReady();
     return true;
+}
+
+// 两端齐备后通知发送端可以开始传输，并转发齐备前缓存的字节
+void RelaySession::notifyReady()
+{
+    if (!isComplete()) {
+        return;
+    }
+
+    _idleTimer->stop();
+
+    QJsonObject ready;
+    ready[QStringLiteral("type")] = QStringLiteral("relay_ready");
+    _sender->write(QJsonDocument(ready).toJson(QJsonDocument::Compact) + '\n');
+
+    if (!_senderBacklog.isEmpty()) {
+        _receiver->write(_senderBacklog);
+        _senderBacklog.clear();
+    }
+    if (!_receiverBacklog.isEmpty()) {
+        _sender->write(_receiverBacklog);
+        _receiverBacklog.clear();
+    }
+
+    qDebug() << "[RelaySession]" << _relayId << "两端齐备，已通知发送端";
+}
+
+// 主动结束会话：向两端广播错误并关闭连接
+void RelaySession::abort(const QString &code, const QString &message)
+{
+    broadcastError(code, message);
+
+    // 先摘除引用再关闭，避免 disconnected 槽重入
+    QTcpSocket *sockets[] = {_sender, _receiver};
+    _sender = nullptr;
+    _receiver = nullptr;
+    _idleTimer->stop();
+
+    for (QTcpSocket *socket : sockets) {
+        if (socket) {
+            socket->disconnect(this);
+            socket->disconnectFromHost();
+            socket->deleteLater();
+        }
+    }
+
+    emit sessionClosed();
 }
 
 // 向两端广播错误消息
@@ -100,26 +176,25 @@ void RelaySession::broadcastError(const QString &code, const QString &message)
 // 处理发送端可读事件，转发数据到接收端
 void RelaySession::onSenderReadyRead()
 {
-    if (!_sender || !_receiver) {
-        return;
-    }
-
-    QByteArray data = _sender->readAll();
-    if (!data.isEmpty()) {
-        _receiver->write(data);
-    }
+    relayData(_sender, _receiver);
 }
 
 // 处理接收端可读事件，转发数据到发送端
 void RelaySession::onReceiverReadyRead()
 {
-    if (!_sender || !_receiver) {
+    relayData(_receiver, _sender);
+}
+
+// 按方向转发可读字节
+void RelaySession::relayData(QTcpSocket *from, QTcpSocket *to)
+{
+    if (!from || !to) {
         return;
     }
 
-    QByteArray data = _receiver->readAll();
+    const QByteArray data = from->readAll();
     if (!data.isEmpty()) {
-        _sender->write(data);
+        to->write(data);
     }
 }
 
@@ -129,13 +204,13 @@ void RelaySession::onSenderDisconnected()
     qDebug() << "[RelaySession]" << _relayId << "发送端断开";
     _sender = nullptr;
 
+    // 关闭对端让传输方立刻感知断连，而不是等到超时
     if (_receiver) {
         broadcastError(QStringLiteral("peer_left"), QStringLiteral("对端已断开"));
+        _receiver->disconnectFromHost();
     }
 
-    if (!isComplete()) {
-        emit sessionClosed();
-    }
+    emit sessionClosed();
 }
 
 // 处理接收端断开事件
@@ -146,11 +221,10 @@ void RelaySession::onReceiverDisconnected()
 
     if (_sender) {
         broadcastError(QStringLiteral("peer_left"), QStringLiteral("对端已断开"));
+        _sender->disconnectFromHost();
     }
 
-    if (!isComplete()) {
-        emit sessionClosed();
-    }
+    emit sessionClosed();
 }
 
 // -------------------- RelayServer --------------------
@@ -210,86 +284,126 @@ int RelayServer::sessionCount() const
     return _sessions.size();
 }
 
-// 处理新的客户端连接
+// 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
+void RelayServer::adoptConnection(QTcpSocket *socket, const QJsonObject &hello,
+                                  const QByteArray &pendingData)
+{
+    handleRelayHello(socket, hello, pendingData);
+}
+
+// 处理新的客户端连接，异步等待握手首行
 void RelayServer::onNewConnection()
 {
-    QTcpSocket *socket = _server->nextPendingConnection();
-    if (!socket) {
-        return;
+    while (_server->hasPendingConnections()) {
+        QTcpSocket *socket = _server->nextPendingConnection();
+        if (!socket) {
+            continue;
+        }
+
+        qDebug() << "[RelayServer] 新连接来自" << socket->peerAddress().toString();
+        socket->setParent(this);
+
+        auto *timer = new QTimer{socket};
+        timer->setSingleShot(true);
+        connect(timer, &QTimer::timeout, this, [this, socket]() {
+            dropConnection(socket, QStringLiteral("握手超时"));
+        });
+        connect(socket, &QTcpSocket::readyRead, this, [this, socket, timer]() {
+            auto it = _helloBuffers.find(socket);
+            if (it == _helloBuffers.end()) {
+                return;
+            }
+            it->append(socket->readAll());
+
+            const int newlineIndex = it->indexOf('\n');
+            if (newlineIndex < 0) {
+                return;
+            }
+            const QByteArray line = it->left(newlineIndex);
+            const QByteArray leftover = it->mid(newlineIndex + 1);
+            _helloBuffers.erase(it);
+            timer->stop();
+            timer->deleteLater();
+
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(line, &error);
+            if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+                qWarning() << "[RelayServer] 无效的 JSON 握手";
+                dropConnection(socket, QStringLiteral("无效握手"));
+                return;
+            }
+
+            handleRelayHello(socket, doc.object(), leftover);
+        });
+        connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        connect(socket, &QObject::destroyed, this, [this, socket]() {
+            _helloBuffers.remove(socket);
+        });
+
+        _helloBuffers.insert(socket, {});
+        timer->start(kHelloTimeoutMs);
     }
+}
 
-    QString address = socket->peerAddress().toString();
-    qDebug() << "[RelayServer] 新连接来自" << address;
-
-    // 读取第一行 JSON 解析 relay_id 和 join_token
-    socket->waitForReadyRead(5000);
-
-    QByteArray data = socket->readAll();
-    if (data.isEmpty()) {
-        socket->close();
-        return;
-    }
-
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
-
-    if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-        qWarning() << "[RelayServer] 无效的 JSON 请求";
-        socket->close();
-        return;
-    }
-
-    QJsonObject json = doc.object();
+// 解析中继握手并按角色加入会话
+void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
+                                   const QByteArray &pendingData)
+{
     const QString type = json[QStringLiteral("type")].toString();
     const QString relayId = json[QStringLiteral("relay_id")].toString();
-    const QString joinToken = json[QStringLiteral("join_token")].toString();
 
     if (relayId.isEmpty()) {
         qWarning() << "[RelayServer] 缺少 relay_id";
-        socket->close();
+        dropConnection(socket, QStringLiteral("缺少 relay_id"));
+        return;
+    }
+    if (type != QStringLiteral("relay_create") && type != QStringLiteral("relay_join")) {
+        qWarning() << "[RelayServer] 未知的中继握手类型" << type;
+        dropConnection(socket, QStringLiteral("未知握手类型"));
         return;
     }
 
-    // 查找或创建会话
-    RelaySession *session = nullptr;
-    if (!_sessions.contains(relayId)) {
-        // 新建会话
+    // 查找或创建会话；接收端先于发送端到达时同样允许先建会话
+    RelaySession *session = _sessions.value(relayId);
+    if (!session) {
         session = new RelaySession{relayId, this};
         connect(session, &RelaySession::sessionClosed, this, &RelayServer::onSessionClosed);
         _sessions.insert(relayId, session);
         qDebug() << "[RelayServer] 创建新中继会话" << relayId;
         emit sessionCreated(relayId);
-    } else {
-        session = _sessions.value(relayId);
     }
 
-    // 添加到会话（发送端或接收端）
-    bool isSender = (type == QStringLiteral("relay_create"));
-    bool added = isSender ? session->addSender(socket) : session->addReceiver(socket);
+    const bool isSender = (type == QStringLiteral("relay_create"));
+    const bool added = isSender ? session->addSender(socket, pendingData)
+                                : session->addReceiver(socket, pendingData);
 
     if (!added) {
         qWarning() << "[RelayServer] 会话" << relayId << "无法添加连接（角色已满或已关闭）";
-        socket->close();
-    } else {
-        _socketToRelayId.insert(socket, relayId);
+        dropConnection(socket, QStringLiteral("会话角色已满"));
     }
+}
+
+// 丢弃未完成握手的连接
+void RelayServer::dropConnection(QTcpSocket *socket, const QString &reason)
+{
+    qWarning() << "[RelayServer] 关闭中继连接:" << reason;
+    _helloBuffers.remove(socket);
+    socket->disconnect(this);
+    socket->disconnectFromHost();
+    socket->deleteLater();
 }
 
 // 处理会话关闭事件
 void RelayServer::onSessionClosed()
 {
     RelaySession *session = qobject_cast<RelaySession *>(sender());
-    if (session) {
-        QString relayId = session->relayId();
-        _sessions.remove(relayId);
-        qDebug() << "[RelayServer] 会话" << relayId << "已关闭";
-        emit sessionClosed(relayId);
-        session->deleteLater();
+    // 一端断开会经由对端关闭路径二次触发 sessionClosed，只有首次有效
+    if (!session || !_sessions.contains(session->relayId())) {
+        return;
     }
-}
-
-// 生成新的 relay_id
-QString RelayServer::generateRelayId() const
-{
-    return QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QString relayId = session->relayId();
+    _sessions.remove(relayId);
+    qDebug() << "[RelayServer] 会话" << relayId << "已关闭";
+    emit sessionClosed(relayId);
+    session->deleteLater();
 }

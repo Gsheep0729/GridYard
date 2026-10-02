@@ -1,11 +1,14 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 7.2.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点服务器实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增中继邀请信令与同端口中继连接移交
+* * 会话断开后释放会话与 socket，修复长驻进程的连接泄漏
 * [v7.2.0] GY   2026-07-21
 * * Stage 7.2：新增协调节点服务器
 */
@@ -67,12 +70,26 @@ void RendezvousSession::onReadyRead()
 void RendezvousSession::onDisconnected()
 {
     qDebug() << "[RendezvousSession] 会话断开" << _socket->peerAddress().toString();
+    // socket 无父对象，断开后立即释放，避免长驻进程累积连接对象
+    _socket->deleteLater();
+    _socket = nullptr;
     emit finished();
 }
 
 // 处理 JSON 请求消息
 void RendezvousSession::processRequest(const QJsonObject &json)
 {
+    // 中继管道连接：剥离握手行后整条移交，后续字节流不再按 JSON 行解析
+    const QString rawType = json[QStringLiteral("type")].toString();
+    if (rawType == QStringLiteral("relay_create") || rawType == QStringLiteral("relay_join")) {
+        disconnect(_socket, nullptr, this, nullptr);
+        emit relayPipeRequested(_socket, json, _buffer);
+        _buffer.clear();
+        _socket = nullptr;
+        emit finished();
+        return;
+    }
+
     QString errorString;
     RendezvousProtocol::MessageType type = RendezvousProtocol::parseRequest(json, &errorString);
 
@@ -117,6 +134,35 @@ void RendezvousSession::processRequest(const QJsonObject &json)
         break;
     }
 
+    case RendezvousProtocol::MessageType::RelayInvite: {
+        OnlineRegistry::RelayInvite invite = RendezvousProtocol::extractRelayInvite(json);
+        if (invite.relayId.isEmpty() || invite.targetDeviceId.isEmpty()) {
+            sendResponse(RendezvousProtocol::buildError(QStringLiteral("中继邀请缺少 relay_id 或 target_device_id")));
+            break;
+        }
+        // 目标不在线时直接拒绝，发送端可立即改走失败提示而不是干等超时
+        if (!_registry->hasPeer(room, invite.targetDeviceId)) {
+            sendResponse(RendezvousProtocol::buildError(QStringLiteral("目标设备不在线或未注册")));
+            break;
+        }
+        _registry->addRelayInvite(room, invite);
+        sendResponse(RendezvousProtocol::buildRelayInviteAck(invite.relayId));
+        break;
+    }
+
+    case RendezvousProtocol::MessageType::RelayPoll: {
+        const QString deviceId = RendezvousProtocol::extractDeviceId(json);
+        if (deviceId.isEmpty()) {
+            sendResponse(RendezvousProtocol::buildError(QStringLiteral("缺少 device_id")));
+            break;
+        }
+        // 邀请一次性消费，领取后目标设备凭 relay_id 建立中继连接
+        const QList<OnlineRegistry::RelayInvite> invites =
+            _registry->consumeRelayInvites(room, deviceId);
+        sendResponse(RendezvousProtocol::buildRelayInvites(invites));
+        break;
+    }
+
     default:
         sendResponse(RendezvousProtocol::buildError(QStringLiteral("不支持的消息类型")));
         break;
@@ -126,6 +172,9 @@ void RendezvousSession::processRequest(const QJsonObject &json)
 // 发送 JSON 响应
 void RendezvousSession::sendResponse(const QJsonObject &json)
 {
+    if (!_socket) {
+        return;  // 会话已移交或断开
+    }
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact) + '\n';
     _socket->write(data);
     _socket->flush();
@@ -155,7 +204,7 @@ bool RendezvousServer::start()
     qInfo() << "[RendezvousServer] 监听端口" << _server->serverPort();
     connect(_server, &QTcpServer::newConnection, this, &RendezvousServer::onNewConnection);
 
-    // 定期清理过期设备
+    // 定期清理过期设备和中继邀请
     QTimer *pruneTimer = new QTimer{this};
     connect(pruneTimer, &QTimer::timeout, _registry, &OnlineRegistry::pruneExpired);
     pruneTimer->start(10000);  // 每 10 秒清理一次
@@ -200,13 +249,18 @@ void RendezvousServer::onNewConnection()
 
     connect(session, &RendezvousSession::finished, this, [this, session, address]() {
         _sessions.removeAll(session);
+        session->deleteLater();
         emit clientDisconnected(address);
     });
+
+    // 会话移交的中继管道连接转发给接入方（同端口复用）
+    connect(session, &RendezvousSession::relayPipeRequested,
+            this,    &RendezvousServer::relayPipeRequested);
 
     session->start();
 }
 
-// 处理会话关闭
+// 处理会话关闭事件
 void RendezvousServer::onSessionFinished()
 {
 }

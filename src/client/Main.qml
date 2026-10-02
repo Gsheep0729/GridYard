@@ -1,17 +1,19 @@
 /**
-* @file    Main.qml
-* @version 6.8.1
-* @date    2026-06-28
-* @author  GridYard Team
-* @brief   GridYard 客户端根窗口
-*
-* 标题通过 AppController.applicationName/Version 绑定，
-* 关窗时由用户选择隐藏到后台或退出程序。
-* 左侧显示在线设备列表，右侧显示设备会话页。
-*
-* Change Log:
-* [v6.8.1] GY   2026-06-28
-* * 补充 localPathFromUrl 和文件选择弹窗的行内注释
+ * @file    Main.qml
+ * @version 7.9.0
+ * @date    2026-06-28
+ * @author  GridYard Team
+ * @brief   GridYard 客户端根窗口
+ *
+ * 标题通过 AppController.applicationName/Version 绑定，
+ * 关窗时由用户选择隐藏到后台或退出程序。
+ * 左侧显示在线设备列表，右侧显示设备会话页。
+ *
+ * Change Log:
+ * [v7.9.0] GY   2026-07-26
+ * * 接管 Relay 降级决策：自动中继直接重试，询问策略弹窗确认
+ * [v6.8.1] GY   2026-06-28
+ * * 补充 localPathFromUrl 和文件选择弹窗的行内注释
 * [v6.7.0] GY   2026-06-28
 * * 关闭按钮触发时短暂置顶主窗口，确保立即回到桌面最上层
 * * 关闭确认弹窗打开后重试恢复并聚焦主窗口
@@ -647,6 +649,52 @@ ApplicationWindow {
 
     AcceptDialog { id: acceptDialog }
 
+    // 直连失败后的中继确认弹窗（AskBeforeRelay 策略）
+    Dialog {
+        id: relayConfirmDialog
+        title: qsTr("直连失败")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(420, parent ? parent.width - 48 : 420)
+        padding: 20
+
+        property string _sessionId: ""
+
+        contentItem: ColumnLayout {
+            spacing: 14
+            anchors.fill: parent
+
+            Label {
+                text: qsTr("与目标设备直连失败，是否通过中继服务器转发本次传输？转发速度可能受限于服务器带宽。")
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+        }
+
+        footer: RowLayout {
+            spacing: 10
+            anchors.margins: 16
+
+            Item {
+                Layout.fillWidth: true
+            }
+            Button {
+                text: qsTr("使用中继")
+                onClicked: {
+                    AppController.transferController.retryViaRelay(relayConfirmDialog._sessionId)
+                    relayConfirmDialog.close()
+                }
+            }
+            Button {
+                text: qsTr("取消传输")
+                onClicked: {
+                    AppController.transferController.cancelSession(relayConfirmDialog._sessionId)
+                    relayConfirmDialog.close()
+                }
+            }
+        }
+    }
+
     Dialog {
         id: completeDialog
         title: qsTr("接收完成")
@@ -714,6 +762,17 @@ ApplicationWindow {
         }
         function onErrorOccurred(message: string): void { errorLabel.text = message; errorPopup.open() }
         function onMessageOccurred(message: string): void { successLabel.text = message; successPopup.open() }
+        function onRelayModeRequested(sessionId: string, deviceId: string): void {
+            // 直连候选全部失败：按策略自动中继，或弹窗询问用户
+            if (ConfigManager.relayMode === 1) {
+                AppController.transferController.retryViaRelay(sessionId)
+                successLabel.text = qsTr("直连失败，已自动切换中继传输")
+                successPopup.open()
+                return
+            }
+            relayConfirmDialog._sessionId = sessionId
+            relayConfirmDialog.open()
+        }
     }
 
     Connections {

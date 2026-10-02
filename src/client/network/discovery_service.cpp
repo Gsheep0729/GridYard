@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.cpp
-* @version 7.7.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 缓存协调节点返回的多地址，供直连失败后的候选端点轮询
 * [v7.7.0] GY   2026-07-21
 * * 设备来源标签：broadcast（UDP广播）、rendezvous（协调节点）
 * [v7.5.0] GY   2026-07-21
@@ -131,6 +133,24 @@ QVariantMap DiscoveryService::transferEndpoint(const QString &deviceId) const
             {"tcpPort", peer.tcpPort}};
 }
 
+// 返回协调节点缓存的对端备用地址（不含当前主端点）
+QStringList DiscoveryService::rendezvousAlternateAddresses(const QString &deviceId,
+                                                           quint16 *tcpPort) const
+{
+    const auto it = _rendezvousCandidates.constFind(deviceId);
+    if (it == _rendezvousCandidates.constEnd()) {
+        if (tcpPort) {
+            *tcpPort = 0;
+        }
+        return {};
+    }
+
+    if (tcpPort) {
+        *tcpPort = it->tcpPort;
+    }
+    return it->addresses;
+}
+
 // 向所有激活网卡的广播地址发送 Hello 包
 void DiscoveryService::sendHelloPacket()
 {
@@ -218,6 +238,7 @@ void DiscoveryService::pruneOfflineNodes()
             // 节点超时，标记为离线
             if (it.value().isOnline) {
                 it.value().isOnline = false;
+                _rendezvousCandidates.remove(it.key());  // 离线设备的备用候选一并作废
                 emit nodeExpired(it.key());
                 changed = true;
             }
@@ -421,6 +442,25 @@ void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers
         info.isOnline = true;
         info.lastSeen = QDateTime::currentDateTime();
         info.source = QStringLiteral("rendezvous");  // 协调节点来源
+
+        // 缓存该设备的全部候选地址（含当前主地址），直连失败后按序轮询；
+        // 即使存在更高优先级的广播条目也照常缓存，广播 IP 仍是第一候选
+        QStringList candidateAddresses;
+        if (addressesVar.canConvert<QVariantList>()) {
+            for (const QVariant &addr : addressesVar.toList()) {
+                const QString address = addr.toString();
+                if (!address.isEmpty()) {
+                    candidateAddresses.append(address);
+                }
+            }
+        } else if (addressesVar.canConvert<QString>() && !addressesVar.toString().isEmpty()) {
+            candidateAddresses.append(addressesVar.toString());
+        }
+        if (!candidateAddresses.isEmpty()) {
+            _rendezvousCandidates.insert(deviceId,
+                                         {candidateAddresses,
+                                          static_cast<quint16>(peerData[QStringLiteral("tcpPort")].toInt())});
+        }
 
         // 已有更高优先级来源（broadcast/directed）的在线设备时，保留真实直连 IP，
         // 防止协调节点返回的地址（如 NAT 映射地址）破坏 P2P 直连优先策略。

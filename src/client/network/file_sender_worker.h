@@ -1,15 +1,18 @@
 /**
 * @file    file_sender_worker.h
-* @version 6.6.2
+* @version 7.9.0
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
 * 运行在独立后台线程中，负责建立 TCP 连接、发送传输握手请求、
 * 等待响应、以 8MB 分块发送文件数据、处理确认帧等完整发送流程。
-* 支持多文件/目录传输、SHA-256 校验、取消操作和超时检测。
+* 支持多文件/目录传输、SHA-256 校验、候选端点轮询、中继握手、
+* 取消操作和超时检测。
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 支持候选端点按序轮询与中继握手（relay_create + relay_ready 门控）
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21
@@ -44,7 +47,9 @@
 #include "protocol.h"
 
 #include <QFile>
+#include <QList>
 #include <QObject>
+#include <QPair>
 #include <QStringList>
 #include <QTcpSocket>
 #include <QTimer>
@@ -70,6 +75,10 @@ public slots:
     // 启动传输（在工作线程中调用，支持文件或目录）
     void startTransfer(const QString &host, quint16 port, const QString &path,
                        const QString &senderDeviceId, const QString &senderName);
+    // 启动传输：候选端点按序尝试，relayId 非空时先完成中继握手再进入 TLV 流程
+    void startTransfer(const QList<QPair<QString, quint16>> &endpoints, const QString &path,
+                       const QString &senderDeviceId, const QString &senderName,
+                       const QString &relayId = {});
     // 取消传输
     void cancel();
 
@@ -117,6 +126,10 @@ private:
     void finish(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
     // 成功路径专用：先把 TransferDone 等待写入网络，再以成功终结
     void finishAfterSend();
+    // 中继握手：发送 relay_create 行并等待 relay_ready，失败时终结会话
+    bool waitForRelayReady();
+    // 解析中继控制行（relay_ready / relay_error），返回 false 表示会话已终结
+    bool processRelayControlData(const QByteArray &data);
 
     QTcpSocket  *_socket = nullptr;       // 与接收端通信的 TCP 连接
     FrameCodec  *_codec  = nullptr;       // 接收响应帧的 TLV 解码器
@@ -133,6 +146,9 @@ private:
     bool         _waitingForFileAck = false; // 是否等待当前文件校验确认
     bool         _sendScheduled = false;  // 是否已投递下一块发送任务
     bool         _finished = false;        // 是否已发射过 transferFinished，防止取消/断开路径重复终结
+    QString      _relayId;                 // 中继会话 ID，非空表示经中继服务器转发
+    bool         _relayReady = false;      // 中继两端是否已齐备（收到 relay_ready）
+    QByteArray   _relayLineBuffer;         // 中继控制行的半行缓冲
     qint64       _totalBytes = 0;         // 本次传输的文件总字节数
     qint64       _bytesSent  = 0;         // 已成功写入 socket 的总字节数
 

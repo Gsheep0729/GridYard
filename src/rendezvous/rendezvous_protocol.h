@@ -1,13 +1,16 @@
 /**
 * @file    rendezvous_protocol.h
-* @version 7.2.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点协议处理
 *
-* 解析和构建协调节点的 JSON 协议消息。
+* 解析和构建协调节点的 JSON 协议消息，覆盖设备注册、候选拉取
+* 和中继邀请信令（relay_invite / relay_poll）。
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增中继邀请与轮询消息的解析和构建
 * [v7.2.0] GY   2026-07-21
 * * Stage 7.2：新增协调节点协议处理
 */
@@ -27,6 +30,10 @@ public:
         RegisterAck,
         ListPeers,
         Peers,
+        RelayInvite,
+        RelayInviteAck,
+        RelayPoll,
+        RelayInvites,
         Error
     };
 
@@ -39,6 +46,12 @@ public:
     // 构建候选列表响应
     static QJsonObject buildPeersResponse(const QList<OnlineRegistry::PeerInfo> &peers);
 
+    // 构建中继邀请受理响应
+    static QJsonObject buildRelayInviteAck(const QString &relayId);
+
+    // 构建轮询到的中继邀请列表响应
+    static QJsonObject buildRelayInvites(const QList<OnlineRegistry::RelayInvite> &invites);
+
     // 构建错误响应
     static QJsonObject buildError(const QString &message);
 
@@ -47,6 +60,8 @@ public:
     static QString extractToken(const QJsonObject &json);
     static QString extractDeviceId(const QJsonObject &json);
     static OnlineRegistry::PeerInfo extractPeerInfo(const QJsonObject &json);
+    // 提取中继邀请字段
+    static OnlineRegistry::RelayInvite extractRelayInvite(const QJsonObject &json);
 
     // 验证 token
     static bool validateToken(const QString &provided, const QString &expected);

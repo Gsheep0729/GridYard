@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.h
-* @version 7.5.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 缓存协调节点返回的多地址，供直连失败后的候选端点轮询
 * [v7.5.0] GY   2026-07-21
 * * 新增 onRendezvousPeersReceived 处理协调节点返回的候选端点
 * [v6.6.2] GY   2026-06-28
@@ -57,6 +59,9 @@ public:
     // 查询可用于发送传输的对端快照；目标不存在或离线时返回空 map
     QVariantMap transferEndpoint(const QString &deviceId) const;
 
+    // 返回协调节点缓存的对端备用地址（不含当前主端点）；tcpPort 非空时回传缓存端口
+    QStringList rendezvousAlternateAddresses(const QString &deviceId, quint16 *tcpPort = nullptr) const;
+
     // 立即发送一次广播并清理离线节点
     void refresh();
     // 向指定地址发送定向 Hello 包（用于跨 AP 场景）
@@ -89,6 +94,12 @@ private slots:
 private:
     friend class TestChatManager;
 
+    // 协调节点缓存的备用候选地址（设备表之外单独保管，供连接失败后轮询）
+    struct RendezvousCandidates {
+        QStringList addresses;
+        quint16 tcpPort = 0;
+    };
+
     // 构建 Hello 包 JSON 内容
     QByteArray buildHelloPayload() const;
     // 处理收到的 Hello 包
@@ -105,4 +116,6 @@ private:
 
     // 节点表：deviceId -> PeerInfo
     QHash<QString, PeerInfo> _peers;
+    // 协调节点多地址缓存：deviceId -> 备用候选
+    QHash<QString, RendezvousCandidates> _rendezvousCandidates;
 };

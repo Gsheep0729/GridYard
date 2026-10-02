@@ -1,18 +1,21 @@
 /**
 * @file    rendezvous_client.h
-* @version 7.5.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点客户端
 *
 * 封装与协调服务器的 TCP 连接和 JSON 协议通信。
-* 负责向协调节点注册本机端点、拉取候选设备列表。
+* 负责向协调节点注册本机端点、拉取候选设备列表，
+* 并收发中继邀请信令（relay_invite / relay_poll）。
 *
 * 客户端开机后若启用了协调服务器（rendezvousEnabled=true），
 * 自动连接并注册本机 deviceId、IP 列表、TCP 端口等信息，
-* 每 5 秒心跳刷新 TTL，断线后自动重连。
+* 每 5 秒心跳刷新 TTL 并顺带轮询中继邀请，断线后自动重连。
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增中继邀请请求与按心跳周期轮询待领取邀请
 * [v7.5.0] GY   2026-07-21
 * * Stage 7.5 Phase B：新增协调节点客户端
 */
@@ -66,6 +69,10 @@ public:
     // 发送查询在线设备请求
     Q_INVOKABLE void listPeers(const QString &room);
 
+    // 请求协调服务器向目标设备转发中继邀请（relay_id 由调用方生成）
+    Q_INVOKABLE void requestRelayInvite(const QString &relayId, const QString &targetDeviceId,
+                                        const QString &fileName, qint64 totalBytes);
+
     // 当前连接状态
     bool isConnected() const;
 
@@ -80,6 +87,11 @@ signals:
 
     // 设备列表响应（QVariantMap 版本，方便 QML 和其他模块使用）
     void peersReceived(const QList<QVariantMap> &peers);
+
+    // 中继邀请已被协调服务器受理
+    void relayInviteAckReceived(const QString &relayId);
+    // 轮询到目标为本机的中继邀请
+    void relayInvitesReceived(const QList<QVariantMap> &invites);
 
 private slots:
     void onSocketConnected();
@@ -98,6 +110,8 @@ private:
     bool readJson(QJsonObject *json);
     void handleMessage(const QJsonObject &json);
     void doRegister();
+    // 按本机 deviceId 轮询待领取的中继邀请
+    void sendRelayPoll();
 
     QTcpSocket *_socket = nullptr;
     QByteArray _buffer;

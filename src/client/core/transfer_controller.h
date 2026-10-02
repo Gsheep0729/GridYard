@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.h
-* @version 7.8.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增 retryViaRelay 入口，QML 确认后驱动中继重试
 * [v7.8.0] GY   2026-07-21
 * * 新增 relayModeRequested 信号，用于 P2P 直连失败后请求 Relay 中继
 * [v6.6.2] GY   2026-06-27
@@ -51,6 +53,8 @@ public:
     // 清空所有已结束会话
     Q_INVOKABLE void clearFinishedSessions(bool deleteReceivedFiles = false,
                                            const QString &deviceId = {});
+    // 直连失败后经中继通道重新发送（用户确认中继后调用）
+    Q_INVOKABLE void retryViaRelay(const QString &sessionId);
 
 signals:
     void sessionsChanged();

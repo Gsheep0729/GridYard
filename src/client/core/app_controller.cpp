@@ -1,11 +1,13 @@
 /**
 * @file    app_controller.cpp
-* @version 7.6.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 接入中继降级：收到中继邀请后驱动 P2pServer 加入中继会话
 * [v7.6.0] GY   2026-07-21
 * * 协调服务器启用时自动拉取在线设备列表，10 秒周期刷新
 * [v7.0.0] GY   2026-07-21
@@ -150,6 +152,20 @@ AppController::AppController(QObject *parent)
         // 协调节点返回的候选端点加入设备列表
         connect(_rendezvousClient, &RendezvousClient::peersReceived,
                 _discovery, &DiscoveryService::onRendezvousPeersReceived);
+        // 轮询到目标为本机的中继邀请：连接中继服务器并加入会话，
+        // 后续字节就是标准 TLV 传输流，由 P2pServer 首帧路由接管
+        connect(_rendezvousClient, &RendezvousClient::relayInvitesReceived,
+                this, [this](const QList<QVariantMap> &invites) {
+                    for (const QVariantMap &invite : invites) {
+                        const QString relayId = invite["relayId"].toString();
+                        if (relayId.isEmpty()) {
+                            continue;
+                        }
+                        _p2pServer->joinRelaySession(_config->rendezvousHost(),
+                                                     static_cast<quint16>(_config->rendezvousPort()),
+                                                     relayId);
+                    }
+                });
         // 启动周期性查询（每 10 秒拉取一次在线设备）
         QTimer *queryTimer = new QTimer{this};
         queryTimer->setInterval(10000);
@@ -186,7 +202,8 @@ AppController::AppController(QObject *parent)
 
     _p2pServer->start();
 
-    _transfer->init(_config, _discovery, _p2pServer);
+    // 传入协调客户端，直连失败后可发起中继降级
+    _transfer->init(_config, _discovery, _p2pServer, _rendezvousClient);
 
     _chat->init(_config, _discovery, _p2pServer);
 

@@ -1,19 +1,26 @@
 /**
 * @file    rendezvous_server.h
-* @version 7.2.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点服务器
 *
-* 使用 QTcpServer 监听连接，处理 Register 和 ListPeers 请求。
+* 使用 QTcpServer 监听连接，处理 Register 和 ListPeers 请求，
+* 并提供中继邀请（relay_invite / relay_poll）信令。
+* 首行类型为 relay_create / relay_join 的连接剥离握手后移交中继服务器，
+* 使协调与中继可共用同一端口。
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增中继邀请信令与同端口中继连接移交
+* * 会话断开后释放会话与 socket，修复长驻进程的连接泄漏
 * [v7.2.0] GY   2026-07-21
 * * Stage 7.2：新增协调节点服务器
 */
 
 #pragma once
 
+#include <QByteArray>
 #include <QJsonObject>
 #include <QObject>
 #include <QTcpServer>
@@ -33,6 +40,8 @@ public:
 
 signals:
     void finished();
+    // 中继管道连接移交：握手行已剥离，socket 与剩余字节一并交给中继服务器
+    void relayPipeRequested(QTcpSocket *socket, const QJsonObject &hello, const QByteArray &pendingData);
 
 private slots:
     void onReadyRead();
@@ -64,6 +73,8 @@ signals:
     void serverStarted(bool success, const QString &error);
     void clientConnected(const QString &address);
     void clientDisconnected(const QString &address);
+    // 会话移交的中继管道连接，由接入方（RelayServer）承接
+    void relayPipeRequested(QTcpSocket *socket, const QJsonObject &hello, const QByteArray &pendingData);
 
 private slots:
     void onNewConnection();

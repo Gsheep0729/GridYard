@@ -1,14 +1,16 @@
 /**
 * @file    online_registry.h
-* @version 7.2.0
+* @version 7.9.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点在线设备注册表
 *
 * 内存中的在线设备表，以 room + deviceId 为 key 存储。
-* 维护设备的候选端点和 TTL 过期清理。
+* 维护设备的候选端点和 TTL 过期清理，同时保管待领取的中继邀请。
 *
 * Change Log:
+* [v7.9.0] GY   2026-07-26
+* * 新增中继邀请登记与按目标设备一次性领取
 * [v7.2.0] GY   2026-07-21
 * * Stage 7.2：新增协调节点注册表
 */
@@ -42,6 +44,17 @@ public:
         }
     };
 
+    // 待领取的中继邀请：发送端登记，目标设备轮询领取后凭 relay_id 加入中继会话
+    struct RelayInvite {
+        QString room;
+        QString relayId;
+        QString senderDeviceId;
+        QString targetDeviceId;
+        QString fileName;
+        qint64 totalBytes = 0;
+        QDateTime createdAt;
+    };
+
     explicit OnlineRegistry(int defaultTtlSeconds = 30, QObject *parent = nullptr);
 
     // 注册或更新设备
@@ -50,7 +63,16 @@ public:
     // 获取房间内所有未过期的设备
     QList<PeerInfo> peersForRoom(const QString &room) const;
 
-    // 清理过期设备
+    // 判断设备是否在房间内且未过期
+    bool hasPeer(const QString &room, const QString &deviceId) const;
+
+    // 登记一条中继邀请，等待目标设备轮询领取
+    void addRelayInvite(const QString &room, const RelayInvite &invite);
+
+    // 领取目标为本设备的所有中继邀请（一次性消费）
+    QList<RelayInvite> consumeRelayInvites(const QString &room, const QString &targetDeviceId);
+
+    // 清理过期设备和过期邀请
     int pruneExpired();
 
     // 设备数量
@@ -63,4 +85,5 @@ private:
 
     int _defaultTtlSeconds = 30;
     QMap<QString, PeerInfo> _peers;  // room:deviceId -> peer
+    QMap<QString, RelayInvite> _relayInvites;  // relayId -> invite，过期由 pruneExpired 统一回收
 };
