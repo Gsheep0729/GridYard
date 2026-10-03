@@ -124,31 +124,6 @@ bool TransferSessionModel::removeSession(const QString &sessionId)
     return false;
 }
 
-// 按条件批量移除会话，返回被移除的会话快照
-QList<QVariantMap> TransferSessionModel::takeSessionsWhere(
-    const std::function<bool(const QVariantMap &)> &predicate)
-{
-    QList<QVariantMap> removed;
-    if (!predicate) {
-        return removed;
-    }
-
-    // 倒序移除，避免删除元素后改变后续索引
-    for (int row = _sessions.size() - 1; row >= 0; --row) {
-        if (!predicate(_sessions.at(row))) {
-            continue;
-        }
-        beginRemoveRows({}, row, row);
-        removed.prepend(_sessions.takeAt(row));
-        endRemoveRows();
-    }
-
-    if (!removed.isEmpty()) {
-        emit countChanged();
-    }
-    return removed;
-}
-
 // 判断会话是否存在
 bool TransferSessionModel::hasSession(const QString &sessionId) const
 {

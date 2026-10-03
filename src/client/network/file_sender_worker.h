@@ -121,10 +121,6 @@ signals:
     void progressChanged(qint64 bytesSent, qint64 totalBytes);
     // 传输完成
     void transferFinished(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
-    // 请求被接受
-    void requestAccepted();
-    // 请求被拒绝
-    void requestRejected(const QString &reason);
 
 private slots:
     // 接收数据

@@ -142,8 +142,6 @@ public:
     bool updateSession(const QString &sessionId, const std::function<void(QVariantMap &)> &editor);
     // 移除指定会话并发出精确删除通知；会话不存在时返回 false
     bool removeSession(const QString &sessionId);
-    // 按条件批量移除会话，返回被移除的会话快照
-    QList<QVariantMap> takeSessionsWhere(const std::function<bool(const QVariantMap &)> &predicate);
     // 判断会话是否存在
     bool hasSession(const QString &sessionId) const;
     // 返回指定会话的快照；不存在时返回空 map

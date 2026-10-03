@@ -450,7 +450,6 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         }
 
         if (accepted) {
-            emit requestAccepted();
             _transferActive = true;
             _timeoutTimer->start(_timeoutMs);
             if (_fileList.isEmpty()) {
@@ -462,7 +461,6 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
                 scheduleNextChunk();
             }
         } else {
-            emit requestRejected(reason);
             // 若响应携带了非默认错误码则优先使用，否则按 UserRejected 处理
             if (errorCode == gy::protocol::ErrorCode::Success) {
                 errorCode = gy::protocol::ErrorCode::UserRejected;
