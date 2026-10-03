@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 7.15.14
+* @version 7.15.15
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
@@ -10,6 +10,8 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 传输中在帧处理边界检查取消标志：置位即向发送方发取消帧并走 finish 统一出口，
 *   半成品文件被删除，不再收完整文件落盘成孤儿

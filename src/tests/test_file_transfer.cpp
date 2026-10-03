@@ -1,6 +1,6 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 7.15.14
+* @version 7.15.15
 * @date    2026-10-04
 * @author  GY
 * @brief   文件传输完整流程测试
@@ -8,6 +8,8 @@
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 新增 testCancelReceiveDuringTransfer：accept 后传输中途取消，接收侧恰好一次
 *   UserCancelled 终结、半成品文件删除、发送侧以对端取消失败终结

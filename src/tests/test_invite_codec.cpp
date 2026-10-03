@@ -1,6 +1,6 @@
 /**
 * @file    test_invite_codec.cpp
-* @version 7.15.14
+* @version 7.15.15
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   InviteCodec 单元测试
@@ -8,6 +8,8 @@
 * 测试邀请文本的编解码功能。
 *
 * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 版本头对齐到 v7.15.14
 * [v7.15.13] GY   2026-10-04

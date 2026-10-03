@@ -1,6 +1,6 @@
 /**
 * @file    dir_serializer.cpp
-* @version 7.15.14
+* @version 7.15.15
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   目录序列化工具实现
@@ -9,6 +9,8 @@
 * 用于传输前的文件清单生成，支持多层目录结构和空文件夹。
 *
 * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 递归遍历跳过符号链接条目，防止环形目录链接把发送前序列化拖入无限递归挂死 worker 线程，也避免链接把目录外的文件外发给对端
 * [v7.15.14] GY   2026-10-04
 * * 版本头对齐到 v7.15.14
 * [v7.15.13] GY   2026-10-04
@@ -120,6 +122,12 @@ void DirSerializer::traverseDir(const QString &basePath,
     }
 
     for (const QFileInfo &entry : entries) {
+        // 符号链接一律跳过：目录链接不递归（环形链接如 a/loop -> a 会让序列化无限递归挂死 worker 线程），
+        // 文件链接不入清单（避免把目录外的文件外发给对端）；静默跳过不报错，与主流压缩工具行为一致
+        if (entry.isSymLink()) {
+            continue;
+        }
+
         // 拼接相对路径：根层级直接用文件名，子层级拼接父路径前缀
         QString relPath = currentPath.isEmpty()
             ? entry.fileName()
@@ -154,6 +162,11 @@ void DirSerializer::traverseDirNoHash(const QString &basePath,
     }
 
     for (const QFileInfo &entry : entries) {
+        // 符号链接一律跳过，与 traverseDir 同一安全动机：环形链接不递归、目录外文件不外发
+        if (entry.isSymLink()) {
+            continue;
+        }
+
         QString relPath = currentPath.isEmpty()
             ? entry.fileName()
             : currentPath + "/" + entry.fileName();

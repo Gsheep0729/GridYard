@@ -1,6 +1,6 @@
 /**
  * @file    AcceptDialog.qml
- * @version 7.15.14
+ * @version 7.15.15
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   接收确认弹窗
@@ -9,6 +9,8 @@
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 版本头对齐到 v7.15.14
  * [v7.15.13] GY   2026-10-04

@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.h
-* @version 7.15.14
+* @version 7.15.15
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
@@ -11,6 +11,8 @@
 * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
 *
 * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 新增跨线程取消请求标志与 requestCancel 入口，传输中取消不再依赖仅等待确认态生效的 rejectTransfer
 * [v7.15.13] GY   2026-10-04

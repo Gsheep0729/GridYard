@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.15.14
+* @version 7.15.15
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
@@ -9,6 +9,8 @@
 * 避免 AppController 直接持有数据管理层细节。
 *
 * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 版本头对齐到 v7.15.14
 * [v7.15.13] GY   2026-10-04

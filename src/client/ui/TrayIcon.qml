@@ -1,6 +1,6 @@
 /**
  * @file    TrayIcon.qml
- * @version 7.15.14
+ * @version 7.15.15
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   系统托盘图标
@@ -10,6 +10,8 @@
  * 从 Main.qml 拆出。
  *
  * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 版本头对齐到 v7.15.14
  * [v7.15.13] GY   2026-10-04

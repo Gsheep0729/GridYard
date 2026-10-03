@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.15.14
+* @version 7.15.15
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * cancelSession 接收分支先直调 worker->requestCancel()，传输中取消可立即中断接收，
 *   等待确认态仍走 rejectTransfer 原语义

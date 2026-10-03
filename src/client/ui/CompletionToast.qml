@@ -1,6 +1,6 @@
 /**
  * @file    CompletionToast.qml
- * @version 7.15.14
+ * @version 7.15.15
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   接收完成通知卡
@@ -9,6 +9,8 @@
  * 从 Main.qml 拆出，暴露 openWith(fileName, filePath) 接口。
  *
  * Change Log:
+* [v7.15.15] GY   2026-10-04
+* * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
 * * 版本头对齐到 v7.15.14
  * [v7.15.13] GY   2026-10-04
