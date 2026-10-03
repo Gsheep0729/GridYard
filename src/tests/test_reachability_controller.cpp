@@ -57,6 +57,8 @@ private slots:
     void testGenerateInviteWithConfig();
     void testImportInviteRejectsGarbage();
     void testImportInviteAcceptsValidText();
+    void testImportInviteInjectsDirectedPeer();
+    void testImportInviteProbeFailureDoesNotInject();
     void testAddManualEndpointValidation();
     void testAddManualEndpointAddsPeer();
 
@@ -196,6 +198,77 @@ void TestReachabilityController::testImportInviteAcceptsValidText()
 
     // 导入会触发对目标端点的探测，等待其收尾避免用例间残留探测任务
     QTRY_VERIFY_WITH_TIMEOUT(!controller.isProbing(), 3000);
+}
+
+// 邀请导入的探测成功后，邀请携带的真实身份应注入发现列表
+void TestReachabilityController::testImportInviteInjectsDirectedPeer()
+{
+    QTcpServer listener;
+    QVERIFY(listener.listen(QHostAddress::LocalHost));
+
+    // 构造指向本机真实监听端口的邀请文本，探测必然成功
+    InviteCodec::Invite invite;
+    invite.deviceId = QStringLiteral("invite-target-id");
+    invite.deviceName = QStringLiteral("邀请目标");
+    invite.ipAddress = QStringLiteral("127.0.0.1");
+    invite.tcpPort = listener.serverPort();
+    invite.discoveryPort = 45678;
+
+    ReachabilityController controller;
+    controller.setConfigManager(_config);
+    controller.setDiscoveryService(_discovery);
+
+    QSignalSpy updatedSpy(_discovery, &DiscoveryService::peerUpdated);
+    controller.importInvite(InviteCodec::encode(invite));
+
+    // 探测异步收尾后注入，等待 directed 条目可查询到端点
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !_discovery->transferEndpoint(QStringLiteral("invite-target-id")).isEmpty(), 5000);
+
+    bool found = false;
+    const QVariantList peers = _discovery->peers();
+    for (const QVariant &entry : peers) {
+        const PeerInfo peer = entry.value<PeerInfo>();
+        if (peer.deviceId != QStringLiteral("invite-target-id")) {
+            continue;
+        }
+        found = true;
+        QCOMPARE(peer.source, QStringLiteral("directed"));
+        QVERIFY(peer.isOnline);
+        QCOMPARE(peer.deviceName, QStringLiteral("邀请目标"));
+        break;
+    }
+    QVERIFY2(found, "邀请导入探测成功后设备应注入发现列表");
+    QVERIFY2(!updatedSpy.isEmpty(), "注入应发射 peerUpdated 供设备目录持久化");
+}
+
+// 邀请目标 TCP 不可达时不应注入设备条目
+void TestReachabilityController::testImportInviteProbeFailureDoesNotInject()
+{
+    quint16 closedPort = 0;
+    {
+        QTcpServer probe;
+        QVERIFY(probe.listen(QHostAddress::LocalHost));
+        closedPort = probe.serverPort();
+        probe.close();
+    }
+
+    InviteCodec::Invite invite;
+    invite.deviceId = QStringLiteral("invite-offline-id");
+    invite.deviceName = QStringLiteral("离线目标");
+    invite.ipAddress = QStringLiteral("127.0.0.1");
+    invite.tcpPort = closedPort;
+    invite.discoveryPort = 45678;
+
+    ReachabilityController controller;
+    controller.setConfigManager(_config);
+    controller.setDiscoveryService(_discovery);
+
+    controller.importInvite(InviteCodec::encode(invite));
+
+    // 连接拒绝会立即失败，等待探测收尾后确认未注入
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isProbing(), 5000);
+    QVERIFY(_discovery->transferEndpoint(QStringLiteral("invite-offline-id")).isEmpty());
 }
 
 // 空 IP 与非法 IP 都应被拦截

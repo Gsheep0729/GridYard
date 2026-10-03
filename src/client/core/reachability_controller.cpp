@@ -220,6 +220,20 @@ void ReachabilityController::onProbeFinished(const EndpointProbe::ProbeResult &r
     _isProbing = false;
     emit isProbingChanged();
 
+    // 探测器与手动端点测试共用，只有目标与 pending 邀请上下文一致的探测才触发注入
+    const QVariantMap pending = _lastProbeResult;
+    if (pending.value("pending").toBool()
+            && pending.value(gy::keys::kEndpointIpAddress).toString() == result.targetIp
+            && pending.value(gy::keys::kEndpointTcpPort).toInt() == result.targetPort) {
+        if (result.tcpConnected) {
+            injectDirectedPeerFromInvite(pending);
+        } else {
+            // TCP 不可达时不注入，避免制造无法收发的"在线卡"，失败反馈走既有行内错误
+            qDebug() << "ReachabilityController: 邀请目标探测失败，不注入设备条目"
+                     << result.targetIp << ":" << result.targetPort;
+        }
+    }
+
     _lastProbeResult = {
         {"targetIp", result.targetIp},
         {"targetPort", result.targetPort},
@@ -229,6 +243,27 @@ void ReachabilityController::onProbeFinished(const EndpointProbe::ProbeResult &r
         {"errorMessage", result.errorMessage},
     };
     emit lastProbeResultChanged();
+}
+
+// 邀请导入探测成功后，以邀请文本携带的真实身份注入设备表
+void ReachabilityController::injectDirectedPeerFromInvite(const QVariantMap &invite)
+{
+    if (!_discovery) {
+        return;
+    }
+
+    PeerInfo info;
+    info.deviceId   = invite.value(QStringLiteral("deviceId")).toString();
+    info.deviceName = invite.value(gy::keys::kEndpointDeviceName).toString();
+    info.ipAddress  = invite.value(gy::keys::kEndpointIpAddress).toString();
+    info.tcpPort    = static_cast<quint16>(invite.value(gy::keys::kEndpointTcpPort).toInt());
+
+    // 空名兜底与广播 Hello 的处理口径一致，避免产生空名卡片
+    if (info.deviceName.trimmed().isEmpty()) {
+        info.deviceName = QStringLiteral("未知设备 (%1)").arg(info.ipAddress);
+    }
+
+    _discovery->addDirectedPeer(info);
 }
 
 // 生成当前设备的邀请文本

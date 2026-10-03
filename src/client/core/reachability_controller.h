@@ -131,6 +131,8 @@ private:
     QStringList collectLocalAddresses() const;
     // 处理探测完成结果
     void onProbeFinished(const EndpointProbe::ProbeResult &result);
+    // 邀请导入探测成功后，以邀请文本携带的真实身份注入设备表
+    void injectDirectedPeerFromInvite(const QVariantMap &invite);
     // 处理手动端点探测完成
     void onManualEndpointProbeFinished(const EndpointProbe::ProbeResult &result, const QString &deviceId, const QString &deviceName, quint16 discoveryPort);
 

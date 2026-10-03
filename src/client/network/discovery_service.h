@@ -97,6 +97,9 @@ public:
     // 添加手动端点（来源标记为 manual）
     void addManualPeer(const PeerInfo &peer);
 
+    // 以真实身份注入定向发现的在线条目（邀请导入探测成功后调用，来源标记为 directed）
+    void addDirectedPeer(const PeerInfo &peer);
+
     // 处理协调节点返回的候选端点
     Q_INVOKABLE void onRendezvousPeersReceived(const QList<QVariantMap> &peers);
 

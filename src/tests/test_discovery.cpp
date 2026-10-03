@@ -58,6 +58,8 @@ private slots:
     void testNodeExpiry();
     void testRefresh();
     void testMultipleNodes();
+    void testAddDirectedPeerInjectsEntry();
+    void testAddDirectedPeerRespectsBroadcastGuard();
     void testPeerInfo();
 
 private:
@@ -198,6 +200,72 @@ void TestDiscovery::testMultipleNodes()
     QTRY_VERIFY_WITH_TIMEOUT(_discovery1->transferEndpoint(deviceId3).isEmpty() == false, 5000);
 
     delete config3;
+}
+
+// 邀请导入注入的 directed 条目应带真实身份进入节点表并走 peerUpdated 持久化链路
+void TestDiscovery::testAddDirectedPeerInjectsEntry()
+{
+    PeerInfo invited;
+    invited.deviceId = QStringLiteral("directed-peer-1");
+    invited.deviceName = QStringLiteral("邀请设备");
+    invited.ipAddress = QStringLiteral("10.253.253.253");
+    invited.tcpPort = 35200;
+
+    QSignalSpy updatedSpy(_discovery1, &DiscoveryService::peerUpdated);
+    _discovery1->addDirectedPeer(invited);
+
+    QVERIFY2(!updatedSpy.isEmpty(), "directed 注入应发射 peerUpdated 供设备目录持久化");
+
+    bool found = false;
+    const QVariantList peers = _discovery1->peers();
+    for (const QVariant &entry : peers) {
+        const PeerInfo peer = entry.value<PeerInfo>();
+        if (peer.deviceId != invited.deviceId) {
+            continue;
+        }
+        found = true;
+        QCOMPARE(peer.source, QStringLiteral("directed"));
+        QVERIFY(peer.isOnline);
+        QCOMPARE(peer.ipAddress, QStringLiteral("10.253.253.253"));
+        break;
+    }
+    QVERIFY2(found, "directed 注入的设备应出现在节点表");
+    QVERIFY(!_discovery1->transferEndpoint(invited.deviceId).isEmpty());
+}
+
+// 已有在线 broadcast 条目时，directed 注入不得覆盖广播来源
+void TestDiscovery::testAddDirectedPeerRespectsBroadcastGuard()
+{
+    PeerInfo broadcast;
+    broadcast.deviceId = QStringLiteral("directed-peer-2");
+    broadcast.deviceName = QStringLiteral("广播名");
+    broadcast.ipAddress = QStringLiteral("192.168.50.100");
+    broadcast.tcpPort = 35201;
+    broadcast.isOnline = true;
+    broadcast.lastSeen = QDateTime::currentDateTimeUtc();
+    broadcast.source = QStringLiteral("broadcast");
+    _discovery1->addManualPeer(broadcast);  // 借道手动入口注入 broadcast 来源条目
+
+    PeerInfo invited = broadcast;
+    invited.deviceName = QStringLiteral("邀请名");
+    invited.ipAddress = QStringLiteral("10.253.253.100");
+    invited.source = QStringLiteral("directed");
+    _discovery1->addDirectedPeer(invited);
+
+    bool found = false;
+    const QVariantList peers = _discovery1->peers();
+    for (const QVariant &entry : peers) {
+        const PeerInfo peer = entry.value<PeerInfo>();
+        if (peer.deviceId != broadcast.deviceId) {
+            continue;
+        }
+        found = true;
+        QCOMPARE(peer.source, QStringLiteral("broadcast"));
+        QCOMPARE(peer.deviceName, QStringLiteral("广播名"));
+        QCOMPARE(peer.ipAddress, QStringLiteral("192.168.50.100"));
+        break;
+    }
+    QVERIFY2(found, "broadcast 条目应保留");
 }
 
 void TestDiscovery::testPeerInfo()

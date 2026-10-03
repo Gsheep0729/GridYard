@@ -452,6 +452,33 @@ void DiscoveryService::addManualPeer(const PeerInfo &peer)
     notifyPeersChanged();
 }
 
+// 以真实身份注入定向发现的在线条目（邀请导入探测成功后调用）
+void DiscoveryService::addDirectedPeer(const PeerInfo &peer)
+{
+    // 空 deviceId 与本机身份（导入自己的邀请码）都不入表，与广播 Hello 的过滤口径一致
+    if (peer.deviceId.isEmpty() || _config->isMyDevice(peer.deviceId)) {
+        qDebug() << "DiscoveryService: 忽略无效或本机的 directed 注入";
+        return;
+    }
+
+    // 已有在线 broadcast 条目说明广播链路健康，保留广播来源不做覆盖
+    const bool hasOnlineBroadcast = _peers.contains(peer.deviceId)
+                                    && _peers[peer.deviceId].source == QStringLiteral("broadcast")
+                                    && _peers[peer.deviceId].isOnline;
+    if (hasOnlineBroadcast) {
+        qDebug() << "DiscoveryService: 设备已有在线 broadcast 条目，跳过 directed 注入"
+                 << peer.deviceId;
+        return;
+    }
+
+    // 来源与在线状态由本方法归一化，调用方只负责提供真实身份与端点
+    PeerInfo info = peer;
+    info.source   = QStringLiteral("directed");
+    info.isOnline = true;
+    info.lastSeen = QDateTime::currentDateTimeUtc();
+    updatePeer(peer.deviceId, info);
+}
+
 // 处理协调节点返回的候选端点，将其转换为 PeerInfo 并更新本地设备表
 void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers)
 {
