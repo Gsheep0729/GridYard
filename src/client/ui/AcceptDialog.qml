@@ -57,6 +57,19 @@ Dialog {
     // 会话已过期（发送方取消或超时）时通知主窗口提示
     signal transferStale()
 
+    // 用接收请求的字段装配弹窗并打开（info 为请求信号的字段集合）
+    function openWith(info: var): void {
+        acceptDialog.sessionId = info.sessionId
+        acceptDialog.senderName = info.senderName
+        acceptDialog.fileName = info.fileName
+        acceptDialog.fileSize = info.fileSize
+        acceptDialog.totalFiles = info.totalFiles
+        acceptDialog.totalBytes = info.totalBytes
+        acceptDialog.isDirectory = info.isDirectory
+        acceptDialog.fileList = info.fileList
+        acceptDialog.open()
+    }
+
     contentItem: ColumnLayout {
         spacing: Style.Space.lg
 
