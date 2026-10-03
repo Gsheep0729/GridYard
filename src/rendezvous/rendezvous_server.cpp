@@ -6,6 +6,8 @@
 * @brief   协调节点服务器实现
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 构造函数删除收而未用的 host 死参数
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.14.0] GY   2026-10-03
@@ -201,7 +203,7 @@ void RendezvousSession::sendResponse(const QJsonObject &json)
 // -------------------- RendezvousServer --------------------
 
 // 构造函数
-RendezvousServer::RendezvousServer(const QString &host, quint16 port, const QString &token,
+RendezvousServer::RendezvousServer(quint16 port, const QString &token,
                                    int maxSessions, QObject *parent)
     : QObject{parent}
     , _port{port}
@@ -211,7 +213,6 @@ RendezvousServer::RendezvousServer(const QString &host, quint16 port, const QStr
     , _handshakeTimeoutMs{kRendezvousHandshakeTimeoutMs}
     , _idleTimeoutMs{kRendezvousIdleTimeoutMs}
 {
-    Q_UNUSED(host);
     _server = new QTcpServer{this};
 }
 

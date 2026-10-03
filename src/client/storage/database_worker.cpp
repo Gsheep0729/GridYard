@@ -1,15 +1,17 @@
 /**
 * @file    database_worker.cpp
-* @version 7.15.6
+* @version 7.15.8
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   SQLite 异步任务执行线程实现
 *
 * Worker 在构造时获得 SqliteDatabaseBroker 指针，moveToThread 后
-* 由调用方通过 submitSave/submitLoad/submitDelete 提交任务，任务在
+* 由调用方通过 submitTask 提交任务，任务在
 * 数据库线程中串行执行，执行完后发射 taskFinished 信号。
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 删除与 submitTask 同义的三个包装入口
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-25
@@ -40,23 +42,6 @@ DatabaseWorker::~DatabaseWorker()
         // 避免 QSqlDatabase 全局连接表泄漏
         _database->closeConnectionForCurrentThread();
     }
-}
-
-// 保存、加载和删除三类入口当前统一走 submitTask，
-// 语义区分便于未来按类别限流或统计
-void DatabaseWorker::submitSave(const DatabaseTask &task)
-{
-    submitTask(task);
-}
-
-void DatabaseWorker::submitLoad(const DatabaseTask &task)
-{
-    submitTask(task);
-}
-
-void DatabaseWorker::submitDelete(const DatabaseTask &task)
-{
-    submitTask(task);
 }
 
 // 开始关闭并通知已排空

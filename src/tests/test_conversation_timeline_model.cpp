@@ -1,6 +1,6 @@
 /**
 * @file    test_conversation_timeline_model.cpp
-* @version 7.15.6
+* @version 7.15.8
 * @date    2026-10-03
 * @author  GY
 * @brief   ConversationTimelineModel 统一时间线模型测试
@@ -10,6 +10,8 @@
 * 设备切换重建。
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 真正启用 QAbstractItemModelTester 一致性检查
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 */
@@ -87,6 +89,8 @@ std::unique_ptr<ConversationTimelineModel> TestConversationTimelineModel::makeTi
 {
     std::unique_ptr<ConversationTimelineModel> timeline{
         new ConversationTimelineModel{}};
+    // 挂上模型一致性检查器，所有增删改和角色访问都得到免费校验
+    new QAbstractItemModelTester(timeline.get(), this);
     timeline->setChatController(controller);
     timeline->setTransferSessions(sessions);
     timeline->setDeviceId(deviceId);

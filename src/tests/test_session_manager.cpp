@@ -1,6 +1,6 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.7
+* @version 7.15.8
 * @date    2026-10-03
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
@@ -10,6 +10,8 @@
 * waiting_confirm 会话过期信号
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 适配 RendezvousServer 构造函数删除 host 死参数
 * [v7.15.7] GY   2026-10-03
 * * 会话状态轮询等待改用 tests/test_utils 的 waitFor
 * [v7.15.6] GY   2026-10-03
@@ -278,7 +280,7 @@ void TestSessionManager::testRelayDegradationNever()
 {
     // 连接真实协调服务器，使"策略放行"与"协调在线"两个条件同时成立，
     // 只有 NeverRelay 策略能阻止降级
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));
@@ -303,7 +305,7 @@ void TestSessionManager::testRelayDegradationNever()
 // 询问后中继：直连失败进入 awaiting_relay 并发射 relayConfirmRequested，用户取消后收敛
 void TestSessionManager::testRelayDegradationAsk()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));
@@ -333,7 +335,7 @@ void TestSessionManager::testRelayDegradationAsk()
 // 协调服务器离线时确认中继：会话以 failed 收敛并给出错误提示
 void TestSessionManager::testRetryViaRelayWithoutServer()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));
@@ -364,7 +366,7 @@ void TestSessionManager::testRetryViaRelayWithoutServer()
 // 全程无需 QML 参与，也不发射确认请求
 void TestSessionManager::testRelayDegradationAuto()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
@@ -445,7 +447,7 @@ void TestSessionManager::testRelayDegradationAuto()
 // 活动会话重复取消：首次取消收敛为 cancelled，重复取消被终态守卫忽略
 void TestSessionManager::testRepeatedCancelOnLiveSession()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));

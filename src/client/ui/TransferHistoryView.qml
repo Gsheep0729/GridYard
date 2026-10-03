@@ -1,6 +1,6 @@
 /**
  * @file    TransferHistoryView.qml
- * @version 7.15.6
+ * @version 7.15.8
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   传输历史视图
@@ -70,7 +70,6 @@ Frame {
 
             // 状态筛选下拉框
             ComboBox {
-                id: statusFilter
                 model: root._statusOptions
                 textRole: "label"
                 onActivated: {

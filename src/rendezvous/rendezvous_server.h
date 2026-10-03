@@ -12,6 +12,8 @@
 * 会话继承 LineSession，具备行长度上限、握手/空闲超时与连接数上限。
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 构造函数删除收而未用的 host 死参数
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.14.0] GY   2026-10-03
@@ -74,7 +76,7 @@ class RendezvousServer : public QObject {
     Q_OBJECT
 
 public:
-    explicit RendezvousServer(const QString &host, quint16 port, const QString &token,
+    explicit RendezvousServer(quint16 port, const QString &token,
                               int maxSessions = -1, QObject *parent = nullptr);
     virtual ~RendezvousServer() override = default;
 

@@ -1,6 +1,6 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.15.7
+* @version 7.15.8
 * @date    2026-10-03
 * @author  GY
 * @brief   Relay 降级链路测试
@@ -11,6 +11,8 @@
 * TTL 夹紧、relay_id 复用竞态、响应写积压断开、会话等待超时）。
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 适配 RendezvousServer 构造函数删除 host 死参数
 * [v7.15.7] GY   2026-10-03
 * * JSON 行读写与轮询等待改用 tests/test_utils 公共工具
 * [v7.15.6] GY   2026-10-03
@@ -107,7 +109,7 @@ void TestRelayChain::cleanupTestCase()
 // 邀请登记后由目标设备一次性领取，重复轮询为空，目标离线直接报错
 void TestRelayChain::testInvitePollFlow()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
@@ -171,7 +173,7 @@ void TestRelayChain::testInvitePollFlow()
 // relay_create / relay_join 走协调端口：发送端收到 relay_ready 后字节双向转发
 void TestRelayChain::testRelayPipeOnRendezvousPort()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
@@ -220,7 +222,7 @@ void TestRelayChain::testRelayPipeOnRendezvousPort()
 // 端到端：邀请信令 + 中继管道 + 真 TLV 传输，文件经中继完整落地
 void TestRelayChain::testEndToEndFileTransferThroughRelay()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
@@ -323,7 +325,7 @@ void TestRelayChain::testEndToEndFileTransferThroughRelay()
 // 房间隔离：room 含 ":" 时不与其他房间互通（二级哈希存储，无前缀扫描绕过）
 void TestRelayChain::testRoomIsolation()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
@@ -381,7 +383,7 @@ void TestRelayChain::testRoomIsolation()
 // 超长控制行：服务端主动断开，不做无界缓冲
 void TestRelayChain::testOversizeLineDrops()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
 
     auto *socket = new QTcpSocket;
@@ -399,7 +401,7 @@ void TestRelayChain::testOversizeLineDrops()
 // 握手与空闲超时：不发首行或注册后长期沉默的连接被回收
 void TestRelayChain::testSessionTimeouts()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     server.setSessionTimeouts(400, 500);  // 缩短超时便于测试
 
@@ -428,7 +430,7 @@ void TestRelayChain::testSessionTimeouts()
 // 会话数上限：超出上限的新连接被直接拒绝
 void TestRelayChain::testSessionCap()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString(), 2};
+    RendezvousServer server{0, QString(), 2};
     QVERIFY(server.start());
 
     QList<QTcpSocket *> sockets;
@@ -484,7 +486,7 @@ void TestRelayChain::testRegistryLimits()
 // 服务端注册超限：第二台设备收到 error 响应而不是注册确认
 void TestRelayChain::testRegisterRejectsWhenRoomFull()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     server.setRegistryLimits(1, 1);
 
@@ -511,7 +513,7 @@ void TestRelayChain::testRegisterRejectsWhenRoomFull()
 // 自报超大 TTL 经线路被夹紧，注册确认回写的是夹紧后的值
 void TestRelayChain::testRegisterAckClampsTtl()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
 
     auto *socket = new QTcpSocket;
@@ -629,7 +631,7 @@ void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
 // 响应写积压超限：消费过慢的客户端被服务端主动断开
 void TestRelayChain::testResponseBackpressureDisconnects()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     server.setMaxResponseQueueBytes(16 * 1024);
 
@@ -655,7 +657,7 @@ void TestRelayChain::testResponseBackpressureDisconnects()
 // 协调节点配 token：带令牌的中继握手放行，错令牌回 relay_error
 void TestRelayChain::testRelayPipeWithToken()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QStringLiteral("secret")};
+    RendezvousServer server{0, QStringLiteral("secret")};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 

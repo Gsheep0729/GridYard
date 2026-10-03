@@ -41,7 +41,7 @@ void TestDatabaseWorker::testTasksExecuteInFifoOrder()
     QSignalSpy finishedSpy(&worker, &DatabaseWorker::taskFinished);
 
     for (int i = 0; i < 10; ++i) {
-        worker.submitLoad([&executionOrder, i](SqliteDatabaseBroker &, QString *) {
+        worker.submitTask([&executionOrder, i](SqliteDatabaseBroker &, QString *) {
             executionOrder.append(i);
             return true;
         });
@@ -61,11 +61,11 @@ void TestDatabaseWorker::testSubmitRejectedAfterBeginShutdown()
 
     int executed = 0;
     QSignalSpy finishedSpy(&worker, &DatabaseWorker::taskFinished);
-    worker.submitSave([&executed](SqliteDatabaseBroker &, QString *) {
+    worker.submitTask([&executed](SqliteDatabaseBroker &, QString *) {
         ++executed;
         return true;
     });
-    worker.submitLoad([&executed](SqliteDatabaseBroker &, QString *) {
+    worker.submitTask([&executed](SqliteDatabaseBroker &, QString *) {
         ++executed;
         return true;
     });
@@ -83,7 +83,7 @@ void TestDatabaseWorker::testDrainedAfterAllAcceptedTasks()
     DatabaseWorker worker{&broker};
 
     QList<int> executionOrder;
-    worker.submitLoad([&executionOrder](SqliteDatabaseBroker &, QString *) {
+    worker.submitTask([&executionOrder](SqliteDatabaseBroker &, QString *) {
         executionOrder.append(1);
         QTest::qWait(50);  // 拉长任务耗时，验证 drained 不会提前到达
         executionOrder.append(2);

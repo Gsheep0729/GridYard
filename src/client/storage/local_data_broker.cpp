@@ -96,7 +96,7 @@ void LocalDataBroker::persistDiscoveredPeer(const PeerInfo &peer)
     record.firstSeenAt = peer.lastSeen;
     record.lastSeenAt = peer.lastSeen;
 
-    _storageWorker->submitSave(
+    _storageWorker->submitTask(
         [this, record](SqliteDatabaseBroker &, QString *errorMessage) {
             // 设备目录存在节流，短时间内重复心跳不会实际写磁盘
             return _deviceRepository->upsertPeer(record, errorMessage);
@@ -115,7 +115,7 @@ void LocalDataBroker::persistChatMessage(const MessageRecord &record, const QVar
     peer.firstSeenAt = QDateTime::currentDateTimeUtc();
     peer.lastSeenAt = peer.firstSeenAt;
 
-    _storageWorker->submitSave(
+    _storageWorker->submitTask(
         [this, peer, record](SqliteDatabaseBroker &db, QString *errorMessage) {
             // 组合三个步骤在同一事务内执行，任何一步失败全部回滚
             std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
@@ -149,7 +149,7 @@ void LocalDataBroker::persistTransferRecord(const TransferRecord &record,
     peer.firstSeenAt = activityAt;
     peer.lastSeenAt = activityAt;
 
-    _storageWorker->submitSave(
+    _storageWorker->submitTask(
         [this, peer, record, activityAt](SqliteDatabaseBroker &db, QString *errorMessage) {
             // 组合三个步骤在同一事务内执行，任何一步失败全部回滚
             std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
@@ -172,7 +172,7 @@ void LocalDataBroker::deleteTransfers(const QStringList &recordIds)
         return;
     }
 
-    _storageWorker->submitDelete(
+    _storageWorker->submitTask(
         [this, recordIds](SqliteDatabaseBroker &, QString *errorMessage) {
             // 批量删除保持在同一存储任务中，避免界面侧频繁触发数据库队列。
             for (const QString &recordId : recordIds) {
@@ -199,7 +199,7 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
         return;
     }
 
-    _storageWorker->submitLoad(
+    _storageWorker->submitTask(
         [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             // 启动只恢复最近设备，避免历史量随使用时长线性拖慢首屏。
             const QList<PeerRecord> recentDevices = _deviceRepository->recentPeers(10, errorMessage);
@@ -244,7 +244,7 @@ void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
         return;
     }
 
-    _storageWorker->submitLoad(
+    _storageWorker->submitTask(
         [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             TransferQuery query;
             const QList<TransferRecord> records = _transferRepository->queryTransfers(
@@ -274,7 +274,7 @@ void LocalDataBroker::loadRecentPeers(QObject *receiver, int limit,
         return;
     }
 
-    _storageWorker->submitLoad(
+    _storageWorker->submitTask(
         [this, receiver, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             const QList<PeerRecord> records = _deviceRepository->recentPeers(limit, errorMessage);
             const bool succeeded = errorMessage->isEmpty();
@@ -299,7 +299,7 @@ void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &curso
         return;
     }
 
-    _storageWorker->submitLoad(
+    _storageWorker->submitTask(
         [this, receiver, cursor, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             // 游标分页按时间倒序取消息，cursor.beforeSentAt 为空时取首页
             const QList<MessageRecord> records = _messageRepository->loadMessages(
@@ -327,7 +327,7 @@ void LocalDataBroker::queryTransfers(QObject *receiver, const TransferQuery &que
         return;
     }
 
-    _storageWorker->submitLoad(
+    _storageWorker->submitTask(
         [this, receiver, query, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             // 筛选条件由调用方组合，空条件等价于全量查询
             const QList<TransferRecord> records = _transferRepository->queryTransfers(
@@ -354,7 +354,7 @@ void LocalDataBroker::deleteMessage(QObject *receiver, const QString &messageId,
         return;
     }
 
-    _storageWorker->submitDelete(
+    _storageWorker->submitTask(
         [this, receiver, messageId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             // messageId 是网络层 UUID，不存在时视为已成功删除
             const bool succeeded = _messageRepository->deleteMessage(messageId, errorMessage);
@@ -379,7 +379,7 @@ void LocalDataBroker::deleteConversation(QObject *receiver, const QString &devic
         return;
     }
 
-    _storageWorker->submitDelete(
+    _storageWorker->submitTask(
         [this, receiver, deviceId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             // 删除父会话行时 SQLite CASCADE 自动清理关联消息，无需手动删消息
             const bool succeeded = _messageRepository->deleteConversation(deviceId, errorMessage);
@@ -404,7 +404,7 @@ void LocalDataBroker::deleteTransfer(QObject *receiver, const QString &recordId,
         return;
     }
 
-    _storageWorker->submitDelete(
+    _storageWorker->submitTask(
         [this, receiver, recordId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             // 只删除数据库记录，已接收的本地文件由调用方决定是否清理
             const bool succeeded = _transferRepository->deleteTransfer(recordId, errorMessage);
@@ -428,7 +428,7 @@ void LocalDataBroker::clearAllMessages(QObject *receiver, const OperationCallbac
         return;
     }
 
-    _storageWorker->submitDelete(
+    _storageWorker->submitTask(
         [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             // CASCADE 清理会话和消息行，设备目录表不受影响
             const bool succeeded = _messageRepository->clearAllMessages(errorMessage);
@@ -452,7 +452,7 @@ void LocalDataBroker::clearAllTransfers(QObject *receiver, const OperationCallba
         return;
     }
 
-    _storageWorker->submitDelete(
+    _storageWorker->submitTask(
         [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             const bool succeeded = _transferRepository->clearAllTransfers(errorMessage);
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
@@ -469,7 +469,7 @@ void LocalDataBroker::deleteExpiredRecords(const QDateTime &before)
         return;
     }
 
-    _storageWorker->submitDelete(
+    _storageWorker->submitTask(
         [this, before](SqliteDatabaseBroker &, QString *errorMessage) {
             // 两张表独立清理，任一失败则整体报告失败
             return _messageRepository->deleteExpiredMessages(before, errorMessage)

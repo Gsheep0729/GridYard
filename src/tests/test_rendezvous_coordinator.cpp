@@ -1,6 +1,6 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 7.15.7
+* @version 7.15.8
 * @date    2026-10-03
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
@@ -9,6 +9,8 @@
 * 修改端口即时切换服务器（修复"改配置需重启"）。
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 适配 RendezvousServer 构造函数删除 host 死参数
 * [v7.15.7] GY   2026-10-03
 * * JSON 行读写与连接等待改用 tests/test_utils 公共工具
 * [v7.15.6] GY   2026-10-03
@@ -149,7 +151,7 @@ void TestRendezvousCoordinator::testDisabledByDefault()
 // 启用后连接注册并拉取候选：协调服务器上的辅助设备进入发现列表
 void TestRendezvousCoordinator::testEnableConnectsAndFetchesPeers()
 {
-    RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer server{0, QString()};
     QVERIFY(server.start());
     _config->setRendezvousPort(static_cast<int>(server.serverPort()));
 
@@ -181,9 +183,9 @@ void TestRendezvousCoordinator::testDisableStaysDisconnected()
 // 修改端口后即时切换到新服务器并完成注册与拉取
 void TestRendezvousCoordinator::testPortChangeReconnects()
 {
-    RendezvousServer firstServer{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer firstServer{0, QString()};
     QVERIFY(firstServer.start());
-    RendezvousServer secondServer{QStringLiteral("127.0.0.1"), 0, QString()};
+    RendezvousServer secondServer{0, QString()};
     QVERIFY(secondServer.start());
 
     _config->setRendezvousPort(static_cast<int>(firstServer.serverPort()));

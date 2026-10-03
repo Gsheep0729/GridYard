@@ -1,6 +1,6 @@
 /**
  * @file    Sidebar.qml
- * @version 7.15.6
+ * @version 7.15.8
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   左侧设备栏
@@ -185,7 +185,6 @@ Rectangle {
         //个人信息框，头像 + 信息列表
         contentItem: ColumnLayout {
             anchors.fill: parent
-   //         anchors.margins: 5
             spacing: Style.Space.md
                 RowLayout{
                     Layout.fillWidth: true

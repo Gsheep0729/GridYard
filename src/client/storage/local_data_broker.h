@@ -37,8 +37,6 @@
 #include "history_records.h"
 
 class DatabaseWorker;
-class IMessageRepository;
-class ITransferHistoryRepository;
 struct PeerInfo;
 class QThread;
 class SqliteDatabaseBroker;

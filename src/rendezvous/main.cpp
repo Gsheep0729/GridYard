@@ -11,6 +11,8 @@
 * - 中继模式：仅提供流式中继转发服务
 *
 * Change Log:
+* [v7.15.8] GY   2026-10-03
+* * 适配 RendezvousServer 构造函数删除 host 死参数
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.14.0] GY   2026-10-03
@@ -112,7 +114,7 @@ int main(int argc, char *argv[])
 
         relay->start();
     } else {
-        auto *rendezvous = new RendezvousServer{QStringLiteral("0.0.0.0"), port, token};
+        auto *rendezvous = new RendezvousServer{port, token};
         server.reset(rendezvous);
 
         // 协调节点模式同端口内置中继：分流出的 relay_create/relay_join 连接

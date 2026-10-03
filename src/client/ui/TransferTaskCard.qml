@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 7.15.6
+ * @version 7.15.8
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -81,10 +81,8 @@ Frame {
     readonly property bool isFinished: status === "completed" || status === "failed"
                                        || status === "rejected" || status === "cancelled"
 
-    Layout.fillWidth: true
     implicitHeight: contentColumn.implicitHeight + 20
     height: implicitHeight
-    opacity: 1
 
     // 状态文案委托给 FormatUtils 唯一词表，与历史页保持一致
     function statusText(): string {
