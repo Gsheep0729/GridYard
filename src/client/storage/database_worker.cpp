@@ -1,6 +1,6 @@
 /**
 * @file    database_worker.cpp
-* @version 7.15.19
+* @version 7.16.0
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 异步任务执行线程实现
@@ -10,6 +10,8 @@
 * 数据库线程中串行执行，执行完后发射 taskFinished 信号。
 *
 * Change Log:
+* [v7.16.0] GY   2026-10-04
+* * 版本头对齐到 v7.16.0
 * [v7.15.19] GY   2026-10-04
 * * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04

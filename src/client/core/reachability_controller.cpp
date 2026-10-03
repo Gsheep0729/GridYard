@@ -1,6 +1,6 @@
 /**
 * @file    reachability_controller.cpp
-* @version 7.15.19
+* @version 7.16.0
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   网络可达性控制器实现
@@ -10,6 +10,8 @@
 * 协调服务器启用时，支持向协调节点查询候选设备列表。
 *
 * Change Log:
+* [v7.16.0] GY   2026-10-04
+* * 邀请导入探测成功后按邀请文本的真实身份注入 directed 条目，探测失败不注入
 * [v7.15.19] GY   2026-10-04
 * * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04

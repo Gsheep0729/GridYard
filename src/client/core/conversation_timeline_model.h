@@ -1,6 +1,6 @@
 /**
 * @file    conversation_timeline_model.h
-* @version 7.15.19
+* @version 7.16.0
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型
@@ -10,6 +10,8 @@
 * 避免 QML 在每次进度或消息变化时全量重建时间线。
 *
 * Change Log:
+* [v7.16.0] GY   2026-10-04
+* * 版本头对齐到 v7.16.0
 * [v7.15.19] GY   2026-10-04
 * * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04

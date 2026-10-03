@@ -1,11 +1,14 @@
 /**
 * @file    discovery_service.h
-* @version 7.15.19
+* @version 7.16.0
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
 * Change Log:
+* [v7.16.0] GY   2026-10-04
+* * 新增 addDirectedPeer 以真实身份注入定向发现的在线条目
+* * 手动端点入列发射 peerUpdated，真实身份到达按 IP 合并离线手动条目，刷新保留 manual 与 directed
 * [v7.15.19] GY   2026-10-04
 * * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04
