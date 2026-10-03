@@ -1,13 +1,13 @@
 /**
 * @file    relay_server.cpp
-* @version 7.14.0
+* @version 7.15.2
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 *
 * Change Log:
-* [v7.14.0] GY   2026-10-03
-* * 激活握手令牌校验，独立模式不再无认证
+* [v7.15.2] GY   2026-10-03
+* * relay_error 响应的 code/message 字段名改用协议常量
 * [v7.13.4] GY   2026-10-03
 * * 会话关闭判等改对象指针；积压回滚补断信号；等待时长迁常量并可调
 * [v7.12.0] GY   2026-10-02
@@ -190,8 +190,8 @@ void RelaySession::broadcastError(const QString &code, const QString &message)
 {
     QJsonObject error;
     error[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayError;
-    error[QStringLiteral("code")] = code;
-    error[QStringLiteral("message")] = message;
+    error[gy::rendezvous::kKeyCode] = code;
+    error[gy::rendezvous::kKeyMessage] = message;
 
     QByteArray data = QJsonDocument(error).toJson(QJsonDocument::Compact) + '\n';
 
@@ -402,8 +402,8 @@ void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
         qWarning() << "[RelayServer] 中继握手令牌校验失败，拒绝连接";
         QJsonObject error;
         error[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayError;
-        error[QStringLiteral("code")] = QStringLiteral("unauthorized");
-        error[QStringLiteral("message")] = QStringLiteral("访问令牌错误");
+        error[gy::rendezvous::kKeyCode] = QStringLiteral("unauthorized");
+        error[gy::rendezvous::kKeyMessage] = QStringLiteral("访问令牌错误");
         socket->write(QJsonDocument(error).toJson(QJsonDocument::Compact) + '\n');
         socket->flush();
         dropConnection(socket, QStringLiteral("访问令牌错误"));

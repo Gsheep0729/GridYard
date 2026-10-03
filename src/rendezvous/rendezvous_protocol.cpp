@@ -1,13 +1,13 @@
 /**
 * @file    rendezvous_protocol.cpp
-* @version 7.13.4
+* @version 7.15.2
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点协议处理实现
 *
 * Change Log:
-* [v7.13.4] GY   2026-10-03
-* * extractPeerInfo 对客户端自报 TTL 做服务端夹紧
+* [v7.15.2] GY   2026-10-03
+* * 协调控制面 type 串与 JSON 字段名全面改用 rendezvous_protocol_keys 常量
 * [v7.13.0] GY   2026-10-02
 * * 同步文件头版本与当前主版本
 * [v7.9.0] GY   2026-07-26
@@ -18,6 +18,9 @@
 
 #include "rendezvous_protocol.h"
 #include "rendezvous_limits.h"
+#include "rendezvous_protocol_keys.h"
+
+using namespace gy::rendezvous;
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -26,15 +29,15 @@
 // 解析请求消息类型
 RendezvousProtocol::MessageType RendezvousProtocol::parseRequest(const QJsonObject &json, QString *errorString)
 {
-    const QString type = json[QStringLiteral("type")].toString();
+    const QString type = json[kKeyType].toString();
 
-    if (type == QStringLiteral("register")) {
+    if (type == kTypeRegister) {
         return MessageType::Register;
-    } else if (type == QStringLiteral("list_peers")) {
+    } else if (type == kTypeListPeers) {
         return MessageType::ListPeers;
-    } else if (type == QStringLiteral("relay_invite")) {
+    } else if (type == kTypeRelayInvite) {
         return MessageType::RelayInvite;
-    } else if (type == QStringLiteral("relay_poll")) {
+    } else if (type == kTypeRelayPoll) {
         return MessageType::RelayPoll;
     }
 
@@ -46,9 +49,9 @@ RendezvousProtocol::MessageType RendezvousProtocol::parseRequest(const QJsonObje
 QJsonObject RendezvousProtocol::buildRegisterAck(int ttlSeconds)
 {
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("register_ack");
-    json[QStringLiteral("ttl_seconds")] = ttlSeconds;
-    json[QStringLiteral("server_time")] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    json[kKeyType] = kTypeRegisterAck;
+    json[kKeyTtlSeconds] = ttlSeconds;
+    json[kKeyServerTime] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     return json;
 }
 
@@ -56,21 +59,21 @@ QJsonObject RendezvousProtocol::buildRegisterAck(int ttlSeconds)
 QJsonObject RendezvousProtocol::buildPeersResponse(const QList<OnlineRegistry::PeerInfo> &peers)
 {
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("peers");
+    json[kKeyType] = kTypePeers;
 
     QJsonArray items;
     for (const OnlineRegistry::PeerInfo &peer : peers) {
         QJsonObject item;
-        item[QStringLiteral("device_id")] = peer.deviceId;
-        item[QStringLiteral("device_name")] = peer.deviceName;
-        item[QStringLiteral("addresses")] = QJsonArray::fromStringList(peer.addresses);
-        item[QStringLiteral("tcp_port")] = peer.tcpPort;
-        item[QStringLiteral("discovery_port")] = peer.discoveryPort;
-        item[QStringLiteral("updated_at")] = peer.registeredAt.toString(Qt::ISODate);
+        item[kKeyDeviceId] = peer.deviceId;
+        item[kKeyDeviceName] = peer.deviceName;
+        item[kKeyAddresses] = QJsonArray::fromStringList(peer.addresses);
+        item[kKeyTcpPort] = peer.tcpPort;
+        item[kKeyDiscoveryPort] = peer.discoveryPort;
+        item[kKeyUpdatedAt] = peer.registeredAt.toString(Qt::ISODate);
         items.append(item);
     }
 
-    json[QStringLiteral("items")] = items;
+    json[kKeyItems] = items;
     return json;
 }
 
@@ -78,8 +81,8 @@ QJsonObject RendezvousProtocol::buildPeersResponse(const QList<OnlineRegistry::P
 QJsonObject RendezvousProtocol::buildRelayInviteAck(const QString &relayId)
 {
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("relay_invite_ack");
-    json[QStringLiteral("relay_id")] = relayId;
+    json[kKeyType] = kTypeRelayInviteAck;
+    json[kKeyRelayId] = relayId;
     return json;
 }
 
@@ -87,20 +90,20 @@ QJsonObject RendezvousProtocol::buildRelayInviteAck(const QString &relayId)
 QJsonObject RendezvousProtocol::buildRelayInvites(const QList<OnlineRegistry::RelayInvite> &invites)
 {
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("relay_invites");
+    json[kKeyType] = kTypeRelayInvites;
 
     QJsonArray items;
     for (const OnlineRegistry::RelayInvite &invite : invites) {
         QJsonObject item;
-        item[QStringLiteral("relay_id")] = invite.relayId;
-        item[QStringLiteral("sender_device_id")] = invite.senderDeviceId;
-        item[QStringLiteral("target_device_id")] = invite.targetDeviceId;
-        item[QStringLiteral("file_name")] = invite.fileName;
-        item[QStringLiteral("total_bytes")] = invite.totalBytes;
+        item[kKeyRelayId] = invite.relayId;
+        item[kKeySenderDeviceId] = invite.senderDeviceId;
+        item[kKeyTargetDeviceId] = invite.targetDeviceId;
+        item[kKeyFileName] = invite.fileName;
+        item[kKeyTotalBytes] = invite.totalBytes;
         items.append(item);
     }
 
-    json[QStringLiteral("items")] = items;
+    json[kKeyItems] = items;
     return json;
 }
 
@@ -108,47 +111,47 @@ QJsonObject RendezvousProtocol::buildRelayInvites(const QList<OnlineRegistry::Re
 QJsonObject RendezvousProtocol::buildError(const QString &message)
 {
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("error");
-    json[QStringLiteral("message")] = message;
+    json[kKeyType] = kTypeError;
+    json[kKeyMessage] = message;
     return json;
 }
 
 // 提取 room 字段
 QString RendezvousProtocol::extractRoom(const QJsonObject &json)
 {
-    return json[QStringLiteral("room")].toString();
+    return json[kKeyRoom].toString();
 }
 
 // 提取 token 字段
 QString RendezvousProtocol::extractToken(const QJsonObject &json)
 {
-    return json[QStringLiteral("token")].toString();
+    return json[kKeyToken].toString();
 }
 
 // 提取 device_id 字段
 QString RendezvousProtocol::extractDeviceId(const QJsonObject &json)
 {
-    return json[QStringLiteral("device_id")].toString();
+    return json[kKeyDeviceId].toString();
 }
 
 // 提取 PeerInfo 字段
 OnlineRegistry::PeerInfo RendezvousProtocol::extractPeerInfo(const QJsonObject &json)
 {
     OnlineRegistry::PeerInfo peer;
-    peer.deviceId = json[QStringLiteral("device_id")].toString();
-    peer.deviceName = json[QStringLiteral("device_name")].toString();
+    peer.deviceId = json[kKeyDeviceId].toString();
+    peer.deviceName = json[kKeyDeviceName].toString();
 
-    const QJsonArray addresses = json[QStringLiteral("addresses")].toArray();
+    const QJsonArray addresses = json[kKeyAddresses].toArray();
     for (const QJsonValue &addr : addresses) {
         peer.addresses.append(addr.toString());
     }
 
-    peer.tcpPort = static_cast<quint16>(json[QStringLiteral("tcp_port")].toInt());
-    peer.discoveryPort = static_cast<quint16>(json[QStringLiteral("discovery_port")].toInt(45678));
+    peer.tcpPort = static_cast<quint16>(json[kKeyTcpPort].toInt());
+    peer.discoveryPort = static_cast<quint16>(json[kKeyDiscoveryPort].toInt(45678));
     peer.registeredAt = QDateTime::currentDateTimeUtc();
     // TTL 是客户端自报字段，服务端必须夹紧，防止注入"永不过期"的伪设备
     peer.ttlSeconds = qBound(gy::rendezvous::kMinPeerTtlSeconds,
-                             json[QStringLiteral("ttl_seconds")].toInt(30),
+                             json[kKeyTtlSeconds].toInt(30),
                              gy::rendezvous::kMaxPeerTtlSeconds);
 
     return peer;
@@ -158,11 +161,11 @@ OnlineRegistry::PeerInfo RendezvousProtocol::extractPeerInfo(const QJsonObject &
 OnlineRegistry::RelayInvite RendezvousProtocol::extractRelayInvite(const QJsonObject &json)
 {
     OnlineRegistry::RelayInvite invite;
-    invite.relayId = json[QStringLiteral("relay_id")].toString();
-    invite.senderDeviceId = json[QStringLiteral("sender_device_id")].toString();
-    invite.targetDeviceId = json[QStringLiteral("target_device_id")].toString();
-    invite.fileName = json[QStringLiteral("file_name")].toString();
-    invite.totalBytes = json[QStringLiteral("total_bytes")].toInteger();
+    invite.relayId = json[kKeyRelayId].toString();
+    invite.senderDeviceId = json[kKeySenderDeviceId].toString();
+    invite.targetDeviceId = json[kKeyTargetDeviceId].toString();
+    invite.fileName = json[kKeyFileName].toString();
+    invite.totalBytes = json[kKeyTotalBytes].toInteger();
     return invite;
 }
 

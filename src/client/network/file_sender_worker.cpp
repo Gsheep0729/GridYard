@@ -1,6 +1,6 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.14.1
+* @version 7.15.2
 * @date    2026-06-21
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
@@ -10,8 +10,8 @@
 * 支持多文件/目录传输、背压控制、取消操作和超时检测。
 *
 * Change Log:
-* [v7.14.1] GY   2026-10-03
-* * 候选连接与中继等待循环检查取消标志，阻塞期取消可达
+* [v7.15.2] GY   2026-10-03
+* * 中继控制行类型串改用协议常量
 * [v7.14.0] GY   2026-10-03
 * * relay_create 握手行携带访问令牌
 * [v7.9.0] GY   2026-07-26
@@ -307,9 +307,9 @@ bool FileSenderWorker::processRelayControlData(const QByteArray &data)
         }
 
         const QString type = doc.object()[QStringLiteral("type")].toString();
-        if (type == QStringLiteral("relay_ready")) {
+        if (type == gy::rendezvous::kTypeRelayReady) {
             _relayReady = true;
-        } else if (type == QStringLiteral("relay_error")) {
+        } else if (type == gy::rendezvous::kTypeRelayError) {
             finish(false, gy::protocol::ErrorCode::ConnectionLost,
                    tr("中继传输失败: %1").arg(doc.object()[QStringLiteral("message")].toString()));
             return false;

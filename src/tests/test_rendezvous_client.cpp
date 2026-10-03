@@ -1,6 +1,6 @@
 /**
 * @file    test_rendezvous_client.cpp
-* @version 7.14.2
+* @version 7.15.2
 * @date    2026-10-02
 * @author  GY
 * @brief   协调节点客户端测试
@@ -10,8 +10,8 @@
 * 以及访问令牌的携带与校验（配 token 正常往返、错 token 被拒）。
 *
 * Change Log:
-* [v7.14.2] GY   2026-10-03
-* * 新增断线重连成功路径用例
+* [v7.15.2] GY   2026-10-03
+* * 候选列表断言改为过滤请求者自身，对齐 list_peers 补发 device_id
 * [v7.14.0] GY   2026-10-03
 * * 新增访问令牌往返与错误令牌被拒用例
 */
@@ -75,7 +75,8 @@ void TestRendezvousClient::testRegisterReceivesAck()
     QVERIFY(client.isConnected());
 }
 
-// 同房间的另一台设备注册后，listPeers 应能解析出对方
+// 同房间的另一台设备注册后，listPeers 应能解析出对方；
+// list_peers 携带 device_id 后服务端会过滤请求者自身，候选列表不再包含本机
 void TestRendezvousClient::testListPeersContainsOtherDevice()
 {
     RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
@@ -96,7 +97,8 @@ void TestRendezvousClient::testListPeersContainsOtherDevice()
         deviceIds.append(peer.value("deviceId").toString());
     }
     QVERIFY2(deviceIds.contains(QStringLiteral("dev-b")), "候选列表应包含 dev-b");
-    QVERIFY2(deviceIds.contains(QStringLiteral("dev-a")), "候选列表应包含本机 dev-a");
+    QVERIFY2(!deviceIds.contains(QStringLiteral("dev-a")),
+             "list_peers 携带 device_id 后候选列表应过滤请求者自身");
 }
 
 // 目标设备在线时，中继邀请应被协调服务器受理并回 ack

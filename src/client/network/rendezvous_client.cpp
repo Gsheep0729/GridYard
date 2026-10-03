@@ -1,13 +1,14 @@
 /**
 * @file    rendezvous_client.cpp
-* @version 7.14.0
+* @version 7.15.2
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   协调节点客户端实现
 *
 * Change Log:
-* [v7.14.0] GY   2026-10-03
-* * sendJson 统一注入访问令牌，覆盖注册/查询/邀请/轮询四类报文
+* [v7.15.2] GY   2026-10-03
+* * 行协议字段名与 type 串全面改用协议常量
+* * list_peers 请求补发 device_id，服务端过滤请求者自身自此生效
 * [v7.9.0] GY   2026-07-26
 * * 新增中继邀请请求与按心跳周期轮询待领取邀请
 * [v7.5.0] GY   2026-07-21
@@ -17,6 +18,8 @@
 #include "rendezvous_client.h"
 #include "config_manager.h"
 #include "rendezvous_protocol_keys.h"
+
+using namespace gy::rendezvous;
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -98,14 +101,14 @@ void RendezvousClient::registerDevice(const QString &room,
 void RendezvousClient::doRegister()
 {
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("register");
-    json[QStringLiteral("room")] = _room;
-    json[QStringLiteral("device_id")] = _deviceId;
-    json[QStringLiteral("device_name")] = _deviceName;
-    json[QStringLiteral("addresses")] = QJsonArray::fromStringList(_addresses);
-    json[QStringLiteral("tcp_port")] = _tcpPort;
-    json[QStringLiteral("discovery_port")] = _discoveryPort;
-    json[QStringLiteral("ttl_seconds")] = _ttlSeconds;
+    json[kKeyType] = kTypeRegister;
+    json[kKeyRoom] = _room;
+    json[kKeyDeviceId] = _deviceId;
+    json[kKeyDeviceName] = _deviceName;
+    json[kKeyAddresses] = QJsonArray::fromStringList(_addresses);
+    json[kKeyTcpPort] = _tcpPort;
+    json[kKeyDiscoveryPort] = _discoveryPort;
+    json[kKeyTtlSeconds] = _ttlSeconds;
 
     sendJson(json);
     qDebug() << "RendezvousClient: 发送注册请求 deviceId =" << _deviceId;
@@ -119,8 +122,12 @@ void RendezvousClient::listPeers(const QString &room)
     }
 
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("list_peers");
-    json[QStringLiteral("room")] = room;
+    json[kKeyType] = kTypeListPeers;
+    json[kKeyRoom] = room;
+    // 携带本机 ID，服务端按此过滤请求者自身（与 register 同源）
+    if (!_deviceId.isEmpty()) {
+        json[kKeyDeviceId] = _deviceId;
+    }
 
     sendJson(json);
     qDebug() << "RendezvousClient: 发送查询设备请求 room =" << room;
@@ -136,14 +143,14 @@ void RendezvousClient::requestRelayInvite(const QString &relayId, const QString 
     }
 
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("relay_invite");
-    json[QStringLiteral("room")] = _room;
-    json[QStringLiteral("relay_id")] = relayId;
-    json[QStringLiteral("target_device_id")] = targetDeviceId;
-    json[QStringLiteral("sender_device_id")] = _deviceId;
-    json[QStringLiteral("sender_name")] = _deviceName;
-    json[QStringLiteral("file_name")] = fileName;
-    json[QStringLiteral("total_bytes")] = totalBytes;
+    json[kKeyType] = kTypeRelayInvite;
+    json[kKeyRoom] = _room;
+    json[kKeyRelayId] = relayId;
+    json[kKeyTargetDeviceId] = targetDeviceId;
+    json[kKeySenderDeviceId] = _deviceId;
+    json[kKeySenderName] = _deviceName;
+    json[kKeyFileName] = fileName;
+    json[kKeyTotalBytes] = totalBytes;
 
     sendJson(json);
     qDebug() << "RendezvousClient: 已发送中继邀请" << relayId << "目标" << targetDeviceId;
@@ -157,9 +164,9 @@ void RendezvousClient::sendRelayPoll()
     }
 
     QJsonObject json;
-    json[QStringLiteral("type")] = QStringLiteral("relay_poll");
-    json[QStringLiteral("room")] = _room;
-    json[QStringLiteral("device_id")] = _deviceId;
+    json[kKeyType] = kTypeRelayPoll;
+    json[kKeyRoom] = _room;
+    json[kKeyDeviceId] = _deviceId;
 
     sendJson(json);
 }
@@ -300,10 +307,10 @@ bool RendezvousClient::readJson(QJsonObject *json)
 
 void RendezvousClient::handleMessage(const QJsonObject &json)
 {
-    const QString type = json[QStringLiteral("type")].toString();
+    const QString type = json[kKeyType].toString();
 
-    if (type == QStringLiteral("register_ack")) {
-        int ttl = json[QStringLiteral("ttl_seconds")].toInt(30);
+    if (type == kTypeRegisterAck) {
+        int ttl = json[kKeyTtlSeconds].toInt(30);
         _ttlSeconds = ttl;
         qDebug() << "RendezvousClient: 收到注册确认，TTL =" << ttl;
         emit registerAckReceived(ttl);
@@ -316,21 +323,21 @@ void RendezvousClient::handleMessage(const QJsonObject &json)
         // 注册后立即轮询一次中继邀请，之后随心跳周期刷新
         sendRelayPoll();
 
-    } else if (type == QStringLiteral("peers")) {
+    } else if (type == kTypePeers) {
         QList<QVariantMap> peers;
-        const QJsonArray items = json[QStringLiteral("items")].toArray();
+        const QJsonArray items = json[kKeyItems].toArray();
         for (const QJsonValue &item : items) {
             QJsonObject obj = item.toObject();
             PeerEndpoint peer;
-            peer.deviceId = obj[QStringLiteral("device_id")].toString();
-            peer.deviceName = obj[QStringLiteral("device_name")].toString();
-            const QJsonArray addresses = obj[QStringLiteral("addresses")].toArray();
+            peer.deviceId = obj[kKeyDeviceId].toString();
+            peer.deviceName = obj[kKeyDeviceName].toString();
+            const QJsonArray addresses = obj[kKeyAddresses].toArray();
             for (const QJsonValue &addr : addresses) {
                 peer.addresses.append(addr.toString());
             }
-            peer.tcpPort = static_cast<quint16>(obj[QStringLiteral("tcp_port")].toInt());
-            peer.discoveryPort = static_cast<quint16>(obj[QStringLiteral("discovery_port")].toInt(45678));
-            const QString lastSeenStr = obj[QStringLiteral("updated_at")].toString();
+            peer.tcpPort = static_cast<quint16>(obj[kKeyTcpPort].toInt());
+            peer.discoveryPort = static_cast<quint16>(obj[kKeyDiscoveryPort].toInt(45678));
+            const QString lastSeenStr = obj[kKeyUpdatedAt].toString();
             if (!lastSeenStr.isEmpty()) {
                 peer.lastSeen = QDateTime::fromString(lastSeenStr, Qt::ISODate);
             }
@@ -339,21 +346,21 @@ void RendezvousClient::handleMessage(const QJsonObject &json)
         qDebug() << "RendezvousClient: 收到候选设备列表，" << peers.count() << " 个设备";
         emit peersReceived(peers);
 
-    } else if (type == QStringLiteral("relay_invite_ack")) {
-        const QString relayId = json[QStringLiteral("relay_id")].toString();
+    } else if (type == kTypeRelayInviteAck) {
+        const QString relayId = json[kKeyRelayId].toString();
         qDebug() << "RendezvousClient: 中继邀请已受理" << relayId;
         emit relayInviteAckReceived(relayId);
 
-    } else if (type == QStringLiteral("relay_invites")) {
+    } else if (type == kTypeRelayInvites) {
         QList<QVariantMap> invites;
-        const QJsonArray items = json[QStringLiteral("items")].toArray();
+        const QJsonArray items = json[kKeyItems].toArray();
         for (const QJsonValue &item : items) {
             QJsonObject obj = item.toObject();
             QVariantMap invite;
-            invite[QStringLiteral("relayId")] = obj[QStringLiteral("relay_id")].toString();
-            invite[QStringLiteral("senderDeviceId")] = obj[QStringLiteral("sender_device_id")].toString();
-            invite[QStringLiteral("fileName")] = obj[QStringLiteral("file_name")].toString();
-            invite[QStringLiteral("totalBytes")] = obj[QStringLiteral("total_bytes")].toInteger();
+            invite[QStringLiteral("relayId")] = obj[kKeyRelayId].toString();
+            invite[QStringLiteral("senderDeviceId")] = obj[kKeySenderDeviceId].toString();
+            invite[QStringLiteral("fileName")] = obj[kKeyFileName].toString();
+            invite[QStringLiteral("totalBytes")] = obj[kKeyTotalBytes].toInteger();
             invites.append(invite);
         }
         if (!invites.isEmpty()) {
@@ -361,8 +368,8 @@ void RendezvousClient::handleMessage(const QJsonObject &json)
             emit relayInvitesReceived(invites);
         }
 
-    } else if (type == QStringLiteral("error")) {
-        QString message = json[QStringLiteral("message")].toString();
+    } else if (type == kTypeError) {
+        QString message = json[kKeyMessage].toString();
         qWarning() << "RendezvousClient: 服务器错误" << message;
         emit errorOccurred(message);
     }
