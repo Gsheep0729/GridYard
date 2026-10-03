@@ -344,10 +344,16 @@ void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAdd
              << "tcpPort:" << tcpPort
              << "version:" << version;
 
+    // 空 deviceName 兜底为"未知设备 (IP)"，避免产生空名卡片且搜索无法命中
+    QString displayName = deviceName;
+    if (displayName.trimmed().isEmpty()) {
+        displayName = tr("未知设备 (%1)").arg(sender.toString());
+    }
+
     // 构建 PeerInfo
     PeerInfo info;
     info.deviceId   = deviceId;
-    info.deviceName = deviceName;
+    info.deviceName = displayName;
     info.ipAddress  = sender.toString();
     info.tcpPort    = tcpPort;
     info.isOnline   = true;
