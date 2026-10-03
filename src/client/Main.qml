@@ -12,6 +12,7 @@
  *
  * Change Log:
  * [v7.15.4] GY   2026-10-03
+ * * 中继确认弹窗拆出 ui/RelayConfirmDialog.qml，用户选择经信号回传
  * * 接收完成通知卡拆出 ui/CompletionToast.qml，暴露 openWith 接口
  * * 底部轻提示拆出 ui/Toast.qml，暴露 show(message, isError) 接口
  * [v7.15.1] GY   2026-10-03
@@ -678,57 +679,10 @@ ApplicationWindow {
     }
 
     // 直连失败后的中继确认弹窗（AskBeforeRelay 策略）
-    Dialog {
+    RelayConfirmDialog {
         id: relayConfirmDialog
-        title: qsTr("直连失败")
-        modal: true
-        anchors.centerIn: parent
-        width: Math.min(420, parent ? parent.width - 48 : 420)
-        padding: 20
-
-        property string _sessionId: ""
-
-        contentItem: ColumnLayout {
-            spacing: 14
-            anchors.fill: parent
-
-            Label {
-                text: qsTr("与目标设备直连失败，是否通过中继服务器转发本次传输？转发速度可能受限于服务器带宽。")
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-            }
-
-            Label {
-                text: qsTr("暂不处理将在约 2 分钟后自动取消传输，也可以随时在任务卡片上手动取消。")
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-                font.pixelSize: 12
-                color: Style.Color.textMuted
-            }
-        }
-
-        footer: RowLayout {
-            spacing: 10
-            anchors.margins: 16
-
-            Item {
-                Layout.fillWidth: true
-            }
-            Button {
-                text: qsTr("使用中继")
-                onClicked: {
-                    AppController.transferController.retryViaRelay(relayConfirmDialog._sessionId)
-                    relayConfirmDialog.close()
-                }
-            }
-            Button {
-                text: qsTr("取消传输")
-                onClicked: {
-                    AppController.transferController.cancelSession(relayConfirmDialog._sessionId)
-                    relayConfirmDialog.close()
-                }
-            }
-        }
+        onRelayChosen: (sessionId) => AppController.transferController.retryViaRelay(sessionId)
+        onCancelChosen: (sessionId) => AppController.transferController.cancelSession(sessionId)
     }
 
     // 接收完成通知卡：非阻塞展示，提供打开所在位置的快捷操作
@@ -763,8 +717,7 @@ ApplicationWindow {
         function onMessageOccurred(message: string): void { mainWindow.showSuccessToast(message) }
         function onRelayConfirmRequested(sessionId: string, deviceId: string): void {
             // 策略判断已在 C++ 完成：进入此分支即 AskBeforeRelay 档，只负责弹窗
-            relayConfirmDialog._sessionId = sessionId
-            relayConfirmDialog.open()
+            relayConfirmDialog.openFor(sessionId)
         }
     }
 
