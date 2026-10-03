@@ -1,6 +1,6 @@
 /**
 * @file    test_rendezvous_client.cpp
-* @version 7.15.8
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GY
 * @brief   协调节点客户端测试
@@ -10,6 +10,8 @@
 * 以及访问令牌的携带与校验（配 token 正常往返、错 token 被拒）。
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.8] GY   2026-10-03
 * * 适配 RendezvousServer 构造函数删除 host 死参数
 * [v7.15.6] GY   2026-10-03

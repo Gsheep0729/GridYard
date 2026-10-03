@@ -1,6 +1,6 @@
 /**
 * @file    wait.h
-* @version 7.15.7
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GY
 * @brief   测试用事件循环等待工具
@@ -17,6 +17,8 @@
 *    轮询（waitFor 谓词即可表达）。
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.7] GY   2026-10-03
 * * 抽取 test_relay_chain / test_session_manager / test_rendezvous_coordinator 的三种轮询写法
 */

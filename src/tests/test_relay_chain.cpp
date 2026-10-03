@@ -1,6 +1,6 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.15.8
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GY
 * @brief   Relay 降级链路测试
@@ -11,6 +11,8 @@
 * TTL 夹紧、relay_id 复用竞态、响应写积压断开、会话等待超时）。
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.8] GY   2026-10-03
 * * 适配 RendezvousServer 构造函数删除 host 死参数
 * [v7.15.7] GY   2026-10-03

@@ -1,11 +1,13 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.15.6
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.15.3] GY   2026-10-03

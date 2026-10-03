@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 7.15.6
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   协调节点服务器实现
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.8] GY   2026-10-03
 * * 构造函数删除收而未用的 host 死参数
 * [v7.15.6] GY   2026-10-03

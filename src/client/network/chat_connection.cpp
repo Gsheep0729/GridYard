@@ -1,6 +1,6 @@
 /**
 * @file    chat_connection.cpp
-* @version 7.15.6
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接实现
@@ -9,6 +9,8 @@
 * 发生协议错误、网络错误或断开时只清理本连接的待写数据。
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-25

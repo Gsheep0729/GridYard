@@ -1,6 +1,6 @@
 /**
 * @file    port.h
-* @version 7.15.7
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GY
 * @brief   测试用临时端口分配工具
@@ -9,6 +9,8 @@
 * 供传输与探测类测试替代硬编码或时间取模端口，消除连号占用冲突。
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.7] GY   2026-10-03
 * * 从 test_file_transfer 与 test_endpoint_probe 的魔法端口改写中抽取
 */

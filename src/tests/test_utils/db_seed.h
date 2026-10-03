@@ -1,6 +1,6 @@
 /**
 * @file    db_seed.h
-* @version 7.15.7
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GY
 * @brief   测试用本地历史库打开与种子数据工具
@@ -9,6 +9,8 @@
 * 种子写入和表行数查询；种子字段值由调用方给定，保持各测试原有数据形态。
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.7] GY   2026-10-03
 * * 从 test_history_controller / test_storage_message / test_storage_transfer_history / test_storage_device 抽取
 */

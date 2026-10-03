@@ -1,11 +1,13 @@
 /**
 * @file    test_storage_transfer_history.cpp
-* @version 7.15.6
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GY
 * @brief   SQLite 传输历史 Repository 测试
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v6.3.0] GY   2026-06-25

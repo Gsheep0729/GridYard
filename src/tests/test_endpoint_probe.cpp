@@ -1,6 +1,6 @@
 /**
 * @file    test_endpoint_probe.cpp
-* @version 7.15.7
+* @version 7.15.10
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   EndpointProbe 单元测试
@@ -8,6 +8,8 @@
 * 测试 TCP 探测功能：非法 IP、未监听端口、本机监听端口等场景。
 *
 * Change Log:
+* [v7.15.10] GY   2026-10-03
+* * 版本头对齐到 v7.15.10
 * [v7.15.7] GY   2026-10-03
 * * 硬编码的 65432/65433 改为 QTcpServer 预分配空闲端口
 * [v7.15.6] GY   2026-10-03
