@@ -12,6 +12,7 @@
  *
  * Change Log:
  * [v7.15.4] GY   2026-10-03
+ * * 接收完成通知卡拆出 ui/CompletionToast.qml，暴露 openWith 接口
  * * 底部轻提示拆出 ui/Toast.qml，暴露 show(message, isError) 接口
  * [v7.15.1] GY   2026-10-03
  * * 拖拽裁决下沉 C++，删除 QML 双数据源在线检查；接收弹窗过期改信号驱动
@@ -731,90 +732,8 @@ ApplicationWindow {
     }
 
     // 接收完成通知卡：非阻塞展示，提供打开所在位置的快捷操作
-    Popup {
+    CompletionToast {
         id: completeToast
-        property string _filePath: ""
-        property string _fileName: ""
-
-        x: parent ? parent.width - width - 24 : 0
-        y: parent ? parent.height - height - 24 : 0
-        width: Math.min(330, parent ? parent.width - 48 : 330)
-        padding: 14
-        modal: false
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        enter: Transition {
-            NumberAnimation {
-                property: "opacity"; from: 0; to: 1
-                duration: mainWindow.kPopupEnterDuration
-                easing.type: Easing.OutCubic
-            }
-        }
-        exit: Transition {
-            NumberAnimation {
-                property: "opacity"; from: 1; to: 0
-                duration: Style.Motion.fast
-            }
-        }
-
-        background: Rectangle {
-            color: Style.Color.window
-            radius: Style.Radius.md
-            border.color: Style.Color.border
-        }
-
-        contentItem: ColumnLayout {
-            spacing: Style.Space.xs
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Style.Space.sm
-
-                Label {
-                    text: qsTr("接收完成")
-                    font.pixelSize: 14
-                    font.bold: true
-                    color: Style.Color.success
-                    Layout.fillWidth: true
-                }
-
-                ToolButton {
-                    text: "✕"
-                    font.pixelSize: 12
-                    onClicked: completeToast.close()
-                }
-            }
-
-            Label {
-                text: completeToast._fileName
-                font.pixelSize: 13
-                color: Style.Color.textMain
-                elide: Text.ElideMiddle
-                Layout.fillWidth: true
-            }
-
-            Label {
-                text: qsTr("文件已保存到接收目录")
-                font.pixelSize: 12
-                color: Style.Color.textMuted
-            }
-
-            Button {
-                text: qsTr("打开所在位置")
-                highlighted: true
-                Layout.alignment: Qt.AlignRight
-                onClicked: {
-                    ConfigManager.openFolder(completeToast._filePath)
-                    completeToast.close()
-                }
-            }
-        }
-
-        Timer {
-            interval: 6000
-            running: completeToast.visible
-            onTriggered: completeToast.close()
-        }
     }
 
     Connections {
@@ -837,9 +756,7 @@ ApplicationWindow {
                                  qsTr("%1 想发送 %2 个文件").arg(senderName).arg(totalFiles))
         }
         function onTransferCompleted(sessionId: string, fileName: string, filePath: string): void {
-            completeToast._fileName = fileName
-            completeToast._filePath = filePath
-            completeToast.open()
+            completeToast.openWith(fileName, filePath)
             trayIcon.showMessage(qsTr("传输完成"), qsTr("已完成一项文件传输"))
         }
         function onErrorOccurred(message: string): void { mainWindow.showErrorToast(message) }

@@ -76,6 +76,7 @@ set(GRIDYARD_CLIENT_QML_ENTRY_FILES
 
 set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/Toast.qml
+    ui/CompletionToast.qml
     ui/DangerButton.qml
     ui/DialogHeader.qml
     ui/DeviceCard.qml
