@@ -83,9 +83,12 @@ void TestReachabilityController::init()
 
 void TestReachabilityController::cleanup()
 {
+    // 先销毁发现服务再释放配置：其广播定时器仍持有 _config 裸指针，
+    // 顺序颠倒会让存活到套件结束的实例在定时器回调里访问已释放对象
+    delete _discovery;
+    _discovery = nullptr;
     delete _config;
     _config = nullptr;
-    _discovery = nullptr;
     delete _tempDir;
     _tempDir = nullptr;
 
@@ -287,13 +290,14 @@ void TestReachabilityController::testAddManualEndpointValidation()
     QVERIFY(errorSpy.count() >= 2);
 }
 
-// 合法端点加入后出现在发现列表，来源标记为 manual
+// 合法端点加入后出现在发现列表，来源标记为 manual，并经 peerUpdated 入设备目录
 void TestReachabilityController::testAddManualEndpointAddsPeer()
 {
     ReachabilityController controller;
     controller.setConfigManager(_config);
     controller.setDiscoveryService(_discovery);
 
+    QSignalSpy updatedSpy(_discovery, &DiscoveryService::peerUpdated);
     controller.addManualEndpoint(QStringLiteral("10.254.254.254"), 35100);
     QCOMPARE(controller.inviteError(), QString());
 
@@ -309,6 +313,7 @@ void TestReachabilityController::testAddManualEndpointAddsPeer()
         }
     }
     QVERIFY2(found, "手动端点应出现在发现列表并带 manual 来源");
+    QVERIFY2(!updatedSpy.isEmpty(), "手动端点入列应发射 peerUpdated 供设备目录持久化");
 }
 
 QTEST_MAIN(TestReachabilityController)

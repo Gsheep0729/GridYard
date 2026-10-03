@@ -39,6 +39,8 @@
 */
 
 #include <QtTest/QtTest>
+#include <QHostAddress>
+#include <QNetworkInterface>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QJsonObject>
@@ -60,6 +62,9 @@ private slots:
     void testMultipleNodes();
     void testAddDirectedPeerInjectsEntry();
     void testAddDirectedPeerRespectsBroadcastGuard();
+    void testManualPeerEmitsPeerUpdated();
+    void testRefreshKeepsManualAndDirected();
+    void testRealArrivalMergesOfflineManualEntry();
     void testPeerInfo();
 
 private:
@@ -170,11 +175,12 @@ void TestDiscovery::testNodeExpiry()
 
 void TestDiscovery::testRefresh()
 {
-    // refresh() 触发广播后，同机对端应进入本端节点表
+    // refresh() 只清广播与协调来源的在线条目，广播链路照常工作：
+    // 同机对端应重新以在线状态进入本端节点表
     _discovery2->refresh();
     _discovery1->refresh();
-    QTRY_VERIFY_WITH_TIMEOUT(!_discovery1->peers().isEmpty(), 5000);
-    QCOMPARE(_discovery1->transferEndpoint(_config2->deviceId()).isEmpty(), false);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !_discovery1->transferEndpoint(_config2->deviceId()).isEmpty(), 5000);
 }
 
 void TestDiscovery::testMultipleNodes()
@@ -266,6 +272,120 @@ void TestDiscovery::testAddDirectedPeerRespectsBroadcastGuard()
         break;
     }
     QVERIFY2(found, "broadcast 条目应保留");
+}
+
+// 手动端点入列时应发射 peerUpdated，伪 ID 条目借此进入设备目录持久化链路
+void TestDiscovery::testManualPeerEmitsPeerUpdated()
+{
+    PeerInfo manual;
+    manual.deviceId = QStringLiteral("manual_10.252.252.254");
+    manual.deviceName = QStringLiteral("手动端点 (10.252.252.254)");
+    manual.ipAddress = QStringLiteral("10.252.252.254");
+    manual.tcpPort = 35202;
+    manual.isOnline = true;
+    manual.lastSeen = QDateTime::currentDateTimeUtc();
+    manual.source = QStringLiteral("manual");
+
+    QSignalSpy updatedSpy(_discovery1, &DiscoveryService::peerUpdated);
+    _discovery1->addManualPeer(manual);
+
+    QVERIFY2(!updatedSpy.isEmpty(), "手动端点入列应发射 peerUpdated");
+}
+
+// 手动刷新只清广播与协调来源，manual 与 directed 条目应原地保留
+void TestDiscovery::testRefreshKeepsManualAndDirected()
+{
+    PeerInfo manual;
+    manual.deviceId = QStringLiteral("manual_10.252.252.253");
+    manual.deviceName = QStringLiteral("手动端点 (10.252.252.253)");
+    manual.ipAddress = QStringLiteral("10.252.252.253");
+    manual.tcpPort = 35203;
+    manual.isOnline = true;
+    manual.lastSeen = QDateTime::currentDateTimeUtc();
+    manual.source = QStringLiteral("manual");
+    _discovery1->addManualPeer(manual);
+
+    PeerInfo directed;
+    directed.deviceId = QStringLiteral("directed-refresh-keep");
+    directed.deviceName = QStringLiteral("邀请注入设备");
+    directed.ipAddress = QStringLiteral("10.252.252.252");
+    directed.tcpPort = 35204;
+    _discovery1->addDirectedPeer(directed);
+
+    _discovery1->refresh();
+
+    // 刷新是同步清理，manual 与 directed 条目应立即还在
+    bool manualKept = false;
+    bool directedKept = false;
+    const QVariantList peers = _discovery1->peers();
+    for (const QVariant &entry : peers) {
+        const PeerInfo peer = entry.value<PeerInfo>();
+        if (peer.deviceId == manual.deviceId) {
+            manualKept = true;
+        }
+        if (peer.deviceId == directed.deviceId) {
+            directedKept = true;
+        }
+    }
+    QVERIFY2(manualKept, "手动刷新后 manual 条目应保留");
+    QVERIFY2(directedKept, "手动刷新后 directed 条目应保留");
+
+    // 广播链路照常工作：同机对端随后应重新进入节点表
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !_discovery1->transferEndpoint(_config2->deviceId()).isEmpty(), 5000);
+}
+
+// 真实身份到达后，同 IP 的离线手动伪条目应被合并移除
+void TestDiscovery::testRealArrivalMergesOfflineManualEntry()
+{
+    // 同机广播的来源 IP 是广播网卡的地址，接口筛选与 sendHelloPacket 同口径
+    QString hostIp;
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : interfaces) {
+        if (!(iface.flags() & QNetworkInterface::IsUp)
+                || !(iface.flags() & QNetworkInterface::CanBroadcast)
+                || (iface.flags() & QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
+            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol) {
+                hostIp = entry.ip().toString();
+                break;
+            }
+        }
+        if (!hostIp.isEmpty()) {
+            break;
+        }
+    }
+    QVERIFY2(!hostIp.isEmpty(), "本机需存在非回环 IPv4 地址");
+
+    PeerInfo pseudo;
+    pseudo.deviceId = QStringLiteral("manual_") + hostIp;
+    pseudo.deviceName = QStringLiteral("手动端点 (%1)").arg(hostIp);
+    pseudo.ipAddress = hostIp;
+    pseudo.tcpPort = 35205;
+    pseudo.isOnline = false;  // 已过 15 秒窗口的滞留状态
+    pseudo.lastSeen = QDateTime::currentDateTimeUtc().addSecs(-60);
+    pseudo.source = QStringLiteral("manual");
+    _discovery1->addManualPeer(pseudo);
+
+    // 先清掉可能残留的在线广播条目，确保后续 QTRY 只能由新一轮到达满足
+    _discovery1->refresh();
+
+    // 对端真实广播到达（来源 IP 即本机地址），触发按 IP 合并
+    _discovery2->refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !_discovery1->transferEndpoint(_config2->deviceId()).isEmpty(), 5000);
+
+    bool pseudoGone = true;
+    const QVariantList peers = _discovery1->peers();
+    for (const QVariant &entry : peers) {
+        if (entry.value<PeerInfo>().deviceId == pseudo.deviceId) {
+            pseudoGone = false;
+            break;
+        }
+    }
+    QVERIFY2(pseudoGone, "真实身份到达后同 IP 的离线手动伪条目应被移除");
 }
 
 void TestDiscovery::testPeerInfo()

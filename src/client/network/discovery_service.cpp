@@ -384,6 +384,23 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 
     _peers.insert(deviceId, info);
 
+    // 真实身份已就位时合并同 IP 的离线手动伪条目，避免同一物理设备出现双卡；
+    // 仍在窗口期内的手动条目留给下次真身心跳到达时清理
+    if (info.source != QStringLiteral("manual")) {
+        QMutableHashIterator<QString, PeerInfo> manualIt(_peers);
+        while (manualIt.hasNext()) {
+            manualIt.next();
+            if (manualIt.key() != deviceId
+                    && manualIt.value().source == QStringLiteral("manual")
+                    && manualIt.value().ipAddress == info.ipAddress
+                    && !manualIt.value().isOnline) {
+                qDebug() << "DiscoveryService: 真实身份到达，移除同 IP 的离线手动条目"
+                         << manualIt.key() << "合并至" << deviceId;
+                manualIt.remove();
+            }
+        }
+    }
+
     // 应用层据此异步更新本地设备目录，发现服务不直接依赖 storage
     emit peerUpdated(info);
 
@@ -401,14 +418,32 @@ void DiscoveryService::notifyPeersChanged()
     emit peersChanged();
 }
 
-// 手动刷新：清空设备列表并重新广播发现
+// 手动刷新：清空广播与协调来源的在线条目重新探测，保留 manual 与 directed 条目
 void DiscoveryService::refresh()
 {
-    qDebug() << "DiscoveryService: 手动刷新，清空设备列表并重新发现";
+    qDebug() << "DiscoveryService: 手动刷新，重新探测广播与协调来源";
 
-    // 清空所有已发现的设备
-    _peers.clear();
-    notifyPeersChanged();
+    // 手动端点与邀请注入不会因刷新恢复，清掉就找不回来，予以保留
+    QStringList removedIds;
+    QMutableHashIterator<QString, PeerInfo> it(_peers);
+    while (it.hasNext()) {
+        it.next();
+        if (it.value().isOnline
+                && (it.value().source == QStringLiteral("broadcast")
+                    || it.value().source == QStringLiteral("rendezvous"))) {
+            removedIds.append(it.key());
+        }
+    }
+
+    for (const QString &deviceId : removedIds) {
+        _peers.remove(deviceId);
+        _rendezvousCandidates.remove(deviceId);  // 移除条目的协调备用候选一并作废
+        emit nodeExpired(deviceId);
+    }
+
+    if (!removedIds.isEmpty()) {
+        notifyPeersChanged();
+    }
 
     // 发送广播，让其他设备响应
     sendHelloPacket();
@@ -447,6 +482,8 @@ void DiscoveryService::addManualPeer(const PeerInfo &peer)
                                     && _peers[deviceId].isOnline;
     if (!hasHigherPriorityOnline) {
         _peers.insert(deviceId, peer);
+        // 伪 ID 条目也发射 peerUpdated 入设备目录，重启后保留为离线卡
+        emit peerUpdated(peer);
     }
     qDebug() << "DiscoveryService: 添加手动端点" << deviceId << peer.ipAddress;
     notifyPeersChanged();
