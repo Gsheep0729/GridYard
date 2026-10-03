@@ -1,11 +1,13 @@
 /**
 * @file    migration_runner.cpp
-* @version 6.6.2
+* @version 7.15.6
 * @date    2026-06-25
 * @author  GY
 * @brief   SQLite Schema 版本迁移执行器实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 库版本高于当前支持上限时拒绝打开，防止旧程序读写新版本表结构
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.0.0] GY 2026-06-25
@@ -20,6 +22,9 @@
 #include <QSqlQuery>
 
 namespace {
+// 当前程序支持的 Schema 最高版本，随新迁移发布递增
+constexpr int kCurrentSchemaVersion = 1;
+
 // 执行一条 DDL 语句，并将底层错误返回给调用方
 bool execute(QSqlQuery &query, const QString &statement, QString *errorMessage)
 {
@@ -58,8 +63,21 @@ bool MigrationRunner::migrate(QSqlDatabase &database, QString *errorMessage)
     }
 
     const int version = schemaVersion(database, errorMessage);
-    if (version < 0 || version >= 1) {  // 当前仅发布版本一迁移
-        return version >= 0;
+    if (version < 0) {
+        return false;  // 版本查询失败，错误信息已写入
+    }
+
+    // 库版本高于当前支持上限说明由更新版本的程序创建，
+    // 旧程序继续读写会误判表结构甚至写坏数据，必须拒绝打开
+    if (version > kCurrentSchemaVersion) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("本地历史数据库由更新版本的程序创建，当前程序无法打开");
+        }
+        return false;
+    }
+
+    if (version >= 1) {  // 已是最新版本，无需迁移
+        return true;
     }
 
     // 整个迁移在事务内执行，任一 DDL 失败则全部回滚，防止留下半成品 Schema

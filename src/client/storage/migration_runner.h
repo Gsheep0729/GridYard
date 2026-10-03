@@ -1,6 +1,6 @@
 /**
 * @file    migration_runner.h
-* @version 6.6.2
+* @version 7.15.6
 * @date    2026-06-25
 * @author  GY
 * @brief   SQLite Schema 版本迁移执行器
@@ -8,6 +8,8 @@
 * Migration 在事务内执行，失败时回滚当前版本的所有 DDL。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 库版本高于当前支持上限时拒绝打开
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.0.0] GY 2026-06-25

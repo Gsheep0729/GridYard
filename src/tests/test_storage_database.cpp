@@ -1,6 +1,6 @@
 /**
 * @file    test_storage_database.cpp
-* @version 6.6.0
+* @version 7.15.6
 * @date    2026-06-25
 * @author  GY
 * @brief   SQLite 初始化、迁移与异常恢复测试
@@ -8,6 +8,8 @@
 * 使用临时数据库验证首次建库、重复初始化、缺失驱动、锁竞争和损坏库重建。
 *
 * Change Log:
+* [v7.15.6] GY 2026-10-03
+* * 补充库版本高于支持上限时拒绝打开的守卫用例
 * [v6.6.0] GY 2026-06-25
 * * 补充 Stage 6 阶段 G 的数据库异常验收场景
 * [v6.0.0] GY 2026-06-25
@@ -25,6 +27,7 @@
 #include <QTemporaryDir>
 
 #include "application_paths.h"
+#include "local_data_broker.h"
 #include "sqlite_database_broker.h"
 
 class TestStorageDatabase : public QObject {
@@ -39,6 +42,7 @@ private slots:
     void testMissingDriverDegrades();
     void testCorruptDatabaseBackedUpAndRebuilt();
     void testLockedDatabaseWriteFailsButBrokerStaysAvailable();
+    void testNewerSchemaVersionRejected();
 
 private:
     bool tableExists(QSqlDatabase &connection, const QString &tableName);
@@ -204,6 +208,59 @@ void TestStorageDatabase::testLockedDatabaseWriteFailsButBrokerStaysAvailable()
     QVERIFY(count.exec("SELECT COUNT(*) FROM peer_devices WHERE device_id='device-dup'"));
     QVERIFY(count.next());
     QCOMPARE(count.value(0).toInt(), 1);
+}
+
+// 库版本高于当前支持上限时拒绝打开，降级路径按契约回调失败
+void TestStorageDatabase::testNewerSchemaVersionRejected()
+{
+    QString error;
+    const QString path = _temporaryDir.path() + "/future.sqlite";
+
+    {
+        SqliteDatabaseBroker database;
+        QVERIFY2(database.initialize(path, &error), qPrintable(error));
+
+        QSqlDatabase connection = database.connectionForWorkerThread(&error);
+        QVERIFY2(connection.isValid(), qPrintable(error));
+        // 手工把 Schema 版本抬到 99，模拟由更新版本程序创建的库
+        QSqlQuery upgrade(connection);
+        QVERIFY2(upgrade.exec("UPDATE schema_version SET version = 99"),
+                 qPrintable(upgrade.lastError().text()));
+        QVERIFY2(upgrade.exec("PRAGMA wal_checkpoint(TRUNCATE)"),
+                 qPrintable(upgrade.lastError().text()));
+    }
+
+    SqliteDatabaseBroker database;
+    QVERIFY(!database.initialize(path, &error));
+    QVERIFY(!database.isAvailable());
+    QVERIFY(error.contains("更新版本"));
+
+    // 降级路径符合存储契约：查询回调恰好一次且以失败结束，历史功能不可用但不挂起
+    LocalDataBroker broker;
+    QVERIFY(!broker.initialize(path, &error));
+    QVERIFY(!broker.isAvailable());
+
+    int chatCalls = 0;
+    bool chatSucceeded = true;
+    broker.loadRecentChatHistories(&broker,
+        [&](const QHash<QString, QList<MessageRecord>> &, bool succeeded) {
+            ++chatCalls;
+            chatSucceeded = succeeded;
+        });
+
+    int transferCalls = 0;
+    bool transferSucceeded = true;
+    broker.loadRecentTransferHistories(&broker,
+        [&](const QList<TransferRecord> &, bool succeeded) {
+            ++transferCalls;
+            transferSucceeded = succeeded;
+        });
+
+    // 回调经 QueuedConnection 回投，轮询事件循环等待到达
+    QTRY_COMPARE(chatCalls, 1);
+    QTRY_COMPARE(transferCalls, 1);
+    QCOMPARE(chatSucceeded, false);
+    QCOMPARE(transferSucceeded, false);
 }
 
 bool TestStorageDatabase::tableExists(QSqlDatabase &connection, const QString &tableName)
