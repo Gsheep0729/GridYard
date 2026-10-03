@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_transfer_history_repository.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 传输历史 Repository 实现
@@ -8,6 +8,8 @@
 * 只保存最终状态快照，不保存发送源绝对路径、文件内容或调试堆栈。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04

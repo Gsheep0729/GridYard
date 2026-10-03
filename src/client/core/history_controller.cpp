@@ -1,6 +1,6 @@
 /**
 * @file    history_controller.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地历史控制器实现
@@ -10,6 +10,8 @@
 * 统一的筛选、删除和保留期限设置入口。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04

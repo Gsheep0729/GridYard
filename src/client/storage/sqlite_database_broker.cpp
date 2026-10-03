@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_database_broker.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理实现
@@ -10,6 +10,8 @@
 * 应用退出时自动关闭并移除连接名。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * initialize 记录损坏库备份重建结果与备份路径，供上层界面提示
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -73,6 +75,8 @@ SqliteDatabaseBroker::~SqliteDatabaseBroker()
 bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *errorMessage)
 {
     _available = false;
+    _rebuiltFromBackup = false;  // 重建状态按本次 initialize 重新计算
+    _rebuiltBackupPath.clear();
     if (errorMessage) {
         errorMessage->clear();
     }
@@ -115,7 +119,8 @@ bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *erro
 
     if (existingDatabase && isCorruptionError(firstError)) {
         QString backupError;
-        if (!backupCorruptDatabase(&backupError)) {
+        QString backupPath;
+        if (!backupCorruptDatabase(&backupPath, &backupError)) {
             if (errorMessage) {
                 *errorMessage = backupError;
             }
@@ -128,6 +133,9 @@ bool SqliteDatabaseBroker::initialize(const QString &databasePath, QString *erro
         }
         if (openMainConnection(errorMessage)) {
             _available = true;
+            // 重建成功必须向上可见，界面据此提示历史已被清零重置
+            _rebuiltFromBackup = true;
+            _rebuiltBackupPath = backupPath;
             qWarning() << "[Storage] 已备份损坏数据库并重建本地历史库";
             qInfo() << "[Storage] 数据库迁移完成，版本" << schemaVersion();
             return true;
@@ -290,6 +298,18 @@ bool SqliteDatabaseBroker::isAvailable() const
     return _available;
 }
 
+// 判断本次 initialize 是否从损坏备份重建了数据库
+bool SqliteDatabaseBroker::lastInitializeRebuilt() const
+{
+    return _rebuiltFromBackup;
+}
+
+// 获取本次重建前损坏库的备份路径（未重建时为空）
+QString SqliteDatabaseBroker::rebuiltBackupPath() const
+{
+    return _rebuiltBackupPath;
+}
+
 // 应用所有线程都需要的 SQLite 连接参数
 bool SqliteDatabaseBroker::configureConnection(QSqlDatabase &database, QString *errorMessage) const
 {
@@ -313,12 +333,12 @@ bool SqliteDatabaseBroker::configureConnection(QSqlDatabase &database, QString *
     return true;
 }
 
-// 将损坏数据库备份到同目录的 .corrupt 时间戳文件
-bool SqliteDatabaseBroker::backupCorruptDatabase(QString *errorMessage) const
+// 将损坏数据库备份到同目录的 .corrupt 时间戳文件，回填备份路径
+bool SqliteDatabaseBroker::backupCorruptDatabase(QString *backupPath, QString *errorMessage) const
 {
     const QString timestamp = QDateTime::currentDateTimeUtc().toString("yyyyMMddHHmmsszzz");
-    const QString backupPath = _databasePath + ".corrupt-" + timestamp;
-    if (!QFile::rename(_databasePath, backupPath)) {
+    const QString backupFilePath = _databasePath + ".corrupt-" + timestamp;
+    if (!QFile::rename(_databasePath, backupFilePath)) {
         if (errorMessage) {
             *errorMessage = "无法备份损坏数据库";
         }
@@ -332,9 +352,12 @@ bool SqliteDatabaseBroker::backupCorruptDatabase(QString *errorMessage) const
             continue;
         }
         // WAL/SHM 属于同一个 SQLite 文件组，能备份则一起保留供事后排查。
-        QFile::rename(sidecarPath, backupPath + suffix);
+        QFile::rename(sidecarPath, backupFilePath + suffix);
     }
 
+    if (backupPath) {
+        *backupPath = backupFilePath;
+    }
     return true;
 }
 

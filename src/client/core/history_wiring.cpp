@@ -1,11 +1,13 @@
 /**
 * @file    history_wiring.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地历史持久化装配实现
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 透传本地历史库重建标志与备份路径供界面展示
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -81,6 +83,18 @@ bool HistoryWiring::initialize()
     _retentionTimer->start();
 
     return available;
+}
+
+// 本次启动是否因库损坏重建了本地历史库（透传自 LocalDataBroker）
+bool HistoryWiring::historyDatabaseRebuilt() const
+{
+    return _dataBroker && _dataBroker->historyDatabaseRebuilt();
+}
+
+// 重建前损坏库的备份路径（未重建时为空）
+QString HistoryWiring::rebuiltBackupPath() const
+{
+    return _dataBroker ? _dataBroker->rebuiltBackupPath() : QString{};
 }
 
 // 连接发现、聊天、传输三路持久化信号并恢复启动数据

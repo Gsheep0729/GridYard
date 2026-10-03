@@ -1,6 +1,6 @@
 /**
 * @file    test_storage_database.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GY
 * @brief   SQLite 初始化、迁移与异常恢复测试
@@ -8,6 +8,8 @@
 * 使用临时数据库验证首次建库、重复初始化、缺失驱动、锁竞争和损坏库重建。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 损坏库用例补充重建标志、备份路径与属性透出断言
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -153,15 +155,44 @@ void TestStorageDatabase::testCorruptDatabaseBackedUpAndRebuilt()
     QVERIFY(database.isAvailable());
     QCOMPARE(database.schemaVersion(), 1);
 
+    // 重建发生后必须报告标志与备份路径，供上层界面提示历史被清零重置
+    QVERIFY(database.lastInitializeRebuilt());
+    const QString backupPath = database.rebuiltBackupPath();
+    QVERIFY(!backupPath.isEmpty());
+    QVERIFY(QFileInfo(backupPath).size() > 0);
+
     const QFileInfo fileInfo(path);
     const QStringList backups = QDir(fileInfo.absolutePath())
         .entryList({fileInfo.fileName() + ".corrupt-*"}, QDir::Files);
     QCOMPARE(backups.size(), 1);
-    QVERIFY(QFileInfo(fileInfo.absolutePath() + "/" + backups.first()).size() > 0);
+    // 上报的备份路径必须指向实际生成的备份文件
+    QCOMPARE(backupPath, fileInfo.absolutePath() + "/" + backups.first());
 
     QSqlDatabase connection = database.connectionForWorkerThread(&error);
     QVERIFY2(connection.isValid(), qPrintable(error));
     QVERIFY(tableExists(connection, "chat_messages"));
+
+    // 正常建库不置位重建标志，备份路径保持为空
+    LocalDataBroker freshBroker;
+    const QString freshPath = _temporaryDir.path() + "/fresh-rebuilt.sqlite";
+    QVERIFY2(freshBroker.initialize(freshPath, &error), qPrintable(error));
+    QVERIFY(!freshBroker.historyDatabaseRebuilt());
+    QVERIFY(freshBroker.rebuiltBackupPath().isEmpty());
+    freshBroker.closeStorage();
+
+    // 通知属性经 LocalDataBroker 向上透出，断言置位且备份文件真实存在
+    const QString rebuiltPath = _temporaryDir.path() + "/corrupt-rebuilt.sqlite";
+    QFile corruptRebuiltFile(rebuiltPath);
+    QVERIFY(corruptRebuiltFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(corruptRebuiltFile.write("this is not a sqlite database") > 0);
+    corruptRebuiltFile.close();
+
+    LocalDataBroker rebuiltBroker;
+    QVERIFY2(rebuiltBroker.initialize(rebuiltPath, &error), qPrintable(error));
+    QVERIFY(rebuiltBroker.isAvailable());
+    QVERIFY(rebuiltBroker.historyDatabaseRebuilt());
+    QVERIFY(!rebuiltBroker.rebuiltBackupPath().isEmpty());
+    QVERIFY(QFileInfo::exists(rebuiltBroker.rebuiltBackupPath()));
 }
 
 void TestStorageDatabase::testLockedDatabaseWriteFailsButBrokerStaysAvailable()

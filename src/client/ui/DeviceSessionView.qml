@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 7.15.15
+ * @version 7.15.16
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
@@ -9,6 +9,8 @@
  * 设备离线时在页内给出明确状态提示。
  *
  * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04

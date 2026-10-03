@@ -1,6 +1,6 @@
 /**
 * @file    chat_message.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   在线聊天消息 JSON 编解码实现
@@ -9,6 +9,8 @@
 * UUID、时间和文本限制。该文件不处理 socket、连接状态或界面状态。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04

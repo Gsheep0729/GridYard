@@ -1,11 +1,13 @@
 /**
 * @file    app_controller.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 向 QML 发布历史库重建标志与备份路径
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -116,6 +118,9 @@ AppController::AppController(QObject *parent)
 
     // 打开本地历史库并完成持久化装配；失败时记录降级状态，供 QML 判断是否展示历史入口
     _localHistoryAvailable = _historyWiring->initialize();
+    // 库损坏重建标志同样在启动期定型，随属性发布给设置页提示
+    _historyDatabaseRebuilt = _historyWiring->historyDatabaseRebuilt();
+    _rebuiltBackupPath = _historyWiring->rebuiltBackupPath();
     connect(_historyWiring, &HistoryWiring::operationFailed,
             this,           &AppController::localHistoryOperationFailed);
 
@@ -219,6 +224,18 @@ HistoryController *AppController::historyController() const
 bool AppController::localHistoryAvailable() const
 {
     return _localHistoryAvailable;
+}
+
+// 获取本次启动是否重建过本地历史库
+bool AppController::historyDatabaseRebuilt() const
+{
+    return _historyDatabaseRebuilt;
+}
+
+// 获取重建前损坏库的备份路径
+QString AppController::rebuiltBackupPath() const
+{
+    return _rebuiltBackupPath;
 }
 
 // 获取网络可达性控制器

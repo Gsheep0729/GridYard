@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -10,6 +10,8 @@
 * ShutdownController 承担。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 向 QML 发布历史库重建标志与备份路径
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -104,6 +106,8 @@ private:
     Q_PROPERTY(HistoryController* historyController READ historyController CONSTANT)
     Q_PROPERTY(ReachabilityController* reachabilityController READ reachabilityController CONSTANT)
     Q_PROPERTY(bool localHistoryAvailable READ localHistoryAvailable CONSTANT)
+    Q_PROPERTY(bool historyDatabaseRebuilt READ historyDatabaseRebuilt CONSTANT)
+    Q_PROPERTY(QString rebuiltBackupPath READ rebuiltBackupPath CONSTANT)
 
 public:
     virtual ~AppController() override;
@@ -128,6 +132,10 @@ public:
     HistoryController *historyController() const;
     // 获取本地历史可用性
     bool localHistoryAvailable() const;
+    // 获取本次启动是否重建过本地历史库
+    bool historyDatabaseRebuilt() const;
+    // 获取重建前损坏库的备份路径
+    QString rebuiltBackupPath() const;
     // 获取网络可达性控制器
     ReachabilityController *reachabilityController() const;
     // 获取 UI 根对象是否创建成功
@@ -169,6 +177,8 @@ private:
     HistoryWiring *_historyWiring = nullptr;  // 本地历史持久化装配
     ShutdownController *_shutdownController = nullptr;  // 退出排空与缓存清理
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
+    bool _historyDatabaseRebuilt = false;  // 启动时是否因库损坏重建本地历史库
+    QString _rebuiltBackupPath;  // 重建前损坏库的备份文件路径
     bool _uiInitialized = false;  // 防止 QML 单例回调期间重复加载界面
     bool _uiReady = false;  // QML 根对象是否已成功创建
 };

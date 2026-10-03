@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.h
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地数据层代管者
@@ -10,6 +10,8 @@
 * 所有带回调的接口承诺任何路径下恰好回调一次，存储不可用时回调失败。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 新增 historyDatabaseRebuilt 与 rebuiltBackupPath 属性，重建发生时向上通知
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -59,6 +61,8 @@ class SqliteTransferHistoryRepository;
 class LocalDataBroker : public QObject {
 private:
     Q_OBJECT
+    Q_PROPERTY(bool historyDatabaseRebuilt READ historyDatabaseRebuilt NOTIFY historyDatabaseRebuiltChanged)
+    Q_PROPERTY(QString rebuiltBackupPath READ rebuiltBackupPath NOTIFY rebuiltBackupPathChanged)
 
 public:
     // 回调末位参数为成功标志，false 表示本次查询或操作失败
@@ -76,6 +80,10 @@ public:
     bool initialize(const QString &databasePath, QString *errorMessage);
     // 获取本地历史是否可用
     bool isAvailable() const;
+    // 获取本次启动是否因库损坏重建了本地历史库
+    bool historyDatabaseRebuilt() const;
+    // 获取重建前损坏库的备份路径（未重建时为空）
+    QString rebuiltBackupPath() const;
 
     // 持久化发现设备快照
     void persistDiscoveredPeer(const PeerInfo &peer);
@@ -120,6 +128,8 @@ public:
 signals:
     void operationFailed();
     void drained();
+    void historyDatabaseRebuiltChanged();
+    void rebuiltBackupPathChanged();
 
 private:
     std::unique_ptr<SqliteDatabaseBroker> _storage;  // SQLite 连接、事务与迁移入口
@@ -128,4 +138,6 @@ private:
     std::unique_ptr<SqliteTransferHistoryRepository> _transferRepository;  // 传输历史持久化实现
     QThread *_storageThread = nullptr;  // 存储任务专用线程
     DatabaseWorker *_storageWorker = nullptr;  // 串行执行存储任务的 Worker
+    bool _historyDatabaseRebuilt = false;  // 启动时是否因库损坏重建了本地历史库
+    QString _rebuiltBackupPath;  // 重建前损坏库的备份文件路径
 };

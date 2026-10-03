@@ -1,6 +1,6 @@
 /**
 * @file    history_wiring.h
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地历史持久化装配
@@ -10,6 +10,8 @@
 * 只负责装配与投递，不关心存储实现。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 透传本地历史库重建标志与备份路径供界面展示
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -31,6 +33,7 @@
 #pragma once
 
 #include <QObject>
+#include <QString>
 
 class QTimer;
 class ChatManager;
@@ -53,6 +56,11 @@ public:
     // 打开本地历史库、完成持久化接线、恢复启动数据并启动保留期清理；
     // 返回历史库是否可用（失败时保留在线收发能力）
     bool initialize();
+
+    // 本次启动是否因库损坏重建了本地历史库（透传自 LocalDataBroker）
+    bool historyDatabaseRebuilt() const;
+    // 重建前损坏库的备份路径（未重建时为空）
+    QString rebuiltBackupPath() const;
 
 signals:
     // 存储任务失败，未写入本地历史（由组合根转发给 QML）

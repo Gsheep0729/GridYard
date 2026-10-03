@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.15.15
+* @version 7.15.16
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
@@ -9,6 +9,8 @@
 * 避免 AppController 直接持有数据管理层细节。
 *
 * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 新增 historyDatabaseRebuilt 与 rebuiltBackupPath 属性，重建发生时向上通知
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -72,6 +74,14 @@ bool LocalDataBroker::initialize(const QString &databasePath, QString *errorMess
 {
     const bool initialized = _storage->initialize(databasePath, errorMessage);
 
+    // 库损坏被备份重建时置位只读属性，界面据此提示历史已清零重置
+    if (_storage->lastInitializeRebuilt()) {
+        _historyDatabaseRebuilt = true;
+        _rebuiltBackupPath = _storage->rebuiltBackupPath();
+        emit historyDatabaseRebuiltChanged();
+        emit rebuiltBackupPathChanged();
+    }
+
     // Worker 没有 parent，才能移动到存储线程并由 finished 安全回收。
     _storageWorker->moveToThread(_storageThread);
     connect(_storageThread, &QThread::finished, _storageWorker, &QObject::deleteLater);
@@ -94,6 +104,18 @@ bool LocalDataBroker::initialize(const QString &databasePath, QString *errorMess
 bool LocalDataBroker::isAvailable() const
 {
     return _storage->isAvailable();
+}
+
+// 获取本次启动是否因库损坏重建了本地历史库
+bool LocalDataBroker::historyDatabaseRebuilt() const
+{
+    return _historyDatabaseRebuilt;
+}
+
+// 获取重建前损坏库的备份路径（未重建时为空）
+QString LocalDataBroker::rebuiltBackupPath() const
+{
+    return _rebuiltBackupPath;
 }
 
 // 持久化发现设备快照

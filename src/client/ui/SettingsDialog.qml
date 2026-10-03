@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.15.15
+ * @version 7.15.16
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+* [v7.15.16] GY   2026-10-04
+* * 历史库重建后在存储区块显示备份位置提示
 * [v7.15.15] GY   2026-10-04
 * * 版本头对齐到 v7.15.15
 * [v7.15.14] GY   2026-10-04
@@ -556,6 +558,16 @@ Dialog {
                 Layout.fillWidth: true
                 visible: !AppController.localHistoryAvailable
                 text: qsTr("本地历史不可用，聊天和传输仍可正常使用。")
+                color: Style.Color.warning
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: AppController.historyDatabaseRebuilt
+                text: qsTr("上次启动时本地历史库损坏，已自动重建；旧库备份于 %1")
+                      .arg(AppController.rebuiltBackupPath)
                 color: Style.Color.warning
                 wrapMode: Text.Wrap
                 font.pixelSize: 13
