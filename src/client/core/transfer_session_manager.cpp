@@ -1,11 +1,14 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 新增 waitingConfirmReceiveSessions 快照，并发接收请求可被弹窗按到达序串行展示；
+* * init 的信号连接收敛为 UniqueConnection，重复初始化不再叠加连接
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
@@ -207,6 +210,21 @@ QVariantList TransferSessionManager::sessions() const
     return _model->sessions();
 }
 
+// 返回当前全部等待确认的接收会话快照（按到达序），供确认弹窗串行展示
+QVariantList TransferSessionManager::waitingConfirmReceiveSessions() const
+{
+    QVariantList result;
+    const QVariantList all = _model->sessions();
+    for (const QVariant &entry : all) {
+        const QVariantMap session = entry.toMap();
+        if (session.value(kType).toString() == kTypeReceive
+            && session.value(kStatus).toString() == kStatusWaitingConfirm) {
+            result.append(session);
+        }
+    }
+    return result;
+}
+
 // 获取承载会话行的增量通知模型
 TransferSessionModel *TransferSessionManager::sessionModel() const
 {
@@ -222,14 +240,17 @@ void TransferSessionManager::init(ConfigManager *config, DiscoveryService *disco
     _p2pServer = p2pServer;
     _rendezvous = rendezvousClient;
 
-    // 连接 P2pServer 的传输请求信号
+    // 连接 P2pServer 的传输请求信号（UniqueConnection：init 被重复调用时不再叠加连接，
+    // 否则一次请求会触发多次建会话，测试夹具多次 re-init 时即会复现）
     connect(_p2pServer, &P2pServer::transferRequestReceived,
-            this,       &TransferSessionManager::onTransferRequestReceived);
+            this,       &TransferSessionManager::onTransferRequestReceived,
+            static_cast<Qt::ConnectionType>(Qt::AutoConnection | Qt::UniqueConnection));
 
     if (_rendezvous) {
-        // 中继邀请受理后建立中继发送链路
+        // 中继邀请受理后建立中继发送链路（同样防重复连接）
         connect(_rendezvous, &RendezvousClient::relayInviteAckReceived,
-                this,        &TransferSessionManager::onRelayInviteAck);
+                this,        &TransferSessionManager::onRelayInviteAck,
+                static_cast<Qt::ConnectionType>(Qt::AutoConnection | Qt::UniqueConnection));
     }
 }
 

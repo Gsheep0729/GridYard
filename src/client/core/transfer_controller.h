@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.h
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 新增 waitingConfirmReceiveSessions 调用入口，弹窗关闭后据此串行取下一个请求
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
@@ -63,6 +65,9 @@ public:
 
     // 获取 QML 可绑定的传输会话列表
     QVariantList sessions() const;
+
+    // 返回当前全部等待确认的接收会话快照（按到达序），供确认弹窗关闭后串行取下一个
+    Q_INVOKABLE QVariantList waitingConfirmReceiveSessions() const;
 
     // 获取承载会话行的增量通知模型
     QAbstractItemModel *sessionModel() const;

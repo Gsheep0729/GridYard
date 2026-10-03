@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.15.16
+ * @version 7.15.17
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.15.17] GY   2026-10-04
+ * * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 历史库重建后在存储区块显示备份位置提示
 * [v7.15.15] GY   2026-10-04

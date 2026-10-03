@@ -1,11 +1,13 @@
 /**
 * @file    history_wiring.cpp
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地历史持久化装配实现
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 透传本地历史库重建标志与备份路径供界面展示
 * [v7.15.15] GY   2026-10-04

@@ -1,15 +1,17 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
 * 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复 /
 * Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）/
-* waiting_confirm 会话过期信号
+* waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 新增并发接收请求的等待确认快照队列化用例：拒绝与后端终态后快照正确收敛
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
@@ -53,6 +55,7 @@
 #include <QThread>
 
 #include "transfer_session_manager.h"
+#include "transfer_controller.h"
 #include "config_manager.h"
 #include "discovery_service.h"
 #include "file_sender_worker.h"
@@ -84,6 +87,7 @@ private slots:
     void testRepeatedCancelOnLiveSession();
     void testGuardsAfterCompletion();
     void testSessionStaleSignal();
+    void testWaitingConfirmSnapshotQueueing();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -632,6 +636,124 @@ void TestSessionManager::testSessionStaleSignal()
 
     rejectThread.quit();
     QVERIFY(rejectThread.wait(3000));
+    _p2pServer->stop();
+}
+
+// 并发接收请求的等待确认快照（Controller 门面，QML 弹窗串行队列化的数据来源）：
+// 两请求并发后快照按到达序含两个；拒绝第一个后只剩第二个；
+// 仍有请求在后端超时终态（用例以发送方取消驱动同一 finalize 收敛路径，30 秒真实超时不宜等）
+// 后快照正确收敛且不影响其余等待中的会话
+void TestSessionManager::testWaitingConfirmSnapshotQueueing()
+{
+    _config->setReceivePath(_tempDir->path() + "/queue-recv");
+    _config->setTcpPort(0);
+    _p2pServer->stop();  // 上一用例可能仍占用监听，先停再取新端口
+    QVERIFY(_p2pServer->start());
+    const quint16 port = _p2pServer->serverPort();
+
+    // 经 QML 同款门面查询，直接覆盖 Controller API
+    TransferController controller{_manager};
+
+    // 三个真实发送端并发建连，产生三个接收请求（辅助 lambda 返回非 void，宏断言放调用处）
+    auto makeSource = [this](const QString &name, const QByteArray &payload) -> QString {
+        const QString path = _tempDir->path() + "/" + name;
+        QFile source{path};
+        if (!source.open(QIODevice::WriteOnly)
+            || source.write(payload) != payload.size()) {
+            return {};
+        }
+        source.close();
+        return path;
+    };
+    const QString pathA = makeSource("queue-a.txt", "payload-a");
+    const QString pathB = makeSource("queue-b.txt", "payload-b");
+    const QString pathC = makeSource("queue-c.txt", "payload-c");
+    QVERIFY2(!pathA.isEmpty() && !pathB.isEmpty() && !pathC.isEmpty(), "测试源文件应创建成功");
+
+    FileSenderWorker senderA;
+    QThread threadA;
+    senderA.moveToThread(&threadA);
+    QObject::connect(&threadA, &QThread::started, &senderA, [&senderA, port, &pathA]() {
+        senderA.startTransfer(QStringLiteral("127.0.0.1"), port, pathA,
+                              QStringLiteral("queue-sender-a"), QStringLiteral("QueueA"));
+    });
+    FileSenderWorker senderB;
+    QThread threadB;
+    senderB.moveToThread(&threadB);
+    QObject::connect(&threadB, &QThread::started, &senderB, [&senderB, port, &pathB]() {
+        senderB.startTransfer(QStringLiteral("127.0.0.1"), port, pathB,
+                              QStringLiteral("queue-sender-b"), QStringLiteral("QueueB"));
+    });
+    FileSenderWorker senderC;
+    QThread threadC;
+    senderC.moveToThread(&threadC);
+    QObject::connect(&threadC, &QThread::started, &senderC, [&senderC, port, &pathC]() {
+        senderC.startTransfer(QStringLiteral("127.0.0.1"), port, pathC,
+                              QStringLiteral("queue-sender-c"), QStringLiteral("QueueC"));
+    });
+
+    QSignalSpy requestSpy(_manager, &TransferSessionManager::receiveRequestReceived);
+    threadA.start();
+    threadB.start();
+
+    // 两请求并发：快照按到达序包含两个等待确认的接收会话
+    QVERIFY2(gy::test::waitFor([&requestSpy]() { return requestSpy.count() >= 2; }, 5000),
+             "两个接收请求应在 5 秒内到达");
+    const QString firstId = requestSpy.first().at(0).toString();
+    const QString secondId = requestSpy.at(1).at(0).toString();
+    QVERIFY(gy::test::waitFor([&controller]() {
+        return controller.waitingConfirmReceiveSessions().size() == 2;
+    }, 5000));
+
+    QVariantList snapshot = controller.waitingConfirmReceiveSessions();
+    QCOMPARE(snapshot.at(0).toMap().value("sessionId").toString(), firstId);
+    QCOMPARE(snapshot.at(1).toMap().value("sessionId").toString(), secondId);
+    QCOMPARE(snapshot.at(0).toMap().value("status").toString(), QStringLiteral("waiting_confirm"));
+
+    // 拒绝第一个：快照只剩第二个
+    _manager->rejectReceiveSession(firstId);
+    QVERIFY(waitForStatus(firstId, "rejected"));
+    QVERIFY(gy::test::waitFor([&controller, &secondId]() {
+        const QVariantList waiting = controller.waitingConfirmReceiveSessions();
+        return waiting.size() == 1
+               && waiting.at(0).toMap().value("sessionId").toString() == secondId;
+    }, 5000));
+
+    // 第三个请求加入队列：快照按到达序追加在第二个之后
+    threadC.start();
+    QVERIFY2(gy::test::waitFor([&requestSpy]() { return requestSpy.count() >= 3; }, 5000),
+             "第三个接收请求应在 5 秒内到达");
+    const QString thirdId = requestSpy.at(2).at(0).toString();
+    QVERIFY(gy::test::waitFor([&controller]() {
+        return controller.waitingConfirmReceiveSessions().size() == 2;
+    }, 5000));
+    snapshot = controller.waitingConfirmReceiveSessions();
+    QCOMPARE(snapshot.at(0).toMap().value("sessionId").toString(), secondId);
+    QCOMPARE(snapshot.at(1).toMap().value("sessionId").toString(), thirdId);
+
+    // 第三个会话被后端终态（超时同路径）：快照收敛回第二个，其余等待会话不受影响
+    senderC.requestCancel();
+    QMetaObject::invokeMethod(&senderC, "cancel");
+    QVERIFY(waitForStatus(thirdId, "cancelled"));
+    QVERIFY(gy::test::waitFor([&controller, &secondId]() {
+        const QVariantList waiting = controller.waitingConfirmReceiveSessions();
+        return waiting.size() == 1
+               && waiting.at(0).toMap().value("sessionId").toString() == secondId;
+    }, 5000));
+
+    // 收尾：终结仍等待的第二个会话，让接收 worker 全部退出
+    _manager->rejectReceiveSession(secondId);
+    QVERIFY(waitForStatus(secondId, "rejected"));
+    QVERIFY(gy::test::waitFor([&controller]() {
+        return controller.waitingConfirmReceiveSessions().isEmpty();
+    }, 5000));
+
+    threadA.quit();
+    QVERIFY(threadA.wait(3000));
+    threadB.quit();
+    QVERIFY(threadB.wait(3000));
+    threadC.quit();
+    QVERIFY(threadC.wait(3000));
     _p2pServer->stop();
 }
 

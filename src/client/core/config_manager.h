@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.h
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
@@ -10,6 +10,8 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04

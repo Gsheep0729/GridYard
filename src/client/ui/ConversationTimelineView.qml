@@ -1,6 +1,6 @@
 /**
  * @file    ConversationTimelineView.qml
- * @version 7.15.16
+ * @version 7.15.17
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
@@ -8,6 +8,8 @@
  * 将聊天消息和文件传输任务按时间混排展示，形成单一会话流。
  *
  * Change Log:
+ * [v7.15.17] GY   2026-10-04
+ * * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04

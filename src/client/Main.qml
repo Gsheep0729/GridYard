@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.15.16
+ * @version 7.15.17
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -10,7 +10,9 @@
  * 左侧显示在线设备列表，右侧显示设备会话页。
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
- * Change Log:
+  * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 接收请求改串行装配：弹窗占用时入待显队列，关闭后经 Controller 快照取下一个等待确认的请求
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
@@ -130,6 +132,8 @@ ApplicationWindow {
     property bool _allowWindowClose: false  // 标记用户已确认退出，允许窗口关闭
     // 记录常规窗口标志，临时置顶后恢复
     property int _normalWindowFlags: 0
+    // 待显接收请求队列：确认弹窗一次只展示一个请求，其余按到达序排队
+    property var _pendingReceiveRequests: []
 
     // 最小化或隐藏状态下恢复到普通窗口并激活到前台
     function showMainWindow(): void {
@@ -169,6 +173,24 @@ ApplicationWindow {
 
     function showSuccessToast(message: string): void {
         toastPopup.show(message, false)
+    }
+
+    // 确认弹窗关闭后串行弹出下一个等待确认的接收请求：队列按到达序取出，
+    // 已被后端终结（超时/对方取消）的排队项经 Controller 快照过滤跳过，无更多则不弹
+    function showNextReceiveRequest(): void {
+        if (acceptDialog.opened) {
+            return
+        }
+        const waiting = AppController.transferController.waitingConfirmReceiveSessions()
+        while (mainWindow._pendingReceiveRequests.length > 0) {
+            const next = mainWindow._pendingReceiveRequests.shift()
+            for (let i = 0; i < waiting.length; i++) {
+                if (waiting[i].sessionId === next.sessionId) {
+                    acceptDialog.openWith(next)
+                    return
+                }
+            }
+        }
     }
 
     // 置顶释放定时器：短暂置顶后恢复常规窗口标志，避免窗口永远悬浮
@@ -302,6 +324,8 @@ ApplicationWindow {
         id: acceptDialog
         // 发送方取消传输：弹窗已自动关闭，这里补一条提示说明原因
         onTransferStale: mainWindow.showErrorToast(qsTr("对方已取消本次传输"))
+        // 接受/拒绝/关窗都汇入 closed：串行弹出下一个仍待确认的请求
+        onClosed: mainWindow.showNextReceiveRequest()
     }
 
     // 直连失败后的中继确认弹窗（AskBeforeRelay 策略）
@@ -325,10 +349,16 @@ ApplicationWindow {
             if (Object.keys(AppController.peerDiscoveryViewModel.deviceById(senderDeviceId)).length > 0) {
                 mainWindow.selectDevice(senderDeviceId)
             }
-            acceptDialog.openWith({ sessionId: sessionId, senderName: senderName,
-                                    fileName: fileName, fileSize: fileSize,
-                                    totalFiles: totalFiles, totalBytes: totalBytes,
-                                    isDirectory: isDirectory, fileList: fileList })
+            const info = { sessionId: sessionId, senderName: senderName,
+                           fileName: fileName, fileSize: fileSize,
+                           totalFiles: totalFiles, totalBytes: totalBytes,
+                           isDirectory: isDirectory, fileList: fileList }
+            // 串行装配：弹窗空闲立即展示，否则入待显队列，避免覆盖正在展示的请求
+            if (acceptDialog.opened) {
+                mainWindow._pendingReceiveRequests.push(info)
+            } else {
+                acceptDialog.openWith(info)
+            }
             trayIcon.showMessage(qsTr("传输请求"),
                                  qsTr("%1 想发送 %2 个文件").arg(senderName).arg(totalFiles))
         }

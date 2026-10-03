@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -10,6 +10,8 @@
 * ShutdownController 承担。
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 向 QML 发布历史库重建标志与备份路径
 * [v7.15.15] GY   2026-10-04

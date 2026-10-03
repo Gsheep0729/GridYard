@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 新增 waitingConfirmReceiveSessions 透传
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
@@ -73,6 +75,12 @@ TransferController::TransferController(TransferSessionManager *manager, QObject 
 QVariantList TransferController::sessions() const
 {
     return _manager ? _manager->sessions() : QVariantList{};
+}
+
+// 返回当前全部等待确认的接收会话快照（按到达序），供确认弹窗关闭后串行取下一个
+QVariantList TransferController::waitingConfirmReceiveSessions() const
+{
+    return _manager ? _manager->waitingConfirmReceiveSessions() : QVariantList{};
 }
 
 // 获取承载会话行的增量通知模型

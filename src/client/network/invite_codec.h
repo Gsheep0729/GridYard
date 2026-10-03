@@ -1,6 +1,6 @@
 /**
 * @file    invite_codec.h
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   邀请连接文本编解码器
@@ -9,6 +9,8 @@
 * gridyard://invite?deviceId=...&name=...&ip=...&tcpPort=35100&discoveryPort=45678
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04

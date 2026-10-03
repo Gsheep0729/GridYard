@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_mapper.h
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话与持久化记录的映射
@@ -10,6 +10,8 @@
 * 不持有网络对象也不关心会话状态机。
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04

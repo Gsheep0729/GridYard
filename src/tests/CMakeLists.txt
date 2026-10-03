@@ -241,6 +241,7 @@ qt_add_executable(test_session_manager test_session_manager.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_CORE_DIR}/transfer_controller.cpp
     ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
     ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
     ${CLIENT_CORE_DIR}/transfer_session_model.cpp

@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,9 @@
 * 发送与接收 worker 分别以独立映射管理生命周期。
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 新增 waitingConfirmReceiveSessions 快照：按到达序返回全部等待确认的接收会话，
+*   供确认弹窗串行队列化
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
@@ -100,6 +103,8 @@ private:
 public:
     // 返回会话快照列表（兼容 QML 拉取式消费与测试）
     QVariantList sessions() const;
+    // 返回当前全部等待确认的接收会话快照（按到达序），供确认弹窗串行展示
+    QVariantList waitingConfirmReceiveSessions() const;
     // 返回承载会话行的增量通知模型（所有权归本管理器）
     TransferSessionModel *sessionModel() const;
 

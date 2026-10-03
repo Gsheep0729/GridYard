@@ -1,6 +1,6 @@
 /**
 * @file    test_rendezvous_protocol.cpp
-* @version 7.15.16
+* @version 7.15.17
 * @date    2026-10-04
 * @author  GY
 * @brief   协调节点协议编解码测试
@@ -9,6 +9,8 @@
 * PeerInfo / RelayInvite 提取与构建的往返一致、token 校验规则、TTL 夹紧。
 *
 * Change Log:
+* [v7.15.17] GY   2026-10-04
+* * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
 * * 版本头对齐到 v7.15.16
 * [v7.15.15] GY   2026-10-04
