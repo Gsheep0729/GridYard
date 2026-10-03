@@ -2,7 +2,7 @@
 
 /**
  * @file    FormatUtils.js
- * @version 7.15.6
+ * @version 7.15.9
  * @date    2026-10-03
  * @author  GY
  * @brief   界面展示格式化工具
@@ -21,6 +21,9 @@
  */
 
 function formatBytes(bytes) {
+    // 入参缺失或非数值时返回占位符：任务卡绑定始终求值，仅靠 visible 遮挡，
+    // 切换设备/清理会话的瞬间会把 undefined 送进来，无守卫会闪现 "NaN GB"
+    if (bytes === undefined || bytes === null || isNaN(bytes)) return "-"
     if (bytes < 1024) return bytes + " B"
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB"
     if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB"
@@ -35,6 +38,9 @@ function formatTime(timeString) {
 
 // 将 FileDialog/FolderDialog 或拖拽返回的 URL 转成本地绝对路径
 // URL 对中文/空格做 percent-encode，直接截断会残留编码字符，必须先 decode
+// 行为与 QUrl::toLocalFile 对齐（file:/// 三斜杠剥离、file:// 双斜杠保留为
+// UNC 形态），保留在 JS 侧是拖拽/文件对话框的 URL 解码属纯表现层转换，
+// Phase2-B 下沉时明确只把在线裁决收回 C++，此处为既定口径
 function localPathFromUrl(fileUrl) {
     const text = fileUrl.toString()
     if (text.startsWith("file:///")) {
