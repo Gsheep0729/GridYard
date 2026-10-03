@@ -1,11 +1,13 @@
 /**
 * @file    line_session.cpp
-* @version 7.12.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   带上限的按行分帧会话基类实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.12.0] GY   2026-10-02
 * * 自协调会话与中继握手的共同逻辑抽出分帧会话基类
 */

@@ -1,11 +1,13 @@
 /**
 * @file    shutdown_controller.cpp
-* @version 7.11.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   应用退出与缓存清理控制器实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.11.0] GY   2026-10-02
 * * 自 AppController 拆出退出排空与缓存清理策略
 */

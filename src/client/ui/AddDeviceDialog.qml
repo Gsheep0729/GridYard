@@ -1,7 +1,7 @@
 /**
 * @file    AddDeviceDialog.qml
-* @version 7.15.3
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   添加设备对话框
 *
@@ -9,6 +9,8 @@
 * 手动输入 IP 和端口。结果通过行内提示反馈，成功后自动关闭。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.3] GY   2026-10-03
 * * 页眉改用 DialogHeader 组件
 * [v7.13.2] GY   2026-10-03

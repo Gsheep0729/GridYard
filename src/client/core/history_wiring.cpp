@@ -1,11 +1,13 @@
 /**
 * @file    history_wiring.cpp
-* @version 7.13.2
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   本地历史持久化装配实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.13.2] GY   2026-10-03
 * * 启动恢复回调适配成功位，存储不可用时记录失败不再静默
 * [v7.11.0] GY   2026-10-02

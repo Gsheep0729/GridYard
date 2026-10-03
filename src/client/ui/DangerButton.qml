@@ -1,12 +1,16 @@
 /**
  * @file    DangerButton.qml
- * @version 7.15.3
+ * @version 7.15.6
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   危险操作按钮
  *
  * 红底反白的三态按钮，颜色取自 Style 语义色 error 系列，
  * 供删除确认、清除缓存等不可逆操作使用，避免各处手写红按钮样式。
+ *
+ * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  */
 
 import QtQuick

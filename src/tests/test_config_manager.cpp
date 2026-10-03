@@ -1,13 +1,15 @@
 /**
 * @file    test_config_manager.cpp
-* @version 7.13.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.13.0] GY   2026-10-02
 * * 本机 IP 用例改为校验刷新结果属于真实接口地址
 * [v4.11.0] GY   2026-06-13

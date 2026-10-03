@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_message_repository.cpp
-* @version 7.15.5
-* @date    2026-06-25
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   SQLite 聊天消息 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；消息写入前先确保会话行存在。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.5] GY   2026-10-03
 * * saveMessage 内部复用 saveMessageStep（ADR-006 方案 c），消除双份写入 SQL
 * [v6.6.2] GY   2026-06-25

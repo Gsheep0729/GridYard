@@ -1,6 +1,6 @@
 /**
  * @file    Sidebar.qml
- * @version 7.15.5
+ * @version 7.15.6
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   左侧设备栏
@@ -11,6 +11,8 @@
  * 从 Main.qml 拆出，弹窗坐标相对工具栏，与原窗口布局一致。
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.15.4] GY   2026-10-03
  * * 自 Main.qml 拆出：工具栏 + 设备列表 + 本机信息/菜单弹窗，
  *   设备选择、拖拽与设置入口经信号上抛

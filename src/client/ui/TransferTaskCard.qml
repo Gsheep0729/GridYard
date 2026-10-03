@@ -1,13 +1,15 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 7.15.3
- * @date    2026-10-02
+ * @version 7.15.6
+ * @date    2026-10-03
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.15.3] GY   2026-10-03
 * * 状态文案改调 FormatUtils 唯一词表，确认删除按钮改用 DangerButton
 * [v7.11.0] GY   2026-10-02

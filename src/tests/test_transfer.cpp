@@ -1,12 +1,15 @@
 /**
 * @file    test_transfer.cpp
-* @date    2026-06-05
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   文件传输功能测试
 *
 * 测试 GridYard 文件传输的各个功能模块。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v1.0] GY   2026-06-05
 * * 初始版本：基础传输功能测试
 */

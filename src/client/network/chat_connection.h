@@ -1,7 +1,7 @@
 /**
 * @file    chat_connection.h
-* @version 6.6.2
-* @date    2026-06-24
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接
 *
@@ -9,6 +9,8 @@
 * 字节流与连接状态，不维护设备会话或界面消息状态。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v5.1.0] FengChunlin   2026-06-24

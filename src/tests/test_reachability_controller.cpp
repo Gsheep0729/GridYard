@@ -1,12 +1,16 @@
 /**
 * @file    test_reachability_controller.cpp
-* @version 7.13.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   网络可达性控制器测试
 *
 * 测试用例：本机地址收集、TCP 探测成功与失败、邀请文本生成与导入
 * 校验、手动端点的 IP 校验与添加。
+*
+* Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 */
 
 #include <QtTest/QtTest>

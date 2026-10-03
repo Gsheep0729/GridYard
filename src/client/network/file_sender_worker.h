@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.h
-* @version 7.14.1
-* @date    2026-06-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
@@ -11,6 +11,8 @@
 * 取消操作和超时检测。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.14.1] GY   2026-10-03
 * * 新增跨线程取消请求标志与中继握手令牌注入入口
 * [v7.14.0] GY   2026-10-03

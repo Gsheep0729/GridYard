@@ -1,7 +1,7 @@
 /**
 * @file    test_rendezvous_client.cpp
-* @version 7.15.2
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   协调节点客户端测试
 *
@@ -10,6 +10,8 @@
 * 以及访问令牌的携带与校验（配 token 正常往返、错 token 被拒）。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.2] GY   2026-10-03
 * * 候选列表断言改为过滤请求者自身，对齐 list_peers 补发 device_id
 * [v7.14.0] GY   2026-10-03

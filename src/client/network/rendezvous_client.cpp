@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_client.cpp
-* @version 7.15.2
-* @date    2026-07-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   协调节点客户端实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.2] GY   2026-10-03
 * * 行协议字段名与 type 串全面改用协议常量
 * * list_peers 请求补发 device_id，服务端过滤请求者自身自此生效

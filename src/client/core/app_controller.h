@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
-* @version 7.11.0
-* @date    2026-07-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -10,6 +10,8 @@
 * ShutdownController 承担。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.11.0] GY   2026-10-02
 * * 构造函数瘦身为纯装配：协调编排移入 RendezvousCoordinator（配置变化即时生效），
 *   历史持久化装配移入 HistoryWiring，退出与缓存清理移入 ShutdownController

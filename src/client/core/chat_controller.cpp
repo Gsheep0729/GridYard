@@ -1,11 +1,13 @@
 /**
 * @file    chat_controller.cpp
-* @version 6.6.2
-* @date    2026-06-27
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   面向 QML 的聊天控制器实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-27
 * * 新增聊天 UI API 门面
 */

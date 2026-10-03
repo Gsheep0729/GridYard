@@ -1,7 +1,7 @@
 /**
 * @file    frame_codec.cpp
-* @version 6.6.2
-* @date    2026-06-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   TLV 帧编解码器实现
 *
@@ -9,6 +9,8 @@
 * 载荷大小，解码时处理粘包/半包，完整帧通过 frameReady 信号交付。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v4.16.1] GY   2026-06-21

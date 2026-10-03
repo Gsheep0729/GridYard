@@ -1,7 +1,7 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.13.2
-* @date    2026-06-28
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
 *
@@ -9,6 +9,8 @@
 * 避免 AppController 直接持有数据管理层细节。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.13.2] GY   2026-10-03
 * * 存储不可用分支统一回调失败，消除降级时回调丢失导致的界面假死
 * [v6.7.0] GY   2026-06-28

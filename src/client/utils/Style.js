@@ -2,8 +2,8 @@
 
 /**
  * @file    Style.js
- * @version 7.15.3
- * @date    2026-10-02
+ * @version 7.15.6
+ * @date    2026-10-03
  * @author  GY
  * @brief   QML 界面样式常量
  *
@@ -11,6 +11,8 @@
  * 状态色成对提供实色与浅底色（Soft），供标签、横幅、卡片背景使用。
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.15.3] GY   2026-10-03
  * * 新增 errorHover 悬停色收敛危险按钮三态，删除零引用的 primaryPressed
  * [v7.11.0] GY   2026-10-02

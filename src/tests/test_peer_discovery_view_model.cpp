@@ -1,12 +1,16 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.15.3
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   设备发现视图模型测试
 *
 * 测试用例：在线设备与手动端点按来源优先级排序、发现服务信号转发、
 * 无数据层时历史刷新安全、空发现服务的防御行为、选中设备查询。
+*
+* Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 */
 
 #include <QtTest/QtTest>

@@ -1,11 +1,13 @@
 /**
 * @file    rendezvous_coordinator.cpp
-* @version 7.14.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   协调节点编排器实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.14.0] GY   2026-10-03
 * * 访问令牌随连接下发并在配置变化时重连
 * [v7.11.0] GY   2026-10-02

@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_protocol_keys.h
-* @version 7.15.2
+* @version 7.15.6
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   协调/中继行协议字段名与类型常量
@@ -10,6 +10,8 @@
 * 服务端与客户端共同链接 gy_protocol_contracts 接口目标获得编译期锚点。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.2] GY   2026-10-03
 * * 全面收敛双端剩余字面量：全部 type 串与 JSON 字段名入表
 * [v7.14.0] GY   2026-10-03

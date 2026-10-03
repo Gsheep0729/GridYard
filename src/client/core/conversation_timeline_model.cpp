@@ -1,7 +1,7 @@
 /**
 * @file    conversation_timeline_model.cpp
-* @version 7.13.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型实现
 *
@@ -9,6 +9,8 @@
 * 触发对应行的 dataChanged，设备切换或消息模型重置才整体重建。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.13.0] GY   2026-10-02
 * * 实现合并、过滤与行级增量通知逻辑
 */

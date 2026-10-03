@@ -1,11 +1,13 @@
 /**
 * @file    relay_server.cpp
-* @version 7.15.2
-* @date    2026-07-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.2] GY   2026-10-03
 * * relay_error 响应的 code/message 字段名改用协议常量
 * [v7.13.4] GY   2026-10-03

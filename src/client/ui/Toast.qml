@@ -1,6 +1,6 @@
 /**
  * @file    Toast.qml
- * @version 7.15.5
+ * @version 7.15.6
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   底部轻提示
@@ -9,6 +9,8 @@
  * 从 Main.qml 拆出，连续提示时重置计时避免被上一条的旧计时提前关掉。
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.15.4] GY   2026-10-03
  * * 自 Main.qml 拆出，暴露 show(message, isError) 接口
  */

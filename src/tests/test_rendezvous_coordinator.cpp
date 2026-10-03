@@ -1,12 +1,16 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 7.11.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
 *
 * 测试用例：默认停用不连接、启用后注册并拉取候选、停用后不再自动重连、
 * 修改端口即时切换服务器（修复"改配置需重启"）。
+*
+* Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 */
 
 #include <QtTest/QtTest>

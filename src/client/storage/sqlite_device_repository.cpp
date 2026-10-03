@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 7.15.5
-* @date    2026-06-25
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.5] GY   2026-10-03
 * * 接口方法内部复用 *Step，消除双份 upsert/update SQL 字面量
 * [v6.6.2] GY   2026-06-25

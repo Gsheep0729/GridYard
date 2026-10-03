@@ -1,11 +1,13 @@
 /**
 * @file    online_registry.cpp
-* @version 7.13.4
-* @date    2026-07-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   协调节点在线设备注册表实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.13.4] GY   2026-10-03
 * * upsertPeer 增加房间数与每房设备数上限，邀请 TTL 从常量改为可配置
 * [v7.12.0] GY   2026-10-02

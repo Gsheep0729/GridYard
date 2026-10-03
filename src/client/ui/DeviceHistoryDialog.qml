@@ -1,7 +1,7 @@
 /**
  * @file    DeviceHistoryDialog.qml
- * @version 7.15.3
- * @date    2026-10-02
+ * @version 7.15.6
+ * @date    2026-10-03
  * @author  GY
  * @brief   设备历史记录对话框
  *
@@ -9,6 +9,8 @@
  * 并提供清空该设备聊天记录的入口。
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.15.3] GY   2026-10-03
 * * 页眉改用 DialogHeader 组件
 * [v7.11.0] GY   2026-10-02

@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.15.2
-* @date    2026-06-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -10,6 +10,8 @@
 * 支持多文件/目录传输、背压控制、取消操作和超时检测。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.2] GY   2026-10-03
 * * 中继控制行类型串改用协议常量
 * [v7.14.0] GY   2026-10-03

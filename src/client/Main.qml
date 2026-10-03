@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.15.5
+ * @version 7.15.6
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -11,6 +11,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.15.4] GY   2026-10-03
  * * 托盘图标拆出 ui/TrayIcon.qml，菜单行为经信号上抛
  * * 关闭确认弹窗拆出 ui/CloseConfirmDialog.qml，空态占位拆出 ui/HomePlaceholder.qml

@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.15.3
-* @date    2026-06-28
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
 *
@@ -9,6 +9,8 @@
 * 与本地设备目录的内部细节。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.3] GY   2026-10-03
 * * 新增 selectedDeviceId 属性与 deviceById 查询，选中状态由视图模型持有
 * [v6.7.0] GY   2026-06-28

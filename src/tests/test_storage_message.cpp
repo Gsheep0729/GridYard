@@ -1,7 +1,7 @@
 /**
 * @file    test_storage_message.cpp
-* @version 6.2.0
-* @date    2026-06-25
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   SQLite 聊天消息 Repository 测试
 *
@@ -9,6 +9,8 @@
 * deleteConversation CASCADE、deleteExpiredMessages 和重启恢复。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.2.0] GY   2026-06-25
 * * 新增聊天消息 SQLite Repository 测试
 */

@@ -1,7 +1,7 @@
 /**
 * @file    protocol.h
-* @version 7.11.0
-* @date    2026-06-23
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
 *
@@ -11,6 +11,8 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.11.0] GY   2026-10-02
 * * 新增默认协调房间名常量 kDefaultRendezvousRoom
 * [v6.6.2] GY   2026-06-25

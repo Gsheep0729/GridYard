@@ -1,7 +1,7 @@
 /**
 * @file    chat_controller.h
-* @version 7.15.5
-* @date    2026-06-27
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   面向 QML 的聊天控制器
 *
@@ -9,6 +9,8 @@
 * 去重索引和持久化事件由 ChatManager 持有。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.5] GY   2026-10-03
 * * 新增 maxChatContentLength 只读属性，QML 输入上限改绑协议常量
 * [v6.6.2] GY   2026-06-27

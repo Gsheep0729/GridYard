@@ -1,7 +1,7 @@
 /**
 * @file    chat_manager.h
-* @version 6.6.2
-* @date    2026-06-28
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
 *
@@ -9,6 +9,8 @@
 * 已发现在线的设备发起连接，不创建离线待投递队列。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-28
 * * 移除 QML 暴露宏和 Q_INVOKABLE 标记，作为内部聊天管理器使用
 * [v6.6.2] GY   2026-06-25

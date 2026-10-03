@@ -1,12 +1,16 @@
 /**
  * @file    DialogHeader.qml
- * @version 7.15.3
+ * @version 7.15.6
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   弹窗页眉
  *
  * 标题 + 副标题 + 关闭按钮 + 分隔线的标准页眉，供各对话框作为
  * header 使用；关闭按钮只发 closeClicked 信号，由使用方决定关闭哪个弹窗。
+ *
+ * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  */
 
 import QtQuick

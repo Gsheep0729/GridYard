@@ -1,11 +1,13 @@
 /**
 * @file    application_paths.cpp
-* @version 6.8.1
-* @date    2026-06-28
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   应用数据目录统一入口实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.8.1] GY   2026-06-29
 * * 恢复系统标准配置和应用数据目录，避免发布包目录承载运行数据
 * [v6.7.0] GY   2026-06-28

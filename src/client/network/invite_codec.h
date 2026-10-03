@@ -1,7 +1,7 @@
 /**
 * @file    invite_codec.h
-* @version 7.1.0
-* @date    2026-07-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   邀请连接文本编解码器
 *
@@ -9,6 +9,8 @@
 * gridyard://invite?deviceId=...&name=...&ip=...&tcpPort=35100&discoveryPort=45678
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.1.0] GY   2026-07-21
 * * Stage 7.1：新增邀请连接编解码器，支持文本格式的设备交换
 */

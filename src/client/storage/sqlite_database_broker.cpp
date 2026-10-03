@@ -1,7 +1,7 @@
 /**
 * @file    sqlite_database_broker.cpp
-* @version 7.13.2
-* @date    2026-06-25
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理实现
 *
@@ -10,6 +10,8 @@
 * 应用退出时自动关闭并移除连接名。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.13.2] GY   2026-10-03
 * * Worker 线程连接打开失败时写入错误信息，避免上层误判为成功
 * [v6.8.1] GY   2026-06-29

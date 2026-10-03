@@ -1,7 +1,7 @@
 /**
 * @file    history_controller.h
-* @version 6.6.2
-* @date    2026-06-28
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   本地聊天与传输历史的 QML 应用层入口
 *
@@ -10,6 +10,8 @@
 * 并向 QML 提供筛选、删除和保留期限设置入口。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-28
 * * 改为依赖 LocalDataBroker 语义接口，不直接持有 DatabaseWorker 或 Repository
 * [v6.6.2] GY   2026-06-25

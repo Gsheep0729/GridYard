@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_transfer_history_repository.cpp
-* @version 7.15.5
-* @date    2026-06-25
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   SQLite 传输历史 Repository 实现
 *
 * 只保存最终状态快照，不保存发送源绝对路径、文件内容或调试堆栈。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.5] GY   2026-10-03
 * * upsertFinishedTransfer 复用 upsertFinishedTransferStep（ADR-006 方案 c）
 * [v6.6.2] GY   2026-06-25

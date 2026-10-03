@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.1
-* @date    2026-06-25
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -10,6 +10,8 @@
 * waiting_confirm 会话过期信号
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.1] GY   2026-10-03
 * * 新增 sessionStale 信号用例：后端终结恰好一次、正常完成与用户拒绝不发射
 * [v7.15.0] GY   2026-10-03

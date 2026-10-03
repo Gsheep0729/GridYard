@@ -1,13 +1,15 @@
 /**
  * @file    ConversationTimelineView.qml
- * @version 7.13.0
- * @date    2026-06-28
+ * @version 7.15.6
+ * @date    2026-10-03
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
  *
  * 将聊天消息和文件传输任务按时间混排展示，形成单一会话流。
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.13.0] GY   2026-10-02
  * * 时间线改绑 C++ 合并模型，进度刷新只更新对应行，不再全量重建
  * * 气泡与头像的反白文字统一使用 textOnAccent 语义色

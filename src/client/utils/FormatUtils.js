@@ -2,12 +2,14 @@
 
 /**
  * @file    FormatUtils.js
- * @version 7.15.3
- * @date    2026-10-02
+ * @version 7.15.6
+ * @date    2026-10-03
  * @author  GY
  * @brief   界面展示格式化工具
  *
  * Change Log:
+ * [v7.15.6] GY   2026-10-03
+ * * 版本头对齐到 v7.15.6
  * [v7.15.3] GY   2026-10-03
  * * transferStatusText 扩为覆盖全部会话状态的唯一词表，不再使用 qsTr
  * [v7.11.0] GY   2026-10-02

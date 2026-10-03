@@ -1,13 +1,17 @@
 /**
 * @file    test_conversation_timeline_model.cpp
-* @version 7.13.0
-* @date    2026-10-02
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   ConversationTimelineModel 统一时间线模型测试
 *
 * 测试用例：消息与会话按时间合并、其他设备会话被过滤、传输进度刷新
 * 只触发对应行 dataChanged（不整体重置）、头像连续分组、会话删除同步、
 * 设备切换重建。
+*
+* Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 */
 
 #include <QtTest/QtTest>

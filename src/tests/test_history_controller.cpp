@@ -1,11 +1,13 @@
 /**
 * @file    test_history_controller.cpp
-* @version 7.13.2
-* @date    2026-06-28
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   HistoryController 本地历史视图与保留清理测试
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.13.2] GY 2026-10-03
 * * 增加存储降级契约测试：不可用时回调恰好一次且历史页不卡加载
 * [v6.6.2] GY 2026-06-28

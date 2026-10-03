@@ -1,11 +1,13 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.15.3
-* @date    2026-07-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.3] GY   2026-10-03
 * * 选中状态收编：新增 selectedDeviceId 属性与 deviceById 查询，
 *   QML 不再手工复制四元组并循环同步

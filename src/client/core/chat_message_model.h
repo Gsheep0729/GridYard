@@ -1,7 +1,7 @@
 /**
 * @file    chat_message_model.h
-* @version 6.6.2
-* @date    2026-06-24
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   在线聊天内存消息列表模型
 *
@@ -9,6 +9,8 @@
 * 列表通知与状态变更，不负责网络、协议解析或消息持久化。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v5.2.0] DuRuoxian   2026-06-24

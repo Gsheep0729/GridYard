@@ -1,13 +1,15 @@
 /**
 * @file    test_frame_codec.cpp
-* @version 4.16.3
-* @date    2026-06-24
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GY
 * @brief   FrameCodec 单元测试
 *
 * 测试用例：单帧 / 粘包 / 半包 / 空 payload / 超大 payload / 协议版本 / 分级 Payload 上限
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v4.16.3] GY   2026-06-24
 * * 新增聊天控制帧 Type 与 Payload 上限测试
 * [v4.15.1] FengChunlin   2026-06-17

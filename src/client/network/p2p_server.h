@@ -1,7 +1,7 @@
 /**
 * @file    p2p_server.h
-* @version 7.9.0
-* @date    2026-06-23
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器
 *
@@ -11,6 +11,8 @@
 * 直连不可达时，接收端可经中继服务器加入会话，socket 交给同一条首帧路由。
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.9.0] GY   2026-07-26
 * * 新增 joinRelaySession：接入中继降级连接并复用首帧路由
 * [v6.6.2] GY   2026-06-25

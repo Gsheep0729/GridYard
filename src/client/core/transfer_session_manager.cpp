@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.15.1
-* @date    2026-07-21
+* @version 7.15.6
+* @date    2026-10-03
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.6] GY   2026-10-03
+* * 版本头对齐到 v7.15.6
 * [v7.15.1] GY   2026-10-03
 * * waiting_confirm 会话被后端终结时发射 sessionStale，取代 QML 轮询推断过期
 * [v7.15.0] GY   2026-10-03
