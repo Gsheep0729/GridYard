@@ -1,11 +1,13 @@
 /**
 * @file    test_history_controller.cpp
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GY
 * @brief   HistoryController 本地历史视图与保留清理测试
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 版本头对齐到 v7.15.14
 * [v7.15.13] GY   2026-10-04
 * * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03

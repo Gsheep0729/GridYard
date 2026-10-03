@@ -1,6 +1,6 @@
 /**
 * @file    chat_manager.cpp
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
@@ -11,6 +11,8 @@
 * 由 AppController 异步提交持久化任务。
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 版本头对齐到 v7.15.14
 * [v7.15.13] GY   2026-10-04
 * * sendText 返回消息是否被接受，同步拒绝返回 false，异步入模后返回 true
 * [v7.15.12] GY   2026-10-03

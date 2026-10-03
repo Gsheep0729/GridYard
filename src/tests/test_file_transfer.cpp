@@ -1,6 +1,6 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GY
 * @brief   文件传输完整流程测试
@@ -8,6 +8,9 @@
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 新增 testCancelReceiveDuringTransfer：accept 后传输中途取消，接收侧恰好一次
+*   UserCancelled 终结、半成品文件删除、发送侧以对端取消失败终结
 * [v7.15.13] GY   2026-10-04
 * * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
@@ -95,6 +98,7 @@ private slots:
     void testPersistCancelledReceiveSession();
     void testReceiveFolderPreview();
     void testCancelTransfer();
+    void testCancelReceiveDuringTransfer();
     void testConnectionLost();
     void testTransferTimeout();
     void testConcurrentTransfers();
@@ -749,6 +753,108 @@ void TestFileTransfer::testCancelTransfer()
     QVERIFY(!senderSpy.first().at(0).toBool());
 
     stopSenderThread(sender, senderThread);
+}
+
+// 传输中取消接收会话：接收 worker 以 UserCancelled 恰好终结一次，
+// 半成品文件被删除，发送侧以对端取消失败终结而非显示成功
+void TestFileTransfer::testCancelReceiveDuringTransfer()
+{
+    // 大文件确保取消时传输仍在进行
+    const QString sendPath = _sendDir->path() + "/recv_cancel.bin";
+    QFile sourceFile(sendPath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write(QByteArray(500 * 1024 * 1024, 'B'));
+    sourceFile.close();
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setAutoAcceptFiles(true);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    // 接收 worker 的终结次数与错误码：传输中取消必须以 UserCancelled 恰好终结一次
+    int workerFinishCount = 0;
+    bool workerSuccess = true;
+    int workerErrorCodeInt = -1;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [this, &workerFinishCount, &workerSuccess, &workerErrorCodeInt](
+                FileReceiverWorker *worker, const QVariantMap &) {
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&workerFinishCount, &workerSuccess, &workerErrorCodeInt](
+                    bool success, gy::protocol::ErrorCode errorCode,
+                    const QString &, const QString &) {
+            ++workerFinishCount;
+            workerSuccess = success;
+            workerErrorCodeInt = static_cast<int>(errorCode);
+        });
+    });
+
+    int persistedCount = 0;
+    TransferRecord persistedRecord;
+    connect(&manager, &TransferSessionManager::transferToPersist, this,
+            [&persistedCount, &persistedRecord](const TransferRecord &record) {
+                ++persistedCount;
+                persistedRecord = record;
+            });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "midcancel-sender-id"),
+                              Q_ARG(QString, "MidCancelSender"));
+
+    // 自动接受后等待真实字节落盘，确保取消发生在传输过程中而非确认窗口
+    const auto bytesTransferredOfFirst = [&manager]() -> qint64 {
+        const QVariantList sessions = manager.sessions();
+        if (sessions.isEmpty()) {
+            return -1;
+        }
+        return sessions.first().toMap().value("bytesTransferred").toLongLong();
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(bytesTransferredOfFirst() > 0, 10000);
+
+    const QVariantList sessions = manager.sessions();
+    QCOMPARE(sessions.size(), 1);
+    const QVariantMap activeSession = sessions.first().toMap();
+    QCOMPARE(activeSession.value("status").toString(), QStringLiteral("transferring"));
+
+    manager.cancelSession(activeSession.value("sessionId").toString());
+
+    // 发送侧必须以"对端取消"失败终结，绝不能显示成功
+    QVERIFY(waitForTransfer(senderSpy, 10000));
+    QCOMPARE(senderSpy.count(), 1);
+    QVERIFY(!senderSpy.first().at(0).toBool());
+    QCOMPARE(senderSpy.first().at(1).toInt(),
+             static_cast<int>(gy::protocol::ErrorCode::UserCancelled));
+    QVERIFY(senderSpy.first().at(2).toString().contains(QStringLiteral("对端取消")));
+
+    // 接收 worker 以 UserCancelled 恰好终结一次
+    QTRY_COMPARE_WITH_TIMEOUT(workerFinishCount, 1, 10000);
+    QCOMPARE(workerFinishCount, 1);
+    QVERIFY(!workerSuccess);
+    QCOMPARE(workerErrorCodeInt, static_cast<int>(gy::protocol::ErrorCode::UserCancelled));
+
+    // 半成品文件已被删除（套件共享接收目录，只检查本任务的目标文件）
+    QTRY_VERIFY_WITH_TIMEOUT(!QFile::exists(_recvDir->path() + "/recv_cancel.bin"), 10000);
+
+    // 会话按取消持久化恰好一次
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 10000);
+    QCOMPARE(persistedRecord.status, QStringLiteral("cancelled"));
+    QVERIFY(persistedRecord.errorCode != 0);
+
+    stopSenderThread(sender, senderThread);
+    _config->setAutoAcceptFiles(false);
 }
 
 void TestFileTransfer::testConnectionLost()

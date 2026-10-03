@@ -1,6 +1,6 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
@@ -9,6 +9,8 @@
 * 与本地设备目录的内部细节。
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 版本头对齐到 v7.15.14
 * [v7.15.13] GY   2026-10-04
 * * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03

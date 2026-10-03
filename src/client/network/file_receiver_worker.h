@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.h
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
@@ -11,6 +11,8 @@
 * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 新增跨线程取消请求标志与 requestCancel 入口，传输中取消不再依赖仅等待确认态生效的 rejectTransfer
 * [v7.15.13] GY   2026-10-04
 * * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
@@ -60,6 +62,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "dir_serializer.h"
 #include "protocol.h"
 
@@ -85,6 +89,10 @@ public:
 
     // 设置接收路径（由 TransferSessionManager 调用）
     void setReceivePath(const QString &path) { _receivePath = path; }
+
+    // 请求取消：可在任意线程调用（含数据块接收期间），只置位原子标志，
+    // 实际终结由工作线程在分块处理边界检查该标志后完成
+    void requestCancel();
 
 public slots:
     // 初始化（在后台线程中调用，创建 QTimer 并连接 socket 信号）
@@ -120,6 +128,8 @@ private:
     void handleDataChunk(const QByteArray &payload);
     // 处理取消请求
     void handleCancel(const QByteArray &payload);
+    // 本端用户在传输中取消：向发送方发取消帧后走统一终结出口
+    void handleLocalCancel();
     // 处理传输完成请求
     void handleTransferDone();
     // 打开当前文件
@@ -168,6 +178,10 @@ private:
     bool _transferActive = false;        // 是否处于实际接收数据阶段
     bool _isDirectory = false;           // 当前任务是否为目录传输
     bool _finished = false;              // 是否已发射过 transferFinished，防止拒绝/断开路径重复或遗漏终结
+    // 取消请求标志：UI 线程经 requestCancel() 置位，工作线程在分块处理边界检查。
+    // 跨线程仅约定"置位即请求取消"这一单向语义，依赖原子默认顺序一致性，
+    // 不与其他状态构成复合同步
+    std::atomic_bool _cancelRequested{false};
 
     // 接收路径
     QString _receivePath;                // 配置的接收文件根目录

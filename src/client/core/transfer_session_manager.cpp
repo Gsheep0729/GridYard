@@ -1,11 +1,14 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * cancelSession 接收分支先直调 worker->requestCancel()，传输中取消可立即中断接收，
+*   等待确认态仍走 rejectTransfer 原语义
 * [v7.15.13] GY   2026-10-04
 * * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
@@ -632,9 +635,12 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
             QMetaObject::invokeMethod(worker, "cancel");
         }
     } else if (type == kTypeReceive) {
-        // 接收方：拒绝传输（会触发对方超时或连接断开）
+        // 接收方：等待确认态走拒绝（原语义）；已进入传输的会话由原子标志中断
         FileReceiverWorker *worker = _receiveWorkers.value(sessionId);
         if (worker) {
+            // 先跨线程置位原子取消标志：排队槽要等 worker 事件循环空闲才送达，
+            // 置位则 worker 在下一个分块处理边界立即中断，不再继续收完整文件
+            worker->requestCancel();
             // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
             QMetaObject::invokeMethod(worker, [worker]() {
                 worker->rejectTransfer(QObject::tr("用户取消"));

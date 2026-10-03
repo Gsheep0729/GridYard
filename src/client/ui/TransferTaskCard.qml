@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 7.15.13
+ * @version 7.15.14
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -8,6 +8,8 @@
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 版本头对齐到 v7.15.14
  * [v7.15.13] GY   2026-10-04
  * * 版本头对齐到 v7.15.13
  * [v7.15.12] GY   2026-10-03

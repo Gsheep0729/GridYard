@@ -1,11 +1,13 @@
 /**
 * @file    chat_controller.cpp
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的聊天控制器实现
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 版本头对齐到 v7.15.14
 * [v7.15.13] GY   2026-10-04
 * * sendText 透传消息接受结果供 QML 判断
 * [v7.15.12] GY   2026-10-03

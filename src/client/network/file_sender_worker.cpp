@@ -1,6 +1,6 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
@@ -10,6 +10,8 @@
 * 支持多文件/目录传输、背压控制、取消操作和超时检测。
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 处理接收端的 Cancel 帧：按对端取消失败终结并给出明确文案，不再落入未知帧类型继续发送至超时
 * [v7.15.13] GY   2026-10-04
 * * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
@@ -514,6 +516,15 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             }
             finishAfterSend();  // 等 TransferDone 落网后再终结，避免接收端收不到而误判超时
         }
+        break;
+    }
+    case gy::protocol::kTypeCancel: {
+        QJsonDocument doc = QJsonDocument::fromJson(payload);
+        qDebug() << "[FileSender] 收到对端取消:"
+                 << doc.object()["reason"].toString();
+        // 接收端已取消并断开：必须按对端取消失败终结，
+        // 否则接收端无文件而发送端显示成功，两端状态矛盾
+        finish(false, gy::protocol::ErrorCode::UserCancelled, tr("对端取消了传输"));
         break;
     }
     default:

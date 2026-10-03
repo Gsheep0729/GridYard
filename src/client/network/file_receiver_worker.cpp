@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 7.15.13
+* @version 7.15.14
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
@@ -10,6 +10,9 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
+* [v7.15.14] GY   2026-10-04
+* * 传输中在帧处理边界检查取消标志：置位即向发送方发取消帧并走 finish 统一出口，
+*   半成品文件被删除，不再收完整文件落盘成孤儿
 * [v7.15.13] GY   2026-10-04
 * * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
@@ -242,6 +245,13 @@ void FileReceiverWorker::acceptTransfer()
     _timeoutTimer->start(kTimeoutMs);
 }
 
+// 请求取消：任意线程可调，只置位原子标志；
+// 实际终结由工作线程在分块处理边界检查标志后走 finish() 统一出口
+void FileReceiverWorker::requestCancel()
+{
+    _cancelRequested.store(true);
+}
+
 // 用户拒绝传输，发送拒绝响应并关闭连接
 void FileReceiverWorker::rejectTransfer(const QString &reason)
 {
@@ -337,6 +347,13 @@ void FileReceiverWorker::finish(bool success, gy::protocol::ErrorCode errorCode,
 // 根据帧类型分发到对应的处理函数
 void FileReceiverWorker::onFrameReady(quint32 type, const QByteArray &payload)
 {
+    // 本端已请求取消：后续帧（含数据块与完成确认）都只推进取消流程，
+    // 不再写盘，也不得以成功终结
+    if (_transferActive && _cancelRequested.load()) {
+        handleLocalCancel();
+        return;
+    }
+
     qDebug() << "[FileReceiver] 收到帧，类型:" << type;
 
     switch (type) {
@@ -707,6 +724,30 @@ void FileReceiverWorker::handleCancel(const QByteArray &payload)
     // 关闭连接并终结；cleanup()（由 finish 调用）会关闭并删除不完整文件
     _socket->disconnectFromHost();
     finish(false, gy::protocol::ErrorCode::UserCancelled, tr("传输被取消: %1").arg(reason));
+}
+
+// 本端用户在传输中取消：向发送方发取消帧后走统一终结出口
+// 半成品文件由 finish() 内的 cleanup() 关闭并删除，避免留下无 UI 可定位的孤儿文件
+void FileReceiverWorker::handleLocalCancel()
+{
+    if (_finished) {
+        return;
+    }
+
+    qDebug() << "[FileReceiver] 本端取消传输，通知发送方";
+
+    QJsonObject json;
+    json["session_id"] = _sessionId;
+    json["reason"] = tr("用户取消");
+
+    const QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+    // 写入失败时 writeControlFrame 内部已终结会话，后面的重复终结被 _finished 拦截
+    writeControlFrame(gy::protocol::kTypeCancel, data, tr("发送取消帧"));
+
+    // 取消帧写入后断开连接（Qt 会先刷完待写字节再关闭），
+    // 发送方收到取消帧或断连后按对端取消终结
+    _socket->disconnectFromHost();
+    finish(false, gy::protocol::ErrorCode::UserCancelled, tr("用户取消"));
 }
 
 // 构建并发送传输响应帧（接受/拒绝 + 错误码 + 原因）
