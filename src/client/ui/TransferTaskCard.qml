@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 7.15.10
+ * @version 7.15.11
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -8,6 +8,8 @@
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
+ * [v7.15.11] GY   2026-10-03
+ * * 展开箭头与更多按钮改文字符号，去除主题图标依赖
  * [v7.15.10] GY   2026-10-03
  * * 版本头对齐到 v7.15.10
  * [v7.15.6] GY   2026-10-03
@@ -168,14 +170,17 @@ Frame {
             }
 
             // 展开/收起按钮：仅传输中的文件夹任务显示，已完成的文件夹用底部行展开
+            // 箭头用文字符号，与底部折叠行保持一致，不依赖系统图标主题
             Button {
-                icon.name: taskCard.expanded ? "go-down" : "go-next"
                 flat: true
                 visible: taskCard.canShowFolderPreview && !taskCard.isFinished
                 onClicked: taskCard.expansionRequested(!taskCard.expanded)
                 Layout.preferredWidth: 24
                 Layout.preferredHeight: 24
                 padding: 0
+                text: taskCard.expanded ? "⌄" : "›"
+                font.pixelSize: 15
+                font.bold: true
             }
 
             // 状态标签：带颜色背景的小标签，颜色随状态变化
@@ -327,9 +332,11 @@ Frame {
                 }
 
                 ToolButton {
-                    icon.name: "view-more-symbolic"
-                    display: AbstractButton.IconOnly
+                    text: "⋯"
+                    font.pixelSize: 16
+                    font.bold: true
                     padding: 4
+                    ToolTip.delay: 500
                     ToolTip.visible: hovered
                     ToolTip.text: enabled ? qsTr("更多移除选项") : qsTr("发送记录或未完成接收记录不能删除本地文件")
                     onClicked: removeMenu.open()

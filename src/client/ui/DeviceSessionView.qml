@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 7.15.10
+ * @version 7.15.11
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
@@ -9,6 +9,8 @@
  * 设备离线时在页内给出明确状态提示。
  *
  * Change Log:
+ * [v7.15.11] GY   2026-10-03
+ * * 输入区重构：附件入口并入输入框左侧，发送改文字按钮，计数器移入框内右下角
  * [v7.15.10] GY   2026-10-03
  * * 版本头对齐到 v7.15.10
  * [v7.15.6] GY   2026-10-03
@@ -170,24 +172,26 @@ Frame {
                    font.bold: true
                }
 
-               // 历史记录入口：查看跨重启保留的聊天与传输历史
-               ToolButton {
-                   text: qsTr("历史")
-                   Layout.preferredHeight: 32
-                   ToolTip.text: qsTr("查看与该设备的历史记录")
-                   ToolTip.visible: hovered
-                   onClicked: deviceHistoryDialog.open()
-               }
+              // 历史记录入口：查看跨重启保留的聊天与传输历史
+              ToolButton {
+                  text: qsTr("历史")
+                  Layout.preferredHeight: 32
+                  ToolTip.text: qsTr("查看与该设备的历史记录")
+                  ToolTip.delay: 500
+                  ToolTip.visible: hovered
+                  onClicked: deviceHistoryDialog.open()
+              }
 
-               ToolButton {
-                   text: qsTr("清理")
-                   enabled: deviceSessionView.finishedCount > 0
-                   Layout.preferredHeight: 32
-                   ToolTip.text: deviceSessionView.finishedCount > 0
-                                 ? qsTr("清理已结束的传输记录")
-                                 : qsTr("当前没有已结束的传输记录")
-                   ToolTip.visible: hovered
-                   onClicked: clearMenu.open()
+              ToolButton {
+                  text: qsTr("清理")
+                  enabled: deviceSessionView.finishedCount > 0
+                  Layout.preferredHeight: 32
+                  ToolTip.text: deviceSessionView.finishedCount > 0
+                                ? qsTr("清理已结束的传输记录")
+                                : qsTr("当前没有已结束的传输记录")
+                  ToolTip.delay: 500
+                  ToolTip.visible: hovered
+                  onClicked: clearMenu.open()
 
                    Menu {
                        id: clearMenu
@@ -291,33 +295,9 @@ Frame {
                anchors.margins: Style.Space.sm
                spacing: Style.Space.sm
 
-               // 发送入口按钮：点击弹出文件/文件夹选择下拉菜单
-               ToolButton {
-                   id: sendButton
-                   icon.name: "folder-open"
-                   enabled: deviceSessionView.isOnline
-                   ToolTip.text: deviceSessionView.isOnline
-                                 ? qsTr("发送文件或文件夹")
-                                 : qsTr("设备离线，无法发送文件")
-                   ToolTip.visible: hovered
-                   onClicked: sendMenu.open()
-
-                   Menu {
-                       id: sendMenu
-                       y: sendButton.height
-
-                       MenuItem {
-                           text: qsTr("发送文件")
-                           onTriggered: deviceSessionView.sendFileRequested()
-                       }
-                       MenuItem {
-                           text: qsTr("发送文件夹")
-                           onTriggered: deviceSessionView.sendFolderRequested()
-                       }
-                   }
-               }
-
+               // 输入框容器：附件入口并入框内左侧（"+"），与主流 IM 布局一致
                Rectangle {
+                   id: inputBox
                    Layout.fillWidth: true
                    Layout.fillHeight: true
                    radius: Style.Radius.sm
@@ -325,10 +305,52 @@ Frame {
                    border.color: Style.Color.border
                    border.width: 1
 
+                   // 附件入口：点击弹出文件/文件夹选择菜单
+                   ToolButton {
+                       id: attachButton
+                       anchors.left: parent.left
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       text: "+"
+                       font.pixelSize: 20
+                       font.bold: true
+                       ToolTip.text: deviceSessionView.isOnline
+                                     ? qsTr("发送文件或文件夹")
+                                     : qsTr("设备离线，无法发送文件")
+                       ToolTip.delay: 500
+                       ToolTip.visible: attachButton.hovered
+                       onClicked: sendMenu.open()
+
+                       Menu {
+                           id: sendMenu
+                           // 输入区贴着窗口底部，菜单向上弹出
+                           y: -sendMenu.height
+
+                           MenuItem {
+                               text: qsTr("发送文件")
+                               onTriggered: deviceSessionView.sendFileRequested()
+                           }
+                           MenuItem {
+                               text: qsTr("发送文件夹")
+                               onTriggered: deviceSessionView.sendFolderRequested()
+                           }
+                       }
+                   }
+
                    TextArea {
                        id: messageInput
-                       anchors.fill: parent
-                       anchors.margins: Style.Space.sm
+                       anchors {
+                           top: parent.top
+                           left: attachButton.right
+                           right: parent.right
+                           bottom: parent.bottom
+                           topMargin: Style.Space.sm
+                           leftMargin: Style.Space.sm
+                           rightMargin: Style.Space.sm
+                           // 计数器出现时抬高文本，避免与右下角计数重叠
+                           bottomMargin: deviceSessionView.showCharCounter ? 18 : Style.Space.sm
+                       }
                        enabled: deviceSessionView.isOnline
                        placeholderText: ""  // 占位提示由下方 Label 实现，避免 TextArea 默认样式冲突
                        font.pixelSize: 14
@@ -372,36 +394,33 @@ Frame {
                        font.pixelSize: 14
                        elide: Text.ElideRight
                    }
-               }
 
-               ColumnLayout {
-                   Layout.fillHeight: true
-                   Layout.preferredWidth: 44
-                   spacing: Style.Space.xs
-
-                   // 发送按钮：输入校验通过时可用
-                   ToolButton {
-                       id: chatSendButton
-                       icon.name: "mail-send"
-                       enabled: deviceSessionView.canSendChat
-                       ToolTip.text: deviceSessionView.isOnline
-                                     ? qsTr("发送消息")
-                                     : qsTr("设备离线，无法发送")
-                       ToolTip.visible: chatSendButton.hovered
-                       onClicked: deviceSessionView.sendChatMessage()
-                       Layout.alignment: Qt.AlignHCenter
-                   }
-
-                   // 字符计数器：接近上限时提醒用户
+                   // 字符计数器：剩余不足 400 字时显示在右下角内侧
                    Label {
+                       anchors.right: parent.right
+                       anchors.rightMargin: Style.Space.sm
+                       anchors.bottom: parent.bottom
+                       anchors.bottomMargin: 2
                        text: "%1/%2".arg(messageInput.text.length)
                               .arg(AppController.chatController.maxChatContentLength)
                        color: messageInput.text.length >= AppController.chatController.maxChatContentLength
                               ? Style.Color.error : Style.Color.textWeak
                        font.pixelSize: 10
-                       Layout.alignment: Qt.AlignHCenter
                        visible: deviceSessionView.showCharCounter
                    }
+               }
+
+               // 发送按钮：文字按钮，主色样式，宽度自适应
+               Button {
+                   id: chatSendButton
+                   text: qsTr("发送")
+                   highlighted: true
+                   enabled: deviceSessionView.canSendChat
+                   Layout.alignment: Qt.AlignVCenter
+                   onClicked: deviceSessionView.sendChatMessage()
+                   ToolTip.text: qsTr("设备离线，无法发送")
+                   ToolTip.delay: 500
+                   ToolTip.visible: chatSendButton.hovered && !deviceSessionView.isOnline
                }
            }
 

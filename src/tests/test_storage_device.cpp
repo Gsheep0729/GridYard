@@ -1,6 +1,6 @@
 /**
 * @file    test_storage_device.cpp
-* @version 7.15.10
+* @version 7.15.11
 * @date    2026-10-03
 * @author  GY
 * @brief   SQLite 设备目录 Repository 测试
@@ -9,6 +9,8 @@
 * 相同发现快照节流和数据库重新打开后的设备目录恢复。
 *
 * Change Log:
+* [v7.15.11] GY   2026-10-03
+* * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03
 * * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03

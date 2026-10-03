@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_client.h
-* @version 7.15.10
+* @version 7.15.11
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   协调节点客户端
@@ -14,6 +14,8 @@
 * 每 5 秒心跳刷新 TTL 并顺带轮询中继邀请，断线后自动重连。
 *
 * Change Log:
+* [v7.15.11] GY   2026-10-03
+* * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03
 * * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03

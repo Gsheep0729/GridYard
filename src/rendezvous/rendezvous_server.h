@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_server.h
-* @version 7.15.10
+* @version 7.15.11
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   协调节点服务器
@@ -12,6 +12,8 @@
 * 会话继承 LineSession，具备行长度上限、握手/空闲超时与连接数上限。
 *
 * Change Log:
+* [v7.15.11] GY   2026-10-03
+* * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03
 * * 版本头对齐到 v7.15.10
 * [v7.15.8] GY   2026-10-03

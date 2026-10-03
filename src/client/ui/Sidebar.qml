@@ -1,6 +1,6 @@
 /**
  * @file    Sidebar.qml
- * @version 7.15.10
+ * @version 7.15.11
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   左侧设备栏
@@ -11,6 +11,8 @@
  * 从 Main.qml 拆出，弹窗坐标相对工具栏，与原窗口布局一致。
  *
  * Change Log:
+ * [v7.15.11] GY   2026-10-03
+ * * 本机信息弹窗刷新图标改为自绘，tooltip 加延迟
  * [v7.15.10] GY   2026-10-03
  * * 版本头对齐到 v7.15.10
  * [v7.15.6] GY   2026-10-03
@@ -237,12 +239,19 @@ Rectangle {
                         }
                     }
                     Button {
+                        id: refreshInfoButton
                         Layout.alignment: Qt.AlignTop
-                        icon.name: "view-refresh"
-                        icon.width: 20
-                        icon.height: 20
+                        implicitWidth: 32
+                        implicitHeight: 32
                         flat: true
+                        padding: 6
+                        // 图标自绘，不依赖系统图标主题
+                        contentItem: RefreshIcon {
+                            iconColor: refreshInfoButton.hovered
+                                       ? Style.Color.primary : Style.Color.textSecondary
+                        }
                         ToolTip.text: qsTr("刷新")
+                        ToolTip.delay: 500
                         ToolTip.visible: hovered
                         onClicked: AppController.peerDiscoveryViewModel.refresh()
                     }

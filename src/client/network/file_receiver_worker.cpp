@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 7.15.10
+* @version 7.15.11
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
@@ -10,6 +10,8 @@
 * 超时检测、取消操作和协议错误处理。
 *
 * Change Log:
+* [v7.15.11] GY   2026-10-03
+* * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03
 * * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03

@@ -1,6 +1,6 @@
 /**
  * @file    TransferHistoryView.qml
- * @version 7.15.10
+ * @version 7.15.11
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   传输历史视图
@@ -9,6 +9,8 @@
  * 筛选指定设备的历史，空字符串时显示全部设备。
  *
  * Change Log:
+ * [v7.15.11] GY   2026-10-03
+ * * 刷新图标改为自绘，悬停 tooltip 统一加延迟避免即时闪现
  * [v7.15.10] GY   2026-10-03
  * * 版本头对齐到 v7.15.10
  * [v7.15.6] GY   2026-10-03
@@ -80,10 +82,16 @@ Frame {
                 }
             }
 
-            // 手动刷新按钮
+            // 手动刷新按钮：图标自绘，不依赖系统图标主题
             ToolButton {
-                icon.name: "view-refresh"
+                id: refreshHistoryButton
+                padding: 10
+                contentItem: RefreshIcon {
+                    iconColor: refreshHistoryButton.hovered
+                               ? Style.Color.primary : Style.Color.textSecondary
+                }
                 ToolTip.text: qsTr("刷新历史列表")
+                ToolTip.delay: 500
                 ToolTip.visible: hovered
                 onClicked: root.refresh()
             }
@@ -91,6 +99,7 @@ Frame {
             // 清空全部历史按钮：弹出确认对话框
             ToolButton {
                 text: qsTr("清空历史")
+                ToolTip.delay: 500
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("删除全部传输历史记录，不影响文件")
                 onClicked: clearDialog.open()
@@ -194,6 +203,7 @@ Frame {
                         ToolButton {
                             text: qsTr("删除")
                             ToolTip.text: qsTr("删除这条记录")
+                            ToolTip.delay: 500
                             ToolTip.visible: hovered
                             onClicked: AppController.historyController.deleteTransfer(historyCard.recordId)
                         }

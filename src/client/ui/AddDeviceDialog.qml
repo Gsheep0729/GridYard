@@ -1,16 +1,18 @@
 /**
-* @file    AddDeviceDialog.qml
-* @version 7.15.10
-* @date    2026-10-03
-* @author  GY
-* @brief   添加设备对话框
-*
-* 提供三种跨网段添加设备的方式：复制本机邀请码、粘贴对方邀请码导入、
-* 手动输入 IP 和端口。结果通过行内提示反馈，成功后自动关闭。
-*
-* Change Log:
-* [v7.15.10] GY   2026-10-03
-* * 版本头对齐到 v7.15.10
+ * @file    AddDeviceDialog.qml
+ * @version 7.15.11
+ * @date    2026-10-03
+ * @author  GY
+ * @brief   添加设备对话框
+ *
+ * 提供三种跨网段添加设备的方式：复制本机邀请码、粘贴对方邀请码导入、
+ * 手动输入 IP 和端口。结果通过行内提示反馈，成功后自动关闭。
+ *
+ * Change Log:
+ * [v7.15.11] GY   2026-10-03
+ * * 内容区补留白并统一按钮右对齐，邀请码改为自动换行，端口去掉千分位分组
+ * [v7.15.10] GY   2026-10-03
+ * * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.15.3] GY   2026-10-03
@@ -78,10 +80,12 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Style.Space.md
 
-        // 方式切换页签
+        // 方式切换页签（内容左右留白 20、底部留白 16，与 DialogHeader 视觉衔接）
         TabBar {
             id: modeBar
             Layout.fillWidth: true
+            Layout.leftMargin: Style.Space.xl
+            Layout.rightMargin: Style.Space.xl
             currentIndex: addDeviceDialog._mode
             onCurrentIndexChanged: addDeviceDialog._mode = currentIndex
 
@@ -92,6 +96,9 @@ Dialog {
 
         StackLayout {
             Layout.fillWidth: true
+            Layout.leftMargin: Style.Space.xl
+            Layout.rightMargin: Style.Space.xl
+            Layout.bottomMargin: Style.Space.lg
             currentIndex: addDeviceDialog._mode
 
             // 方式一：展示本机邀请码供对方导入
@@ -106,28 +113,27 @@ Dialog {
                     Layout.fillWidth: true
                 }
 
-                ScrollView {
+                // 直接用 TextArea 自带的滚动与换行；包一层 ScrollView 会让宽度失去约束
+                TextArea {
+                    id: inviteArea
                     Layout.fillWidth: true
                     Layout.preferredHeight: 96
-
-                    TextArea {
-                        id: inviteArea
-                        readOnly: true
-                        text: addDeviceDialog._inviteText
-                        wrapMode: TextEdit.WrapAnywhere
-                        font.pixelSize: 11
-                        color: Style.Color.textSecondary
-                        selectByMouse: true
-                        background: Rectangle {
-                            color: Style.Color.surfaceSoft
-                            radius: Style.Radius.sm
-                            border.color: Style.Color.border
-                        }
+                    readOnly: true
+                    text: addDeviceDialog._inviteText
+                    wrapMode: TextEdit.Wrap
+                    font.pixelSize: 11
+                    color: Style.Color.textSecondary
+                    selectByMouse: true
+                    background: Rectangle {
+                        color: Style.Color.surfaceSoft
+                        radius: Style.Radius.sm
+                        border.color: Style.Color.border
                     }
                 }
 
                 Button {
                     id: copyInviteButton
+                    Layout.alignment: Qt.AlignRight
                     text: qsTr("复制邀请码")
                     highlighted: true
                     onClicked: {
@@ -135,8 +141,9 @@ Dialog {
                         copyFeedbackTimer.restart()
                     }
 
+                    // 复制反馈只在点击后短暂出现，不随悬停即时显隐
                     ToolTip.text: qsTr("已复制到剪贴板")
-                    ToolTip.visible: copyInviteButton.hovered || copyFeedbackTimer.running
+                    ToolTip.visible: copyFeedbackTimer.running
 
                     Timer {
                         id: copyFeedbackTimer
@@ -157,23 +164,20 @@ Dialog {
                     Layout.fillWidth: true
                 }
 
-                ScrollView {
+                TextArea {
+                    id: importArea
                     Layout.fillWidth: true
                     Layout.preferredHeight: 96
-
-                    TextArea {
-                        id: importArea
-                        placeholderText: qsTr("粘贴 gridyard://invite 开头的邀请码")
-                        wrapMode: TextEdit.WrapAnywhere
-                        font.pixelSize: 12
-                        color: Style.Color.textMain
-                        selectByMouse: true
-                        background: Rectangle {
-                            color: Style.Color.window
-                            radius: Style.Radius.sm
-                            border.color: importArea.activeFocus
-                                          ? Style.Color.primary : Style.Color.border
-                        }
+                    placeholderText: qsTr("粘贴 gridyard://invite 开头的邀请码")
+                    wrapMode: TextEdit.Wrap
+                    font.pixelSize: 12
+                    color: Style.Color.textMain
+                    selectByMouse: true
+                    background: Rectangle {
+                        color: Style.Color.window
+                        radius: Style.Radius.sm
+                        border.color: importArea.activeFocus
+                                      ? Style.Color.primary : Style.Color.border
                     }
                 }
 
@@ -186,17 +190,14 @@ Dialog {
                     wrapMode: Text.Wrap
                 }
 
-                RowLayout {
-                    spacing: Style.Space.sm
-
-                    Button {
-                        text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("导入并连接")
-                        enabled: importArea.text.trim().length > 0 && !addDeviceDialog._busy
-                        highlighted: true
-                        onClicked: {
-                            addDeviceDialog._importError = ""
-                            AppController.reachabilityController.importInvite(importArea.text.trim())
-                        }
+                Button {
+                    Layout.alignment: Qt.AlignRight
+                    text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("导入并连接")
+                    enabled: importArea.text.trim().length > 0 && !addDeviceDialog._busy
+                    highlighted: true
+                    onClicked: {
+                        addDeviceDialog._importError = ""
+                        AppController.reachabilityController.importInvite(importArea.text.trim())
                     }
                 }
             }
@@ -251,6 +252,7 @@ Dialog {
                             to: 65535
                             value: ConfigManager.tcpPort
                             editable: true
+                            locale: Qt.locale("C")  // C 区域无千分位，端口不显示逗号分组
                         }
                     }
                 }
@@ -265,6 +267,7 @@ Dialog {
                 }
 
                 Button {
+                    Layout.alignment: Qt.AlignRight
                     text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("测试并添加")
                     enabled: manualHostField.text.trim().length > 0 && !addDeviceDialog._busy
                     highlighted: true

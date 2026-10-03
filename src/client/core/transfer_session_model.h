@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_model.h
-* @version 7.15.10
+* @version 7.15.11
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   传输会话列表模型
@@ -11,6 +11,8 @@
 * 模型、管理器和记录映射共用同一份字段名。
 *
 * Change Log:
+* [v7.15.11] GY   2026-10-03
+* * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03
 * * 版本头对齐到 v7.15.10
 * [v7.15.6] GY   2026-10-03

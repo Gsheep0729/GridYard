@@ -1,6 +1,6 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.15.10
+ * @version 7.15.11
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
@@ -13,6 +13,8 @@
  * 由 Main.qml 统一解码、过滤并裁决设备是否在线。
  *
  * Change Log:
+ * [v7.15.11] GY   2026-10-03
+ * * 悬停底色改为即时切换并移除离线卡 tooltip，消除鼠标扫过卡片时的闪烁
  * [v7.15.10] GY   2026-10-03
  * * 版本头对齐到 v7.15.10
  * [v7.15.6] GY   2026-10-03
@@ -66,12 +68,26 @@ ItemDelegate {
     height: kCardHeight
     background: Rectangle {
         radius: Style.Radius.sm
-        // 选中态使用品牌浅蓝底，悬停使用浅灰底，默认透明
-        color: deviceCard.isSelected ? Style.Color.primarySoft
-             : (deviceCard.hovered ? Style.Color.surfaceLeft : Style.Color.transparent)
+        color: Style.Color.transparent
 
-        Behavior on color {
-            ColorAnimation { duration: deviceCard.kColorDuration }
+        // 选中态底色：切换设备时保留颜色过渡
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            color: deviceCard.isSelected ? Style.Color.primarySoft
+                                         : Style.Color.transparent
+
+            Behavior on color {
+                ColorAnimation { duration: deviceCard.kColorDuration }
+            }
+        }
+
+        // 悬停底色：即时切换不带动画，快速扫过多张卡片时不残留拖影
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            color: !deviceCard.isSelected && deviceCard.hovered
+                   ? Style.Color.surfaceLeft : Style.Color.transparent
         }
 
         // 左侧选中指示条：明确标识当前会话设备
@@ -86,10 +102,6 @@ ItemDelegate {
             visible: deviceCard.isSelected
         }
     }
-
-    ToolTip.visible: deviceCard.hovered && !deviceCard.isOnline
-    ToolTip.delay: 500
-    ToolTip.text: qsTr("历史设备，对方上线后可继续会话")
 
     // 点击卡片时向父级传递完整设备信息，由 PeerListView 再向上冒泡到 Main.qml
     onClicked: deviceCard.cardClicked(deviceCard.deviceId,
