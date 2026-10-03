@@ -1,16 +1,18 @@
 /**
  * @file    Main.qml
- * @version 7.15.17
+ * @version 7.15.18
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
  * 标题通过 AppController.applicationName/Version 绑定，
- * 关窗时由用户选择隐藏到后台或退出程序。
+ * 关窗时由用户选择隐藏到后台或退出程序，有传输进行中时弹窗附警示行。
  * 左侧显示在线设备列表，右侧显示设备会话页。
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
   * Change Log:
+* [v7.15.18] GY   2026-10-04
+* * 关闭确认弹窗注入活动传输计数，传输进行中时显示退出将中断的警示行
 * [v7.15.17] GY   2026-10-04
 * * 接收请求改串行装配：弹窗占用时入待显队列，关闭后经 Controller 快照取下一个等待确认的请求
 * [v7.15.16] GY   2026-10-04
@@ -240,6 +242,8 @@ ApplicationWindow {
     CloseConfirmDialog {
         id: closeChoiceDialog
         trayAvailable: trayIcon.available
+        // 传输进行中警示：活动会话数由后端属性驱动，弹窗展示当前值
+        activeTransferCount: AppController.transferController.activeSessionCount
         onHideToTrayRequested: mainWindow.hideToTray()
         onQuitRequested: mainWindow.requestApplicationQuit()
         onPrepareToShow: mainWindow.bringMainWindowToFront()

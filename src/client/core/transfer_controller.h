@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.h
-* @version 7.15.17
+* @version 7.15.18
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 *
 * Change Log:
+* [v7.15.18] GY   2026-10-04
+* * 新增 activeSessionCount 只读属性透传，关闭确认弹窗据此提示退出将中断传输
 * [v7.15.17] GY   2026-10-04
 * * 新增 waitingConfirmReceiveSessions 调用入口，弹窗关闭后据此串行取下一个请求
 * [v7.15.16] GY   2026-10-04
@@ -55,6 +57,7 @@ private:
     QML_ANONYMOUS
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
     Q_PROPERTY(QAbstractItemModel* sessionModel READ sessionModel CONSTANT)
+    Q_PROPERTY(int activeSessionCount READ activeSessionCount NOTIFY activeSessionCountChanged)
 
 public:
     explicit TransferController(TransferSessionManager *manager, QObject *parent = nullptr);
@@ -68,6 +71,9 @@ public:
 
     // 返回当前全部等待确认的接收会话快照（按到达序），供确认弹窗关闭后串行取下一个
     Q_INVOKABLE QVariantList waitingConfirmReceiveSessions() const;
+
+    // 返回当前活动（未终态）会话数量
+    int activeSessionCount() const;
 
     // 获取承载会话行的增量通知模型
     QAbstractItemModel *sessionModel() const;
@@ -92,6 +98,8 @@ public:
 
 signals:
     void sessionsChanged();
+    // 活动会话数量变化（会话创建或迁移到终态）
+    void activeSessionCountChanged();
     // 中继确认请求（AskBeforeRelay 档直连失败后触发，QML 只弹窗回传用户选择）
     void relayConfirmRequested(const QString &sessionId, const QString &deviceId);
     void receiveRequestReceived(const QString &sessionId,

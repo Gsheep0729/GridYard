@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.15.17
+* @version 7.15.18
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,9 @@
 * 发送与接收 worker 分别以独立映射管理生命周期。
 *
 * Change Log:
+* [v7.15.18] GY   2026-10-04
+* * 新增 activeSessionCount 只读属性：当前活动（未终态）会话数量，
+*   创建与终态迁移时发 NOTIFY，供退出前警示提示
 * [v7.15.17] GY   2026-10-04
 * * 新增 waitingConfirmReceiveSessions 快照：按到达序返回全部等待确认的接收会话，
 *   供确认弹窗串行队列化
@@ -99,12 +102,15 @@ class TransferSessionModel;
 class TransferSessionManager : public QObject {
 private:
     Q_OBJECT
+    Q_PROPERTY(int activeSessionCount READ activeSessionCount NOTIFY activeSessionCountChanged)
 
 public:
     // 返回会话快照列表（兼容 QML 拉取式消费与测试）
     QVariantList sessions() const;
     // 返回当前全部等待确认的接收会话快照（按到达序），供确认弹窗串行展示
     QVariantList waitingConfirmReceiveSessions() const;
+    // 返回当前活动（未终态）会话数量
+    int activeSessionCount() const;
     // 返回承载会话行的增量通知模型（所有权归本管理器）
     TransferSessionModel *sessionModel() const;
 
@@ -129,6 +135,8 @@ public:
 
 signals:
     void sessionsChanged();
+    // 活动会话数量变化（会话创建或迁移到终态），退出前警示据此刷新
+    void activeSessionCountChanged();
     // 直连失败后的中继确认请求（AskBeforeRelay 档触发，QML 只负责弹窗）
     void relayConfirmRequested(const QString &sessionId, const QString &deviceId);
     // 新的接收请求（需要弹窗确认）
@@ -184,6 +192,8 @@ private:
     void onRelayInviteTimeout(const QString &relayId);
     // 清理会话关联的中继决策与邀请等待状态
     void clearRelayPendingState(const QString &sessionId);
+    // 重新统计活动会话数，数量变化时发 NOTIFY
+    void refreshActiveSessionCount();
 
     ConfigManager    *_config    = nullptr; // 本机配置和接收路径来源
     DiscoveryService *_discovery = nullptr; // 在线设备与发送端点查询服务
@@ -196,4 +206,5 @@ private:
     QHash<QString, QTimer*> _relayDecisionTimers;        // awaiting_relay 决策超时（sessionId -> timer）
     QHash<QString, QString> _pendingRelayInvites;        // 等待受理的中继邀请（relayId -> sessionId）
     QHash<QString, QTimer*> _relayInviteTimers;          // 中继邀请受理超时（relayId -> timer）
+    int _activeSessionCount = 0;                          // 最近一次统计的活动会话数，变化时发 NOTIFY
 };

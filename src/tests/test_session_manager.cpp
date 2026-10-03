@@ -1,15 +1,17 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.17
+* @version 7.15.18
 * @date    2026-10-04
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
 * 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复 /
 * Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）/
-* waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化
+* waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化 / 活动会话计数增减
 *
 * Change Log:
+* [v7.15.18] GY   2026-10-04
+* * 新增活动会话计数用例：会话创建时加一、终态迁移时减一且各发一次 NOTIFY
 * [v7.15.17] GY   2026-10-04
 * * 新增并发接收请求的等待确认快照队列化用例：拒绝与后端终态后快照正确收敛
 * [v7.15.16] GY   2026-10-04
@@ -88,6 +90,7 @@ private slots:
     void testGuardsAfterCompletion();
     void testSessionStaleSignal();
     void testWaitingConfirmSnapshotQueueing();
+    void testActiveSessionCountLifecycle();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -755,6 +758,69 @@ void TestSessionManager::testWaitingConfirmSnapshotQueueing()
     threadC.quit();
     QVERIFY(threadC.wait(3000));
     _p2pServer->stop();
+}
+
+// 活动会话计数（退出前警示的数据来源）：会话创建进入未终态时加一，
+// 迁移到完成/失败/拒绝/取消时减一，每次增减恰好发一次 NOTIFY
+void TestSessionManager::testActiveSessionCountLifecycle()
+{
+    TransferController controller{_manager};
+    QSignalSpy countSpy(_manager, &TransferSessionManager::activeSessionCountChanged);
+
+    // 此前用例的会话均已收敛到终态，基线应为 0
+    QCOMPARE(_manager->activeSessionCount(), 0);
+    QCOMPARE(controller.activeSessionCount(), 0);
+
+    // 发送会话：connecting 即算活动；NeverRelay 下直连失败直接终结
+    _config->setRelayMode(RelayMode::NeverRelay);
+    const QString filePath = addDeadTargetDevice();
+    QVERIFY(!filePath.isEmpty());
+    _manager->createSendSession(QStringLiteral("dead-target"), filePath);
+    const QString sendId = _manager->sessions().last().toMap()["sessionId"].toString();
+    QCOMPARE(controller.activeSessionCount(), 1);
+    QVERIFY(waitForStatus(sendId, "failed"));
+    QCOMPARE(controller.activeSessionCount(), 0);
+
+    // 接收会话：waiting_confirm 算活动，用户拒绝后收敛
+    _config->setReceivePath(_tempDir->path() + "/count-recv");
+    _config->setTcpPort(0);
+    QVERIFY(_p2pServer->start());
+    const quint16 port = _p2pServer->serverPort();
+
+    const QString sourcePath = _tempDir->path() + "/count-source.txt";
+    QFile source{sourcePath};
+    QVERIFY(source.open(QIODevice::WriteOnly));
+    QCOMPARE(source.write(QByteArray("count-payload")), qint64(13));
+    source.close();
+
+    FileSenderWorker sender;
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    QObject::connect(&senderThread, &QThread::started, &sender, [&sender, port, &sourcePath]() {
+        sender.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+                             QStringLiteral("count-sender"), QStringLiteral("CountSender"));
+    });
+    QSignalSpy requestSpy(_manager, &TransferSessionManager::receiveRequestReceived);
+    senderThread.start();
+
+    QVERIFY2(requestSpy.wait(5000), "接收请求应在 5 秒内到达");
+    const QString recvId = requestSpy.first().at(0).toString();
+    QVERIFY(waitForStatus(recvId, "waiting_confirm"));
+    QCOMPARE(controller.activeSessionCount(), 1);
+
+    _manager->rejectReceiveSession(recvId);
+    QVERIFY(waitForStatus(recvId, "rejected"));
+    QCOMPARE(controller.activeSessionCount(), 0);
+
+    senderThread.quit();
+    QVERIFY(senderThread.wait(3000));
+    _p2pServer->stop();
+
+    // 加一与减一各两次，共四次 NOTIFY；拒绝后 worker 的迟到终结不再触发
+    QCOMPARE(countSpy.count(), 4);
+    QCOMPARE(_manager->activeSessionCount(), 0);
+
+    _config->setRelayMode(RelayMode::AskBeforeRelay);
 }
 
 QTEST_MAIN(TestSessionManager)

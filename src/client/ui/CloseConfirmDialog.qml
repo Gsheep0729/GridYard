@@ -1,15 +1,19 @@
 /**
  * @file    CloseConfirmDialog.qml
- * @version 7.15.17
+ * @version 7.15.18
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   关闭确认弹窗
  *
  * 关窗时询问隐藏到后台还是退出程序；托盘可用性由主窗口注入，
  * 用户选择经信号回传，打开时先发 prepareToShow 让主窗口前置聚焦。
+ * 有进行中的传输时显示警示行，提示退出程序会中断它们。
  * 从 Main.qml 拆出。
  *
  * Change Log:
+ * [v7.15.18] GY   2026-10-04
+ * * 新增传输进行中警示行：活动会话数大于 0 时显示，退出将中断它们；
+ *   隐藏到后台分支不受影响，后台继续传输
  * [v7.15.17] GY   2026-10-04
  * * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04
@@ -48,6 +52,8 @@ Dialog {
 
     // 托盘是否可用（由主窗口注入）
     property bool trayAvailable: false
+    // 当前进行中的传输数量（由主窗口注入，0 时隐藏警示行）
+    property int activeTransferCount: 0
 
     // 用户选择
     signal hideToTrayRequested()
@@ -84,6 +90,16 @@ Dialog {
                   : qsTr("当前系统托盘不可用，是否退出 GridYard？")
             wrapMode: Text.Wrap
             Layout.fillWidth: true
+        }
+
+        // 传输进行中警示：只针对退出分支，隐藏到后台后传输继续
+        Label {
+            visible: closeConfirmDialog.activeTransferCount > 0
+            text: qsTr("有 %1 个传输任务正在进行，退出将中断它们")
+                  .arg(closeConfirmDialog.activeTransferCount)
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+            color: Style.Color.warning
         }
     }
 

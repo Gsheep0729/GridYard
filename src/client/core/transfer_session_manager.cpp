@@ -1,11 +1,14 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.15.17
+* @version 7.15.18
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.18] GY   2026-10-04
+* * 新增 activeSessionCount 活动会话计数：会话创建与终态迁移时通知，
+*   供关闭确认弹窗提示退出将中断进行中的传输
 * [v7.15.17] GY   2026-10-04
 * * 新增 waitingConfirmReceiveSessions 快照，并发接收请求可被弹窗按到达序串行展示；
 * * init 的信号连接收敛为 UniqueConnection，重复初始化不再叠加连接
@@ -225,6 +228,29 @@ QVariantList TransferSessionManager::waitingConfirmReceiveSessions() const
     return result;
 }
 
+// 返回当前活动（未终态）会话数量
+int TransferSessionManager::activeSessionCount() const
+{
+    int count = 0;
+    const QVariantList all = _model->sessions();
+    for (const QVariant &entry : all) {
+        if (!isFinishedStatus(entry.toMap().value(kStatus).toString())) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+// 重新统计活动会话数，数量变化时发 NOTIFY
+void TransferSessionManager::refreshActiveSessionCount()
+{
+    const int count = activeSessionCount();
+    if (count != _activeSessionCount) {
+        _activeSessionCount = count;
+        emit activeSessionCountChanged();
+    }
+}
+
 // 获取承载会话行的增量通知模型
 TransferSessionModel *TransferSessionManager::sessionModel() const
 {
@@ -332,6 +358,7 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
 
     _model->appendSession(session);
     emit sessionsChanged();
+    refreshActiveSessionCount();  // 新建发送会话进入 connecting，活动数加一
 
     qDebug() << "[TransferSession] 会话已创建，ID:" << sessionId;
 
@@ -633,6 +660,7 @@ void TransferSessionManager::rejectReceiveSession(const QString &sessionId)
         session[kStatus] = kStatusRejected;
     });
     emit sessionsChanged();
+    refreshActiveSessionCount();  // 拒绝即进入终态，活动数减一
 }
 
 // 取消传输会话
@@ -678,6 +706,7 @@ void TransferSessionManager::cancelSession(const QString &sessionId)
         session[kStatus] = kStatusCancelled;
     });
     emit sessionsChanged();
+    refreshActiveSessionCount();  // 取消即进入终态，活动数减一
 
     qDebug() << "TransferSessionManager: 取消会话" << sessionId;
 }
@@ -841,6 +870,7 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     _receiveWorkers[sessionId] = worker;
     _model->appendSession(session);
     emit sessionsChanged();
+    refreshActiveSessionCount();  // 接收请求进入 waiting_confirm，活动数加一
 
     qDebug() << "[TransferSession] 接收会话已创建，ID:" << sessionId;
 
@@ -955,6 +985,7 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
     _receiveWorkers.remove(sessionId);
 
     emit sessionsChanged();
+    refreshActiveSessionCount();  // 终态迁移，活动数减一（已终结会话的迟到终结此处无变化）
 
     // 会话仍停在等待确认时被后端终结（对方取消/超时/断连），通知弹窗关闭；
     // 用户自己的拒绝/取消会先把状态改掉，不会走到这里

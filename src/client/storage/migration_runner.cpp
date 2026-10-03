@@ -1,11 +1,13 @@
 /**
 * @file    migration_runner.cpp
-* @version 7.15.17
+* @version 7.15.18
 * @date    2026-10-04
 * @author  GY
 * @brief   SQLite Schema 版本迁移执行器实现
 *
 * Change Log:
+* [v7.15.18] GY   2026-10-04
+* * 版本头对齐到 v7.15.18
 * [v7.15.17] GY   2026-10-04
 * * 版本头对齐到 v7.15.17
 * [v7.15.16] GY   2026-10-04

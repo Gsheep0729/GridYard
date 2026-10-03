@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.15.17
+* @version 7.15.18
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 *
 * Change Log:
+* [v7.15.18] GY   2026-10-04
+* * 新增 activeSessionCount 属性透传
 * [v7.15.17] GY   2026-10-04
 * * 新增 waitingConfirmReceiveSessions 透传
 * [v7.15.16] GY   2026-10-04
@@ -54,6 +56,9 @@ TransferController::TransferController(TransferSessionManager *manager, QObject 
     // 将内部管理器的信号逐个转发给 QML 控制器，隐藏传输管理器的内部实现
     connect(_manager, &TransferSessionManager::sessionsChanged,
             this, &TransferController::sessionsChanged);
+    // 活动会话计数透传，退出前警示据此刷新
+    connect(_manager, &TransferSessionManager::activeSessionCountChanged,
+            this, &TransferController::activeSessionCountChanged);
     // 中继确认请求透传（策略分流在 Manager 内完成，QML 只负责弹窗）
     connect(_manager, &TransferSessionManager::relayConfirmRequested,
             this, &TransferController::relayConfirmRequested);
@@ -81,6 +86,12 @@ QVariantList TransferController::sessions() const
 QVariantList TransferController::waitingConfirmReceiveSessions() const
 {
     return _manager ? _manager->waitingConfirmReceiveSessions() : QVariantList{};
+}
+
+// 返回当前活动（未终态）会话数量
+int TransferController::activeSessionCount() const
+{
+    return _manager ? _manager->activeSessionCount() : 0;
 }
 
 // 获取承载会话行的增量通知模型
