@@ -467,7 +467,12 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             if (errorCode == gy::protocol::ErrorCode::Success) {
                 errorCode = gy::protocol::ErrorCode::UserRejected;
             }
-            finish(false, errorCode, tr("请求被拒绝: %1").arg(reason));
+            // 磁盘类失败并非对方主动拒绝，标题按错误码区分避免误导排查方向
+            const bool diskFailure = errorCode == gy::protocol::ErrorCode::DiskWriteFailed
+                                     || errorCode == gy::protocol::ErrorCode::DiskSpaceInsufficient;
+            finish(false, errorCode,
+                   diskFailure ? tr("接收端写入失败（磁盘空间或权限）: %1").arg(reason)
+                               : tr("请求被拒绝: %1").arg(reason));
         }
         break;
     }
@@ -490,13 +495,23 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
         }
 
         if (!verified) {
-            qWarning() << "[FileSender] 文件校验失败:" << errorMsg;
+            qWarning() << "[FileSender] 文件确认失败:" << errorMsg << "错误码:" << errorCodeInt;
             // 优先使用响应携带的错误码
             if (errorCode == gy::protocol::ErrorCode::Success) {
                 errorCode = gy::protocol::ErrorCode::Sha256Mismatch;
             }
-            finish(false, errorCode, tr("文件 %1 校验失败: %2")
-                                          .arg(fileIndex).arg(errorMsg));
+            // 磁盘类失败不是校验失败，按错误码区分文案避免误导排查方向
+            QString message;
+            if (errorCode == gy::protocol::ErrorCode::DiskWriteFailed
+                || errorCode == gy::protocol::ErrorCode::DiskSpaceInsufficient) {
+                message = tr("文件 %1 接收端写入失败（磁盘空间或权限）: %2")
+                              .arg(fileIndex).arg(errorMsg);
+            } else if (errorCode == gy::protocol::ErrorCode::Sha256Mismatch) {
+                message = tr("文件 %1 校验失败: %2").arg(fileIndex).arg(errorMsg);
+            } else {
+                message = tr("接收端报告文件 %1 错误: %2").arg(fileIndex).arg(errorMsg);
+            }
+            finish(false, errorCode, message);
             return;
         }
 
