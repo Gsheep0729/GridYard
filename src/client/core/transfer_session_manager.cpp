@@ -997,7 +997,11 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
     const QString displayName = updated.value(kFileName).toString();
     if (finalStatus == kStatusCompleted) {
         if (!isSend && _config) {
-            emit transferCompleted(sessionId, displayName, _config->receivePath());
+            // 通知卡"打开所在位置"用实际落盘路径（重名时形如 "name (1)"），
+            // 快照缺失时回退接收根目录
+            const QString savedPath = updated.value(kLocalPath).toString();
+            emit transferCompleted(sessionId, displayName,
+                                   savedPath.isEmpty() ? _config->receivePath() : savedPath);
         }
         emit messageOccurred(isSend
                                  ? tr("文件 \"%1\" 发送成功").arg(displayName)

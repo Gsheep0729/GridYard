@@ -58,6 +58,7 @@
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFileInfo>
 #include <QHostInfo>
 #include <QJsonObject>
 #include <QNetworkInterface>
@@ -252,12 +253,15 @@ void ConfigManager::refreshLocalIp()
     }
 }
 
-// 打开文件夹（使用系统默认文件管理器）
+// 打开路径所在位置（使用系统默认文件管理器）：目录直接打开，文件打开其所在目录
 void ConfigManager::openFolder(const QString &path)
 {
-    QDir dir(path);
-    if (dir.exists()) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    const QFileInfo info(path);
+    if (info.isDir()) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(info.absoluteFilePath()));
+    } else if (info.isFile()) {
+        // 单文件接收的落盘路径指向文件本身，定位到其所在目录
+        QDesktopServices::openUrl(QUrl::fromLocalFile(info.absolutePath()));
     }
 }
 
