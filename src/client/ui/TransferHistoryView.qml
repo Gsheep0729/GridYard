@@ -1,6 +1,6 @@
 /**
  * @file    TransferHistoryView.qml
- * @version 7.11.0
+ * @version 7.15.3
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   传输历史视图
@@ -9,7 +9,9 @@
  * 筛选指定设备的历史，空字符串时显示全部设备。
  *
  * Change Log:
- * [v7.11.0] GY   2026-10-02
+ * [v7.15.3] GY   2026-10-03
+* * 状态筛选文案改调 FormatUtils 唯一词表
+* [v7.11.0] GY   2026-10-02
  * * 状态列改为中文文案，筛选与设备变化后自动刷新，补齐加载与空状态
  * [v6.6.2] GY   2026-06-25
  * * 补齐文件头注释，说明组件职责
@@ -39,13 +41,13 @@ Frame {
     onPeerDeviceIdChanged: refresh()
     Component.onCompleted: refresh()  // 组件加载时自动查询第一页
 
-    // 状态筛选映射：显示文本 -> 查询状态值
+    // 状态筛选映射：显示文本取自 FormatUtils 唯一词表 -> 查询状态值
     readonly property var _statusOptions: [
         { label: qsTr("全部"), value: "" },
-        { label: qsTr("已完成"), value: "completed" },
-        { label: qsTr("失败"), value: "failed" },
-        { label: qsTr("已取消"), value: "cancelled" },
-        { label: qsTr("已拒绝"), value: "rejected" }
+        { label: FormatUtils.transferStatusText("completed"), value: "completed" },
+        { label: FormatUtils.transferStatusText("failed"), value: "failed" },
+        { label: FormatUtils.transferStatusText("cancelled"), value: "cancelled" },
+        { label: FormatUtils.transferStatusText("rejected"), value: "rejected" }
     ]
 
     ColumnLayout {

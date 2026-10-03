@@ -1,6 +1,6 @@
 /**
 * @file    AddDeviceDialog.qml
-* @version 7.13.2
+* @version 7.15.3
 * @date    2026-10-02
 * @author  GY
 * @brief   添加设备对话框
@@ -9,6 +9,8 @@
 * 手动输入 IP 和端口。结果通过行内提示反馈，成功后自动关闭。
 *
 * Change Log:
+* [v7.15.3] GY   2026-10-03
+* * 页眉改用 DialogHeader 组件
 * [v7.13.2] GY   2026-10-03
 * * 修复探测期间关窗吞掉添加结果的问题，成功分支不再依赖弹窗存续
 * [v7.11.0] GY   2026-10-02
@@ -63,49 +65,10 @@ Dialog {
         border.color: Style.Color.border
     }
 
-    header: ColumnLayout {
-        spacing: 0
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: Style.Space.lg
-            spacing: Style.Space.md
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-
-                Label {
-                    text: qsTr("添加设备")
-                    font.pixelSize: 17
-                    font.bold: true
-                    color: Style.Color.textMain
-                }
-
-                Label {
-                    text: qsTr("同一局域网内的设备会自动出现；跨网段时可以用下面任一方式添加。")
-                    font.pixelSize: 12
-                    color: Style.Color.textMuted
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                }
-            }
-
-            // 文字关闭按钮：不依赖系统图标主题，避免缺图标时渲染异常
-            ToolButton {
-                text: "✕"
-                font.pixelSize: 14
-                ToolTip.text: qsTr("关闭")
-                ToolTip.visible: hovered
-                onClicked: addDeviceDialog.close()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: Style.Color.border
-        }
+    header: DialogHeader {
+        title: qsTr("添加设备")
+        subtitle: qsTr("同一局域网内的设备会自动出现；跨网段时可以用下面任一方式添加。")
+        onCloseClicked: addDeviceDialog.close()
     }
 
     contentItem: ColumnLayout {

@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.14.0
+ * @version 7.15.3
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+* [v7.15.3] GY   2026-10-03
+* * 清除缓存按钮改用 DangerButton 组件
 * [v7.14.0] GY   2026-10-03
 * * 协调服务器区块新增访问令牌输入框
  * [v7.13.0] GY   2026-10-02
@@ -520,27 +522,10 @@ Dialog {
                     }
 
                     // 危险操作用语义化红色按钮，与删除确认弹窗的确认按钮一致
-                    Button {
+                    DangerButton {
                         id: clearCacheButton
                         text: qsTr("清除缓存")
                         onClicked: clearCacheDialog.open()
-
-                        contentItem: Label {
-                            text: clearCacheButton.text
-                            font: clearCacheButton.font
-                            color: Style.Color.textOnAccent
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        background: Rectangle {
-                            implicitWidth: 88
-                            implicitHeight: 32
-                            radius: Style.Radius.xs
-                            color: clearCacheButton.down
-                                   ? Style.Color.errorPressed
-                                   : (clearCacheButton.hovered ? "#DC2626" : Style.Color.error)
-                        }
                     }
                 }
             }

@@ -1,6 +1,6 @@
 /**
  * @file    DeviceHistoryDialog.qml
- * @version 7.11.0
+ * @version 7.15.3
  * @date    2026-10-02
  * @author  GY
  * @brief   设备历史记录对话框
@@ -9,7 +9,9 @@
  * 并提供清空该设备聊天记录的入口。
  *
  * Change Log:
- * [v7.11.0] GY   2026-10-02
+ * [v7.15.3] GY   2026-10-03
+* * 页眉改用 DialogHeader 组件
+* [v7.11.0] GY   2026-10-02
  * * 初始版本，为跨重启的聊天与传输历史提供查看和清理入口
  */
 
@@ -38,51 +40,10 @@ Dialog {
         border.color: Style.Color.border
     }
 
-    header: ColumnLayout {
-        spacing: 0
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: Style.Space.lg
-            spacing: Style.Space.md
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-
-                Label {
-                    text: deviceHistoryDialog.title
-                    font.pixelSize: 17
-                    font.bold: true
-                    color: Style.Color.textMain
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-
-                Label {
-                    text: qsTr("保存在本机的历史，跨重启保留；删除记录不影响任何文件。")
-                    font.pixelSize: 12
-                    color: Style.Color.textMuted
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                }
-            }
-
-            // 文字关闭按钮：不依赖系统图标主题，避免缺图标时渲染异常
-            ToolButton {
-                text: "✕"
-                font.pixelSize: 14
-                ToolTip.text: qsTr("关闭")
-                ToolTip.visible: hovered
-                onClicked: deviceHistoryDialog.close()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: Style.Color.border
-        }
+    header: DialogHeader {
+        title: deviceHistoryDialog.title
+        subtitle: qsTr("保存在本机的历史，跨重启保留；删除记录不影响任何文件。")
+        onCloseClicked: deviceHistoryDialog.close()
     }
 
     contentItem: ColumnLayout {

@@ -2,7 +2,7 @@
 
 /**
  * @file    Style.js
- * @version 7.11.0
+ * @version 7.15.3
  * @date    2026-10-02
  * @author  GY
  * @brief   QML 界面样式常量
@@ -11,6 +11,8 @@
  * 状态色成对提供实色与浅底色（Soft），供标签、横幅、卡片背景使用。
  *
  * Change Log:
+ * [v7.15.3] GY   2026-10-03
+ * * 新增 errorHover 悬停色收敛危险按钮三态，删除零引用的 primaryPressed
  * [v7.11.0] GY   2026-10-02
  * * 清理无引用和语义错位的颜色键，补充文字反白、接收方向等语义键
  * [v6.6.2] GY   2026-06-25
@@ -34,7 +36,6 @@ const Color = {
     borderSoft: "#EEF2F7",
     // 品牌主色
     primary: "#3B82F6",
-    primaryPressed: "#2563EB",
     primarySoft: "#EFF6FF",
     // 状态色（实色用于文字、圆点与标签底，Soft 用于大面积浅底）
     success: "#10B981",
@@ -42,6 +43,7 @@ const Color = {
     warning: "#F59E0B",
     warningSoft: "#FFFBEB",
     error: "#EF4444",
+    errorHover: "#DC2626",
     errorPressed: "#B91C1C",
     errorSoft: "#FEF2F2",
     // 文字

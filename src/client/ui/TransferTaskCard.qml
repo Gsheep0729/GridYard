@@ -1,6 +1,6 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 7.11.0
+ * @version 7.15.3
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   传输任务卡片
@@ -8,7 +8,9 @@
  * 显示单个传输任务的进度、状态、取消按钮。
  *
  * Change Log:
- * [v7.11.0] GY   2026-10-02
+ * [v7.15.3] GY   2026-10-03
+* * 状态文案改调 FormatUtils 唯一词表，确认删除按钮改用 DangerButton
+* [v7.11.0] GY   2026-10-02
  * * 失败和取消的卡片展示具体原因，状态标签改用反白文字
  * [v7.9.0] GY   2026-07-26
  * * 新增 awaiting_relay 状态展示，等待中继决策时提供取消入口
@@ -82,19 +84,9 @@ Frame {
     height: implicitHeight
     opacity: 1
 
-    // 状态文本映射：将内部状态字符串转为中文显示
+    // 状态文案委托给 FormatUtils 唯一词表，与历史页保持一致
     function statusText(): string {
-        switch (status) {
-        case "connecting":      return qsTr("连接中...")
-        case "waiting_confirm": return qsTr("等待确认")
-        case "awaiting_relay":  return qsTr("等待中继确认")
-        case "transferring":    return qsTr("传输中")
-        case "completed":       return qsTr("完成")
-        case "failed":          return qsTr("失败")
-        case "rejected":        return qsTr("已拒绝")
-        case "cancelled":       return qsTr("已取消")
-        default:                return status
-        }
+        return FormatUtils.transferStatusText(status)
     }
 
     function statusColor(): color {
@@ -553,25 +545,12 @@ Frame {
                 flat: true
             }
 
-            Button {
+            DangerButton {
                 id: confirmDeleteButton
+                implicitWidth: 76
+                implicitHeight: 28
                 text: qsTr("确认删除")
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-
-                contentItem: Label {
-                    text: confirmDeleteButton.text
-                    font: confirmDeleteButton.font
-                    color: Style.Color.surface
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-
-                background: Rectangle {
-                    implicitWidth: 76
-                    implicitHeight: 28
-                    color: confirmDeleteButton.down ? "#B91C1C" : (confirmDeleteButton.hovered ? "#DC2626" : Style.Color.error)
-                    radius: Style.Radius.xs
-                }
             }
         }
 

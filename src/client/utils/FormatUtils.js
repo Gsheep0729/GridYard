@@ -2,12 +2,14 @@
 
 /**
  * @file    FormatUtils.js
- * @version 7.11.0
+ * @version 7.15.3
  * @date    2026-10-02
  * @author  GY
  * @brief   界面展示格式化工具
  *
  * Change Log:
+ * [v7.15.3] GY   2026-10-03
+ * * transferStatusText 扩为覆盖全部会话状态的唯一词表，不再使用 qsTr
  * [v7.11.0] GY   2026-10-02
  * * 收拢拖拽与文件对话框共用的 URL 转路径逻辑，补充传输状态中文映射
  * [v6.6.2] GY   2026-06-25
@@ -43,13 +45,18 @@ function localPathFromUrl(fileUrl) {
     return decodeURIComponent(text)
 }
 
-// 传输状态中文映射：内部状态字符串转用户可读文案
+// 传输状态中文映射：内部状态字符串转用户可读文案（全应用唯一词表；
+// .pragma library 中 qsTr 不可靠，项目无翻译场景，直接返回中文）
 function transferStatusText(status) {
     switch (status) {
-    case "completed":   return qsTr("已完成")
-    case "failed":      return qsTr("失败")
-    case "cancelled":   return qsTr("已取消")
-    case "rejected":    return qsTr("已拒绝")
-    default:            return status
+    case "connecting":      return "连接中..."
+    case "waiting_confirm": return "等待确认"
+    case "awaiting_relay":  return "等待中继确认"
+    case "transferring":    return "传输中"
+    case "completed":       return "已完成"
+    case "failed":          return "失败"
+    case "rejected":        return "已拒绝"
+    case "cancelled":       return "已取消"
+    default:                return status
     }
 }
