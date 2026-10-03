@@ -1,11 +1,14 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.14.1
+* @version 7.15.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.0] GY   2026-10-03
+* * relay 三档策略下沉到 C++：AutoRelay 档内部自动重试中继，
+*   AskBeforeRelay 档改发 relayConfirmRequested 由 QML 纯弹窗回传
 * [v7.14.1] GY   2026-10-03
 * * 取消发送会话时先跨线程置位取消标志，阻塞期取消可达
 * [v7.14.0] GY   2026-10-03
@@ -402,7 +405,8 @@ void TransferSessionManager::enterAwaitingRelay(const QString &sessionId)
     }
     emit sessionsChanged();
 
-    // QML 长时间不响应（弹窗被忽略、AutoRelay 入口缺失）时自动失败，避免会话悬挂
+    // Ask 档 QML 长时间不响应（弹窗被忽略）时自动失败，避免会话悬挂
+    // （Auto 档随后 retryViaRelay 会撤销此计时器）
     auto *timer = new QTimer{this};
     timer->setSingleShot(true);
     connect(timer, &QTimer::timeout, this, [this, sessionId]() {
@@ -420,7 +424,15 @@ void TransferSessionManager::enterAwaitingRelay(const QString &sessionId)
 
     const QString deviceId = _model->sessionById(sessionId).value(kDeviceId).toString();
     qDebug() << "[TransferSession] 直连失败，进入中继决策状态" << sessionId;
-    emit relayModeRequested(sessionId, deviceId);
+
+    // 三档策略在 C++ 侧分流：Auto 档直接复用既有守卫重试中继；Ask 档请求 QML 弹窗确认；
+    // Never 档在 relayDegradationAvailable 已被过滤，不会到达这里
+    if (_config && _config->relayMode() == RelayMode::AutoRelay) {
+        retryViaRelay(sessionId);
+        emit messageOccurred(tr("直连失败，已自动切换中继传输"));
+        return;
+    }
+    emit relayConfirmRequested(sessionId, deviceId);
 }
 
 // 用户确认后经中继通道重新建立发送（直连失败降级入口）

@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.10.0
+* @version 7.15.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 *
 * Change Log:
+* [v7.15.0] GY   2026-10-03
+* * relayModeRequested 透传更名 relayConfirmRequested
 * [v7.10.0] GY   2026-10-02
 * * 新增 sessionModel 属性透传
 * [v7.9.0] GY   2026-07-26
@@ -32,9 +34,9 @@ TransferController::TransferController(TransferSessionManager *manager, QObject 
     // 将内部管理器的信号逐个转发给 QML 控制器，隐藏传输管理器的内部实现
     connect(_manager, &TransferSessionManager::sessionsChanged,
             this, &TransferController::sessionsChanged);
-    // Relay 降级请求透传
-    connect(_manager, &TransferSessionManager::relayModeRequested,
-            this, &TransferController::relayModeRequested);
+    // 中继确认请求透传（策略分流在 Manager 内完成，QML 只负责弹窗）
+    connect(_manager, &TransferSessionManager::relayConfirmRequested,
+            this, &TransferController::relayConfirmRequested);
     // 接收请求信号直接透传，由表现层弹窗确认
     connect(_manager, &TransferSessionManager::receiveRequestReceived,
             this, &TransferController::receiveRequestReceived);

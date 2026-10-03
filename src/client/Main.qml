@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.13.1
+ * @version 7.15.0
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -11,6 +11,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
  * Change Log:
+ * [v7.15.0] GY   2026-10-03
+ * * relay 确认弹窗改接 relayConfirmRequested，策略判断下沉 C++ 后此处纯弹窗
  * [v7.13.1] GY   2026-10-02
  * * Toast 连续提示时重置自动关闭计时，修复第二条被旧计时截断
  * [v7.13.0] GY   2026-10-02
@@ -887,13 +889,8 @@ ApplicationWindow {
         }
         function onErrorOccurred(message: string): void { mainWindow.showErrorToast(message) }
         function onMessageOccurred(message: string): void { mainWindow.showSuccessToast(message) }
-        function onRelayModeRequested(sessionId: string, deviceId: string): void {
-            // 直连候选全部失败：按策略自动中继，或弹窗询问用户
-            if (ConfigManager.relayMode === 1) {
-                AppController.transferController.retryViaRelay(sessionId)
-                mainWindow.showSuccessToast(qsTr("直连失败，已自动切换中继传输"))
-                return
-            }
+        function onRelayConfirmRequested(sessionId: string, deviceId: string): void {
+            // 策略判断已在 C++ 完成：进入此分支即 AskBeforeRelay 档，只负责弹窗
             relayConfirmDialog._sessionId = sessionId
             relayConfirmDialog.open()
         }

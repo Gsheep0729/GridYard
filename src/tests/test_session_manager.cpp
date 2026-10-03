@@ -1,14 +1,16 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.14.2
+* @version 7.15.0
 * @date    2026-06-25
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
 * 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复 /
-* Relay 降级策略（从不中继、询问后中继、协调服务器离线时重试）
+* Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）
 *
 * Change Log:
+* [v7.15.0] GY   2026-10-03
+* * relayModeRequested 断言随信号更名调整，AutoRelay 档升级为经真实中继的端到端用例
 * [v7.14.2] GY   2026-10-03
 * * 新增重复取消守卫、完成后迟到操作守卫与 AutoRelay 档用例
 * [v7.9.0] GY   2026-07-26
@@ -33,6 +35,7 @@
 #include "discovery_service.h"
 #include "file_sender_worker.h"
 #include "p2p_server.h"
+#include "relay_server.h"
 #include "transfer_session_model.h"
 #include "rendezvous_client.h"
 #include "rendezvous_server.h"
@@ -59,7 +62,7 @@ private slots:
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
-    QString addDeadTargetDevice();
+    QString addDeadTargetDevice(const QString &deviceId = QStringLiteral("dead-target"));
     // 等待会话进入指定状态
     bool waitForStatus(const QString &sessionId, const QString &status, int timeoutMs = 5000);
 
@@ -223,10 +226,10 @@ void TestSessionManager::testRestoreFinishedTransfers()
 }
 
 // 注入指向本机拒绝连接端点的目标设备
-QString TestSessionManager::addDeadTargetDevice()
+QString TestSessionManager::addDeadTargetDevice(const QString &deviceId)
 {
     PeerInfo peer;
-    peer.deviceId = QStringLiteral("dead-target");
+    peer.deviceId = deviceId;
     peer.deviceName = QStringLiteral("DeadTarget");
     peer.ipAddress = QStringLiteral("127.0.0.1");
     peer.tcpPort = 1;  // 本机保留端口，连接立即被拒绝
@@ -280,7 +283,7 @@ void TestSessionManager::testRelayDegradationNever()
 
     const QString filePath = addDeadTargetDevice();
     QVERIFY(!filePath.isEmpty());
-    QSignalSpy relaySpy(_manager, &TransferSessionManager::relayModeRequested);
+    QSignalSpy relaySpy(_manager, &TransferSessionManager::relayConfirmRequested);
     _manager->createSendSession(QStringLiteral("dead-target"), filePath);
 
     const QString sessionId = _manager->sessions().last().toMap()["sessionId"].toString();
@@ -291,7 +294,7 @@ void TestSessionManager::testRelayDegradationNever()
     _config->setRelayMode(RelayMode::AskBeforeRelay);
 }
 
-// 询问后中继：直连失败进入 awaiting_relay 并发射 relayModeRequested，用户取消后收敛
+// 询问后中继：直连失败进入 awaiting_relay 并发射 relayConfirmRequested，用户取消后收敛
 void TestSessionManager::testRelayDegradationAsk()
 {
     RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
@@ -305,7 +308,7 @@ void TestSessionManager::testRelayDegradationAsk()
 
     const QString filePath = addDeadTargetDevice();
     QVERIFY(!filePath.isEmpty());
-    QSignalSpy relaySpy(_manager, &TransferSessionManager::relayModeRequested);
+    QSignalSpy relaySpy(_manager, &TransferSessionManager::relayConfirmRequested);
     _manager->createSendSession(QStringLiteral("dead-target"), filePath);
 
     const QString sessionId = _manager->sessions().last().toMap()["sessionId"].toString();
@@ -351,34 +354,85 @@ void TestSessionManager::testRetryViaRelayWithoutServer()
     client.disconnectFromServer();
 }
 
-// 自动中继：直连失败进入 awaiting_relay 并发射 relayModeRequested。
-// AutoRelay 的自动重试当前由 QML 按策略接管，C++ 层如实断言信号与状态
+// 自动中继：直连失败后 C++ 内部自动重试中继，经真实协调节点 + 中继完成端到端发送，
+// 全程无需 QML 参与，也不发射确认请求
 void TestSessionManager::testRelayDegradationAuto()
 {
     RendezvousServer server{QStringLiteral("127.0.0.1"), 0, QString()};
     QVERIFY(server.start());
-    RendezvousClient client;
-    client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));
-    QTRY_VERIFY_WITH_TIMEOUT(client.isConnected(), 3000);
+    const quint16 port = server.serverPort();
+
+    // 协调节点模式同端口内置中继（与 test_relay_chain 的装配一致）
+    RelayServer relay{port, QString(), &server};
+    QObject::connect(&server, &RendezvousServer::relayPipeRequested,
+                     &relay, &RelayServer::adoptConnection);
+
+    // 本 fixture 的 P2pServer 兼任接收端入口：中继 socket 交给首帧路由
+    _config->setTcpPort(0);
+    QVERIFY(_p2pServer->start());
+    _config->setReceivePath(_tempDir->path() + "/auto-recv");
+    _config->setAutoAcceptFiles(true);
+    _config->setRendezvousHost(QStringLiteral("127.0.0.1"));
+    _config->setRendezvousPort(static_cast<int>(port));
+
+    // 接收端注册到协调节点，中继邀请到达即把会话并入中继
+    RendezvousClient receiverClient;
+    receiverClient.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(port));
+    QTRY_VERIFY_WITH_TIMEOUT(receiverClient.isConnected(), 3000);
+    receiverClient.registerDevice(QStringLiteral("default"), QStringLiteral("device-b"),
+                                  QStringLiteral("B"), {}, 0, 0);
+    QObject::connect(&receiverClient, &RendezvousClient::relayInvitesReceived,
+                     this, [this, port](const QList<QVariantMap> &invites) {
+        for (const QVariantMap &invite : invites) {
+            _p2pServer->joinRelaySession(QStringLiteral("127.0.0.1"), port,
+                                         invite.value(QStringLiteral("relayId")).toString());
+        }
+    });
+
+    // 发送端使用同一协调节点（Manager 的中继信令来源）
+    RendezvousClient senderClient;
+    senderClient.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(port));
+    QTRY_VERIFY_WITH_TIMEOUT(senderClient.isConnected(), 3000);
+    senderClient.registerDevice(QStringLiteral("default"), QStringLiteral("device-a"),
+                                QStringLiteral("A"), {}, 0, 0);
 
     _config->setRelayMode(RelayMode::AutoRelay);
-    _manager->init(_config, _discovery, _p2pServer, &client);
+    _manager->init(_config, _discovery, _p2pServer, &senderClient);
 
-    const QString filePath = addDeadTargetDevice();
+    // 目标设备在协调节点在线，但直连端点是必拒端口
+    const QString filePath = addDeadTargetDevice(QStringLiteral("device-b"));
     QVERIFY(!filePath.isEmpty());
-    QSignalSpy relaySpy(_manager, &TransferSessionManager::relayModeRequested);
-    _manager->createSendSession(QStringLiteral("dead-target"), filePath);
+
+    QSignalSpy confirmSpy(_manager, &TransferSessionManager::relayConfirmRequested);
+    QSignalSpy messageSpy(_manager, &TransferSessionManager::messageOccurred);
+    _manager->createSendSession(QStringLiteral("device-b"), filePath);
 
     const QString sessionId = _manager->sessions().last().toMap()["sessionId"].toString();
-    QVERIFY(waitForStatus(sessionId, "awaiting_relay"));
-    QCOMPARE(relaySpy.count(), 1);
-    QCOMPARE(relaySpy.first().at(0).toString(), sessionId);
-    QCOMPARE(relaySpy.first().at(1).toString(), QStringLiteral("dead-target"));
 
-    _manager->cancelSession(sessionId);
-    QVERIFY(waitForStatus(sessionId, "cancelled"));
+    // 自动重试后中继通道建立，relayId 落到会话行（awaiting_relay 是瞬态，不作观察断言）
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !_manager->sessionModel()->sessionById(sessionId).value("relayId").toString().isEmpty(),
+        5000);
 
-    client.disconnectFromServer();
+    // 接收端重注册触发立即轮询（正常场景由 5 秒心跳覆盖），传输随后自动完成
+    receiverClient.registerDevice(QStringLiteral("default"), QStringLiteral("device-b"),
+                                  QStringLiteral("B"), {}, 0, 0);
+    QVERIFY(waitForStatus(sessionId, "completed"));
+    QCOMPARE(confirmSpy.count(), 0);  // 自动档不发确认请求
+
+    bool autoToastSeen = false;
+    for (const QVariant &entry : messageSpy) {
+        if (entry.toList().first().toString() == QStringLiteral("直连失败，已自动切换中继传输")) {
+            autoToastSeen = true;
+        }
+    }
+    QVERIFY(autoToastSeen);
+
+    // 还原公共配置，避免泄漏到后续用例
+    _config->setAutoAcceptFiles(false);
+    _p2pServer->stop();
+    senderClient.disconnectFromServer();
+    receiverClient.disconnectFromServer();
     _config->setRelayMode(RelayMode::AskBeforeRelay);
 }
 

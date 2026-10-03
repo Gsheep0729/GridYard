@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.10.0
+* @version 7.15.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,9 @@
 * 发送与接收 worker 分别以独立映射管理生命周期。
 *
 * Change Log:
+* [v7.15.0] GY   2026-10-03
+* * relayModeRequested 更名 relayConfirmRequested：三档策略在 C++ 分流，
+*   仅 AskBeforeRelay 档向 QML 请求弹窗确认
 * [v7.10.0] GY   2026-10-02
 * * 拆分 God Object：会话存储与通知移入 TransferSessionModel，
 *   记录映射与文件清理策略移入 TransferSessionMapper，
@@ -103,8 +106,8 @@ public:
 
 signals:
     void sessionsChanged();
-    // Relay 降级请求（所有直连候选失败后触发）
-    void relayModeRequested(const QString &sessionId, const QString &deviceId);
+    // 直连失败后的中继确认请求（AskBeforeRelay 档触发，QML 只负责弹窗）
+    void relayConfirmRequested(const QString &sessionId, const QString &deviceId);
     // 新的接收请求（需要弹窗确认）
     void receiveRequestReceived(const QString &sessionId,
                                 const QString &senderDeviceId,

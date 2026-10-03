@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.h
-* @version 7.10.0
+* @version 7.15.0
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 *
 * Change Log:
+* [v7.15.0] GY   2026-10-03
+* * relayModeRequested 更名 relayConfirmRequested，策略决策已下沉 Manager
 * [v7.10.0] GY   2026-10-02
 * * 新增 sessionModel 属性，QML 可绑定增量通知的会话模型
 * [v7.9.0] GY   2026-07-26
@@ -67,8 +69,8 @@ public:
 
 signals:
     void sessionsChanged();
-    // Relay 降级请求（所有直连候选失败后触发）
-    void relayModeRequested(const QString &sessionId, const QString &deviceId);
+    // 中继确认请求（AskBeforeRelay 档直连失败后触发，QML 只弹窗回传用户选择）
+    void relayConfirmRequested(const QString &sessionId, const QString &deviceId);
     void receiveRequestReceived(const QString &sessionId,
                                 const QString &senderDeviceId,
                                 const QString &senderName,
