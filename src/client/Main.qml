@@ -103,11 +103,13 @@ ApplicationWindow {
         closeDialogFocusTimer.restart()
     }
 
-    // 当前选中的目标设备信息
-    property string _targetDeviceId: ""
-    property string _targetDeviceName: ""
-    property string _targetIpAddress: ""
-    property bool _targetIsOnline: false
+    // 当前选中设备：选择状态由视图模型持有，设备列表刷新时信息自动重算
+    property string _selId: AppController.peerDiscoveryViewModel.selectedDeviceId
+    property var _selInfo: {
+        const vm = AppController.peerDiscoveryViewModel
+        void vm.peers  // 引用设备列表建立依赖，在线状态或 IP 变化时重算
+        return vm.deviceById(_selId)
+    }
     property bool _allowWindowClose: false  // 标记用户已确认退出，允许窗口关闭
     readonly property int kPopupEnterDuration: 180  // 弹窗淡入动画时长
     // 记录常规窗口标志，临时置顶后恢复
@@ -227,27 +229,9 @@ ApplicationWindow {
         }
     }
 
-    function selectDevice(deviceId: string, deviceName: string,
-                          ipAddress: string, isOnline: bool): void {
-        // 更新右侧会话页绑定的目标设备信息
-        _targetDeviceId = deviceId
-        _targetDeviceName = deviceName
-        _targetIpAddress = ipAddress
-        _targetIsOnline = isOnline
-    }
-
-    // 设备列表刷新后重新同步选中设备的在线状态和 IP
-    function refreshSelectedDevice(): void {
-        if (_targetDeviceId.length === 0) return
-        const peers = AppController.peerDiscoveryViewModel.peers
-        for (let i = 0; i < peers.length; i++) {
-            if (peers[i].deviceId === _targetDeviceId) {
-                selectDevice(peers[i].deviceId, peers[i].deviceName,
-                             peers[i].ipAddress, peers[i].isOnline)
-                return
-            }
-        }
-        _targetIsOnline = false
+    // 选中设备：设备名、IP 与在线状态由视图模型按选中 ID 自动解析
+    function selectDevice(deviceId: string): void {
+        AppController.peerDiscoveryViewModel.selectedDeviceId = deviceId
     }
 
     // 将 FileDialog/FolderDialog 返回的 URL 转成本地路径，统一走 FormatUtils
@@ -341,7 +325,7 @@ ApplicationWindow {
             let urls = fileDialog.selectedFiles
             for (let i = 0; i < urls.length; i++) {
                 let path = mainWindow.localPathFromUrl(urls[i])
-                AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
+                AppController.transferController.createSendSession(mainWindow._selId, path)
             }
         }
     }
@@ -353,7 +337,7 @@ ApplicationWindow {
         onAccepted: {
             // selectedFolder 也是 URL 格式，需要转成本地路径
             let path = mainWindow.localPathFromUrl(selectedFolder)
-            AppController.transferController.createSendSession(mainWindow._targetDeviceId, path)
+            AppController.transferController.createSendSession(mainWindow._selId, path)
         }
     }
 
@@ -606,21 +590,14 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: 210
-        selectedDeviceId: mainWindow._targetDeviceId
+        selectedDeviceId: AppController.peerDiscoveryViewModel.selectedDeviceId
 
         onDeviceSelected: function(deviceId, deviceName, ipAddress, isOnline) {
-            mainWindow.selectDevice(deviceId, deviceName, ipAddress, isOnline)
+            mainWindow.selectDevice(deviceId)
         }
         // 拖拽文件到设备列表项：先选中该设备，再统一裁决并创建发送会话
         onFilesDropped: function(deviceId, urls) {
-            const peers = AppController.peerDiscoveryViewModel.peers
-            for (let i = 0; i < peers.length; i++) {
-                if (peers[i].deviceId === deviceId) {
-                    mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
-                                               peers[i].ipAddress, peers[i].isOnline)
-                    break
-                }
-            }
+            mainWindow.selectDevice(deviceId)
             mainWindow.handleDroppedFiles(deviceId, urls)
         }
     }
@@ -636,7 +613,7 @@ ApplicationWindow {
         // 未选中设备时的占位
         Item {
             anchors.fill: parent
-            visible: mainWindow._targetDeviceId.length === 0
+            visible: mainWindow._selId.length === 0
 
             Column {
                 anchors.centerIn: parent
@@ -676,18 +653,18 @@ ApplicationWindow {
             id: sessionView
 
             anchors.fill: parent
-            visible: mainWindow._targetDeviceId.length > 0
-            deviceId: mainWindow._targetDeviceId
-            deviceName: mainWindow._targetDeviceName
-            ipAddress: mainWindow._targetIpAddress
-            isOnline: mainWindow._targetIsOnline
+            visible: mainWindow._selId.length > 0
+            deviceId: mainWindow._selId
+            deviceName: mainWindow._selInfo.deviceName || ""
+            ipAddress: mainWindow._selInfo.ipAddress || ""
+            isOnline: mainWindow._selInfo.isOnline || false
 
             background: Rectangle { color: "transparent" }
 
             onSendFileRequested: fileDialog.open()
             onSendFolderRequested: folderDialog.open()
             onFilesDropped: function(urls) {
-                mainWindow.handleDroppedFiles(mainWindow._targetDeviceId, urls)
+                mainWindow.handleDroppedFiles(mainWindow._selId, urls)
             }
         }
     }
@@ -846,14 +823,8 @@ ApplicationWindow {
         function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
                                           fileSize, totalFiles, totalBytes,
                                           isDirectory, fileList) {
-            const peers = AppController.peerDiscoveryViewModel.peers
-            for (let i = 0; i < peers.length; i++) {
-                if (peers[i].deviceId === senderDeviceId) {
-                    mainWindow.selectDevice(peers[i].deviceId, peers[i].deviceName,
-                                               peers[i].ipAddress, peers[i].isOnline)
-                    break
-                }
-            }
+            // 有新传输请求时切到发送方会话（其信息由视图模型按 ID 解析）
+            mainWindow.selectDevice(senderDeviceId)
             acceptDialog.sessionId = sessionId
             acceptDialog.senderName = senderName
             acceptDialog.fileName = fileName
@@ -879,11 +850,6 @@ ApplicationWindow {
             relayConfirmDialog._sessionId = sessionId
             relayConfirmDialog.open()
         }
-    }
-
-    Connections {
-        target: AppController.peerDiscoveryViewModel
-        function onPeersChanged(): void { mainWindow.refreshSelectedDevice() }
     }
 
     Connections {

@@ -1,11 +1,14 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.8.0
+* @version 7.15.3
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 *
 * Change Log:
+* [v7.15.3] GY   2026-10-03
+* * 选中状态收编：新增 selectedDeviceId 属性与 deviceById 查询，
+*   QML 不再手工复制四元组并循环同步
 * [v7.8.0] GY   2026-07-21
 * * 按设备来源优先级排序：broadcast > directed > rendezvous > manual > history
 * [v6.7.0] GY   2026-06-28
@@ -130,6 +133,41 @@ QVariantList PeerDiscoveryViewModel::peers() const
     std::sort(mergedPeers.begin(), mergedPeers.end(), peerSortLessThan);
 
     return mergedPeers;
+}
+
+// 按设备 ID 查询展示信息，未命中返回空表
+QVariantMap PeerDiscoveryViewModel::deviceById(const QString &deviceId) const
+{
+    for (const QVariant &peer : peers()) {
+        if (deviceIdFromVariant(peer) != deviceId) {
+            continue;
+        }
+        if (peer.canConvert<PeerInfo>()) {
+            const PeerInfo info = peer.value<PeerInfo>();
+            return {{"deviceId", info.deviceId},
+                    {"deviceName", info.deviceName},
+                    {"ipAddress", info.ipAddress},
+                    {"isOnline", info.isOnline}};
+        }
+        return peer.toMap();
+    }
+    return {};
+}
+
+// 获取当前选中设备 ID
+QString PeerDiscoveryViewModel::selectedDeviceId() const
+{
+    return _selectedDeviceId;
+}
+
+// 更新选中设备并通知表现层
+void PeerDiscoveryViewModel::setSelectedDeviceId(const QString &deviceId)
+{
+    if (_selectedDeviceId == deviceId) {
+        return;
+    }
+    _selectedDeviceId = deviceId;
+    emit selectedDeviceIdChanged();
 }
 
 // 请求立即刷新设备发现

@@ -1,12 +1,12 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.13.0
+* @version 7.15.3
 * @date    2026-10-02
 * @author  GY
 * @brief   设备发现视图模型测试
 *
 * 测试用例：在线设备与手动端点按来源优先级排序、发现服务信号转发、
-* 无数据层时历史刷新安全、空发现服务的防御行为。
+* 无数据层时历史刷新安全、空发现服务的防御行为、选中设备查询。
 */
 
 #include <QtTest/QtTest>
@@ -28,6 +28,7 @@ private slots:
     void testDiscoverySignalsForwarded();
     void testRefreshHistoryWithoutBroker();
     void testNullDiscoveryDefensive();
+    void testSelectedDeviceAndLookup();
 
 private:
     ConfigManager *_config = nullptr;
@@ -137,6 +138,48 @@ void TestPeerDiscoveryViewModel::testNullDiscoveryDefensive()
     viewModel.refresh();
     viewModel.refreshHistory();
     QVERIFY(viewModel.peers().isEmpty());
+}
+
+// 选中设备 ID 收编：写入发通知，deviceById 返回展示字段，未命中返回空表
+void TestPeerDiscoveryViewModel::testSelectedDeviceAndLookup()
+{
+    PeerDiscoveryViewModel viewModel(_discovery);
+
+    // 设备注入前查询为空
+    QVERIFY(viewModel.deviceById(QStringLiteral("select-test")).isEmpty());
+
+    PeerInfo peer;
+    peer.deviceId = QStringLiteral("select-test");
+    peer.deviceName = QStringLiteral("选中测试");
+    peer.ipAddress = QStringLiteral("10.254.254.249");
+    peer.tcpPort = 35100;
+    peer.isOnline = true;
+    peer.lastSeen = QDateTime::currentDateTimeUtc();
+    peer.source = QStringLiteral("manual");
+    _discovery->addManualPeer(peer);
+
+    // 未选中时 selectedDeviceId 为空，写入选中 ID 后发通知
+    QSignalSpy spy(&viewModel, &PeerDiscoveryViewModel::selectedDeviceIdChanged);
+    QVERIFY(viewModel.selectedDeviceId().isEmpty());
+
+    viewModel.setSelectedDeviceId(QStringLiteral("select-test"));
+    QCOMPARE(viewModel.selectedDeviceId(), QStringLiteral("select-test"));
+    QVERIFY(!spy.isEmpty());
+
+    // 重复写入同一 ID 不重复通知
+    const int notified = spy.count();
+    viewModel.setSelectedDeviceId(QStringLiteral("select-test"));
+    QCOMPARE(spy.count(), notified);
+
+    // 查询返回展示字段；未知 ID 返回空表
+    const QVariantMap info = viewModel.deviceById(QStringLiteral("select-test"));
+    QCOMPARE(info.value("deviceName").toString(), QStringLiteral("选中测试"));
+    QCOMPARE(info.value("ipAddress").toString(), QStringLiteral("10.254.254.249"));
+    QCOMPARE(info.value("isOnline").toBool(), true);
+    QVERIFY(viewModel.deviceById(QStringLiteral("no-such-device")).isEmpty());
+
+    viewModel.setSelectedDeviceId(QString());
+    QCOMPARE(viewModel.selectedDeviceId(), QString());
 }
 
 QTEST_MAIN(TestPeerDiscoveryViewModel)
