@@ -1,6 +1,6 @@
 /**
 * @file    test_discovery.cpp
-* @version 7.15.11
+* @version 7.15.12
 * @date    2026-10-03
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
@@ -8,6 +8,8 @@
 * 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()
 *
 * Change Log:
+* [v7.15.12] GY   2026-10-03
+* 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
 * * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03

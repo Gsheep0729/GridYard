@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * * 接收路径输入框放开只读，支持直接粘贴或手输后保存
  * [v7.15.11] GY   2026-10-03
  * * 版本头对齐到 v7.15.11
  * [v7.15.10] GY   2026-10-03
@@ -118,6 +120,8 @@ Dialog {
         _tempRendezvousPort = ConfigManager.rendezvousPort
         _tempRendezvousToken = ConfigManager.rendezvousToken
         _tempRelayMode = ConfigManager.relayMode
+        // 手输过路径的 TextEdit 会失去 text 绑定，重开时显式回填
+        receivePathField.text = _tempReceivePath
     }
 
     // 将 FolderDialog 返回的 URL 转成本地路径，统一走 FormatUtils 避免多处实现漂移
@@ -257,9 +261,15 @@ Dialog {
                         id: receivePathField
                         Layout.fillWidth: true
                         text: settingsDialog._tempReceivePath
-                        readOnly: true
+                        placeholderText: qsTr("输入或粘贴接收路径")
                         selectByMouse: true
                         font.pixelSize: 13
+                        // 支持直接粘贴或手输路径；编辑实时同步临时值，与更改目录按钮等价
+                        onTextEdited: settingsDialog._tempReceivePath = text
+                        onEditingFinished: {
+                            text = text.trim()
+                            settingsDialog._tempReceivePath = text
+                        }
                     }
 
                     Button {
@@ -612,13 +622,14 @@ Dialog {
         }
     }
 
-    // 文件夹选择对话框：用户选择新接收路径后更新临时变量
+    // 文件夹选择对话框：用户选择新接收路径后更新临时变量并回填输入框
     FolderDialog {
         id: folderDialog
         title: qsTr("选择接收路径")
         currentFolder: "file://" + settingsDialog._tempReceivePath
         onAccepted: {
             settingsDialog._tempReceivePath = settingsDialog.localPathFromUrl(selectedFolder)
+            receivePathField.text = settingsDialog._tempReceivePath
         }
     }
 

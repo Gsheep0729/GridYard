@@ -1,6 +1,6 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
@@ -13,6 +13,8 @@
  * 由 Main.qml 统一解码、过滤并裁决设备是否在线。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * * 选中底色与悬停一样即时切换，消除切换设备时颜色动画被卡出的闪烁
  * [v7.15.11] GY   2026-10-03
  * * 悬停底色改为即时切换并移除离线卡 tooltip，消除鼠标扫过卡片时的闪烁
  * [v7.15.10] GY   2026-10-03
@@ -59,7 +61,6 @@ ItemDelegate {
     readonly property int   kCardHeight: 76
     readonly property color kOnlineColor:  Style.Color.success   // 在线状态圆点颜色
     readonly property color kOfflineColor: Style.Color.textWeak  // 离线状态圆点颜色
-    readonly property int kColorDuration: Style.Motion.base      // 颜色过渡动画时长
     readonly property int kStatusDuration: Style.Motion.slow     // 在线状态切换动画时长
 
     signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
@@ -68,27 +69,9 @@ ItemDelegate {
     height: kCardHeight
     background: Rectangle {
         radius: Style.Radius.sm
-        color: Style.Color.transparent
-
-        // 选中态底色：切换设备时保留颜色过渡
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            color: deviceCard.isSelected ? Style.Color.primarySoft
-                                         : Style.Color.transparent
-
-            Behavior on color {
-                ColorAnimation { duration: deviceCard.kColorDuration }
-            }
-        }
-
-        // 悬停底色：即时切换不带动画，快速扫过多张卡片时不残留拖影
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            color: !deviceCard.isSelected && deviceCard.hovered
-                   ? Style.Color.surfaceLeft : Style.Color.transparent
-        }
+        // 选中态与悬停底色都即时切换：切换设备时颜色动画会被会话页重建卡出中间帧，观感是闪烁
+        color: deviceCard.isSelected ? Style.Color.primarySoft
+             : (deviceCard.hovered ? Style.Color.surfaceLeft : Style.Color.transparent)
 
         // 左侧选中指示条：明确标识当前会话设备
         Rectangle {

@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -9,6 +9,8 @@
  * 提供搜索过滤、手动刷新和添加设备入口。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * 版本头对齐到 v7.15.12
  * [v7.15.11] GY   2026-10-03
  * * 刷新按钮图标改为自绘，tooltip 加延迟避免鼠标扫过时即时闪现
  * [v7.15.10] GY   2026-10-03

@@ -1,6 +1,6 @@
 /**
  * @file    AddDeviceDialog.qml
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GY
  * @brief   添加设备对话框
@@ -9,6 +9,8 @@
  * 手动输入 IP 和端口。结果通过行内提示反馈，成功后自动关闭。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * * 邀请码与导入输入框内容在框内垂直居中，导入占位提示改自绘 Label 同步居中
  * [v7.15.11] GY   2026-10-03
  * * 内容区补留白并统一按钮右对齐，邀请码改为自动换行，端口去掉千分位分组
  * [v7.15.10] GY   2026-10-03
@@ -113,7 +115,8 @@ Dialog {
                     Layout.fillWidth: true
                 }
 
-                // 直接用 TextArea 自带的滚动与换行；包一层 ScrollView 会让宽度失去约束
+                // 直接用 TextArea 自带的滚动与换行；包一层 ScrollView 会让宽度失去约束。
+                // 内容不超框时垂直居中，超框时回退顶端对齐，长文本不锚死中间
                 TextArea {
                     id: inviteArea
                     Layout.fillWidth: true
@@ -121,6 +124,7 @@ Dialog {
                     readOnly: true
                     text: addDeviceDialog._inviteText
                     wrapMode: TextEdit.Wrap
+                    verticalAlignment: contentHeight > height ? Text.AlignTop : Text.AlignVCenter
                     font.pixelSize: 11
                     color: Style.Color.textSecondary
                     selectByMouse: true
@@ -168,8 +172,10 @@ Dialog {
                     id: importArea
                     Layout.fillWidth: true
                     Layout.preferredHeight: 96
-                    placeholderText: qsTr("粘贴 gridyard://invite 开头的邀请码")
+                    // 占位提示用自绘 Label：样式自带的 placeholder 不跟随垂直居中
+                    placeholderText: ""
                     wrapMode: TextEdit.Wrap
+                    verticalAlignment: contentHeight > height ? Text.AlignTop : Text.AlignVCenter
                     font.pixelSize: 12
                     color: Style.Color.textMain
                     selectByMouse: true
@@ -178,6 +184,17 @@ Dialog {
                         radius: Style.Radius.sm
                         border.color: importArea.activeFocus
                                       ? Style.Color.primary : Style.Color.border
+
+                        // 占位提示：输入为空时显示，与文本同样的垂直居中
+                        Label {
+                            visible: importArea.text.length === 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12
+                            text: qsTr("粘贴 gridyard://invite 开头的邀请码")
+                            color: Style.Color.textWeak
+                            font.pixelSize: 12
+                        }
                     }
                 }
 

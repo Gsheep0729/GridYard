@@ -1,6 +1,6 @@
 /**
 * @file    p2p_server.cpp
-* @version 7.15.11
+* @version 7.15.12
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
@@ -11,6 +11,8 @@
 * 中继降级的连接在完成 relay_join 握手后也进入同一条首帧路由。
 *
 * Change Log:
+* [v7.15.12] GY   2026-10-03
+* 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
 * * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03

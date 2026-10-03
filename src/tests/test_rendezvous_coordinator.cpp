@@ -1,6 +1,6 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 7.15.11
+* @version 7.15.12
 * @date    2026-10-03
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
@@ -9,6 +9,8 @@
 * 修改端口即时切换服务器（修复"改配置需重启"）。
 *
 * Change Log:
+* [v7.15.12] GY   2026-10-03
+* 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
 * * 版本头对齐到 v7.15.11
 * [v7.15.10] GY   2026-10-03

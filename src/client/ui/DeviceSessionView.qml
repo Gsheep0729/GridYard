@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
@@ -9,6 +9,8 @@
  * 设备离线时在页内给出明确状态提示。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * * 附件入口改为点 + 后在输入框内原位展开的文件/文件夹胶囊，去掉弹出菜单
  * [v7.15.11] GY   2026-10-03
  * * 输入区重构：附件入口并入输入框左侧，发送改文字按钮，计数器移入框内右下角
  * [v7.15.10] GY   2026-10-03
@@ -295,7 +297,7 @@ Frame {
                anchors.margins: Style.Space.sm
                spacing: Style.Space.sm
 
-               // 输入框容器：附件入口并入框内左侧（"+"），与主流 IM 布局一致
+               // 输入框容器：附件入口并入框内左侧，点 + 原位展开胶囊
                Rectangle {
                    id: inputBox
                    Layout.fillWidth: true
@@ -305,36 +307,118 @@ Frame {
                    border.color: Style.Color.border
                    border.width: 1
 
-                   // 附件入口：点击弹出文件/文件夹选择菜单
+                   // 附件展开状态：展开后在原位显示文件/文件夹胶囊，再点收起
+                   property bool attachExpanded: false
+
+                   // 展开/收起按钮：收起时是 +，展开时是 ×
                    ToolButton {
                        id: attachButton
                        anchors.left: parent.left
                        anchors.leftMargin: Style.Space.xs
                        anchors.verticalCenter: parent.verticalCenter
                        enabled: deviceSessionView.isOnline
-                       text: "+"
+                       text: inputBox.attachExpanded ? "×" : "+"
                        font.pixelSize: 20
                        font.bold: true
-                       ToolTip.text: deviceSessionView.isOnline
-                                     ? qsTr("发送文件或文件夹")
-                                     : qsTr("设备离线，无法发送文件")
+                       ToolTip.text: !deviceSessionView.isOnline
+                                     ? qsTr("设备离线，无法发送文件")
+                                     : (inputBox.attachExpanded ? qsTr("收起") : qsTr("发送文件或文件夹"))
                        ToolTip.delay: 500
                        ToolTip.visible: attachButton.hovered
-                       onClicked: sendMenu.open()
+                       onClicked: inputBox.attachExpanded = !inputBox.attachExpanded
+                   }
 
-                       Menu {
-                           id: sendMenu
-                           // 输入区贴着窗口底部，菜单向上弹出
-                           y: -sendMenu.height
+                   // 文件胶囊：蓝底主色字，点击发起文件选择并收起
+                   Button {
+                       id: filePill
+                       anchors.left: attachButton.right
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       visible: opacity > 0
+                       opacity: inputBox.attachExpanded ? 1 : 0
+                       width: inputBox.attachExpanded ? implicitWidth : 0
+                       clip: true
+                       leftPadding: 10
+                       rightPadding: 10
+                       Behavior on width {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+                       Behavior on opacity {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
 
-                           MenuItem {
-                               text: qsTr("发送文件")
-                               onTriggered: deviceSessionView.sendFileRequested()
+                       contentItem: RowLayout {
+                           spacing: 5
+                           FileTypeIcon {
+                               fileName: ""
+                               isDirectory: false
+                               Layout.preferredWidth: 15
+                               Layout.preferredHeight: 15
                            }
-                           MenuItem {
-                               text: qsTr("发送文件夹")
-                               onTriggered: deviceSessionView.sendFolderRequested()
+                           Label {
+                               text: qsTr("文件")
+                               font.pixelSize: 13
+                               font.bold: true
+                               color: filePill.enabled ? Style.Color.primary : Style.Color.textWeak
                            }
+                       }
+                       background: Rectangle {
+                           radius: filePill.height / 2
+                           color: !filePill.enabled ? Style.Color.surfaceSoft
+                                  : (filePill.hovered ? Style.Color.primarySoftHover
+                                                      : Style.Color.primarySoft)
+                       }
+                       onClicked: {
+                           inputBox.attachExpanded = false
+                           deviceSessionView.sendFileRequested()
+                       }
+                   }
+
+                   // 文件夹胶囊：紫底紫字，与传输方向的既有配色一致
+                   Button {
+                       id: folderPill
+                       anchors.left: filePill.right
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       visible: opacity > 0
+                       opacity: inputBox.attachExpanded ? 1 : 0
+                       width: inputBox.attachExpanded ? implicitWidth : 0
+                       clip: true
+                       leftPadding: 10
+                       rightPadding: 10
+                       Behavior on width {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+                       Behavior on opacity {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+
+                       contentItem: RowLayout {
+                           spacing: 5
+                           FileTypeIcon {
+                               fileName: ""
+                               isDirectory: true
+                               Layout.preferredWidth: 15
+                               Layout.preferredHeight: 15
+                           }
+                           Label {
+                               text: qsTr("文件夹")
+                               font.pixelSize: 13
+                               font.bold: true
+                               color: folderPill.enabled ? Style.Color.receiveAccent : Style.Color.textWeak
+                           }
+                       }
+                       background: Rectangle {
+                           radius: folderPill.height / 2
+                           color: !folderPill.enabled ? Style.Color.surfaceSoft
+                                  : (folderPill.hovered ? Style.Color.receiveAccentSoftHover
+                                                        : Style.Color.receiveAccentSoft)
+                       }
+                       onClicked: {
+                           inputBox.attachExpanded = false
+                           deviceSessionView.sendFolderRequested()
                        }
                    }
 
@@ -342,7 +426,7 @@ Frame {
                        id: messageInput
                        anchors {
                            top: parent.top
-                           left: attachButton.right
+                           left: folderPill.right
                            right: parent.right
                            bottom: parent.bottom
                            topMargin: Style.Space.sm

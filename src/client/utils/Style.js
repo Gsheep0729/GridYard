@@ -2,7 +2,7 @@
 
 /**
  * @file    Style.js
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GY
  * @brief   QML 界面样式常量
@@ -11,6 +11,8 @@
  * 状态色成对提供实色与浅底色（Soft），供标签、横幅、卡片背景使用。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * * 新增附件胶囊用的 primarySoftHover 与 receiveAccentSoft 系语义色
  * [v7.15.11] GY   2026-10-03
  * * 版本头对齐到 v7.15.11
  * [v7.15.10] GY   2026-10-03
@@ -43,6 +45,7 @@ const Color = {
     // 品牌主色
     primary: "#3B82F6",
     primarySoft: "#EFF6FF",
+    primarySoftHover: "#DBEAFE",
     // 状态色（实色用于文字、圆点与标签底，Soft 用于大面积浅底）
     success: "#10B981",
     successSoft: "#ECFDF5",
@@ -60,6 +63,8 @@ const Color = {
     textOnAccent: "#FFFFFF",  // 彩色底（主按钮、状态标签）上的文字
     // 方向与侧栏
     receiveAccent: "#8B5CF6",  // 接收方向标识，与发送侧主色区分
+    receiveAccentSoft: "#F5F3FF",  // 接收方向浅底（文件夹胶囊）
+    receiveAccentSoftHover: "#EDE9FE",
     menubar: "#7F7F7F",
     menubarSelect: "#E1E1E1",
     menubarClicked: "#D5D5D5",

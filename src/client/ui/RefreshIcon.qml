@@ -1,6 +1,6 @@
 /**
  * @file    RefreshIcon.qml
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   自绘刷新图标
@@ -10,6 +10,8 @@
  * 依赖系统图标主题。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * 版本头对齐到 v7.15.12
  * [v7.15.11] GY   2026-10-03
  * * 初始版本：自绘刷新图标，替代主题 view-refresh 图标
  */

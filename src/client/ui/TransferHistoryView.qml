@@ -1,6 +1,6 @@
 /**
  * @file    TransferHistoryView.qml
- * @version 7.15.11
+ * @version 7.15.12
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   传输历史视图
@@ -9,6 +9,8 @@
  * 筛选指定设备的历史，空字符串时显示全部设备。
  *
  * Change Log:
+ * [v7.15.12] GY   2026-10-03
+ * 版本头对齐到 v7.15.12
  * [v7.15.11] GY   2026-10-03
  * * 刷新图标改为自绘，悬停 tooltip 统一加延迟避免即时闪现
  * [v7.15.10] GY   2026-10-03
