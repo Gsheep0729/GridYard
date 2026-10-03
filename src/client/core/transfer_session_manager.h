@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,8 @@
 * 发送与接收 worker 分别以独立映射管理生命周期。
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04
 * * 新增 activeSessionCount 只读属性：当前活动（未终态）会话数量，
 *   创建与终态迁移时发 NOTIFY，供退出前警示提示

@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * 接收完成通知改传实际落盘路径，重名保存为 name (1) 时通知卡可正确定位
 * [v7.15.18] GY   2026-10-04
 * * 新增 activeSessionCount 活动会话计数：会话创建与终态迁移时通知，
 *   供关闭确认弹窗提示退出将中断进行中的传输

@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04
 * * 新增 activeSessionCount 属性透传
 * [v7.15.17] GY   2026-10-04

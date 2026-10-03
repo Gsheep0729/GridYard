@@ -1,6 +1,6 @@
 /**
  * @file    TransferHistoryView.qml
- * @version 7.15.18
+ * @version 7.15.19
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   传输历史视图
@@ -9,6 +9,8 @@
  * 筛选指定设备的历史，空字符串时显示全部设备。
  *
  * Change Log:
+ * [v7.15.19] GY   2026-10-04
+ * * 版本头对齐到 v7.15.19
  * [v7.15.18] GY   2026-10-04
  * * 版本头对齐到 v7.15.18
  * [v7.15.17] GY   2026-10-04

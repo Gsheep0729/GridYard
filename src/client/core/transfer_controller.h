@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.h
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04
 * * 新增 activeSessionCount 只读属性透传，关闭确认弹窗据此提示退出将中断传输
 * [v7.15.17] GY   2026-10-04

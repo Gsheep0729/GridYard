@@ -1,6 +1,6 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
@@ -10,6 +10,8 @@
 * waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化 / 活动会话计数增减
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * 版本头对齐到 v7.15.19
 * [v7.15.18] GY   2026-10-04
 * * 新增活动会话计数用例：会话创建时加一、终态迁移时减一且各发一次 NOTIFY
 * [v7.15.17] GY   2026-10-04

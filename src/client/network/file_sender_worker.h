@@ -1,6 +1,6 @@
 /**
 * @file    file_sender_worker.h
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
@@ -11,6 +11,8 @@
 * 取消操作和超时检测。
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * 删除无连接的 requestAccepted/requestRejected 死信号声明
 * [v7.15.18] GY   2026-10-04
 * * 版本头对齐到 v7.15.18
 * [v7.15.17] GY   2026-10-04

@@ -1,6 +1,6 @@
 /**
  * @file    CloseConfirmDialog.qml
- * @version 7.15.18
+ * @version 7.15.19
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   关闭确认弹窗
@@ -11,6 +11,8 @@
  * 从 Main.qml 拆出。
  *
  * Change Log:
+ * [v7.15.19] GY   2026-10-04
+ * * 版本头对齐到 v7.15.19
  * [v7.15.18] GY   2026-10-04
  * * 新增传输进行中警示行：活动会话数大于 0 时显示，退出将中断它们；
  *   隐藏到后台分支不受影响，后台继续传输

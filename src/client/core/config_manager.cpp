@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.cpp
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   应用配置管理器实现
@@ -10,6 +10,8 @@
 * GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * openFolder 支持文件路径，打开文件所在目录
 * [v7.15.18] GY   2026-10-04
 * * 版本头对齐到 v7.15.18
 * [v7.15.17] GY   2026-10-04

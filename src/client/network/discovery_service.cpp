@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.cpp
-* @version 7.15.18
+* @version 7.15.19
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
 * Change Log:
+* [v7.15.19] GY   2026-10-04
+* * 空 deviceName 的广播 Hello 以"未知设备 (IP)"兜底
 * [v7.15.18] GY   2026-10-04
 * * 版本头对齐到 v7.15.18
 * [v7.15.17] GY   2026-10-04

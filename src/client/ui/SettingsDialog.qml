@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.15.18
+ * @version 7.15.19
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.15.19] GY   2026-10-04
+ * * 协调服务器区块说明改为保存即生效，与即时重连的实际行为一致
  * [v7.15.18] GY   2026-10-04
  * * 版本头对齐到 v7.15.18
  * [v7.15.17] GY   2026-10-04
