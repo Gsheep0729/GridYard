@@ -1,6 +1,6 @@
 /**
  * @file    ConversationTimelineView.qml
- * @version 7.15.6
+ * @version 7.15.10
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
@@ -97,21 +97,22 @@ Item {
             }
         }
 
-        // 顶部加载行：滚动加载更早的历史消息时给出反馈
-        header: Item {
+        // 顶部加载行：滚动加载更早的历史消息时给出反馈。
+        // 用 Loader 承载并直接绑加载状态：header Item 上绑高度会被视图
+        // 布局回写卷入绑定环（height 与 implicitHeight 实测都会触发）
+        header: Loader {
             width: timelineList.width
-            height: AppController.historyController.loading ? 28 : 0
-            visible: height > 0
-
-            Row {
-                anchors.centerIn: parent
+            active: AppController.historyController.loading
+            sourceComponent: Row {
                 spacing: Style.Space.sm
+                leftPadding: 8
+                topPadding: 6
+                bottomPadding: 6
 
                 BusyIndicator {
-                    anchors.verticalCenter: parent.verticalCenter
                     implicitWidth: 16
                     implicitHeight: 16
-                    running: AppController.historyController.loading
+                    running: true
                 }
 
                 Label {
