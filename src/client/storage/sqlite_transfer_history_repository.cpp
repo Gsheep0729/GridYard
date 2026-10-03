@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_transfer_history_repository.cpp
-* @version 6.6.2
+* @version 7.15.5
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 传输历史 Repository 实现
@@ -8,6 +8,8 @@
 * 只保存最终状态快照，不保存发送源绝对路径、文件内容或调试堆栈。
 *
 * Change Log:
+* [v7.15.5] GY   2026-10-03
+* * upsertFinishedTransfer 复用 upsertFinishedTransferStep（ADR-006 方案 c）
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.3.0] GY 2026-06-25
@@ -48,57 +50,8 @@ bool SqliteTransferHistoryRepository::upsertFinishedTransfer(const TransferRecor
         return false;
     }
 
-    return _database->runInTransaction(
-        [&record](QSqlDatabase &database, QString *taskError) {
-            QSqlQuery query(database);
-            // 同一 session_id 可能因重试或重复完成信号再次写入，这里覆盖为最新快照。
-            query.prepare(
-                "INSERT INTO transfer_history(record_id, session_id, peer_device_id, peer_name, "
-                "direction, display_name, is_directory, file_count, total_bytes, status, "
-                "started_at, finished_at, error_code, error_message) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(session_id) DO UPDATE SET "
-                "peer_device_id=excluded.peer_device_id, "
-                "peer_name=excluded.peer_name, "
-                "direction=excluded.direction, "
-                "display_name=excluded.display_name, "
-                "is_directory=excluded.is_directory, "
-                "file_count=excluded.file_count, "
-                "total_bytes=excluded.total_bytes, "
-                "status=excluded.status, "
-                "started_at=excluded.started_at, "
-                "finished_at=excluded.finished_at, "
-                "error_code=excluded.error_code, "
-                "error_message=excluded.error_message");
-            query.addBindValue(record.recordId);
-            query.addBindValue(record.sessionId);
-            query.addBindValue(record.peerDeviceId);
-            query.addBindValue(record.peerName);
-            query.addBindValue(static_cast<int>(record.direction));
-            query.addBindValue(record.displayName);
-            query.addBindValue(record.isDirectory ? 1 : 0);
-            query.addBindValue(record.fileCount);
-            query.addBindValue(record.totalBytes);
-            query.addBindValue(record.status);
-            query.addBindValue(sqlTime(record.startedAt));
-            query.addBindValue(record.finishedAt.isValid()
-                                   ? QVariant(sqlTime(record.finishedAt))
-                                   : QVariant{});
-            query.addBindValue(record.status == "completed"
-                                   ? QVariant{}
-                                   : QVariant(record.errorCode));
-            query.addBindValue(record.status == "completed" || record.errorMessage.isEmpty()
-                                   ? QVariant{}
-                                   : QVariant(record.errorMessage));
-            if (query.exec()) {
-                return true;
-            }
-            if (taskError) {
-                *taskError = query.lastError().text();
-            }
-            return false;
-        },
-        errorMessage);
+    // SQL 与组合事务共用同一 Step，避免双份字面量漂移
+    return _database->runInTransaction(upsertFinishedTransferStep(record), errorMessage);
 }
 
 // 按设备、状态和时间游标查询一页历史

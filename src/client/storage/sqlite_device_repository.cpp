@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 6.6.2
+* @version 7.15.5
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -8,6 +8,8 @@
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
 *
 * Change Log:
+* [v7.15.5] GY   2026-10-03
+* * 接口方法内部复用 *Step，消除双份 upsert/update SQL 字面量
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.1.0] GY   2026-06-25
@@ -52,30 +54,8 @@ bool SqliteDeviceRepository::upsertPeer(const PeerRecord &record, QString *error
         }
     }
 
-    const bool saved = _database->runInTransaction(
-        [&record](QSqlDatabase &database, QString *taskError) {
-            QSqlQuery query(database);
-            // first_seen_at 只在首次插入时写入，后续发现只刷新可变快照字段。
-            query.prepare("INSERT INTO peer_devices(device_id, device_name, last_ip_address, "
-                          "last_tcp_port, first_seen_at, last_seen_at) VALUES(?, ?, ?, ?, ?, "
-                          "?) ON CONFLICT(device_id) DO UPDATE SET "
-                          "device_name=excluded.device_name, "
-                          "last_ip_address=excluded.last_ip_address, "
-                          "last_tcp_port=excluded.last_tcp_port, "
-                          "last_seen_at=excluded.last_seen_at");
-            query.addBindValue(record.deviceId);
-            query.addBindValue(record.deviceName);
-            query.addBindValue(record.lastIpAddress);
-            query.addBindValue(record.lastTcpPort);
-            query.addBindValue(sqlTime(record.firstSeenAt));
-            query.addBindValue(sqlTime(record.lastSeenAt));
-            if (query.exec())
-                return true;
-            if (taskError)
-                *taskError = query.lastError().text();
-            return false;
-        },
-        errorMessage);
+    // SQL 与组合事务共用同一 Step，避免双份字面量漂移
+    const bool saved = _database->runInTransaction(upsertPeerStep(record), errorMessage);
     if (saved)
         _recentWrites.insert(record.deviceId, record);
     return saved;
@@ -84,39 +64,15 @@ bool SqliteDeviceRepository::upsertPeer(const PeerRecord &record, QString *error
 // 更新设备最近聊天活动时间
 bool SqliteDeviceRepository::markChatActivity(const QString &deviceId, const QDateTime &time,
                                          QString *errorMessage) {
-    return _database &&
-           _database->runInTransaction(
-               [&](QSqlDatabase &database, QString *taskError) {
-                   QSqlQuery query(database);
-                   query.prepare("UPDATE peer_devices SET last_chat_at=? WHERE device_id=?");
-                   query.addBindValue(sqlTime(time));
-                   query.addBindValue(deviceId);
-                   if (query.exec())
-                       return true;
-                   if (taskError)
-                       *taskError = query.lastError().text();
-                   return false;
-               },
-               errorMessage);
+    return _database && _database->runInTransaction(markChatActivityStep(deviceId, time),
+                                                    errorMessage);
 }
 
 // 更新设备最近传输活动时间
 bool SqliteDeviceRepository::markTransferActivity(const QString &deviceId, const QDateTime &time,
                                              QString *errorMessage) {
-    return _database && _database->runInTransaction(
-                            [&](QSqlDatabase &database, QString *taskError) {
-                                QSqlQuery query(database);
-                                query.prepare("UPDATE peer_devices SET last_transfer_at=? WHERE "
-                                              "device_id=?");
-                                query.addBindValue(sqlTime(time));
-                                query.addBindValue(deviceId);
-                                if (query.exec())
-                                    return true;
-                                if (taskError)
-                                    *taskError = query.lastError().text();
-                                return false;
-                            },
-                            errorMessage);
+    return _database && _database->runInTransaction(markTransferActivityStep(deviceId, time),
+                                                    errorMessage);
 }
 
 // 获取按最近活动排序的设备目录
@@ -190,24 +146,32 @@ SqliteDeviceRepository::SqlStep SqliteDeviceRepository::upsertPeerStep(const Pee
 SqliteDeviceRepository::SqlStep SqliteDeviceRepository::markChatActivityStep(
     const QString &deviceId, const QDateTime &time)
 {
-    return[deviceId, time](QSqlDatabase &database, QString *) {
+    return[deviceId, time](QSqlDatabase &database, QString *taskError) {
         QSqlQuery query(database);
         query.prepare("UPDATE peer_devices SET last_chat_at=? WHERE device_id=?");
         query.addBindValue(sqlTime(time));
         query.addBindValue(deviceId);
-        return query.exec();  // UPDATE 找不到行不算错误
+        if (query.exec())
+            return true;  // UPDATE 找不到行不算错误
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
     };
 }
 
 SqliteDeviceRepository::SqlStep SqliteDeviceRepository::markTransferActivityStep(
     const QString &deviceId, const QDateTime &time)
 {
-    return[deviceId, time](QSqlDatabase &database, QString *) {
+    return[deviceId, time](QSqlDatabase &database, QString *taskError) {
         QSqlQuery query(database);
         query.prepare("UPDATE peer_devices SET last_transfer_at=? WHERE device_id=?");
         query.addBindValue(sqlTime(time));
         query.addBindValue(deviceId);
-        return query.exec();
+        if (query.exec())
+            return true;
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
     };
 }
 

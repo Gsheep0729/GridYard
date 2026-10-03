@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_message_repository.cpp
-* @version 6.6.2
+* @version 7.15.5
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 聊天消息 Repository 实现
@@ -8,6 +8,8 @@
 * 所有 SQL 均采用预编译参数绑定；消息写入前先确保会话行存在。
 *
 * Change Log:
+* [v7.15.5] GY   2026-10-03
+* * saveMessage 内部复用 saveMessageStep（ADR-006 方案 c），消除双份写入 SQL
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.2.0] GY 2026-06-25
@@ -44,66 +46,8 @@ bool SqliteMessageRepository::saveMessage(const MessageRecord &record, QString *
         return false;
     }
 
-    return _database->runInTransaction(
-        [&record](QSqlDatabase &database, QString *taskError) {
-            QSqlQuery conversationQuery(database);
-            // 先占用会话行才能满足 chat_messages 的外键；重复保存不改写创建时间。
-            conversationQuery.prepare(
-                "INSERT INTO chat_conversations(peer_device_id, created_at, last_message_at) "
-                "VALUES(?, ?, ?) ON CONFLICT(peer_device_id) DO NOTHING");
-            conversationQuery.addBindValue(record.peerDeviceId);
-            conversationQuery.addBindValue(sqlTime(record.createdAt));
-            conversationQuery.addBindValue(sqlTime(record.sentAt));
-            if (!conversationQuery.exec()) {
-                if (taskError) {
-                    *taskError = conversationQuery.lastError().text();
-                }
-                return false;
-            }
-
-            QSqlQuery messageQuery(database);
-            // message_id 是网络层 UUID，冲突时视为已成功保存以支持重试和重复帧。
-            messageQuery.prepare(
-                "INSERT INTO chat_messages(message_id, peer_device_id, direction, "
-                "sender_device_id, sender_name, content, sent_at, local_status, created_at) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(message_id) DO NOTHING");
-            messageQuery.addBindValue(record.messageId);
-            messageQuery.addBindValue(record.peerDeviceId);
-            messageQuery.addBindValue(static_cast<int>(record.direction));
-            messageQuery.addBindValue(record.senderDeviceId);
-            messageQuery.addBindValue(record.senderName);
-            messageQuery.addBindValue(record.content);
-            messageQuery.addBindValue(sqlTime(record.sentAt));
-            messageQuery.addBindValue(record.localStatus);
-            messageQuery.addBindValue(sqlTime(record.createdAt));
-            if (!messageQuery.exec()) {
-                if (taskError) {
-                    *taskError = messageQuery.lastError().text();
-                }
-                return false;
-            }
-
-            if (messageQuery.numRowsAffected() == 0) {
-                // 旧消息不应推动会话排序，避免迟到重试把会话顶到最新。
-                return true;
-            }
-
-            QSqlQuery activityQuery(database);
-            // ISO UTC 文本可按字典序比较，MAX 可防止离序消息回退最近活动时间。
-            activityQuery.prepare(
-                "UPDATE chat_conversations SET last_message_at=MAX(last_message_at, ?) "
-                "WHERE peer_device_id=?");
-            activityQuery.addBindValue(sqlTime(record.sentAt));
-            activityQuery.addBindValue(record.peerDeviceId);
-            if (activityQuery.exec()) {
-                return true;
-            }
-            if (taskError) {
-                *taskError = activityQuery.lastError().text();
-            }
-            return false;
-        },
-        errorMessage);
+    // SQL 与组合事务共用同一 Step，避免双份字面量漂移
+    return _database->runInTransaction(saveMessageStep(record), errorMessage);
 }
 
 // 按游标分页加载聊天记录

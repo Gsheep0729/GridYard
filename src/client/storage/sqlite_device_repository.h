@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.h
-* @version 6.6.2
+* @version 7.15.5
 * @date    2026-06-25
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -9,6 +9,8 @@
 * 节流，避免 UDP 广播导致频繁磁盘写入。
 *
 * Change Log:
+* [v7.15.5] GY   2026-10-03
+* * 接口方法内部复用 *Step（ADR-006 方案 c）
 * [v6.6.2] GY   2026-06-25
 * * 同步文件头版本与当前主版本
 * [v6.1.0] GY 2026-06-25
