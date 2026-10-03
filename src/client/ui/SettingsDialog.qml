@@ -414,7 +414,7 @@ Dialog {
                         }
 
                         Label {
-                            text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备；修改后需重启应用生效。")
+                            text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备；修改后保存即生效，无需重启。")
                             color: Style.Color.textMuted
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
