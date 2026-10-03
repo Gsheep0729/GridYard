@@ -1,6 +1,6 @@
 /**
  * @file    AcceptDialog.qml
- * @version 7.11.0
+ * @version 7.15.1
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   接收确认弹窗
@@ -9,6 +9,8 @@
  * 用户点击"接受"或"拒绝"后调用 TransferSessionManager。
  *
  * Change Log:
+ * [v7.15.1] GY   2026-10-03
+ * * 会话过期改由 sessionStale 信号驱动，删除 sessionsChanged 轮询扫描
  * [v7.11.0] GY   2026-10-02
  * * 发送方取消传输后自动关闭弹窗并通知主窗口提示
  * [v6.6.2] GY   2026-06-25
@@ -231,23 +233,14 @@ Dialog {
         AppController.transferController.rejectReceiveSession(sessionId)
     }
 
-    // 会话过期感知：弹窗打开期间会话被发送方取消或超时终结时，
-    // 接受/拒绝都会被后端静默忽略，因此主动关闭并提示用户
+    // 会话过期感知：等待确认的会话被后端终结（对方取消/超时/断连）时，
+    // 接受/拒绝都会被静默忽略，因此收到 sessionStale 即关闭并提示用户
     Connections {
         target: AppController.transferController
 
-        function onSessionsChanged(): void {
-            if (!acceptDialog.opened) {
+        function onSessionStale(sessionId: string): void {
+            if (!acceptDialog.opened || sessionId !== acceptDialog.sessionId) {
                 return
-            }
-            const sessions = AppController.transferController.sessions
-            for (let i = 0; i < sessions.length; i++) {
-                if (sessions[i].sessionId === acceptDialog.sessionId) {
-                    if (sessions[i].status === "waiting_confirm") {
-                        return  // 会话仍在等待确认，弹窗继续有效
-                    }
-                    break
-                }
             }
             acceptDialog.close()
             acceptDialog.transferStale()

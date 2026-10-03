@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.15.0
+ * @version 7.15.1
  * @date    2026-10-02
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -11,6 +11,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
  * Change Log:
+ * [v7.15.1] GY   2026-10-03
+ * * 拖拽裁决下沉 C++，删除 QML 双数据源在线检查；接收弹窗过期改信号驱动
  * [v7.15.0] GY   2026-10-03
  * * relay 确认弹窗改接 relayConfirmRequested，策略判断下沉 C++ 后此处纯弹窗
  * [v7.13.1] GY   2026-10-02
@@ -253,7 +255,8 @@ ApplicationWindow {
         return FormatUtils.localPathFromUrl(fileUrl)
     }
 
-    // 拖拽发送统一裁决：解码 URL、过滤非文件项、检查设备在线后再创建会话
+    // 拖拽发送：只做 URL 解码与非文件项过滤，在线裁决由 C++ createSendSession 兜底
+    // （离线设备查询不到端点，errorOccurred 已接 Toast 反馈）
     // DeviceCard / DeviceSessionView 只负责冒泡，不再各自处理路径和在线状态
     function handleDroppedFiles(deviceId: string, urls: var): void {
         const paths = []
@@ -266,24 +269,6 @@ ApplicationWindow {
         }
         if (paths.length === 0) {
             mainWindow.showSuccessToast(qsTr("请拖入文件或文件夹"))
-            return
-        }
-
-        // 从设备列表找到目标设备，检查在线状态
-        const peers = AppController.peerDiscoveryViewModel.peers
-        let target = null
-        for (let i = 0; i < peers.length; i++) {
-            if (peers[i].deviceId === deviceId) {
-                target = peers[i]
-                break
-            }
-        }
-        if (target && !target.isOnline) {
-            mainWindow.showErrorToast(qsTr("%1 当前离线，无法接收文件").arg(target.deviceName))
-            return
-        }
-        if (deviceId === mainWindow._targetDeviceId && !mainWindow._targetIsOnline) {
-            mainWindow.showErrorToast(qsTr("%1 当前离线，无法接收文件").arg(mainWindow._targetDeviceName))
             return
         }
 

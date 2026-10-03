@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.15.0
+* @version 7.15.1
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,8 @@
 * 发送与接收 worker 分别以独立映射管理生命周期。
 *
 * Change Log:
+* [v7.15.1] GY   2026-10-03
+* * 新增 sessionStale 信号：waiting_confirm 会话被后端终结时通知弹窗关闭
 * [v7.15.0] GY   2026-10-03
 * * relayModeRequested 更名 relayConfirmRequested：三档策略在 C++ 分流，
 *   仅 AskBeforeRelay 档向 QML 请求弹窗确认
@@ -118,6 +120,8 @@ signals:
                                 qint64 totalBytes,
                                 bool isDirectory,
                                 const QVariantList &fileList);
+    // 等待确认的接收会话在用户操作前被终结（对方取消/超时/断连），弹窗应关闭
+    void sessionStale(const QString &sessionId);
     // 传输完成通知（接收方用于提示打开文件夹）
     void transferCompleted(const QString &sessionId,
                            const QString &fileName,

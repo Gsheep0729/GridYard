@@ -1,14 +1,17 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.0
+* @version 7.15.1
 * @date    2026-06-25
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
 * 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复 /
-* Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）
+* Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）/
+* waiting_confirm 会话过期信号
 *
 * Change Log:
+* [v7.15.1] GY   2026-10-03
+* * 新增 sessionStale 信号用例：后端终结恰好一次、正常完成与用户拒绝不发射
 * [v7.15.0] GY   2026-10-03
 * * relayModeRequested 断言随信号更名调整，AutoRelay 档升级为经真实中继的端到端用例
 * [v7.14.2] GY   2026-10-03
@@ -59,6 +62,7 @@ private slots:
     void testRetryViaRelayWithoutServer();
     void testRepeatedCancelOnLiveSession();
     void testGuardsAfterCompletion();
+    void testSessionStaleSignal();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -513,6 +517,104 @@ void TestSessionManager::testGuardsAfterCompletion()
 
     senderThread.quit();
     QVERIFY(senderThread.wait(3000));
+}
+
+// 等待确认的接收会话被后端终结（对方在确认前取消/断连）时 sessionStale 恰好发射一次；
+// 用户主动拒绝会先改状态再终结，不算过期；正常完成同样不发射
+void TestSessionManager::testSessionStaleSignal()
+{
+    _config->setReceivePath(_tempDir->path() + "/stale-recv");
+    _config->setTcpPort(0);
+    _p2pServer->stop();  // 上一用例可能仍占用监听，先停再取新端口
+    QVERIFY(_p2pServer->start());
+    const quint16 port = _p2pServer->serverPort();
+
+    const QString sourcePath = _tempDir->path() + "/stale-source.txt";
+    QFile source{sourcePath};
+    QVERIFY(source.open(QIODevice::WriteOnly));
+    QCOMPARE(source.write(QByteArray("stale-payload")), qint64(13));
+    source.close();
+
+    FileSenderWorker sender;
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    QObject::connect(&senderThread, &QThread::started, &sender, [&sender, port, &sourcePath]() {
+        sender.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+                             QStringLiteral("stale-sender"), QStringLiteral("StaleSender"));
+    });
+
+    QSignalSpy requestSpy(_manager, &TransferSessionManager::receiveRequestReceived);
+    QSignalSpy staleSpy(_manager, &TransferSessionManager::sessionStale);
+    senderThread.start();
+
+    QVERIFY2(requestSpy.wait(5000), "接收请求应在 5 秒内到达");
+    const QString sessionId = requestSpy.first().at(0).toString();
+    QVERIFY(waitForStatus(sessionId, "waiting_confirm"));
+    QCOMPARE(staleSpy.count(), 0);
+
+    // 发送端在确认前取消（与 Manager 同款双步取消）：接收会话仍处 waiting_confirm 时被后端终结
+    sender.requestCancel();
+    QMetaObject::invokeMethod(&sender, "cancel");
+    QVERIFY2(staleSpy.wait(5000), "会话过期信号应在 5 秒内到达");
+    QCOMPARE(staleSpy.count(), 1);
+    QCOMPARE(staleSpy.first().first().toString(), sessionId);
+    QVERIFY(waitForStatus(sessionId, "cancelled"));
+
+    senderThread.quit();
+    QVERIFY(senderThread.wait(3000));
+
+    // 正常完成接收：sessionStale 不发射
+    const QString okPath = _tempDir->path() + "/stale-ok.txt";
+    QFile okSource{okPath};
+    QVERIFY(okSource.open(QIODevice::WriteOnly));
+    QCOMPARE(okSource.write(QByteArray("ok-payload")), qint64(10));
+    okSource.close();
+
+    FileSenderWorker okSender;
+    QThread okThread;
+    okSender.moveToThread(&okThread);
+    QObject::connect(&okThread, &QThread::started, &okSender, [&okSender, port, &okPath]() {
+        okSender.startTransfer(QStringLiteral("127.0.0.1"), port, okPath,
+                               QStringLiteral("ok-sender"), QStringLiteral("OkSender"));
+    });
+    okThread.start();
+
+    QVERIFY2(requestSpy.wait(5000), "第二次接收请求应在 5 秒内到达");
+    const QString okSessionId = requestSpy.last().at(0).toString();
+    QVERIFY(waitForStatus(okSessionId, "waiting_confirm"));
+    _manager->acceptReceiveSession(okSessionId);
+    QVERIFY(waitForStatus(okSessionId, "completed"));
+    QCOMPARE(staleSpy.count(), 1);
+
+    okThread.quit();
+    QVERIFY(okThread.wait(3000));
+
+    // 用户主动拒绝：状态先改为 rejected 再终结，不算过期
+    const QString rejectPath = _tempDir->path() + "/stale-reject.txt";
+    QFile rejectSource{rejectPath};
+    QVERIFY(rejectSource.open(QIODevice::WriteOnly));
+    QCOMPARE(rejectSource.write(QByteArray("reject-payload")), qint64(14));
+    rejectSource.close();
+
+    FileSenderWorker rejectSender;
+    QThread rejectThread;
+    rejectSender.moveToThread(&rejectThread);
+    QObject::connect(&rejectThread, &QThread::started, &rejectSender, [&rejectSender, port, &rejectPath]() {
+        rejectSender.startTransfer(QStringLiteral("127.0.0.1"), port, rejectPath,
+                                   QStringLiteral("reject-sender"), QStringLiteral("RejectSender"));
+    });
+    rejectThread.start();
+
+    QVERIFY2(requestSpy.wait(5000), "第三次接收请求应在 5 秒内到达");
+    const QString rejectSessionId = requestSpy.last().at(0).toString();
+    QVERIFY(waitForStatus(rejectSessionId, "waiting_confirm"));
+    _manager->rejectReceiveSession(rejectSessionId);
+    QVERIFY(waitForStatus(rejectSessionId, "rejected"));
+    QCOMPARE(staleSpy.count(), 1);
+
+    rejectThread.quit();
+    QVERIFY(rejectThread.wait(3000));
+    _p2pServer->stop();
 }
 
 QTEST_MAIN(TestSessionManager)

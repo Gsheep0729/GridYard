@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.15.0
+* @version 7.15.1
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.15.1] GY   2026-10-03
+* * waiting_confirm 会话被后端终结时发射 sessionStale，取代 QML 轮询推断过期
 * [v7.15.0] GY   2026-10-03
 * * relay 三档策略下沉到 C++：AutoRelay 档内部自动重试中继，
 *   AskBeforeRelay 档改发 relayConfirmRequested 由 QML 纯弹窗回传
@@ -876,9 +878,11 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
                                              const QString &savedPath)
 {
     bool found = false;
+    QString previousStatus;
     QVariantMap updated;
     _model->updateSession(sessionId, [&](QVariantMap &session) {
         found = true;
+        previousStatus = session.value(kStatus).toString();
 
         session[kStatus] = finalStatus;
         session[kProgress] = finalStatus == kStatusCompleted ? 100 : session.value(kProgress).toInt();
@@ -910,6 +914,12 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
     _receiveWorkers.remove(sessionId);
 
     emit sessionsChanged();
+
+    // 会话仍停在等待确认时被后端终结（对方取消/超时/断连），通知弹窗关闭；
+    // 用户自己的拒绝/取消会先把状态改掉，不会走到这里
+    if (previousStatus == kStatusWaitingConfirm) {
+        emit sessionStale(sessionId);
+    }
 
     const bool isSend = updated.value(kType).toString() == kTypeSend;
     const QString displayName = updated.value(kFileName).toString();

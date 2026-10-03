@@ -1,11 +1,13 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.15.0
+* @version 7.15.1
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 *
 * Change Log:
+* [v7.15.1] GY   2026-10-03
+* * 新增 sessionStale 信号透传
 * [v7.15.0] GY   2026-10-03
 * * relayModeRequested 透传更名 relayConfirmRequested
 * [v7.10.0] GY   2026-10-02
@@ -42,6 +44,9 @@ TransferController::TransferController(TransferSessionManager *manager, QObject 
             this, &TransferController::receiveRequestReceived);
     connect(_manager, &TransferSessionManager::transferCompleted,
             this, &TransferController::transferCompleted);
+    // 会话过期透传，接收弹窗据此自动关闭
+    connect(_manager, &TransferSessionManager::sessionStale,
+            this, &TransferController::sessionStale);
     connect(_manager, &TransferSessionManager::errorOccurred,
             this, &TransferController::errorOccurred);
     connect(_manager, &TransferSessionManager::messageOccurred,
