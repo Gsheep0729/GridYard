@@ -1,7 +1,7 @@
 /**
  * @file    Main.qml
- * @version 7.15.1
- * @date    2026-10-02
+ * @version 7.15.4
+ * @date    2026-10-03
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
@@ -11,6 +11,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
  * Change Log:
+ * [v7.15.4] GY   2026-10-03
+ * * 底部轻提示拆出 ui/Toast.qml，暴露 show(message, isError) 接口
  * [v7.15.1] GY   2026-10-03
  * * 拖拽裁决下沉 C++，删除 QML 双数据源在线检查；接收弹窗过期改信号驱动
  * [v7.15.0] GY   2026-10-03
@@ -161,10 +163,7 @@ ApplicationWindow {
 
     // 底部 Toast 包装：错误停留更久，成功短暂反馈
     function showToast(message: string, isError: bool): void {
-        toastPopup.isError = isError
-        toastLabel.text = message
-        toastPopup.open()
-        toastTimer.restart()  // 连续提示时重置计时，避免第二条被上一条的旧计时提前关掉
+        toastPopup.show(message, isError)
     }
 
     function showErrorToast(message: string): void {
@@ -867,72 +866,8 @@ ApplicationWindow {
         }
     }
 
-    // 底部轻提示 Toast：错误与成功共用，非阻塞自动消失
-    Popup {
+    // 底部轻提示 Toast：错误与成功共用
+    Toast {
         id: toastPopup
-
-        property bool isError: true
-
-        x: parent ? (parent.width - width) / 2 : 0
-        y: parent ? parent.height - height - 32 : 0
-        width: Math.min(480, parent ? parent.width - 48 : 480)
-        padding: 12
-        modal: false
-        closePolicy: Popup.CloseOnPressOutside
-
-        enter: Transition {
-            NumberAnimation {
-                property: "opacity"; from: 0; to: 1
-                duration: mainWindow.kPopupEnterDuration
-                easing.type: Easing.OutCubic
-            }
-        }
-        exit: Transition {
-            NumberAnimation {
-                property: "opacity"; from: 1; to: 0
-                duration: Style.Motion.fast
-            }
-        }
-
-        background: Rectangle {
-            color: toastPopup.isError ? Style.Color.error : Style.Color.success
-            radius: Style.Radius.sm
-        }
-
-        contentItem: RowLayout {
-            spacing: Style.Space.sm
-
-            Rectangle {
-                Layout.preferredWidth: 18
-                Layout.preferredHeight: 18
-                radius: 9
-                color: Style.Color.textOnAccent
-                opacity: 0.25
-
-                Label {
-                    anchors.centerIn: parent
-                    text: toastPopup.isError ? "!" : "✓"
-                    color: toastPopup.isError ? Style.Color.error : Style.Color.success
-                    font.pixelSize: 11
-                    font.bold: true
-                }
-            }
-
-            Label {
-                id: toastLabel
-                Layout.fillWidth: true
-                color: Style.Color.textOnAccent
-                font.pixelSize: 13
-                wrapMode: Text.Wrap
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
-
-        Timer {
-            id: toastTimer
-            interval: toastPopup.isError ? 4500 : 3000
-            running: toastPopup.visible
-            onTriggered: toastPopup.close()
-        }
     }
 }
