@@ -1,7 +1,7 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.15.12
- * @date    2026-10-03
+ * @version 7.15.13
+ * @date    2026-10-04
  * @author  GridYard Team
  * @brief   设置对话框
  *
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.15.13] GY   2026-10-04
+ * * 版本头对齐到 v7.15.13
  * [v7.15.12] GY   2026-10-03
  * * 接收路径输入框放开只读，支持直接粘贴或手输后保存
  * [v7.15.11] GY   2026-10-03

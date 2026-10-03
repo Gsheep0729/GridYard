@@ -1,9 +1,7 @@
-.pragma library
-
 /**
  * @file    Style.js
- * @version 7.15.12
- * @date    2026-10-03
+ * @version 7.15.13
+ * @date    2026-10-04
  * @author  GY
  * @brief   QML 界面样式常量
  *
@@ -11,6 +9,8 @@
  * 状态色成对提供实色与浅底色（Soft），供标签、横幅、卡片背景使用。
  *
  * Change Log:
+ * [v7.15.13] GY   2026-10-04
+ * * 版本头对齐到 v7.15.13
  * [v7.15.12] GY   2026-10-03
  * * 新增附件胶囊用的 primarySoftHover 与 receiveAccentSoft 系语义色
  * [v7.15.11] GY   2026-10-03

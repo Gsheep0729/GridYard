@@ -1,7 +1,7 @@
 /**
 * @file    chat_controller.h
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的聊天控制器
 *
@@ -9,6 +9,8 @@
 * 去重索引和持久化事件由 ChatManager 持有。
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * sendText 透传消息接受结果供 QML 判断
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
@@ -54,8 +56,8 @@ public:
     Q_INVOKABLE QVariantList messagesForDevice(const QString &deviceId) const;
     // 获取指定设备的稳定消息模型
     Q_INVOKABLE QObject *messageModelForDevice(const QString &deviceId);
-    // 向在线设备发送文本消息
-    Q_INVOKABLE void sendText(const QString &deviceId, const QString &content);
+    // 向在线设备发送文本消息，返回消息是否被接受（false 时 QML 保留输入内容）
+    Q_INVOKABLE bool sendText(const QString &deviceId, const QString &content);
     // 清理指定设备或全部设备的运行期消息
     Q_INVOKABLE void clearMessages(const QString &deviceId = {});
 

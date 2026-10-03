@@ -1,7 +1,7 @@
 /**
 * @file    sqlite_message_repository.h
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 聊天消息 Repository 实现
 *
@@ -9,6 +9,8 @@
 * 所有 SQL 均采用预编译参数绑定，禁止字符串拼接。
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03

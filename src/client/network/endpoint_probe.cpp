@@ -1,7 +1,7 @@
 /**
 * @file    endpoint_probe.cpp
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GridYard Team
 * @brief   网络端点探测实现
 *
@@ -9,6 +9,8 @@
 * 通过状态机检测连接结果，完成后自动清理 socket 并发射信号。
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03

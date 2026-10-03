@@ -1,13 +1,15 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GY
 * @brief   在线聊天连接与内存会话测试
 *
 * 覆盖在线发送、离线拒绝、入站去重、按需重连和消息持久化。
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * 新增 sendText 返回值语义用例并回归离线拒绝与在线接受
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
@@ -58,6 +60,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void testOfflinePeerRejected();
+    void testSendTextReturnMatchesAcceptance();
     void testOnlineSendAndReconnect();
     void testIncomingMessageDeduplicated();
     void testGlareIncomingMessagePreserved();
@@ -116,12 +119,38 @@ void TestChatManager::cleanupTestCase()
 void TestChatManager::testOfflinePeerRejected()
 {
     QSignalSpy failedSpy(_manager, &ChatManager::sendFailed);
-    _manager->sendText("offline-device", "不会发送");
-
+    // 返回 false 表示消息未被接受，调用方不得清空输入内容
+    QVERIFY(!_manager->sendText("offline-device", "不会发送"));
     QCOMPARE(failedSpy.count(), 1);
     QCOMPARE(failedSpy.first().at(1).value<gy::ChatMessageError>(),
              gy::ChatMessageError::PeerOffline);
     QVERIFY(_manager->messagesForDevice("offline-device").isEmpty());
+}
+
+// 验证 sendText 返回值如实区分消息是否被接受
+void TestChatManager::testSendTextReturnMatchesAcceptance()
+{
+    // 不在发现表的设备：同步拒绝，sendFailed 到达且消息不入模型
+    QSignalSpy failedSpy(_manager, &ChatManager::sendFailed);
+    QVERIFY(!_manager->sendText("ghost-device", "未被接受的消息"));
+    QCOMPARE(failedSpy.count(), 1);
+    QVERIFY(_manager->messagesForDevice("ghost-device").isEmpty());
+
+    // 在线桩设备：消息被接受先入模型，不触发同步失败
+    QTcpServer peerServer;
+    QVERIFY(peerServer.listen(QHostAddress::LocalHost, 0));
+    const QString deviceId = "accepting-peer";
+    addOnlinePeer(deviceId, peerServer.serverPort());
+    failedSpy.clear();
+    QVERIFY(_manager->sendText(deviceId, "被接受的消息"));
+    QCOMPARE(failedSpy.count(), 0);
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 1, 3000);
+
+    QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
+    QTcpSocket *peerSocket = peerServer.nextPendingConnection();
+    QVERIFY(peerSocket != nullptr);
+    peerSocket->disconnectFromHost();
+    peerSocket->deleteLater();
 }
 
 // 验证在线设备可发送并在断线后按需重连
@@ -132,7 +161,7 @@ void TestChatManager::testOnlineSendAndReconnect()
     const QString deviceId = "online-peer";
     addOnlinePeer(deviceId, peerServer.serverPort());
 
-    _manager->sendText(deviceId, "第一条消息");
+    QVERIFY(_manager->sendText(deviceId, "第一条消息"));
     QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
     QTcpSocket *firstSocket = peerServer.nextPendingConnection();
     QVERIFY(firstSocket != nullptr);

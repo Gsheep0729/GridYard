@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -10,6 +10,8 @@
 * waiting_confirm 会话过期信号
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03

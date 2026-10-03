@@ -1,11 +1,13 @@
 /**
 * @file    chat_controller.cpp
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的聊天控制器实现
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * sendText 透传消息接受结果供 QML 判断
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
@@ -61,12 +63,10 @@ QObject *ChatController::messageModelForDevice(const QString &deviceId)
     return _manager ? _manager->messageModelForDevice(deviceId) : nullptr;
 }
 
-// 向在线设备发送文本消息
-void ChatController::sendText(const QString &deviceId, const QString &content)
+// 向在线设备发送文本消息，返回消息是否被接受（QML 据此决定是否清空输入框）
+bool ChatController::sendText(const QString &deviceId, const QString &content)
 {
-    if (_manager) {
-        _manager->sendText(deviceId, content);
-    }
+    return _manager && _manager->sendText(deviceId, content);
 }
 
 // 清理指定设备或全部设备的运行期消息

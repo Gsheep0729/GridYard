@@ -1,7 +1,7 @@
 /**
 * @file    chat_manager.h
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
 *
@@ -9,6 +9,8 @@
 * 已发现在线的设备发起连接，不创建离线待投递队列。
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * sendText 返回消息是否被接受，同步失败不再丢失输入内容
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
@@ -65,8 +67,8 @@ public:
     QVariantList messagesForDevice(const QString &deviceId) const;
     // 获取设备对应的稳定消息模型
     QObject *messageModelForDevice(const QString &deviceId);
-    // 向在线设备发送文本消息
-    void sendText(const QString &deviceId, const QString &content);
+    // 向在线设备发送文本消息，返回消息是否被接受（false 时调用方不得清空输入）
+    bool sendText(const QString &deviceId, const QString &content);
     // 清理一个或全部运行期会话
     void clearMessages(const QString &deviceId = {});
     // 仅从当前会话模型移除一条已删除的本地历史消息

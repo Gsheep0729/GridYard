@@ -1,7 +1,7 @@
 /**
 * @file    chat_manager.cpp
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
 *
@@ -11,6 +11,8 @@
 * 由 AppController 异步提交持久化任务。
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * sendText 返回消息是否被接受，同步拒绝返回 false，异步入模后返回 true
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03
@@ -79,19 +81,20 @@ QObject *ChatManager::messageModelForDevice(const QString &deviceId)
     return modelForDevice(deviceId);
 }
 
-// 向在线设备发送文本消息
-void ChatManager::sendText(const QString &deviceId, const QString &content)
+// 向在线设备发送文本消息，返回消息是否被接受；false 表示未入会话模型，
+// 调用方必须保留输入内容等待用户重试
+bool ChatManager::sendText(const QString &deviceId, const QString &content)
 {
     if (!_config || !_discovery || !_p2pServer) {
         emit sendFailed(deviceId, gy::ChatMessageError::ConnectionFailed, tr("聊天服务尚未初始化"));
-        return;
+        return false;
     }
 
     const QVariantMap endpoint = _discovery->transferEndpoint(deviceId);
     if (endpoint.isEmpty()) {
         // Stage 5 不维护离线队列，离线消息不能伪装成已发送。
         emit sendFailed(deviceId, gy::ChatMessageError::PeerOffline, tr("目标设备不在线"));
-        return;
+        return false;
     }
 
     gy::ChatMessage message;
@@ -105,19 +108,21 @@ void ChatManager::sendText(const QString &deviceId, const QString &content)
     ChatConnection *connection = connectionForDevice(deviceId);
     if (!connection) {
         emit sendFailed(deviceId, gy::ChatMessageError::ConnectionFailed, tr("无法创建聊天连接"));
-        return;
+        return false;
     }
 
-    gy::ChatMessageError error = gy::ChatMessageError::None;
-    QString errorMessage;
     // 先展示发送中状态，网络写入完成前不将消息视为可恢复历史。
     appendMessage(deviceId, message, true, MessageStatus::Pending);
+    gy::ChatMessageError error = gy::ChatMessageError::None;
+    QString errorMessage;
     if (!connection->sendMessage(message, &error, &errorMessage)) {
         // 编码失败不会触发 messageWriteFailed，因此在此同步撤销待持久化记录。
         _pendingRecords.remove(message.messageId);
         updateMessageStatus(deviceId, message.messageId, MessageStatus::Failed);
         emit sendFailed(deviceId, error, errorMessage);
     }
+    // 走到此处消息已进入会话模型，即使以失败态展示内容也不会凭空丢失。
+    return true;
 }
 
 // 清理指定设备或全部设备的运行期消息

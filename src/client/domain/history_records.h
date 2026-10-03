@@ -1,13 +1,15 @@
 /**
 * @file    history_records.h
-* @version 7.15.12
-* @date    2026-10-03
+* @version 7.15.13
+* @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地历史持久化领域记录
 *
 * 应用层与存储层之间使用的纯值类型，不含 Qt Sql 或 QML 类型。
 *
 * Change Log:
+* [v7.15.13] GY   2026-10-04
+* * 版本头对齐到 v7.15.13
 * [v7.15.12] GY   2026-10-03
 * 版本头对齐到 v7.15.12
 * [v7.15.11] GY   2026-10-03

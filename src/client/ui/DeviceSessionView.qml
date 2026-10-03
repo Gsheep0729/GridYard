@@ -1,7 +1,7 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 7.15.12
- * @date    2026-10-03
+ * @version 7.15.13
+ * @date    2026-10-04
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
  *
@@ -9,6 +9,8 @@
  * 设备离线时在页内给出明确状态提示。
  *
  * Change Log:
+ * [v7.15.13] GY   2026-10-04
+ * * 版本头对齐到 v7.15.13
  * [v7.15.12] GY   2026-10-03
  * * 附件入口改为点 + 后在输入框内原位展开的文件/文件夹胶囊，去掉弹出菜单
  * [v7.15.11] GY   2026-10-03
@@ -76,14 +78,15 @@ Frame {
    // 接近协议上限时才显示字符计数，避免常驻噪音
    readonly property bool showCharCounter: messageInput.text.length > 3600
 
-   // 校验输入后发送文本消息并清空输入框
+   // 校验输入后发送文本消息；返回 false 表示消息未被接受，保留输入与错误提示等待重试
    function sendChatMessage(): void {
        if (!canSendChat) {
            return
        }
-       AppController.chatController.sendText(deviceId, messageInput.text)
-       messageInput.clear()
-       chatError = ""
+       const accepted = AppController.chatController.sendText(deviceId, messageInput.text)
+       if (accepted) {
+           messageInput.clear()
+       }
    }
 
    // 使用 Object.assign 浅拷贝再修改，触发 QML 属性绑定更新
