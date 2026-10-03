@@ -16,6 +16,7 @@
 
 #include "application_paths.h"
 #include "history_records.h"
+#include "db_seed.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
 #include "sqlite_transfer_history_repository.h"
@@ -305,28 +306,17 @@ void TestStorageTransferHistory::testReopenDatabase()
 
 std::unique_ptr<SqliteDatabaseBroker> TestStorageTransferHistory::openDatabase(const QString &relativePath)
 {
-    auto database = std::make_unique<SqliteDatabaseBroker>();
-    QString error;
-    if (!database->initialize(_temporaryDir.path() + "/" + relativePath, &error)) {
-        qWarning() << error;
-        return {};
-    }
-    return database;
+    return gy::test::openDatabase(_temporaryDir.path(), relativePath);
 }
 
 void TestStorageTransferHistory::seedDevice(SqliteDatabaseBroker &database, const QString &deviceId,
                                             const QString &name)
 {
-    SqliteDeviceRepository repository(&database);
-    PeerRecord peer;
-    peer.deviceId = deviceId;
-    peer.deviceName = name;
-    peer.lastIpAddress = "192.168.1.10";
-    peer.lastTcpPort = 35100;
-    peer.firstSeenAt = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
-    peer.lastSeenAt = peer.firstSeenAt;
-    QString error;
-    QVERIFY2(repository.upsertPeer(peer, &error), qPrintable(error));
+    QVERIFY2(gy::test::seedDevice(database, deviceId, name,
+                                  QDateTime::fromString("2026-06-25T15:00:00.000Z",
+                                                        Qt::ISODateWithMs),
+                                  QStringLiteral("192.168.1.10"), 35100),
+             "seedDevice 失败");
 }
 
 TransferRecord TestStorageTransferHistory::makeRecord(const QString &sessionId,
@@ -352,16 +342,7 @@ TransferRecord TestStorageTransferHistory::makeRecord(const QString &sessionId,
 
 int TestStorageTransferHistory::transferRowCount(SqliteDatabaseBroker &database)
 {
-    QString error;
-    QSqlDatabase connection = database.connectionForWorkerThread(&error);
-    if (!connection.isValid())
-        return -1;
-    QSqlQuery query(connection);
-    if (!query.exec("SELECT COUNT(*) FROM transfer_history"))
-        return -1;
-    if (!query.next())
-        return -1;
-    return query.value(0).toInt();
+    return gy::test::tableRowCount(database, QStringLiteral("transfer_history"));
 }
 
 QTEST_MAIN(TestStorageTransferHistory)

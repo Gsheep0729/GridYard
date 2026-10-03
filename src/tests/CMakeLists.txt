@@ -6,6 +6,10 @@ find_package(Qt6 REQUIRED COMPONENTS Test Gui)
 set(CLIENT_CORE_DIR ${CMAKE_SOURCE_DIR}/client/core)
 set(CLIENT_NET_DIR ${CMAKE_SOURCE_DIR}/client/network)
 
+# --- 测试公共工具（header-only：JSON 行读写、数据库种子、轮询等待、临时端口） ---
+add_library(gy_test_utils INTERFACE)
+target_include_directories(gy_test_utils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/test_utils)
+
 # --- SQLite 数据库基础测试 ---
 qt_add_executable(test_storage_database test_storage_database.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
@@ -22,7 +26,8 @@ add_test(NAME test_storage_database COMMAND test_storage_database)
 qt_add_executable(test_storage_device test_storage_device.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
-target_link_libraries(test_storage_device PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_link_libraries(test_storage_device PRIVATE
+    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
 target_include_directories(test_storage_device PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
@@ -34,7 +39,8 @@ add_test(NAME test_storage_device COMMAND test_storage_device)
 qt_add_executable(test_storage_message test_storage_message.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
-target_link_libraries(test_storage_message PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_link_libraries(test_storage_message PRIVATE
+    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
 target_include_directories(test_storage_message PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
@@ -46,7 +52,8 @@ add_test(NAME test_storage_message COMMAND test_storage_message)
 qt_add_executable(test_storage_transfer_history test_storage_transfer_history.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
-target_link_libraries(test_storage_transfer_history PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_link_libraries(test_storage_transfer_history PRIVATE
+    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
 target_include_directories(test_storage_transfer_history PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
@@ -118,6 +125,7 @@ qt_add_executable(test_history_controller test_history_controller.cpp
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_history_controller PRIVATE
+    gy_test_utils
     gy_shared
     gy_storage
     Qt6::Test
@@ -158,7 +166,8 @@ add_test(NAME test_transfer COMMAND test_transfer)
 qt_add_executable(test_endpoint_probe test_endpoint_probe.cpp
     ${CLIENT_NET_DIR}/endpoint_probe.cpp
 )
-target_link_libraries(test_endpoint_probe PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Network)
+target_link_libraries(test_endpoint_probe PRIVATE
+    gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Network)
 target_include_directories(test_endpoint_probe PRIVATE
     ${CLIENT_NET_DIR}
     ${CMAKE_SOURCE_DIR}/shared
@@ -216,7 +225,8 @@ qt_add_executable(test_file_transfer test_file_transfer.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
-target_link_libraries(test_file_transfer PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_link_libraries(test_file_transfer PRIVATE
+    gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
 target_include_directories(test_file_transfer PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
@@ -241,7 +251,8 @@ qt_add_executable(test_session_manager test_session_manager.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
-target_link_libraries(test_session_manager PRIVATE gy_shared gy_rendezvous Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_link_libraries(test_session_manager PRIVATE
+    gy_test_utils gy_shared gy_rendezvous Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
 target_include_directories(test_session_manager PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
@@ -286,6 +297,7 @@ qt_add_executable(test_relay_chain test_relay_chain.cpp
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_relay_chain PRIVATE
+    gy_test_utils
     gy_rendezvous
     gy_shared
     Qt6::Test
@@ -313,6 +325,7 @@ qt_add_executable(test_rendezvous_coordinator test_rendezvous_coordinator.cpp
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_rendezvous_coordinator PRIVATE
+    gy_test_utils
     gy_shared
     gy_rendezvous
     Qt6::Test

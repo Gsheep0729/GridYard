@@ -25,6 +25,7 @@
 #include "history_records.h"
 #include "history_repositories.h"
 #include "local_data_broker.h"
+#include "db_seed.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
 #include "sqlite_message_repository.h"
@@ -244,10 +245,9 @@ void TestHistoryController::testDeleteMessageOnlyAffectsTarget()
     HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     controller.deleteMessage("peer-F", "del-002");
-    QTest::qWait(500);
-
-    QCOMPARE(chat.messagesForDevice("peer-F").size(), 1);
-    QCOMPARE(messageRowCount(*database), 1);
+    // 异步删除经存储线程回投，轮询等待最终状态而不是固定等待
+    QTRY_COMPARE(chat.messagesForDevice("peer-F").size(), 1);
+    QTRY_COMPARE(messageRowCount(*database), 1);
 
 }
 
@@ -292,9 +292,7 @@ void TestHistoryController::testDeleteConversationOnlyAffectsTarget()
     HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     controller.deleteConversation("peer-G");
-    QTest::qWait(500);
-
-    QVERIFY(chat.messagesForDevice("peer-G").isEmpty());
+    QTRY_VERIFY(chat.messagesForDevice("peer-G").isEmpty());
     QCOMPARE(chat.messagesForDevice("peer-H").size(), 1);
 
 }
@@ -320,10 +318,8 @@ void TestHistoryController::testDeleteTransferOnlyAffectsTarget()
     QCOMPARE(controller.transfers().size(), 2);
 
     controller.deleteTransfer("record-s-i1");
-    QTest::qWait(500);
-
-    QCOMPARE(controller.transfers().size(), 1);
-    QCOMPARE(transferRowCount(*database), 1);
+    QTRY_COMPARE(controller.transfers().size(), 1);
+    QTRY_COMPARE(transferRowCount(*database), 1);
 
 }
 
@@ -343,9 +339,7 @@ void TestHistoryController::testClearAllMessagesPreservesDevices()
     HistoryController controller(&chat, nullptr, nullptr, dataBroker.get());
 
     controller.clearAllMessages();
-    QTest::qWait(500);
-
-    QCOMPARE(messageRowCount(*database), 0);
+    QTRY_COMPARE(messageRowCount(*database), 0);
     QCOMPARE(deviceRowCount(*database), 1);
 
 }
@@ -365,9 +359,7 @@ void TestHistoryController::testClearAllTransfersPreservesDevices()
     HistoryController controller(nullptr, nullptr, nullptr, dataBroker.get());
 
     controller.clearAllTransfers();
-    QTest::qWait(500);
-
-    QCOMPARE(transferRowCount(*database), 0);
+    QTRY_COMPARE(transferRowCount(*database), 0);
     QCOMPARE(deviceRowCount(*database), 1);
 
 }
@@ -399,9 +391,7 @@ void TestHistoryController::testRetentionDaysCleansExpired()
     HistoryController controller(&chat, nullptr, config, dataBroker.get());
 
     controller.cleanupExpiredRecords();
-    QTest::qWait(500);
-
-    QCOMPARE(messageRowCount(*database), 1);
+    QTRY_COMPARE(messageRowCount(*database), 1);
     QCOMPARE(transferRowCount(*database), 1);
     QCOMPARE(deviceRowCount(*database), 1);
 
@@ -578,13 +568,7 @@ void TestHistoryController::testHistoryControllerRecoversAfterDegradedQuery()
 std::unique_ptr<SqliteDatabaseBroker> TestHistoryController::openDatabase(
     const QString &relativePath)
 {
-    auto database = std::make_unique<SqliteDatabaseBroker>();
-    QString error;
-    if (!database->initialize(_temporaryDir.path() + "/" + relativePath, &error)) {
-        qWarning() << error;
-        return nullptr;
-    }
-    return database;
+    return gy::test::openDatabase(_temporaryDir.path(), relativePath);
 }
 
 std::unique_ptr<LocalDataBroker> TestHistoryController::openDataBroker(const QString &relativePath)
@@ -601,16 +585,9 @@ std::unique_ptr<LocalDataBroker> TestHistoryController::openDataBroker(const QSt
 void TestHistoryController::seedDevice(SqliteDatabaseBroker &database,
                                        const QString &deviceId, const QString &name)
 {
-    SqliteDeviceRepository repository(&database);
-    PeerRecord peer;
-    peer.deviceId = deviceId;
-    peer.deviceName = name;
-    peer.lastIpAddress = "192.168.1.10";
-    peer.lastTcpPort = 35100;
-    peer.firstSeenAt = QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs);
-    peer.lastSeenAt = peer.firstSeenAt;
-    QString error;
-    repository.upsertPeer(peer, &error);
+    gy::test::seedDevice(database, deviceId, name,
+                         QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs),
+                         QStringLiteral("192.168.1.10"), 35100);
 }
 
 void TestHistoryController::seedMessage(SqliteMessageRepository &repository, const QString &deviceId,
@@ -627,8 +604,7 @@ void TestHistoryController::seedMessage(SqliteMessageRepository &repository, con
     record.sentAt = sentAt;
     record.localStatus = 1;
     record.createdAt = sentAt;
-    QString error;
-    repository.saveMessage(record, &error);
+    gy::test::seedMessage(repository, record);
 }
 
 void TestHistoryController::seedTransfer(SqliteTransferHistoryRepository &repository,
@@ -651,50 +627,22 @@ void TestHistoryController::seedTransfer(SqliteTransferHistoryRepository &reposi
     record.startedAt = startedAt;
     record.finishedAt = startedAt.addSecs(30);
     record.errorCode = 0;
-    QString error;
-    repository.upsertFinishedTransfer(record, &error);
+    gy::test::seedTransfer(repository, record);
 }
 
 int TestHistoryController::messageRowCount(SqliteDatabaseBroker &database)
 {
-    QString error;
-    QSqlDatabase conn = database.connectionForWorkerThread(&error);
-    if (!conn.isValid())
-        return -1;
-    QSqlQuery query(conn);
-    if (!query.exec("SELECT COUNT(*) FROM chat_messages"))
-        return -1;
-    if (!query.next())
-        return -1;
-    return query.value(0).toInt();
+    return gy::test::tableRowCount(database, QStringLiteral("chat_messages"));
 }
 
 int TestHistoryController::transferRowCount(SqliteDatabaseBroker &database)
 {
-    QString error;
-    QSqlDatabase conn = database.connectionForWorkerThread(&error);
-    if (!conn.isValid())
-        return -1;
-    QSqlQuery query(conn);
-    if (!query.exec("SELECT COUNT(*) FROM transfer_history"))
-        return -1;
-    if (!query.next())
-        return -1;
-    return query.value(0).toInt();
+    return gy::test::tableRowCount(database, QStringLiteral("transfer_history"));
 }
 
 int TestHistoryController::deviceRowCount(SqliteDatabaseBroker &database)
 {
-    QString error;
-    QSqlDatabase conn = database.connectionForWorkerThread(&error);
-    if (!conn.isValid())
-        return -1;
-    QSqlQuery query(conn);
-    if (!query.exec("SELECT COUNT(*) FROM peer_devices"))
-        return -1;
-    if (!query.next())
-        return -1;
-    return query.value(0).toInt();
+    return gy::test::tableRowCount(database, QStringLiteral("peer_devices"));
 }
 
 QTEST_MAIN(TestHistoryController)

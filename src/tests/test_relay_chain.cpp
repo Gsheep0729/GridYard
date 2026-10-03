@@ -1,6 +1,6 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.15.6
+* @version 7.15.7
 * @date    2026-10-03
 * @author  GY
 * @brief   Relay 降级链路测试
@@ -11,6 +11,8 @@
 * TTL 夹紧、relay_id 复用竞态、响应写积压断开、会话等待超时）。
 *
 * Change Log:
+* [v7.15.7] GY   2026-10-03
+* * JSON 行读写与轮询等待改用 tests/test_utils 公共工具
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.14.0] GY   2026-10-03
@@ -27,7 +29,6 @@
 
 #include <QtTest/QtTest>
 #include <QElapsedTimer>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -45,66 +46,14 @@
 #include "rendezvous_client.h"
 #include "rendezvous_server.h"
 
-namespace {
+#include "test_utils/json_line.h"
+#include "test_utils/wait.h"
 
-// 等待 socket 建立连接（事件循环驱动，保证 QTcpServer 能并行处理新连接）
-bool waitConnected(QTcpSocket *socket, int timeoutMs = 3000)
-{
-    QElapsedTimer elapsed;
-    elapsed.start();
-    while (socket->state() != QAbstractSocket::ConnectedState && !elapsed.hasExpired(timeoutMs)) {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    }
-    return socket->state() == QAbstractSocket::ConnectedState;
-}
-
-// 等待读取一行 JSON（事件循环驱动，仅用于协议往返断言）
-QJsonObject readJsonLine(QTcpSocket *socket, int timeoutMs = 3000)
-{
-    QByteArray buffer;
-    QElapsedTimer elapsed;
-    elapsed.start();
-
-    while (!buffer.contains('\n')) {
-        if (elapsed.hasExpired(timeoutMs)) {
-            return {};
-        }
-        buffer += socket->readAll();
-        if (buffer.contains('\n')) {
-            break;
-        }
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    }
-
-    const int newlineIndex = buffer.indexOf('\n');
-    const QJsonDocument doc = QJsonDocument::fromJson(buffer.left(newlineIndex));
-    return doc.object();
-}
-
-// 发送一行 JSON
-void writeJsonLine(QTcpSocket *socket, const QJsonObject &json)
-{
-    socket->write(QJsonDocument(json).toJson(QJsonDocument::Compact) + '\n');
-    socket->flush();
-}
-
-// 等待 socket 读到至少 expected 字节并返回已读数据
-QByteArray waitBytes(QTcpSocket *socket, int expected, int timeoutMs = 3000)
-{
-    QByteArray data;
-    QElapsedTimer elapsed;
-    elapsed.start();
-    while (data.size() < expected && !elapsed.hasExpired(timeoutMs)) {
-        data += socket->readAll();
-        if (data.size() >= expected) {
-            break;
-        }
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    }
-    return data;
-}
-
-}
+// JSON 行读写与轮询等待复用测试公共工具
+using gy::test::readJsonLine;
+using gy::test::waitBytes;
+using gy::test::waitConnected;
+using gy::test::writeJsonLine;
 
 class TestRelayChain : public QObject {
     Q_OBJECT

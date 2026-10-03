@@ -19,6 +19,7 @@
 
 #include "application_paths.h"
 #include "history_records.h"
+#include "db_seed.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
 #include "sqlite_message_repository.h"
@@ -329,14 +330,7 @@ void TestStorageMessage::testReopenDatabase()
 // 工具方法：在临时目录中创建并初始化数据库
 std::unique_ptr<SqliteDatabaseBroker> TestStorageMessage::openDatabase(const QString &relativePath)
 {
-    auto database = std::make_unique<SqliteDatabaseBroker>();
-    const QString path = _temporaryDir.path() + "/" + relativePath;
-    QString error;
-    if (!database->initialize(path, &error)) {
-        qWarning() << "数据库初始化失败:" << error;
-        return nullptr;
-    }
-    return database;
+    return gy::test::openDatabase(_temporaryDir.path(), relativePath);
 }
 
 // 工具方法：向数据库写入一个设备记录（消息 Repository 依赖 peer_devices FK）
@@ -344,14 +338,10 @@ void TestStorageMessage::seedDevice(SqliteDatabaseBroker &database,
                                      const QString &deviceId,
                                      const QString &name)
 {
-    SqliteDeviceRepository deviceRepository(&database);
-    PeerRecord peer;
-    peer.deviceId = deviceId;
-    peer.deviceName = name;
-    peer.firstSeenAt = QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs);
-    peer.lastSeenAt = peer.firstSeenAt;
-    QString error;
-    QVERIFY2(deviceRepository.upsertPeer(peer, &error), qPrintable(error));
+    QVERIFY2(gy::test::seedDevice(database, deviceId, name,
+                                  QDateTime::fromString("2026-06-25T09:00:00.000Z",
+                                                        Qt::ISODateWithMs)),
+             "seedDevice 失败");
 }
 
 // 工具方法：构造一条固定字段的消息记录
@@ -375,31 +365,13 @@ MessageRecord TestStorageMessage::makeRecord(const QString &deviceId, const QStr
 // 工具方法：统计 chat_messages 行数
 int TestStorageMessage::messageRowCount(SqliteDatabaseBroker &database)
 {
-    QString error;
-    QSqlDatabase connection = database.connectionForWorkerThread(&error);
-    if (!connection.isValid())
-        return -1;
-    QSqlQuery query(connection);
-    if (!query.exec("SELECT COUNT(*) FROM chat_messages"))
-        return -1;
-    if (!query.next())
-        return -1;
-    return query.value(0).toInt();
+    return gy::test::tableRowCount(database, QStringLiteral("chat_messages"));
 }
 
 // 工具方法：统计 chat_conversations 行数
 int TestStorageMessage::conversationRowCount(SqliteDatabaseBroker &database)
 {
-    QString error;
-    QSqlDatabase connection = database.connectionForWorkerThread(&error);
-    if (!connection.isValid())
-        return -1;
-    QSqlQuery query(connection);
-    if (!query.exec("SELECT COUNT(*) FROM chat_conversations"))
-        return -1;
-    if (!query.next())
-        return -1;
-    return query.value(0).toInt();
+    return gy::test::tableRowCount(database, QStringLiteral("chat_conversations"));
 }
 
 QTEST_MAIN(TestStorageMessage)

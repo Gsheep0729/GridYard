@@ -1,6 +1,6 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 7.15.6
+* @version 7.15.7
 * @date    2026-10-03
 * @author  GY
 * @brief   文件传输完整流程测试
@@ -8,6 +8,8 @@
 * 测试用例：单文件传输 / 多文件传输 / 取消传输 / 超时处理 / SHA-256 校验
 *
 * Change Log:
+* [v7.15.7] GY   2026-10-03
+* * 时间取模与连号递增端口改为逐用例申请系统空闲端口
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.14.2] GY   2026-10-03
@@ -63,6 +65,8 @@
 #include "dir_serializer.h"
 #include "protocol.h"
 #include "transfer_session_manager.h"
+
+#include "test_utils/port.h"
 
 using gy::DirSerializer;
 
@@ -122,8 +126,6 @@ void TestFileTransfer::initTestCase()
     qputenv("GRIDYARD_NAME", "TestSender");
     _config = ConfigManager::create(nullptr, nullptr);
 
-    // 使用随机端口避免冲突
-    _testPort = 35100 + (QDateTime::currentMSecsSinceEpoch() % 1000);
 }
 
 // 测试套件清理：释放临时目录和配置资源
@@ -186,6 +188,7 @@ void TestFileTransfer::testSingleFileTransfer()
     createTestFile(sendPath, "Hello, GridYard!");
 
     // 启动接收服务器
+    _testPort = gy::test::allocateEphemeralPort();
     _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
@@ -284,7 +287,8 @@ void TestFileTransfer::testDirectoryTransferEndToEnd()
     createTestFile(sourcePath + "/nested/zz_empty.txt", QByteArray());
 
     _config->setReceivePath(_recvDir->path());
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -345,7 +349,8 @@ void TestFileTransfer::testEmptyDirectoryTransferEndToEnd()
     QVERIFY(QDir().mkpath(sourcePath));
 
     _config->setReceivePath(_recvDir->path());
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -397,7 +402,8 @@ void TestFileTransfer::testLargeFileTransferEndToEnd()
     sourceFile.close();
 
     _config->setReceivePath(_recvDir->path());
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -453,7 +459,8 @@ void TestFileTransfer::testAutoAcceptAndSave()
 
     _config->setReceivePath(_recvDir->path());
     _config->setAutoAcceptFiles(true);
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
 
     DiscoveryService discovery(_config);
     P2pServer server(_config);
@@ -534,7 +541,8 @@ void TestFileTransfer::testPersistFinishedReceiveSession()
 
     _config->setReceivePath(_recvDir->path());
     _config->setAutoAcceptFiles(true);
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
 
     DiscoveryService discovery(_config);
     P2pServer server(_config);
@@ -586,7 +594,8 @@ void TestFileTransfer::testPersistCancelledReceiveSession()
 
     _config->setReceivePath(_recvDir->path());
     _config->setAutoAcceptFiles(false);
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
 
     DiscoveryService discovery(_config);
     P2pServer server(_config);
@@ -636,7 +645,8 @@ void TestFileTransfer::testReceiveFolderPreview()
     createTestFile(sourcePath + "/nested/child.png", "child");
 
     _config->setAutoAcceptFiles(false);
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
 
     DiscoveryService discovery(_config);
     P2pServer server(_config);
@@ -686,7 +696,8 @@ void TestFileTransfer::testCancelTransfer()
     sourceFile.close();
 
     _config->setReceivePath(_recvDir->path());
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -996,7 +1007,8 @@ void TestFileTransfer::testSpecialCharFileName()
 void TestFileTransfer::testProtocolVersionMismatch()
 {
     // 构造一个主版本号不同的 TransferReq，发送到接收端，应被拒绝
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -1043,7 +1055,8 @@ void TestFileTransfer::testProtocolVersionMismatch()
 void TestFileTransfer::testMalformedTransferRequest()
 {
     // 发送畸形 JSON 到接收端，应被拒绝且不崩溃
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -1129,7 +1142,8 @@ void TestFileTransfer::testMalformedTransferRequest()
 void TestFileTransfer::testInvalidFilePath()
 {
     // 发送包含危险路径的 TransferReq，应被拒绝
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -1253,7 +1267,8 @@ void TestFileTransfer::testInvalidFilePath()
 
 void TestFileTransfer::testChatConnectionRouting()
 {
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 
@@ -1311,7 +1326,8 @@ void TestFileTransfer::testChatConnectionRouting()
 
 void TestFileTransfer::testUnsupportedFirstFrameRejected()
 {
-    _config->setTcpPort(++_testPort);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
     P2pServer server(_config);
     QVERIFY(server.start());
 

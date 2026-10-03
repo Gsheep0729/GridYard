@@ -18,6 +18,7 @@
 #include <QtTest/QtTest>
 
 #include "application_paths.h"
+#include "db_seed.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
 
@@ -249,14 +250,7 @@ void TestStorageDevice::testReopenDatabase()
 // 工具方法：在临时目录中创建并初始化数据库
 std::unique_ptr<SqliteDatabaseBroker> TestStorageDevice::openDatabase(const QString &relativePath)
 {
-    auto database = std::make_unique<SqliteDatabaseBroker>();
-    const QString path = _temporaryDir.path() + "/" + relativePath;
-    QString error;
-    if (!database->initialize(path, &error)) {
-        qWarning() << "数据库初始化失败:" << error;
-        return nullptr;
-    }
-    return database;
+    return gy::test::openDatabase(_temporaryDir.path(), relativePath);
 }
 
 // 工具方法：构造一份固定的 PeerRecord
@@ -276,16 +270,7 @@ PeerRecord TestStorageDevice::makeRecord(const QString &deviceId, const QString 
 // 工具方法：统计 peer_devices 表行数
 int TestStorageDevice::peerRowCount(SqliteDatabaseBroker &database)
 {
-    QString error;
-    QSqlDatabase connection = database.connectionForWorkerThread(&error);
-    if (!connection.isValid())
-        return -1;
-    QSqlQuery query(connection);
-    if (!query.exec("SELECT COUNT(*) FROM peer_devices"))
-        return -1;
-    if (!query.next())
-        return -1;
-    return query.value(0).toInt();
+    return gy::test::tableRowCount(database, QStringLiteral("peer_devices"));
 }
 
 QTEST_MAIN(TestStorageDevice)

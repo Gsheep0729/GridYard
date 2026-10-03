@@ -1,6 +1,6 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 7.15.6
+* @version 7.15.7
 * @date    2026-10-03
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
@@ -9,16 +9,15 @@
 * 修改端口即时切换服务器（修复"改配置需重启"）。
 *
 * Change Log:
+* [v7.15.7] GY   2026-10-03
+* * JSON 行读写与连接等待改用 tests/test_utils 公共工具
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 */
 
 #include <QtTest/QtTest>
 #include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QJsonDocument>
 #include <QJsonObject>
-#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTcpSocket>
 
@@ -30,39 +29,12 @@
 #include "rendezvous_coordinator.h"
 #include "rendezvous_server.h"
 
-namespace {
+#include "test_utils/json_line.h"
+#include "test_utils/wait.h"
 
-// 等待读取一行 JSON（事件循环驱动）
-QJsonObject readJsonLine(QTcpSocket *socket, int timeoutMs = 3000)
-{
-    QByteArray buffer;
-    QElapsedTimer elapsed;
-    elapsed.start();
-
-    while (!buffer.contains('\n')) {
-        if (elapsed.hasExpired(timeoutMs)) {
-            return {};
-        }
-        buffer += socket->readAll();
-        if (buffer.contains('\n')) {
-            break;
-        }
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    }
-
-    const int newlineIndex = buffer.indexOf('\n');
-    const QJsonDocument doc = QJsonDocument::fromJson(buffer.left(newlineIndex));
-    return doc.object();
-}
-
-// 发送一行 JSON
-void writeJsonLine(QTcpSocket *socket, const QJsonObject &json)
-{
-    socket->write(QJsonDocument(json).toJson(QJsonDocument::Compact) + '\n');
-    socket->flush();
-}
-
-}
+// JSON 行读写复用测试公共工具
+using gy::test::readJsonLine;
+using gy::test::writeJsonLine;
 
 class TestRendezvousCoordinator : public QObject {
     Q_OBJECT
@@ -130,13 +102,7 @@ QTcpSocket *TestRendezvousCoordinator::registerHelperDevice(RendezvousServer *se
     socket->connectToHost(QHostAddress::LocalHost, server->serverPort());
 
     // 辅助函数返回指针，不能使用会展开成 return 的 QVERIFY 宏
-    QElapsedTimer elapsed;
-    elapsed.start();
-    while (socket->state() != QAbstractSocket::ConnectedState
-           && !elapsed.hasExpired(3000)) {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    }
-    if (socket->state() != QAbstractSocket::ConnectedState) {
+    if (!gy::test::waitConnected(socket)) {
         qWarning() << "辅助设备连接协调服务器超时";
         return nullptr;
     }

@@ -1,6 +1,6 @@
 /**
 * @file    test_endpoint_probe.cpp
-* @version 7.15.6
+* @version 7.15.7
 * @date    2026-10-03
 * @author  GridYard Team
 * @brief   EndpointProbe 单元测试
@@ -8,6 +8,8 @@
 * 测试 TCP 探测功能：非法 IP、未监听端口、本机监听端口等场景。
 *
 * Change Log:
+* [v7.15.7] GY   2026-10-03
+* * 硬编码的 65432/65433 改为 QTcpServer 预分配空闲端口
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.0.0] GY   2026-07-21
@@ -15,6 +17,8 @@
 */
 
 #include "endpoint_probe.h"
+
+#include "test_utils/port.h"
 
 #include <QHostAddress>
 #include <QTcpServer>
@@ -91,8 +95,9 @@ void TestEndpointProbe::testConnectionRefused()
         QCoreApplication::quit();
     });
 
-    // 尝试连接本机未监听的端口
-    probe.probeTcp("127.0.0.1", 65432, 3000);
+    // 先占用再释放一个系统端口，连接它应被拒绝
+    const quint16 deadPort = gy::test::allocateEphemeralPort();
+    probe.probeTcp("127.0.0.1", deadPort, 3000);
     QCoreApplication::exec();
 
     QVERIFY(finished);
@@ -144,8 +149,9 @@ void TestEndpointProbe::testConnectionTimeout()
         QCoreApplication::quit();
     });
 
-    // 使用本机未使用的端口，模拟端口可达但无响应
-    probe.probeTcp("127.0.0.1", 65433, 500);
+    // 先占用再释放一个系统端口，模拟端口可达但无响应
+    const quint16 silentPort = gy::test::allocateEphemeralPort();
+    probe.probeTcp("127.0.0.1", silentPort, 500);
     QCoreApplication::exec();
 
     QVERIFY(finished);

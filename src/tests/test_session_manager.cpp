@@ -1,6 +1,6 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.15.6
+* @version 7.15.7
 * @date    2026-10-03
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
@@ -10,6 +10,8 @@
 * waiting_confirm 会话过期信号
 *
 * Change Log:
+* [v7.15.7] GY   2026-10-03
+* * 会话状态轮询等待改用 tests/test_utils 的 waitFor
 * [v7.15.6] GY   2026-10-03
 * * 版本头对齐到 v7.15.6
 * [v7.15.1] GY   2026-10-03
@@ -29,7 +31,6 @@
 #include <QtTest/QtTest>
 #include <QCoreApplication>
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -44,6 +45,8 @@
 #include "transfer_session_model.h"
 #include "rendezvous_client.h"
 #include "rendezvous_server.h"
+
+#include "test_utils/wait.h"
 
 class TestSessionManager : public QObject {
     Q_OBJECT
@@ -257,9 +260,7 @@ QString TestSessionManager::addDeadTargetDevice(const QString &deviceId)
 // 等待会话进入指定状态
 bool TestSessionManager::waitForStatus(const QString &sessionId, const QString &status, int timeoutMs)
 {
-    QElapsedTimer timer;
-    timer.start();
-    while (!timer.hasExpired(timeoutMs)) {
+    return gy::test::waitFor([this, &sessionId, &status]() {
         const QVariantList sessions = _manager->sessions();
         for (const QVariant &entry : sessions) {
             const QVariantMap session = entry.toMap();
@@ -268,9 +269,8 @@ bool TestSessionManager::waitForStatus(const QString &sessionId, const QString &
                 return true;
             }
         }
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    }
-    return false;
+        return false;
+    }, timeoutMs);
 }
 
 // 从不中继：直连失败后直接终结为 failed，不触发中继请求
