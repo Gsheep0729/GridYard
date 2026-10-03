@@ -1,6 +1,6 @@
 /**
 * @file    data_types.h
-* @version 7.7.0
+* @version 7.15.5
 * @date    2026-07-21
 * @author  GridYard Team
 * @brief   跨模块共享数据类型定义（值类型 / POD）
@@ -11,6 +11,8 @@
 * QObject 的身份语义不适合。QML 端通过 Q_PROPERTY MEMBER 反射访问。
 *
 * Change Log:
+* [v7.15.5] GY   2026-10-03
+* * 新增 gy::keys 键契约常量，endpoint 对端快照的三个字段名同源化
 * [v7.7.0] GY   2026-07-21
 * * PeerInfo 新增 source 标签标识设备来源
 * [v6.6.2] GY   2026-06-25
@@ -30,6 +32,16 @@
 #include <QDateTime>
 #include <QMetaType>
 #include <QString>
+
+// 跨模块 QVariantMap 的字符串键契约（生产与消费两侧同源引用）
+namespace gy::keys {
+
+// transferEndpoint 返回的对端快照键
+inline constexpr char kEndpointDeviceName[] = "deviceName";
+inline constexpr char kEndpointIpAddress[]  = "ipAddress";
+inline constexpr char kEndpointTcpPort[]    = "tcpPort";
+
+}
 
 // 局域网在线节点描述
 class PeerInfo {

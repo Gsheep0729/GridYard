@@ -75,6 +75,9 @@ signals:
     void retentionDaysChanged();
 
 private:
+    // 聊天历史每页条数（翻页响应速度和内存占用可控）
+    static constexpr int kChatPageSize = 50;
+
     // 设置加载状态并通知 QML
     void setLoading(bool value);
     // 将传输历史记录转换为 QML 可绑定的字段集合

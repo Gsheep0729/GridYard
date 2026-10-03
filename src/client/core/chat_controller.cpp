@@ -35,6 +35,12 @@ ChatController::ChatController(ChatManager *manager, QObject *parent)
             this, &ChatController::incomingMessageReceived);
 }
 
+// 获取聊天内容长度上限
+int ChatController::maxChatContentLength() const
+{
+    return static_cast<int>(gy::protocol::kMaxChatContentChars);
+}
+
 // 获取指定设备的运行期消息快照
 QVariantList ChatController::messagesForDevice(const QString &deviceId) const
 {

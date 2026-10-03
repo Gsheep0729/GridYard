@@ -107,9 +107,9 @@ void LocalDataBroker::persistChatMessage(const MessageRecord &record, const QVar
     PeerRecord peer;
     peer.deviceId = record.peerDeviceId;
     // endpoint 来自发现服务快照，设备名优先用快照值，回退到消息发送方名称
-    peer.deviceName = endpoint.value("deviceName", record.senderName).toString();
-    peer.lastIpAddress = endpoint.value("ipAddress").toString();
-    peer.lastTcpPort = static_cast<quint16>(endpoint.value("tcpPort").toUInt());
+    peer.deviceName = endpoint.value(gy::keys::kEndpointDeviceName, record.senderName).toString();
+    peer.lastIpAddress = endpoint.value(gy::keys::kEndpointIpAddress).toString();
+    peer.lastTcpPort = static_cast<quint16>(endpoint.value(gy::keys::kEndpointTcpPort).toUInt());
     peer.firstSeenAt = QDateTime::currentDateTimeUtc();
     peer.lastSeenAt = peer.firstSeenAt;
 
@@ -140,9 +140,9 @@ void LocalDataBroker::persistTransferRecord(const TransferRecord &record,
 
     PeerRecord peer;
     peer.deviceId = record.peerDeviceId;
-    peer.deviceName = endpoint.value("deviceName", record.peerName).toString();
-    peer.lastIpAddress = endpoint.value("ipAddress").toString();
-    peer.lastTcpPort = static_cast<quint16>(endpoint.value("tcpPort").toUInt());
+    peer.deviceName = endpoint.value(gy::keys::kEndpointDeviceName, record.peerName).toString();
+    peer.lastIpAddress = endpoint.value(gy::keys::kEndpointIpAddress).toString();
+    peer.lastTcpPort = static_cast<quint16>(endpoint.value(gy::keys::kEndpointTcpPort).toUInt());
     // 传输记录可独立触发设备目录写入，活动时间与传输结束时刻对齐
     peer.firstSeenAt = activityAt;
     peer.lastSeenAt = activityAt;

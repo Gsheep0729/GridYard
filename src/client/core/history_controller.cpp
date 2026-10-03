@@ -81,9 +81,8 @@ void HistoryController::loadMoreMessages(const QString &deviceId)
     }
 
     setLoading(true);
-    // 聊天历史每次加载 50 条，保持翻页响应速度和内存占用可控。
     _dataBroker->loadMessages(
-        this, cursor, 50,  // 每页 50 条
+        this, cursor, kChatPageSize,
         [this, deviceId](const QList<MessageRecord> &records, bool succeeded) {
             if (succeeded && _chat) {
                 _chat->prependHistoryMessages(deviceId, records);  // 在模型头部追加更早消息
@@ -91,8 +90,8 @@ void HistoryController::loadMoreMessages(const QString &deviceId)
             if (!succeeded) {
                 emit operationFailed(tr("加载聊天历史失败"));
             }
-            // 当返回数量不足 50 条时说明已无更多历史，通知 QML 隐藏"加载更多"按钮
-            emit messagesLoaded(deviceId, succeeded && records.size() == 50);
+            // 返回数量不足一页时说明已无更多历史，通知 QML 隐藏"加载更多"按钮
+            emit messagesLoaded(deviceId, succeeded && records.size() == kChatPageSize);
             setLoading(false);  // 重置加载状态
         });
 }
@@ -111,6 +110,10 @@ void HistoryController::queryTransfers(const QVariantMap &filter)
     const QString before = filter.value("beforeStartedAt").toString();
     if (!before.isEmpty()) {
         query.beforeStartedAt = QDateTime::fromString(before, Qt::ISODateWithMs);  // 可选：时间游标分页
+        // 次键游标取本页最后一条的记录 ID，与排序键对齐避免同毫秒翻页漏重
+        if (!_transfers.isEmpty()) {
+            query.beforeRecordId = _transfers.last().toMap().value("recordId").toString();
+        }
     }
 
     // 传输历史一次最多取 200 条，避免历史页打开时阻塞主线程回投。

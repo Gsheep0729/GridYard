@@ -35,6 +35,7 @@ private slots:
     void testSaveAndQuery();
     void testUpsertBySessionId();
     void testFiltersAndPagination();
+    void testSameMillisecondCursorPagination();
     void testDeleteTransferKeepsSourceFile();
     void testDeleteExpiredTransfers();
     void testReopenDatabase();
@@ -166,6 +167,46 @@ void TestStorageTransferHistory::testFiltersAndPagination()
     const QList<TransferRecord> secondPage = repository.queryTransfers(pageQuery, 2, &error);
     QVERIFY2(secondPage.size() == 1, qPrintable(error));
     QCOMPARE(secondPage.first().recordId, QStringLiteral("transfer-c1"));
+}
+
+// 同一毫秒的多条记录翻页：游标带 record_id 次键时不重不漏，
+// 只带时间游标会跳过与本页末尾同毫秒的记录
+void TestStorageTransferHistory::testSameMillisecondCursorPagination()
+{
+    auto database = openDatabase("same-ms-cursor.sqlite");
+    QVERIFY(database);
+    SqliteTransferHistoryRepository repository(database.get());
+    seedDevice(*database, "peer-F", "Device Foxtrot");
+
+    QString error;
+    const QDateTime sameMs = QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs);
+    const QStringList recordIds{"transfer-f1", "transfer-f2", "transfer-f3"};
+    for (const QString &recordId : recordIds) {
+        TransferRecord record = makeRecord("session-" + recordId, "peer-F", "completed", sameMs);
+        record.recordId = recordId;
+        QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
+    }
+
+    // 第一页按 record_id 倒序取两条：f3、f2，末尾与本页首条同毫秒
+    TransferQuery query;
+    const QList<TransferRecord> firstPage = repository.queryTransfers(query, 2, &error);
+    QVERIFY2(firstPage.size() == 2, qPrintable(error));
+    QCOMPARE(firstPage.at(0).recordId, QStringLiteral("transfer-f3"));
+    QCOMPARE(firstPage.at(1).recordId, QStringLiteral("transfer-f2"));
+
+    // 时间 + record_id 二元组游标：翻出第三条且不重复
+    query.beforeStartedAt = firstPage.last().startedAt;
+    query.beforeRecordId = firstPage.last().recordId;
+    const QList<TransferRecord> secondPage = repository.queryTransfers(query, 2, &error);
+    QVERIFY2(secondPage.size() == 1, qPrintable(error));
+    QCOMPARE(secondPage.first().recordId, QStringLiteral("transfer-f1"));
+
+    // 只带时间游标的旧行为对照：同毫秒的 f1 被跳过，翻页丢失记录
+    TransferQuery legacyQuery;
+    const QList<TransferRecord> legacyFirst = repository.queryTransfers(legacyQuery, 2, &error);
+    legacyQuery.beforeStartedAt = legacyFirst.last().startedAt;
+    const QList<TransferRecord> legacySecond = repository.queryTransfers(legacyQuery, 2, &error);
+    QVERIFY2(legacySecond.isEmpty(), "仅时间游标应跳过同毫秒剩余记录（旧行为对照）");
 }
 
 void TestStorageTransferHistory::testDeleteTransferKeepsSourceFile()

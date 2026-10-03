@@ -25,6 +25,7 @@
 
 #include "chat_manager.h"
 #include "chat_connection.h"
+#include "data_types.h"
 #include "chat_message_model.h"
 #include "config_manager.h"
 #include "discovery_service.h"
@@ -313,8 +314,8 @@ ChatConnection *ChatManager::connectionForDevice(const QString &deviceId)
     }
 
     const QVariantMap endpoint = _discovery->transferEndpoint(deviceId);
-    const QHostAddress address{endpoint.value("ipAddress").toString()};
-    const quint16 port = endpoint.value("tcpPort").toUInt();
+    const QHostAddress address{endpoint.value(gy::keys::kEndpointIpAddress).toString()};
+    const quint16 port = endpoint.value(gy::keys::kEndpointTcpPort).toUInt();
     if (address.isNull() || port == 0) {
         // 发现快照不完整时不创建无目标连接。
         return nullptr;

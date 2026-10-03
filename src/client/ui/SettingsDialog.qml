@@ -74,10 +74,8 @@ Dialog {
     // 表单校验：设备名非空、接收路径非空、端口在合法范围内
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
                                     && _tempReceivePath.length > 0
-                                    && _tempTcpPort >= 1024
-                                    && _tempTcpPort <= 65535
-                                    && _tempRendezvousPort >= 1024
-                                    && _tempRendezvousPort <= 65535
+                                    && FormatUtils.isValidPort(_tempTcpPort)
+                                    && FormatUtils.isValidPort(_tempRendezvousPort)
     // 脏标记：任一字段与当前配置不同则视为已修改
     readonly property bool _isDirty: _tempDeviceName.trim() !== ConfigManager.deviceName
                                     || _tempReceivePath !== ConfigManager.receivePath
@@ -362,7 +360,7 @@ Dialog {
                     SpinBox {
                         id: tcpPortSpinBox
                         from: 1024
-                        to: 65535
+                        to: 65535  // SpinBox 须写数值边界，表单校验语义统一走 FormatUtils.isValidPort
                         value: settingsDialog._tempTcpPort
                         editable: true
                         onValueModified: settingsDialog._tempTcpPort = value

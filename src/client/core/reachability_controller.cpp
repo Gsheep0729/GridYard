@@ -20,6 +20,7 @@
 
 #include "reachability_controller.h"
 #include "config_manager.h"
+#include "data_types.h"
 #include "discovery_service.h"
 #include "endpoint_probe.h"
 #include "network/rendezvous_client.h"
@@ -251,9 +252,9 @@ void ReachabilityController::importInvite(const QString &text)
     // 保存邀请信息用于后续定向 Hello
     _lastProbeResult = {
         {"deviceId", invite.deviceId},
-        {"deviceName", invite.deviceName},
-        {"ipAddress", invite.ipAddress},
-        {"tcpPort", invite.tcpPort},
+        {gy::keys::kEndpointDeviceName, invite.deviceName},
+        {gy::keys::kEndpointIpAddress, invite.ipAddress},
+        {gy::keys::kEndpointTcpPort, invite.tcpPort},
         {"discoveryPort", invite.discoveryPort},
         {"pending", true},
     };

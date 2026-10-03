@@ -87,6 +87,12 @@ inline constexpr char kChatSentAtField[]         = "sent_at";
 inline constexpr qsizetype kMaxChatPayloadBytes = 64 * 1024;
 inline constexpr qsizetype kMaxChatContentChars = 4000;
 
+// 传输记录终态字符串：存储层与客户端 gy::session 状态值共用同一拼写
+inline constexpr char kTransferStatusCompleted[] = "completed";
+inline constexpr char kTransferStatusFailed[]    = "failed";
+inline constexpr char kTransferStatusCancelled[] = "cancelled";
+inline constexpr char kTransferStatusRejected[]  = "rejected";
+
 // 获取指定 Type 的最大 Payload 长度
 inline constexpr quint32 maxPayloadForType(quint32 type)
 {

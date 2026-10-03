@@ -45,6 +45,15 @@ function localPathFromUrl(fileUrl) {
     return decodeURIComponent(text)
 }
 
+// 端口合法范围（用户可配置端口须避开 0-1023 特权段）
+const kMinPort = 1024
+const kMaxPort = 65535
+
+// 判断用户输入端口是否在合法配置范围内
+function isValidPort(port) {
+    return port >= kMinPort && port <= kMaxPort
+}
+
 // 传输状态中文映射：内部状态字符串转用户可读文案（全应用唯一词表；
 // .pragma library 中 qsTr 不可靠，项目无翻译场景，直接返回中文）
 function transferStatusText(status) {

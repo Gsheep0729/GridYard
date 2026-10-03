@@ -231,12 +231,12 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
         return;
     }
 
-    const QString host = endpoint["ipAddress"].toString();
-    quint16 port = static_cast<quint16>(endpoint["tcpPort"].toUInt());
+    const QString host = endpoint[gy::keys::kEndpointIpAddress].toString();
+    quint16 port = static_cast<quint16>(endpoint[gy::keys::kEndpointTcpPort].toUInt());
     if (port == 0) {
         port = _config->tcpPort();
     }
-    const QString peerName = endpoint["deviceName"].toString();
+    const QString peerName = endpoint[gy::keys::kEndpointDeviceName].toString();
     const auto [fileCount, totalBytes] = transferStatsForPath(filePath);
 
     qDebug() << "[TransferSession] 目标设备信息:";

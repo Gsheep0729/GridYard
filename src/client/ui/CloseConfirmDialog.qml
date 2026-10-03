@@ -1,6 +1,6 @@
 /**
  * @file    CloseConfirmDialog.qml
- * @version 7.15.4
+ * @version 7.15.5
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   关闭确认弹窗

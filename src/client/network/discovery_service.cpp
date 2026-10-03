@@ -32,6 +32,7 @@
 
 #include "discovery_service.h"
 #include "config_manager.h"
+#include "data_types.h"
 #include "protocol.h"
 
 #include <QCoreApplication>
@@ -131,8 +132,9 @@ QVariantMap DiscoveryService::transferEndpoint(const QString &deviceId) const
 
     const PeerInfo &peer = it.value();
     // 只暴露传输需要的三个字段，不泄露完整 PeerInfo（含 lastSeen 等内部时间戳）
-    return {{"deviceName", peer.deviceName}, {"ipAddress", peer.ipAddress},
-            {"tcpPort", peer.tcpPort}};
+    return {{gy::keys::kEndpointDeviceName, peer.deviceName},
+            {gy::keys::kEndpointIpAddress, peer.ipAddress},
+            {gy::keys::kEndpointTcpPort, peer.tcpPort}};
 }
 
 // 返回协调节点缓存的对端备用地址（不含当前主端点）

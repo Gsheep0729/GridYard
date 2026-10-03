@@ -1,6 +1,6 @@
 /**
  * @file    HomePlaceholder.qml
- * @version 7.15.4
+ * @version 7.15.5
  * @date    2026-10-03
  * @author  GridYard Team
  * @brief   未选中设备的空状态占位

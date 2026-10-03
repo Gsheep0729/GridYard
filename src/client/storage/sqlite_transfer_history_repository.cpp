@@ -18,6 +18,7 @@
 
 #include "sqlite_transfer_history_repository.h"
 
+#include "protocol.h"
 #include "sqlite_database_broker.h"
 
 #include <QSqlError>
@@ -88,7 +89,12 @@ QList<TransferRecord> SqliteTransferHistoryRepository::queryTransfers(const Tran
         filters.append("status=?");
     }
     if (query.beforeStartedAt.isValid()) {
-        filters.append("started_at < ?");
+        // 次键游标与 ORDER BY (started_at, record_id) 完全对齐，同毫秒多条记录翻页不重不漏
+        if (query.beforeRecordId.isEmpty()) {
+            filters.append("started_at < ?");
+        } else {
+            filters.append("(started_at < ? OR (started_at = ? AND record_id < ?))");
+        }
     }
     if (!filters.isEmpty()) {
         statement += " WHERE " + filters.join(" AND ");
@@ -104,7 +110,13 @@ QList<TransferRecord> SqliteTransferHistoryRepository::queryTransfers(const Tran
         sqlQuery.addBindValue(query.status);
     }
     if (query.beforeStartedAt.isValid()) {
-        sqlQuery.addBindValue(sqlTime(query.beforeStartedAt));
+        if (query.beforeRecordId.isEmpty()) {
+            sqlQuery.addBindValue(sqlTime(query.beforeStartedAt));
+        } else {
+            sqlQuery.addBindValue(sqlTime(query.beforeStartedAt));
+            sqlQuery.addBindValue(sqlTime(query.beforeStartedAt));
+            sqlQuery.addBindValue(query.beforeRecordId);
+        }
     }
     sqlQuery.addBindValue(limit);
 
@@ -232,10 +244,10 @@ SqliteTransferHistoryRepository::upsertFinishedTransferStep(const TransferRecord
         query.addBindValue(record.finishedAt.isValid()
                                ? QVariant(sqlTime(record.finishedAt))
                                : QVariant{});
-        query.addBindValue(record.status == "completed"
+        query.addBindValue(record.status == gy::protocol::kTransferStatusCompleted
                                ? QVariant{}
                                : QVariant(record.errorCode));
-        query.addBindValue(record.status == "completed" || record.errorMessage.isEmpty()
+        query.addBindValue(record.status == gy::protocol::kTransferStatusCompleted || record.errorMessage.isEmpty()
                                ? QVariant{}
                                : QVariant(record.errorMessage));
         if (query.exec())

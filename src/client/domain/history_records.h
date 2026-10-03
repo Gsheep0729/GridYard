@@ -74,4 +74,5 @@ struct TransferQuery {
     QString peerDeviceId;      // 可选的设备筛选条件
     QString status;            // 可选的最终状态筛选条件
     QDateTime beforeStartedAt; // 下一页仅查询早于该时间的记录
+    QString beforeRecordId;    // 同一时间下的次键游标，与排序键 (started_at, record_id) 对齐
 };

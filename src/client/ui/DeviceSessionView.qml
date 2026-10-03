@@ -61,10 +61,10 @@ Frame {
 
    property var expandedSessions: ({})  // 记录每个传输任务文件夹展开状态的字典
    property string chatError: ""  // 聊天发送失败时的错误提示文字
-   // 发送按钮可用条件：设备在线 + 输入非空 + 不超过 4000 字符限制
+   // 发送按钮可用条件：设备在线 + 输入非空 + 不超过协议层字符上限
    readonly property bool canSendChat: isOnline
                                       && messageInput.text.trim().length > 0
-                                      && messageInput.text.length <= 4000
+                                      && messageInput.text.length <= AppController.chatController.maxChatContentLength
    // 接近协议上限时才显示字符计数，避免常驻噪音
    readonly property bool showCharCounter: messageInput.text.length > 3600
 
@@ -338,10 +338,11 @@ Frame {
 
                        background: Item {}
 
-                       // 超过 4000 字符时截断，与协议层 kMaxChatContentLength 保持一致
+                       // 超过协议层上限时截断，与 kMaxChatContentChars 保持一致
                        onTextChanged: {
-                           if (text.length > 4000) {
-                               text = text.slice(0, 4000)
+                           const maxChars = AppController.chatController.maxChatContentLength
+                           if (text.length > maxChars) {
+                               text = text.slice(0, maxChars)
                            }
                            deviceSessionView.chatError = ""
                        }
@@ -389,8 +390,9 @@ Frame {
 
                    // 字符计数器：接近上限时提醒用户
                    Label {
-                       text: "%1/4000".arg(messageInput.text.length)
-                       color: messageInput.text.length >= 4000
+                       text: "%1/%2".arg(messageInput.text.length)
+                              .arg(AppController.chatController.maxChatContentLength)
+                       color: messageInput.text.length >= AppController.chatController.maxChatContentLength
                               ? Style.Color.error : Style.Color.textWeak
                        font.pixelSize: 10
                        Layout.alignment: Qt.AlignHCenter
