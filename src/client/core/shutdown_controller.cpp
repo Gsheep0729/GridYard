@@ -1,11 +1,13 @@
 /**
 * @file    shutdown_controller.cpp
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   应用退出与缓存清理控制器实现
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04

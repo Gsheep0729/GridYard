@@ -1,13 +1,15 @@
 /**
 * @file    history_repositories.h
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   本地历史持久化端口
 *
 * 应用层通过这些接口使用历史数据，不依赖 SQLite 实现细节。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * IDeviceRepository 新增设备备注别名接口
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04

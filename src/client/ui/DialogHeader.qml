@@ -1,7 +1,7 @@
 /**
  * @file    DialogHeader.qml
- * @version 7.17.2
- * @date    2026-10-04
+ * @version 7.17.3
+ * @date 2026-10-04
  * @author  GridYard Team
  * @brief   弹窗页眉
  *
@@ -9,6 +9,8 @@
  * header 使用；关闭按钮只发 closeClicked 信号，由使用方决定关闭哪个弹窗。
  *
  * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04

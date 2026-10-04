@@ -1,7 +1,7 @@
 /**
 * @file    reachability_controller.h
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   网络可达性控制器（QML 单例）
 *
@@ -10,6 +10,8 @@
 * 协调服务器启用时，支持向协调节点查询候选设备列表。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04

@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.17.2
- * @date    2026-10-04
+ * @version 7.17.3
+ * @date 2026-10-04
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -13,6 +13,9 @@
  * 由 Main.qml 统一解码、过滤并裁决设备是否在线。
  *
  * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 名称行与头像首字母改用备注优先的显示名
+* * delegate 补 alias 字段，设置备注菜单项接线完成
 * [v7.17.2] GY   2026-10-04
 * * 新增右键菜单四项：置顶、不显示、设置备注、删除，只上报用户意图
 * [v7.17.1] GY   2026-10-04

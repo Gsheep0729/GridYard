@@ -1,11 +1,14 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 设置或清除设备备注，落库成功即时刷新列表
+* * 在线与历史条目统一注入 alias 字段，在线条目按 deviceId 从目录回填
 * [v7.17.2] GY   2026-10-04
 * * 合并列表统一转为展示字段映射，排序加置顶档并新增隐藏设备列表
 * [v7.17.1] GY   2026-10-04

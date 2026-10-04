@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
 *
@@ -9,6 +9,8 @@
 * 与本地设备目录的内部细节。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 新增 setDeviceAlias 入口与目录备注映射成员
 * [v7.17.2] GY   2026-10-04
 * * 合并列表新增 hiddenPeers 只读属性，供设置页展示隐藏设备
 * [v7.17.1] GY   2026-10-04

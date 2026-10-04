@@ -1,13 +1,15 @@
 /**
 * @file    sqlite_database_broker.h
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 连接、参数与迁移管理
 *
 * 每个线程按唯一连接名取得自己的数据库连接，禁止跨线程传递连接。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04

@@ -1,7 +1,7 @@
 /**
 * @file    test_storage_device.cpp
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GY
 * @brief   SQLite 设备目录 Repository 测试
 *
@@ -9,6 +9,9 @@
 * 相同发现快照节流和数据库重新打开后的设备目录恢复。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 新增 testSetDeviceAlias：设置、覆盖、清除、幂等与心跳不清备注
+* * 套件增至 11 用例
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04

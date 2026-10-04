@@ -1,13 +1,16 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
 *
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 新增 setDeviceAlias 与 Step 变体：空串清除、幂等成功
+* * 备注更新与 upsert 列清单互不重叠，心跳不清备注
 * [v7.17.2] GY   2026-10-04
 * * 设备目录恢复排序加 pinned 次序，置顶设备优先恢复
 * [v7.17.1] GY   2026-10-04

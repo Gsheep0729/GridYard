@@ -1,7 +1,7 @@
 /**
 * @file    line_session.h
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   带上限的按行分帧会话基类
 *
@@ -10,6 +10,8 @@
 * 会话持有 socket 的归属，终结时统一回收。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04

@@ -1,13 +1,15 @@
 /**
 * @file    test_endpoint_probe.cpp
-* @version 7.17.2
-* @date    2026-10-04
+* @version 7.17.3
+* @date 2026-10-04
 * @author  GridYard Team
 * @brief   EndpointProbe 单元测试
 *
 * 测试 TCP 探测功能：非法 IP、未监听端口、本机监听端口等场景。
 *
 * Change Log:
+* [v7.17.3] GY   2026-10-04
+* * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04
 * * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04
