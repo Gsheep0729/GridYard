@@ -1,6 +1,6 @@
 /**
 * @file    history_controller.cpp
-* @version 7.17.4
+* @version 7.17.5
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   本地历史控制器实现
@@ -10,6 +10,8 @@
 * 统一的筛选、删除和保留期限设置入口。
 *
 * Change Log:
+ * [v7.17.5] GY   2026-10-04
+ * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
 * * 新增传输历史翻页 loadMoreTransfers 与 hasMoreTransfers 属性
 * [v7.17.3] GY   2026-10-04

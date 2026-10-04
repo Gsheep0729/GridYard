@@ -1,6 +1,6 @@
 /**
  * @file    HideDeviceDialog.qml
- * @version 7.17.4
+ * @version 7.17.5
  * @date 2026-10-04
  * @author  GridYard Team
  * @brief   不显示该聊天确认弹窗
@@ -10,6 +10,8 @@
  * 由 Main.qml 调用视图模型落库。从 Main.qml 拆出的确认弹窗先例之一。
  *
  * Change Log:
+ * [v7.17.5] GY   2026-10-04
+ * * 版本头对齐到 v7.17.5
  * [v7.17.4] GY   2026-10-04
  * * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04

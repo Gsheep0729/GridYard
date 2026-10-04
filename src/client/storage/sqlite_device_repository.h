@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.h
-* @version 7.17.4
+* @version 7.17.5
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -9,6 +9,8 @@
 * 节流，避免 UDP 广播导致频繁磁盘写入。
 *
 * Change Log:
+ * [v7.17.5] GY   2026-10-04
+ * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
 * * 新增 searchPeers 模糊检索（名称/备注/IP，隐藏态排除），行映射抽为共享辅助
 * [v7.17.3] GY   2026-10-04

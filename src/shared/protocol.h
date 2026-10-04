@@ -1,6 +1,6 @@
 /**
 * @file    protocol.h
-* @version 7.17.4
+* @version 7.17.5
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
@@ -11,6 +11,8 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
+ * [v7.17.5] GY   2026-10-04
+ * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
 * * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04

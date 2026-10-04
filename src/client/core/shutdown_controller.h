@@ -1,6 +1,6 @@
 /**
 * @file    shutdown_controller.h
-* @version 7.17.4
+* @version 7.17.5
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   应用退出与缓存清理控制器
@@ -10,6 +10,8 @@
 * 历史数据库和日志目录。重复触发由内部标志守卫。
 *
 * Change Log:
+ * [v7.17.5] GY   2026-10-04
+ * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
 * * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
