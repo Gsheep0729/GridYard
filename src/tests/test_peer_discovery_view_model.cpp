@@ -69,6 +69,8 @@ private slots:
     void testDeleteDeviceSyncsLists();
     void testHideAndRestoreDevice();
     void testPinnedPeerSortedFirst();
+    void testAliasDisplayAndSearchData();
+    void testAliasSurvivesHeartbeatUpdate();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -401,6 +403,99 @@ void TestPeerDiscoveryViewModel::testPinnedPeerSortedFirst()
                              .value("pinned").toBool(), 3000);
     QVERIFY(indexOfPeer(viewModel, QStringLiteral("pinned-new"))
             < indexOfPeer(viewModel, QStringLiteral("pinned-old")));
+}
+
+// 备注显示与搜索的数据链路：目录与在线条目均携带 alias，设置/清除即时生效
+void TestPeerDiscoveryViewModel::testAliasDisplayAndSearchData()
+{
+    auto broker = openBroker("alias-display.sqlite");
+    QVERIFY(broker);
+
+    const PeerInfo peer = makePeerInfo(QStringLiteral("alias-peer"), QStringLiteral("DESKTOP-ABC123"),
+                                       QStringLiteral("10.254.254.248"));
+    seedPeer(*broker, peer);
+    _discovery->addManualPeer(peer);  // 在线条目存在时备注同样需要注入
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("alias-peer")).isEmpty(), 3000);
+
+    // 设置备注后条目携带 alias：显示优先级（备注 > 广播名）与搜索匹配
+    // 均由展示层按该字段裁决，这里验证数据链路两端
+    viewModel.setDeviceAlias(QStringLiteral("alias-peer"), QStringLiteral("老王的电脑"));
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("alias-peer"))
+                             .value("alias").toString() == QStringLiteral("老王的电脑"), 3000);
+
+    // 合并列表条目的 alias 字段就位（在线与历史条目一体注入），搜索命中依赖它进过滤链路
+    bool aliasPlumbed = false;
+    const QVariantList peers = viewModel.peers();
+    for (const QVariant &entry : peers) {
+        const QVariantMap map = entry.toMap();
+        if (map.value("deviceId").toString() == QStringLiteral("alias-peer")) {
+            aliasPlumbed = map.contains("alias");
+        }
+    }
+    QVERIFY(aliasPlumbed);
+
+    // 清除备注后 alias 回落空值，广播名保持不变
+    viewModel.setDeviceAlias(QStringLiteral("alias-peer"), QString());
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("alias-peer"))
+                             .value("alias").toString().isEmpty(), 3000);
+    QCOMPARE(viewModel.deviceById(QStringLiteral("alias-peer"))
+             .value("deviceName").toString(), QStringLiteral("DESKTOP-ABC123"));
+}
+
+// 心跳保护端到端：设备入目录并设置备注后，模拟心跳更新设备名与 IP，
+// 数据库与列表中的备注都保持，显示字段仍是备注
+void TestPeerDiscoveryViewModel::testAliasSurvivesHeartbeatUpdate()
+{
+    auto broker = openBroker("alias-heartbeat.sqlite");
+    QVERIFY(broker);
+
+    const PeerInfo peer = makePeerInfo(QStringLiteral("heartbeat-peer"), QStringLiteral("原设备名"),
+                                       QStringLiteral("10.254.254.252"));
+    seedPeer(*broker, peer);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("heartbeat-peer")).isEmpty(), 3000);
+
+    viewModel.setDeviceAlias(QStringLiteral("heartbeat-peer"), QStringLiteral("实验室前台"));
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("heartbeat-peer"))
+                             .value("alias").toString() == QStringLiteral("实验室前台"), 3000);
+
+    // 模拟后续心跳：同设备换了广播名与 IP（走不触 alias 列的 upsert 路径）
+    PeerInfo heartbeat = peer;
+    heartbeat.deviceName = QStringLiteral("改名设备XYZ");
+    heartbeat.ipAddress = QStringLiteral("10.254.254.253");
+    heartbeat.lastSeen = QDateTime::currentDateTimeUtc().addSecs(30);
+    seedPeer(*broker, heartbeat);
+
+    // 真实链路中在线条目随发现信号即时刷新，历史目录在离线或刷新时重载
+    viewModel.refreshHistory();
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("heartbeat-peer"))
+                             .value("deviceName").toString() == QStringLiteral("改名设备XYZ"), 3000);
+
+    // 列表条目设备名与 IP 已更新，备注仍在
+    const QVariantMap snapshot = viewModel.deviceById(QStringLiteral("heartbeat-peer"));
+    QCOMPARE(snapshot.value("deviceName").toString(), QStringLiteral("改名设备XYZ"));
+    QCOMPARE(snapshot.value("ipAddress").toString(), QStringLiteral("10.254.254.253"));
+    QCOMPARE(snapshot.value("alias").toString(), QStringLiteral("实验室前台"));
+
+    // 数据库中备注未被心跳覆盖
+    const auto aliasKept = QSharedPointer<QString>::create();
+    broker->loadRecentPeers(this, 10,
+                            [aliasKept](const QList<PeerRecord> &records, bool ok) {
+                                if (!ok) {
+                                    return;
+                                }
+                                for (const PeerRecord &record : records) {
+                                    if (record.deviceId == QStringLiteral("heartbeat-peer")) {
+                                        *aliasKept = record.alias;
+                                    }
+                                }
+                            });
+    QTRY_COMPARE_WITH_TIMEOUT(*aliasKept, QStringLiteral("实验室前台"), 3000);
 }
 
 // 工具方法：在临时目录打开一份本地历史库

@@ -514,6 +514,31 @@ void LocalDataBroker::setDeviceHidden(QObject *receiver, const QString &deviceId
         });
 }
 
+// 异步设置设备本地备注别名（幂等，设备行不存在时同样回调成功）
+void LocalDataBroker::setDeviceAlias(QObject *receiver, const QString &deviceId,
+                                     const QString &alias, const OperationCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, deviceId, alias, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            const bool succeeded = _deviceRepository->setDeviceAlias(deviceId, alias,
+                                                                     errorMessage);
+            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+                callback(succeeded);
+            }, Qt::QueuedConnection);
+            return succeeded;
+        });
+}
+
 // 异步删除设备及其聊天与传输历史（组合事务，不删除已接收的本地文件）
 void LocalDataBroker::deleteDeviceWithHistory(QObject *receiver, const QString &deviceId,
                                               const OperationCallback &callback)

@@ -69,6 +69,9 @@ public:
     virtual bool setDevicePinned(const QString &deviceId, bool pinned, QString *errorMessage) = 0;
     // 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDeviceHidden(const QString &deviceId, bool hidden, QString *errorMessage) = 0;
+    // 设置设备本地备注别名（空串表示清除；幂等，设备行不存在时同样返回成功）
+    virtual bool setDeviceAlias(const QString &deviceId, const QString &alias,
+                                QString *errorMessage) = 0;
     // 删除设备及其聊天与传输历史；不删除已接收的本地文件
     virtual bool deleteDeviceWithHistory(const QString &deviceId, QString *errorMessage) = 0;
 };

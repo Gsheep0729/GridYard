@@ -68,6 +68,7 @@ private slots:
     void testDiscoveryThrottle();
     void testReopenDatabase();
     void testSetDevicePinnedAndHidden();
+    void testSetDeviceAlias();
     void testDeleteDeviceWithHistoryCascade();
 
 private:
@@ -339,6 +340,62 @@ void TestStorageDevice::testSetDevicePinnedAndHidden()
     records = repository.recentPeers(5, &error);
     QVERIFY(records.first().pinned);
     QVERIFY(records.first().hidden);
+}
+
+// 备注别名设置、覆盖与清除幂等，心跳 upsert 不触碰备注列
+void TestStorageDevice::testSetDeviceAlias()
+{
+    auto database = openDatabase("alias.sqlite");
+    QVERIFY(database);
+
+    SqliteDeviceRepository repository(database.get());
+    const QDateTime base = QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs);
+    QString error;
+    QVERIFY2(repository.upsertPeer(makeRecord("device-alias", "Alias", base), &error),
+             qPrintable(error));
+
+    // 设置备注后读链路带出
+    QVERIFY2(repository.setDeviceAlias("device-alias", QStringLiteral("老王"), &error),
+             qPrintable(error));
+    QList<PeerRecord> records = repository.recentPeers(5, &error);
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().alias, QStringLiteral("老王"));
+
+    // 重复设置覆盖旧值且幂等，不产生重复行
+    QVERIFY2(repository.setDeviceAlias("device-alias", QStringLiteral("小李"), &error),
+             qPrintable(error));
+    QVERIFY2(repository.setDeviceAlias("device-alias", QStringLiteral("小李"), &error),
+             qPrintable(error));
+    QCOMPARE(peerRowCount(*database), 1);
+    records = repository.recentPeers(5, &error);
+    QCOMPARE(records.first().alias, QStringLiteral("小李"));
+
+    // 设备行不存在的更新同样幂等返回成功
+    QVERIFY2(repository.setDeviceAlias("no-such-device", QStringLiteral("幽灵"), &error),
+             qPrintable(error));
+
+    // 心跳 upsert 变更设备名与 IP 后备注保持：ON CONFLICT 不触碰 alias 列
+    PeerRecord heartbeat = makeRecord("device-alias", "Alias-Renamed", base.addSecs(60));
+    heartbeat.lastIpAddress = QStringLiteral("192.168.1.99");
+    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
+    records = repository.recentPeers(5, &error);
+    QCOMPARE(records.first().deviceName, QStringLiteral("Alias-Renamed"));
+    QCOMPARE(records.first().lastIpAddress, QStringLiteral("192.168.1.99"));
+    QCOMPARE(records.first().alias, QStringLiteral("小李"));
+
+    // 清除备注（空串）后回落空值
+    QVERIFY2(repository.setDeviceAlias("device-alias", QString(), &error), qPrintable(error));
+    records = repository.recentPeers(5, &error);
+    QVERIFY(records.first().alias.isEmpty());
+
+    // Step 变体可组合进同一事务执行
+    QVERIFY2(database->runSteps(
+                 {SqliteDeviceRepository::setDeviceAliasStep("device-alias",
+                                                             QStringLiteral("事务备注"))},
+                 &error),
+             qPrintable(error));
+    records = repository.recentPeers(5, &error);
+    QCOMPARE(records.first().alias, QStringLiteral("事务备注"));
 }
 
 // 删除设备级联清空聊天与传输历史且不触碰文件系统，再次发现按全新设备入目录

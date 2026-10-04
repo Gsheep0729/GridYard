@@ -86,6 +86,16 @@ function localPathFromUrl(fileUrl) {
     return decodeURIComponent(text)
 }
 
+// 设备显示名：本地备注优先于对方广播名（备注为空回落原名），
+// 设备卡、会话页标题与通知等取设备名处统一使用
+function displayName(alias, deviceName) {
+    const remark = alias ? String(alias).trim() : ""
+    if (remark.length > 0) {
+        return remark
+    }
+    return deviceName ? String(deviceName) : ""
+}
+
 // 端口合法范围（用户可配置端口须避开 0-1023 特权段）
 const kMinPort = 1024
 const kMaxPort = 65535

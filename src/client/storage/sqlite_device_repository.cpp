@@ -231,6 +231,14 @@ bool SqliteDeviceRepository::setDeviceHidden(const QString &deviceId, bool hidde
                                                     errorMessage);
 }
 
+// 设置设备本地备注别名（空串表示清除；幂等，设备行不存在时同样返回成功）
+bool SqliteDeviceRepository::setDeviceAlias(const QString &deviceId, const QString &alias,
+                                            QString *errorMessage)
+{
+    return _database && _database->runInTransaction(setDeviceAliasStep(deviceId, alias),
+                                                    errorMessage);
+}
+
 // 删除设备及其聊天与传输历史；不删除已接收的本地文件
 bool SqliteDeviceRepository::deleteDeviceWithHistory(const QString &deviceId,
                                                      QString *errorMessage)
@@ -276,6 +284,24 @@ SqliteDeviceRepository::SqlStep SqliteDeviceRepository::setDeviceHiddenStep(cons
         QSqlQuery query(database);
         query.prepare("UPDATE peer_devices SET hidden=? WHERE device_id=?");
         query.addBindValue(hidden ? 1 : 0);
+        query.addBindValue(deviceId);
+        if (query.exec())
+            return true;
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}
+
+// 只执行备注更新，不自开事务；UPDATE 找不到行即幂等成功。
+// 与 upsert 的 ON CONFLICT 列清单互不重叠，心跳更新天然不清备注
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::setDeviceAliasStep(const QString &deviceId,
+                                                                          const QString &alias)
+{
+    return[deviceId, alias](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE peer_devices SET alias=? WHERE device_id=?");
+        query.addBindValue(alias);
         query.addBindValue(deviceId);
         if (query.exec())
             return true;

@@ -67,6 +67,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
+import "../utils/FormatUtils.js" as FormatUtils
 import "../utils/Style.js" as Style
 
 ItemDelegate {
@@ -82,6 +83,11 @@ ItemDelegate {
 
     // 置顶状态由视图模型按数据库状态注入，仅用于菜单文案展示
     property bool isPinned: false
+
+    // 本地备注由视图模型按数据库状态注入，展示名备注优先于广播名
+    required property string alias
+    readonly property string displayName: FormatUtils.displayName(deviceCard.alias,
+                                                                  deviceCard.deviceName)
 
     readonly property int   kCardHeight: 76
     readonly property color kOnlineColor:  Style.Color.success   // 在线状态圆点颜色
@@ -210,7 +216,7 @@ ItemDelegate {
                 radius: Style.Radius.sm
                 Behavior on color { ColorAnimation { duration: Style.Motion.base } }
             }
-            // 占位入口：备注编辑由 PhaseN2-D 接线，当前只上报意图
+            // 备注编辑入口：上报意图，由装配层打开备注弹窗
             onTriggered: deviceCard.contextActionRequested(
                              deviceCard.deviceId, deviceCard.deviceName, "rename")
         }
@@ -249,7 +255,7 @@ ItemDelegate {
         anchors.leftMargin: Style.Space.lg
         spacing: Style.Space.md
 
-        // 设备头像：取设备名首字母作为标识
+        // 设备头像：取展示名（备注优先）首字母作为标识
         Rectangle {
             Layout.alignment: Qt.AlignVCenter
             Layout.preferredWidth: 36
@@ -258,8 +264,8 @@ ItemDelegate {
             color: deviceCard.kAvatarColor
             Label {
                 anchors.centerIn: parent
-                text: deviceCard.deviceName.length > 0
-                      ? deviceCard.deviceName.charAt(0).toUpperCase()
+                text: deviceCard.displayName.length > 0
+                      ? deviceCard.displayName.charAt(0).toUpperCase()
                       : "?"
                 color: Style.Color.textOnAccent
                 font.pixelSize: 14
@@ -273,7 +279,7 @@ ItemDelegate {
             spacing: 2
 
             Label {
-                text: deviceCard.deviceName
+                text: deviceCard.displayName
                 font.pixelSize: 14
                 font.bold: true
                 color: deviceCard.kNameColor

@@ -80,22 +80,24 @@ Rectangle {
 
         let count = 0
         for (let i = 0; i < peers.length; i++) {
-            if (matchesPeer(peers[i].deviceName, peers[i].ipAddress)) {
+            if (matchesPeer(peers[i].deviceName, peers[i].ipAddress, peers[i].alias)) {
                 count++
             }
         }
         return count
     }
 
-    // 模糊匹配：同时搜索设备名和 IP 地址，任一包含关键词即匹配
-    function matchesPeer(deviceName: string, ipAddress: string): bool {
+    // 模糊匹配：同时搜索设备名、本地备注和 IP 地址，任一包含关键词即匹配
+    function matchesPeer(deviceName: string, ipAddress: string, alias: string): bool {
         if (_searchKeyword.length === 0) {
             return true
         }
 
         const name = String(deviceName).toLowerCase()
         const ip = String(ipAddress).toLowerCase()
+        const remark = String(alias).toLowerCase()
         return name.indexOf(_searchKeyword) >= 0 || ip.indexOf(_searchKeyword) >= 0
+               || remark.indexOf(_searchKeyword) >= 0
     }
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
@@ -139,7 +141,7 @@ Rectangle {
                     anchors.leftMargin: Style.Space.md
                     anchors.rightMargin: Style.Space.md
                     verticalAlignment: Text.AlignVCenter
-                    placeholderText: qsTr("搜索设备名或 IP")
+                    placeholderText: qsTr("搜索设备名、备注或 IP")
                     font.pixelSize: 13
                     color: Style.Color.textMain
                     clip: true
@@ -222,8 +224,9 @@ Rectangle {
             required property string ipAddress
             required property bool isOnline
             required property bool pinned
+            required property string alias
 
-            readonly property bool _matches: peerListView.matchesPeer(deviceName, ipAddress)
+            readonly property bool _matches: peerListView.matchesPeer(deviceName, ipAddress, alias)
 
             width: listView.width
             height: _matches ? peerListView.kDeviceCardHeight : 0  // 不匹配时高度为 0 实现隐藏
@@ -239,6 +242,7 @@ Rectangle {
                 isOnline: peerDelegate.isOnline
                 isSelected: peerListView.selectedDeviceId === peerDelegate.deviceId
                 isPinned: peerDelegate.pinned
+                alias: peerDelegate.alias
 
                 onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
                     peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)

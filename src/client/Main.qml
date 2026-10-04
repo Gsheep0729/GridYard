@@ -304,6 +304,13 @@ ApplicationWindow {
         }
     }
 
+    // 设置备注弹窗：确认后落库并刷新列表，空备注即清除
+    DeviceAliasDialog {
+        id: aliasDialog
+        onAliasConfirmed: (deviceId, alias) =>
+            AppController.peerDiscoveryViewModel.setDeviceAlias(deviceId, alias)
+    }
+
     // ======== 三栏主体 ========
 
     // 左侧：工具栏 + 设备列表（设备选择/拖拽/设置入口经信号上抛）
@@ -313,13 +320,16 @@ ApplicationWindow {
         onDeviceSelected: (deviceId) => mainWindow.selectDevice(deviceId)
         onContextActionRequested: (deviceId, deviceName, action) => {
             // 菜单意图只做路由：置顶取反走视图模型，隐藏/删除经确认弹窗，
-            // 备注入口为占位，由 PhaseN2-D 接线
+            // 备注打开编辑弹窗（当前备注随设备信息注入，空值提交即清除）
             if (action === "pin") {
                 AppController.peerDiscoveryViewModel.setDevicePinned(deviceId, true)
             } else if (action === "unpin") {
                 AppController.peerDiscoveryViewModel.setDevicePinned(deviceId, false)
             } else if (action === "hide") {
                 hideDeviceDialog.openFor(deviceId, deviceName)
+            } else if (action === "rename") {
+                const info = AppController.peerDiscoveryViewModel.deviceById(deviceId)
+                aliasDialog.openFor(deviceId, deviceName, info.alias || "")
             } else if (action === "delete") {
                 deleteDeviceDialog.openFor(deviceId, deviceName)
             }
@@ -344,13 +354,14 @@ ApplicationWindow {
             visible: mainWindow._selId.length === 0
         }
 
-        // 设备会话页
+        // 设备会话页（显示名备注优先于广播名，备注变化随列表刷新即时生效）
         DeviceSessionView {
             id: sessionView
             anchors.fill: parent
             visible: mainWindow._selId.length > 0
             deviceId: mainWindow._selId
-            deviceName: mainWindow._selInfo.deviceName || ""
+            deviceName: FormatUtils.displayName(mainWindow._selInfo.alias,
+                                                mainWindow._selInfo.deviceName)
             ipAddress: mainWindow._selInfo.ipAddress || ""
             isOnline: mainWindow._selInfo.isOnline || false
 
@@ -390,7 +401,8 @@ ApplicationWindow {
                                           fileSize, totalFiles, totalBytes,
                                           isDirectory, fileList) {
             // 有新传输请求时切到发送方会话；设备不在发现/历史列表时不切换（行为同拆分前）
-            if (Object.keys(AppController.peerDiscoveryViewModel.deviceById(senderDeviceId)).length > 0) {
+            const peerInfo = AppController.peerDiscoveryViewModel.deviceById(senderDeviceId)
+            if (Object.keys(peerInfo).length > 0) {
                 mainWindow.selectDevice(senderDeviceId)
             }
             const info = { sessionId: sessionId, senderName: senderName,
@@ -403,8 +415,11 @@ ApplicationWindow {
             } else {
                 acceptDialog.openWith(info)
             }
+            // 通知里的设备名同样备注优先
             trayIcon.showMessage(qsTr("传输请求"),
-                                 qsTr("%1 想发送 %2 个文件").arg(senderName).arg(totalFiles))
+                                 qsTr("%1 想发送 %2 个文件")
+                                 .arg(FormatUtils.displayName(peerInfo.alias, senderName))
+                                 .arg(totalFiles))
         }
         function onTransferCompleted(sessionId: string, fileName: string, filePath: string): void {
             completeToast.openWith(fileName, filePath)
@@ -421,7 +436,9 @@ ApplicationWindow {
     Connections {
         target: AppController.chatController
         function onIncomingMessageReceived(deviceId: string, senderName: string, preview: string): void {
-            trayIcon.showMessage(senderName, preview)
+            // 通知里的设备名同样备注优先（设备不在列表时回落广播名）
+            const peerInfo = AppController.peerDiscoveryViewModel.deviceById(deviceId)
+            trayIcon.showMessage(FormatUtils.displayName(peerInfo.alias, senderName), preview)
         }
     }
 

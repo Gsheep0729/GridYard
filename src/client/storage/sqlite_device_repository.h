@@ -78,6 +78,9 @@ public:
     virtual bool setDevicePinned(const QString &deviceId, bool pinned, QString *errorMessage) override;
     // 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDeviceHidden(const QString &deviceId, bool hidden, QString *errorMessage) override;
+    // 设置设备本地备注别名（空串表示清除；幂等，设备行不存在时同样返回成功）
+    virtual bool setDeviceAlias(const QString &deviceId, const QString &alias,
+                                QString *errorMessage) override;
     // 删除设备及其聊天与传输历史；不删除已接收的本地文件
     virtual bool deleteDeviceWithHistory(const QString &deviceId, QString *errorMessage) override;
 
@@ -87,6 +90,7 @@ public:
     static SqlStep markTransferActivityStep(const QString &deviceId, const QDateTime &time);
     static SqlStep setDevicePinnedStep(const QString &deviceId, bool pinned);
     static SqlStep setDeviceHiddenStep(const QString &deviceId, bool hidden);
+    static SqlStep setDeviceAliasStep(const QString &deviceId, const QString &alias);
     static SqlStep deleteDeviceStep(const QString &deviceId);
     // 组合写入成功后刷新节流缓存，供 LocalDataBroker 在事务提交后调用
     void noteWritten(const PeerRecord &record);

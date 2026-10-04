@@ -272,9 +272,10 @@ void PeerDiscoveryViewModel::refreshHistory()
 
             QVariantList peers;
             peers.reserve(records.size());
-            // 同步重建置顶/隐藏集合，过滤与展示均以此为准
+            // 同步重建置顶/隐藏集合与备注映射，过滤与展示均以此为准
             _hiddenDeviceIds.clear();
             _pinnedDeviceIds.clear();
+            _aliasByDeviceId.clear();
             for (const PeerRecord &record : records) {
                 peers.append(peerRecordToVariant(record));
                 if (record.hidden) {
@@ -283,6 +284,7 @@ void PeerDiscoveryViewModel::refreshHistory()
                 if (record.pinned) {
                     _pinnedDeviceIds.insert(record.deviceId);
                 }
+                _aliasByDeviceId.insert(record.deviceId, record.alias);
             }
             _historyPeers = peers;
             emit peersChanged();
@@ -338,6 +340,26 @@ void PeerDiscoveryViewModel::setDeviceHidden(const QString &deviceId, bool hidde
     });
 }
 
+// 设置或清除设备本地备注（空串表示清除），落库成功后刷新内存状态
+void PeerDiscoveryViewModel::setDeviceAlias(const QString &deviceId, const QString &alias)
+{
+    if (!_dataBroker || deviceId.isEmpty()) {
+        return;
+    }
+
+    _dataBroker->setDeviceAlias(this, deviceId, alias, [this, deviceId, alias](bool succeeded) {
+        if (!succeeded) {
+            return;  // 写库失败时保持现状，不打扰列表
+        }
+        if (alias.isEmpty()) {
+            _aliasByDeviceId.remove(deviceId);
+        } else {
+            _aliasByDeviceId.insert(deviceId, alias);
+        }
+        refreshHistory();  // 重新加载目录，条目的 alias 字段随库更新
+    });
+}
+
 // 删除设备及其聊天与传输历史（不删除已接收的本地文件），成功后同步清理内存列表
 void PeerDiscoveryViewModel::deleteDeviceWithHistory(const QString &deviceId)
 {
@@ -388,13 +410,15 @@ QVariantMap PeerDiscoveryViewModel::peerRecordToVariant(const PeerRecord &record
         {"lastSeenAt", timeToString(record.lastSeenAt)},
         {"lastChatAt", timeToString(record.lastChatAt)},
         {"lastTransferAt", timeToString(record.lastTransferAt)},
+        {"alias", record.alias},
         {"pinned", record.pinned},
         {"hidden", record.hidden},
     };
 }
 
 // 将在线 PeerInfo 转成与历史条目同构的展示字段映射：
-// 置顶/隐藏状态以内存集合为准，聊天与传输活跃时间在线条目不携带
+// 置顶/隐藏状态以内存集合为准，备注从设备目录按 deviceId 回填
+// （在线 PeerInfo 不携带本地备注），聊天与传输活跃时间在线条目不携带
 QVariantMap PeerDiscoveryViewModel::peerInfoToVariant(const PeerInfo &info) const
 {
     return {
@@ -406,6 +430,7 @@ QVariantMap PeerDiscoveryViewModel::peerInfoToVariant(const PeerInfo &info) cons
         {"lastSeenAt", timeToString(info.lastSeen)},
         {"lastChatAt", QString{}},
         {"lastTransferAt", QString{}},
+        {"alias", _aliasByDeviceId.value(info.deviceId)},
         {"pinned", _pinnedDeviceIds.contains(info.deviceId)},
         {"hidden", _hiddenDeviceIds.contains(info.deviceId)},
     };

@@ -51,6 +51,7 @@
 
 #include "history_records.h"
 
+#include <QHash>
 #include <QObject>
 #include <QSet>
 #include <QVariantMap>
@@ -95,6 +96,9 @@ public:
     Q_INVOKABLE void setDevicePinned(const QString &deviceId, bool pinned);
     // 隐藏或恢复显示指定设备（落库成功后刷新内存状态）
     Q_INVOKABLE void setDeviceHidden(const QString &deviceId, bool hidden);
+    // 设置或清除设备本地备注（空串表示清除，落库成功后刷新列表；
+    // 显示优先级 alias > 广播名由展示层按条目的 alias 字段裁决）
+    Q_INVOKABLE void setDeviceAlias(const QString &deviceId, const QString &alias);
     // 删除设备及其聊天与传输历史（不删除已接收的本地文件），成功后同步清理内存列表
     Q_INVOKABLE void deleteDeviceWithHistory(const QString &deviceId);
     // 入站消息或传输请求到达时调用：设备处于隐藏态则复位并刷新列表（自动恢复显示）
@@ -118,5 +122,6 @@ private:
     QVariantList _historyPeers;  // 已持久化的历史设备列表
     QSet<QString> _hiddenDeviceIds;  // 数据库中隐藏态的设备（不进合并列表）
     QSet<QString> _pinnedDeviceIds;  // 数据库中置顶态的设备（排序规则由后续任务接入）
+    QHash<QString, QString> _aliasByDeviceId;  // 数据库中的设备备注，在线条目按 deviceId 回填
     QString _selectedDeviceId;  // 当前选中设备 ID
 };
