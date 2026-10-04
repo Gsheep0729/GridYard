@@ -418,6 +418,7 @@ qt_add_executable(test_peer_discovery_view_model test_peer_discovery_view_model.
 target_link_libraries(test_peer_discovery_view_model PRIVATE
     gy_shared
     gy_storage
+    gy_test_utils
     Qt6::Test
     Qt6::Core
     Qt6::Gui

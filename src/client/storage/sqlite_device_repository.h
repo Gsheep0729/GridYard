@@ -76,6 +76,9 @@ public:
     virtual bool markTransferActivity(const QString &deviceId, const QDateTime &time, QString *errorMessage) override;
     // 获取最近活跃设备列表
     virtual QList<PeerRecord> recentPeers(int limit, QString *errorMessage) const override;
+    // 按关键字模糊检索设备目录（设备名/备注/最近 IP 任一包含即命中，隐藏态不返回）
+    virtual QList<PeerRecord> searchPeers(const QString &keyword, int limit,
+                                          QString *errorMessage) const override;
     // 设置设备置顶状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDevicePinned(const QString &deviceId, bool pinned, QString *errorMessage) override;
     // 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）

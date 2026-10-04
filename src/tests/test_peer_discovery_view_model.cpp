@@ -45,14 +45,17 @@
 */
 
 #include <QtTest/QtTest>
+#include <QSet>
 #include <QSignalSpy>
 #include <QSharedPointer>
+#include <QStringList>
 #include <QTemporaryDir>
 
 #include <memory>
 
 #include "config_manager.h"
 #include "data_types.h"
+#include "db_seed.h"
 #include "discovery_service.h"
 #include "local_data_broker.h"
 #include "peer_discovery_view_model.h"
@@ -74,6 +77,9 @@ private slots:
     void testPinnedPeerSortedFirst();
     void testAliasDisplayAndSearchData();
     void testAliasSurvivesHeartbeatUpdate();
+    void testSearchPeersMatchesNameAliasAndIp();
+    void testSearchPeersLimitAndOrder();
+    void testSearchPeersEmptyAndNoMatch();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -499,6 +505,140 @@ void TestPeerDiscoveryViewModel::testAliasSurvivesHeartbeatUpdate()
                                 }
                             });
     QTRY_COMPARE_WITH_TIMEOUT(*aliasKept, QStringLiteral("实验室前台"), 3000);
+}
+
+// 关键字检索走数据库：设备名、备注与最近 IP 三路命中，隐藏设备不进结果
+void TestPeerDiscoveryViewModel::testSearchPeersMatchesNameAliasAndIp()
+{
+    auto broker = openBroker("search-paths.sqlite");
+    QVERIFY(broker);
+
+    const PeerInfo nameHit = makePeerInfo(QStringLiteral("search-name-hit"),
+                                          QStringLiteral("会议室目标甲"),
+                                          QStringLiteral("10.253.100.1"));
+    const PeerInfo aliasHit = makePeerInfo(QStringLiteral("search-alias-hit"),
+                                           QStringLiteral("普通设备一"),
+                                           QStringLiteral("10.253.100.2"));
+    const PeerInfo ipHit = makePeerInfo(QStringLiteral("search-ip-hit"),
+                                        QStringLiteral("普通设备二"),
+                                        QStringLiteral("172.16.99.77"));
+    const PeerInfo missPeer = makePeerInfo(QStringLiteral("search-miss"),
+                                           QStringLiteral("无关设备"),
+                                           QStringLiteral("10.253.100.3"));
+    const PeerInfo hiddenPeer = makePeerInfo(QStringLiteral("search-hidden"),
+                                             QStringLiteral("目标丙被隐藏"),
+                                             QStringLiteral("10.253.100.4"));
+    seedPeer(*broker, nameHit);
+    seedPeer(*broker, aliasHit);
+    seedPeer(*broker, ipHit);
+    seedPeer(*broker, missPeer);
+    seedPeer(*broker, hiddenPeer);
+
+    // 备注命中走 N2-D 的 alias 列，隐藏命中依赖 hidden 列过滤，均经数据层落库
+    bool aliasSet = false;
+    broker->setDeviceAlias(this, QStringLiteral("search-alias-hit"),
+                           QStringLiteral("目标乙的电脑"),
+                           [&aliasSet](bool) { aliasSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(aliasSet, true, 3000);
+
+    bool hiddenSet = false;
+    broker->setDeviceHidden(this, QStringLiteral("search-hidden"), true,
+                            [&hiddenSet](bool) { hiddenSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(hiddenSet, true, 3000);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+
+    viewModel.searchPeers(QStringLiteral("目标"));
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.searchBusy(), 3000);
+
+    // 名称与备注命中两台，IP-only 与无关设备不命中，隐藏设备被过滤
+    const QVariantList results = viewModel.searchResults();
+    QCOMPARE(results.size(), 2);
+    QStringList hitIds;
+    for (const QVariant &entry : results) {
+        hitIds.append(entry.toMap().value("deviceId").toString());
+        QCOMPARE(entry.toMap().value("isOnline").toBool(), false);  // 数据库命中按离线卡展示
+    }
+    QVERIFY(hitIds.contains(QStringLiteral("search-name-hit")));
+    QVERIFY(hitIds.contains(QStringLiteral("search-alias-hit")));
+    QVERIFY(!hitIds.contains(QStringLiteral("search-ip-hit")));
+    QVERIFY(!hitIds.contains(QStringLiteral("search-miss")));
+    QVERIFY(!hitIds.contains(QStringLiteral("search-hidden")));
+
+    // 换用 IP 关键字命中第三路
+    viewModel.searchPeers(QStringLiteral("172.16.99"));
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.searchBusy(), 3000);
+    QCOMPARE(viewModel.searchResults().size(), 1);
+    QCOMPARE(viewModel.searchResults().first().toMap().value("deviceId").toString(),
+             QStringLiteral("search-ip-hit"));
+}
+
+// 检索分页：命中超过单次上限时只返回上限内条目，按最近活动倒序取最新的一批
+void TestPeerDiscoveryViewModel::testSearchPeersLimitAndOrder()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "search-limit.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    // 直写 150 台命中设备，活跃时间递增：越靠后越新
+    const QDateTime base = QDateTime::fromString("2026-10-01T09:00:00.000Z", Qt::ISODateWithMs);
+    for (int i = 1; i <= 150; ++i) {
+        PeerRecord record;
+        record.deviceId = QStringLiteral("bulk-dev-%1").arg(i, 3, 10, QChar('0'));
+        record.deviceName = QStringLiteral("批量设备%1").arg(i, 3, 10, QChar('0'));
+        record.lastIpAddress = QStringLiteral("10.77.0.%1").arg(i);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 60);
+        record.lastSeenAt = base.addSecs(i * 60);
+        QString error;
+        QVERIFY(repository.upsertPeer(record, &error));
+    }
+
+    auto broker = openBroker("search-limit.sqlite");
+    QVERIFY(broker);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+
+    viewModel.searchPeers(QStringLiteral("批量设备"));
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.searchBusy(), 3000);
+
+    // 150 台全部命中但只回投上限 50 条（视图模型 kSearchPeerLimit 的口径）
+    const QVariantList results = viewModel.searchResults();
+    QCOMPARE(results.size(), 50);
+    QCOMPARE(results.at(0).toMap().value("deviceId").toString(),
+             QStringLiteral("bulk-dev-150"));
+    QCOMPARE(results.at(49).toMap().value("deviceId").toString(),
+             QStringLiteral("bulk-dev-101"));
+}
+
+// 空关键字立即清空结果，无命中关键字返回空结果且不影响后续检索
+void TestPeerDiscoveryViewModel::testSearchPeersEmptyAndNoMatch()
+{
+    auto broker = openBroker("search-empty.sqlite");
+    QVERIFY(broker);
+    const PeerInfo peer = makePeerInfo(QStringLiteral("solo-peer"),
+                                       QStringLiteral("孤立设备"),
+                                       QStringLiteral("10.253.100.9"));
+    seedPeer(*broker, peer);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+
+    viewModel.searchPeers(QStringLiteral("绝不匹配的设备xyz"));
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.searchBusy(), 3000);
+    QVERIFY(viewModel.searchResults().isEmpty());
+
+    viewModel.searchPeers(QStringLiteral("孤立设备"));
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.searchResults().size() == 1, 3000);
+    QCOMPARE(viewModel.searchResults().first().toMap().value("deviceId").toString(),
+             QStringLiteral("solo-peer"));
+
+    // 空关键字同步清空且不发数据库查询
+    viewModel.searchPeers(QString());
+    QVERIFY(viewModel.searchResults().isEmpty());
+    QVERIFY(!viewModel.searchBusy());
 }
 
 // 工具方法：在临时目录打开一份本地历史库

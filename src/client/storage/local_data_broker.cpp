@@ -336,6 +336,33 @@ void LocalDataBroker::loadRecentPeers(QObject *receiver, int limit,
         });
 }
 
+// 异步按关键字检索设备目录
+void LocalDataBroker::searchPeers(QObject *receiver, const QString &keyword, int limit,
+                                  const PeersCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, keyword, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            // 筛选与排序都在存储层完成，应用层只拿领域记录
+            const QList<PeerRecord> records = _deviceRepository->searchPeers(keyword, limit,
+                                                                             errorMessage);
+            const bool succeeded = errorMessage->isEmpty();
+            QMetaObject::invokeMethod(receiver, [callback, records, succeeded] {
+                callback(records, succeeded);
+            }, Qt::QueuedConnection);
+            return succeeded;
+        });
+}
+
 // 异步加载指定会话的一页聊天历史
 void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &cursor, int limit,
                                    const MessagesCallback &callback)

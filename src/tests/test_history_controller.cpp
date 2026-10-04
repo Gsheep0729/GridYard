@@ -63,6 +63,7 @@
 
 #include <QSignalSpy>
 #include <QFile>
+#include <QSet>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -80,6 +81,7 @@ private slots:
     void testChatPaginationNoDuplicates();
     void testTransferFilterByDevice();
     void testTransferFilterByStatus();
+    void testTransferLoadMorePagination();
     void testDeleteMessageOnlyAffectsTarget();
     void testDeleteConversationOnlyAffectsTarget();
     void testDeleteTransferOnlyAffectsTarget();
@@ -238,6 +240,78 @@ void TestHistoryController::testTransferFilterByStatus()
     QCOMPARE(transfers.first().toMap().value("status").toString(),
              QStringLiteral("failed"));
 
+}
+
+void TestHistoryController::testTransferLoadMorePagination()
+{
+    auto database = openDatabase("load-more.sqlite");
+    QVERIFY(database);
+    SqliteTransferHistoryRepository transferRepository(database.get());
+    seedDevice(*database, "peer-P", "Device Papa");
+    seedDevice(*database, "peer-Q", "Device Quebec");
+
+    const QDateTime base = QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs);
+    // peer-P 写入 450 条、秒级递增的时间戳保证排序键唯一
+    for (int i = 0; i < 450; ++i) {
+        seedTransfer(transferRepository, QStringLiteral("s-p%1").arg(i, 3, 10, QChar('0')),
+                     "peer-P", "completed", base.addSecs(i));
+    }
+    // 另一设备的时间戳取最新一段，混入全局查询验证翻页游标跨设备不漏重
+    for (int i = 0; i < 3; ++i) {
+        seedTransfer(transferRepository, QStringLiteral("s-q%1").arg(i),
+                     "peer-Q", "completed", base.addSecs(1000 + i));
+    }
+
+    auto dataBroker = openDataBroker("load-more.sqlite");
+    QVERIFY(dataBroker);
+    HistoryController controller(nullptr, nullptr, nullptr, dataBroker.get());
+
+    QSignalSpy spy(&controller, &HistoryController::transfersChanged);
+    controller.queryTransfers();
+    QVERIFY(spy.wait(3000));
+    QCOMPARE(controller.transfers().size(), 200);
+    QCOMPARE(controller.hasMoreTransfers(), true);
+    // 排序按 started_at 倒序，全局最新是 peer-Q 的最后一条
+    QCOMPARE(controller.transfers().first().toMap().value("recordId").toString(),
+             QStringLiteral("record-s-q2"));
+    QCOMPARE(controller.transfers().at(199).toMap().value("recordId").toString(),
+             QStringLiteral("record-s-p253"));
+
+    QSignalSpy spy2(&controller, &HistoryController::transfersChanged);
+    controller.loadMoreTransfers();
+    QVERIFY(spy2.wait(3000));
+    QCOMPARE(controller.transfers().size(), 400);
+    QCOMPARE(controller.hasMoreTransfers(), true);
+    QCOMPARE(controller.transfers().at(200).toMap().value("recordId").toString(),
+             QStringLiteral("record-s-p252"));
+    // 两页拼接后无重复记录
+    QSet<QString> recordIds;
+    for (const QVariant &entry : controller.transfers()) {
+        recordIds.insert(entry.toMap().value("recordId").toString());
+    }
+    QCOMPARE(recordIds.size(), 400);
+
+    QSignalSpy spy3(&controller, &HistoryController::transfersChanged);
+    controller.loadMoreTransfers();
+    QVERIFY(spy3.wait(3000));
+    QCOMPARE(controller.transfers().size(), 453);
+    QCOMPARE(controller.hasMoreTransfers(), false);  // 末页只有 53 条，不足一页即到底
+    QCOMPARE(controller.transfers().last().toMap().value("recordId").toString(),
+             QStringLiteral("record-s-p000"));
+
+    // 到底后再调用是安全空操作
+    controller.loadMoreTransfers();
+    QTest::qWait(100);
+    QCOMPARE(controller.transfers().size(), 453);
+
+    // 按设备筛选的翻页口径一致：peer-Q 只有 3 条，首页即到底
+    QSignalSpy spy4(&controller, &HistoryController::transfersChanged);
+    QVariantMap deviceFilter;
+    deviceFilter["peerDeviceId"] = QStringLiteral("peer-Q");
+    controller.queryTransfers(deviceFilter);
+    QVERIFY(spy4.wait(3000));
+    QCOMPARE(controller.transfers().size(), 3);
+    QCOMPARE(controller.hasMoreTransfers(), false);
 }
 
 void TestHistoryController::testDeleteMessageOnlyAffectsTarget()

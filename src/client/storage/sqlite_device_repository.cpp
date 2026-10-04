@@ -65,6 +65,24 @@ constexpr qint64 kDiscoveryWriteIntervalMs = 30000; // 相同发现快照最短�
 
 // 将 UTC 时间转换为 SQLite 使用的 ISO 文本
 QString sqlTime(const QDateTime &time) { return time.toUTC().toString(Qt::ISODateWithMs); }
+
+// 将设备目录查询的当前行映射为领域记录，列序与 SELECT 清单一致
+PeerRecord readPeerRecordRow(const QSqlQuery &query)
+{
+    PeerRecord record;
+    record.deviceId = query.value(0).toString();
+    record.deviceName = query.value(1).toString();
+    record.lastIpAddress = query.value(2).toString();
+    record.lastTcpPort = static_cast<quint16>(query.value(3).toUInt());
+    record.firstSeenAt = QDateTime::fromString(query.value(4).toString(), Qt::ISODateWithMs);
+    record.lastSeenAt = QDateTime::fromString(query.value(5).toString(), Qt::ISODateWithMs);
+    record.lastChatAt = QDateTime::fromString(query.value(6).toString(), Qt::ISODateWithMs);
+    record.lastTransferAt = QDateTime::fromString(query.value(7).toString(), Qt::ISODateWithMs);
+    record.alias = query.value(8).toString();
+    record.pinned = query.value(9).toInt() != 0;
+    record.hidden = query.value(10).toInt() != 0;
+    return record;
+}
 }
 
 // 构造函数
@@ -139,19 +157,56 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
     }
     while (query.next()) {
         // 存储层完成行到领域值对象的映射，调用方不接触 QSqlQuery。
-        PeerRecord record;
-        record.deviceId = query.value(0).toString();
-        record.deviceName = query.value(1).toString();
-        record.lastIpAddress = query.value(2).toString();
-        record.lastTcpPort = static_cast<quint16>(query.value(3).toUInt());
-        record.firstSeenAt = QDateTime::fromString(query.value(4).toString(), Qt::ISODateWithMs);
-        record.lastSeenAt = QDateTime::fromString(query.value(5).toString(), Qt::ISODateWithMs);
-        record.lastChatAt = QDateTime::fromString(query.value(6).toString(), Qt::ISODateWithMs);
-        record.lastTransferAt = QDateTime::fromString(query.value(7).toString(), Qt::ISODateWithMs);
-        record.alias = query.value(8).toString();
-        record.pinned = query.value(9).toInt() != 0;
-        record.hidden = query.value(10).toInt() != 0;
-        records.append(record);
+        records.append(readPeerRecordRow(query));
+    }
+    return records;
+}
+
+// 按关键字模糊检索设备目录：设备名、备注与最近 IP 任一包含即命中；
+// 隐藏态设备与列表过滤语义一致不返回，排序口径与 recentPeers 相同
+QList<PeerRecord> SqliteDeviceRepository::searchPeers(const QString &keyword, int limit,
+                                                      QString *errorMessage) const
+{
+    QList<PeerRecord> records;
+    if (!_database) {
+        if (errorMessage)
+            *errorMessage = "数据库入口未初始化";
+        return records;
+    }
+    if (keyword.trimmed().isEmpty() || limit <= 0) {
+        return records;  // 空关键字或零上限等价于空结果，不必发起查询
+    }
+    QSqlDatabase database = _database->connectionForWorkerThread(errorMessage);
+    if (!database.isValid())
+        return records;
+
+    // 转义 LIKE 通配符后前后加 %，用户输入按字面包含匹配而非通配模式
+    QString pattern = keyword;
+    pattern.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+    pattern.replace(QStringLiteral("%"), QStringLiteral("\\%"));
+    pattern.replace(QStringLiteral("_"), QStringLiteral("\\_"));
+    pattern = "%" + pattern + "%";
+
+    QSqlQuery query(database);
+    // 排序口径与 recentPeers 一致：置顶设备优先，其次按最近活动时间倒序
+    query.prepare("SELECT device_id, device_name, last_ip_address, last_tcp_port, "
+                  "first_seen_at, last_seen_at, last_chat_at, last_transfer_at, "
+                  "alias, pinned, hidden FROM peer_devices "
+                  "WHERE hidden = 0 AND (device_name LIKE ? ESCAPE '\\' "
+                  "OR alias LIKE ? ESCAPE '\\' OR last_ip_address LIKE ? ESCAPE '\\') "
+                  "ORDER BY pinned DESC, COALESCE(last_chat_at, last_transfer_at, "
+                  "last_seen_at) DESC LIMIT ?");
+    query.addBindValue(pattern);
+    query.addBindValue(pattern);
+    query.addBindValue(pattern);
+    query.addBindValue(limit);
+    if (!query.exec()) {
+        if (errorMessage)
+            *errorMessage = query.lastError().text();
+        return records;
+    }
+    while (query.next()) {
+        records.append(readPeerRecordRow(query));
     }
     return records;
 }

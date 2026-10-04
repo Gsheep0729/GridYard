@@ -71,6 +71,10 @@ private:
     Q_PROPERTY(QVariantList peers READ peers NOTIFY peersChanged)
     // 隐藏态设备列表（设备名/IP/最后活跃），供设置页"已隐藏设备"区块恢复显示
     Q_PROPERTY(QVariantList hiddenPeers READ hiddenPeers NOTIFY peersChanged)
+    // 关键字检索的数据库历史命中条目，随 searchPeers 异步发布
+    Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchResultsChanged)
+    // 数据库检索是否进行中（防抖提交后到回调返回之间），界面据此抑制空态闪现
+    Q_PROPERTY(bool searchBusy READ searchBusy NOTIFY searchBusyChanged)
     Q_PROPERTY(QString selectedDeviceId READ selectedDeviceId WRITE setSelectedDeviceId NOTIFY selectedDeviceIdChanged)
 
 public:
@@ -84,6 +88,10 @@ public:
     QVariantList peers() const;
     // 获取隐藏态设备列表，设置页"已隐藏设备"区块据此展示恢复入口
     QVariantList hiddenPeers() const;
+    // 获取关键字检索的数据库历史命中条目
+    QVariantList searchResults() const;
+    // 获取数据库检索进行中状态
+    bool searchBusy() const;
     // 获取当前选中设备 ID（选择状态收编到视图模型，QML 不再手工复制）
     QString selectedDeviceId() const;
     // 更新选中设备
@@ -94,6 +102,9 @@ public:
     Q_INVOKABLE void refresh();
     // 请求刷新本地历史设备目录
     Q_INVOKABLE void refreshHistory();
+    // 按关键字异步检索设备目录（设备名/备注/最近 IP），命中条目经
+    // searchResults 发布，供列表把数据库历史命中追加到已加载条目之后
+    Q_INVOKABLE void searchPeers(const QString &keyword);
     // 置顶或取消置顶指定设备（落库成功后刷新内存状态）
     Q_INVOKABLE void setDevicePinned(const QString &deviceId, bool pinned);
     // 隐藏或恢复显示指定设备（落库成功后刷新内存状态）
@@ -110,11 +121,15 @@ public:
 
 signals:
     void peersChanged();
+    void searchResultsChanged();
+    void searchBusyChanged();
     void selectedDeviceIdChanged();
     void nodeDiscovered(const QString &deviceId);
     void nodeExpired(const QString &deviceId);
 
 private:
+    // 设置检索进行中状态并通知 QML
+    void setSearchBusy(bool value);
     static QVariantMap peerRecordToVariant(const PeerRecord &record);
     // 将在线 PeerInfo 转成与历史条目同构的展示字段映射，统一过滤与排序规则
     QVariantMap peerInfoToVariant(const PeerInfo &info) const;
@@ -122,6 +137,9 @@ private:
     DiscoveryService *_discovery = nullptr;  // 内部设备发现服务
     LocalDataBroker *_dataBroker = nullptr;  // 本地设备目录加载入口
     QVariantList _historyPeers;  // 已持久化的历史设备列表
+    QVariantList _searchResults;  // 最近一次关键字检索的数据库命中条目
+    QString _searchKeyword;  // 最近一次提交的检索关键字，用于丢弃过期回调结果
+    bool _searchBusy = false;  // 数据库检索是否进行中
     QSet<QString> _hiddenDeviceIds;  // 数据库中隐藏态的设备（不进合并列表）
     QSet<QString> _pinnedDeviceIds;  // 数据库中置顶态的设备（排序规则由后续任务接入）
     QHash<QString, QString> _aliasByDeviceId;  // 数据库中的设备备注，在线条目按 deviceId 回填

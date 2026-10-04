@@ -73,21 +73,41 @@ Rectangle {
     property string selectedDeviceId: ""  // 当前选中的设备 ID，由 Main.qml 设置
     readonly property int kDeviceCardHeight: 76  // 单个设备卡片的固定高度
     readonly property string _searchKeyword: searchInput.text.trim().toLowerCase()
-    // 过滤后的设备数量，用于标题栏显示"N 台"
-    readonly property int _filteredCount: {
-        const peers = AppController.peerDiscoveryViewModel.peers
-        if (_searchKeyword.length === 0) {
-            return peers.length
+    readonly property bool _searchActive: _searchKeyword.length > 0
+    // 搜索模式下的合并模型：已加载列表的命中条目在前，列表自身的置顶档与
+    // 来源优先级排序保证在线条目天然靠前；其后追加数据库历史命中条目（按
+    // deviceId 去重，以离线卡样式展示）。数据库单次检索上限 50 条（视图模型
+    // kSearchPeerLimit），命中按置顶与最近活动倒序返回；检索进行中只显示
+    // 已加载命中，避免旧关键字的结果闪现
+    readonly property var _searchMergedPeers: {
+        if (!_searchActive) {
+            return []
         }
-
-        let count = 0
+        const vm = AppController.peerDiscoveryViewModel
+        const merged = []
+        const seen = new Set()
+        const peers = vm.peers
         for (let i = 0; i < peers.length; i++) {
-            if (matchesPeer(peers[i].deviceName, peers[i].ipAddress, peers[i].alias)) {
-                count++
+            const peer = peers[i]
+            if (matchesPeer(peer.deviceName, peer.ipAddress, peer.alias)) {
+                merged.push(peer)
+                seen.add(peer.deviceId)
             }
         }
-        return count
+        if (!vm.searchBusy) {
+            const hits = vm.searchResults
+            for (let j = 0; j < hits.length; j++) {
+                if (!seen.has(hits[j].deviceId)) {
+                    merged.push(hits[j])
+                }
+            }
+        }
+        return merged
     }
+    // 过滤后的设备数量，用于标题栏显示"N 台"
+    readonly property int _filteredCount: _searchActive
+                                           ? _searchMergedPeers.length
+                                           : AppController.peerDiscoveryViewModel.peers.length
 
     // 模糊匹配：同时搜索设备名、本地备注和 IP 地址，任一包含关键词即匹配
     function matchesPeer(deviceName: string, ipAddress: string, alias: string): bool {
@@ -108,6 +128,13 @@ Rectangle {
     signal contextActionRequested(string deviceId, string deviceName, string action)
 
     color: Style.Color.surfaceMid
+
+    // 搜索防抖：输入停顿 300ms 后才提交数据库检索；清空时立即提交，结果即时回落
+    Timer {
+        id: searchDebounce
+        interval: 300
+        onTriggered: AppController.peerDiscoveryViewModel.searchPeers(searchInput.text)
+    }
 
     // 搜索区：搜索输入框 + 刷新按钮
     Item {
@@ -149,6 +176,14 @@ Rectangle {
                     clip: true
                     selectByMouse: true
                     background: Item {}
+                    onTextChanged: {
+                        if (text.length === 0) {
+                            searchDebounce.stop()
+                            AppController.peerDiscoveryViewModel.searchPeers("")
+                        } else {
+                            searchDebounce.restart()
+                        }
+                    }
                 }
 
                 // 清空按钮：输入内容时出现
@@ -209,7 +244,7 @@ Rectangle {
         color: Style.Color.textWeak
     }
 
-    // 设备列表：绑定在线设备数组，delegate 自动从 PeerInfo 填充 required property
+    // 设备列表：无关键字绑定全量合并列表，搜索时绑定已加载命中与数据库命中的合并结果
     ListView {
         id: listView
         anchors.left: parent.left
@@ -217,7 +252,9 @@ Rectangle {
         anchors.top: deviceTitle.bottom
         anchors.bottom: addDeviceBar.top
         clip: true
-        model: AppController.peerDiscoveryViewModel.peers
+        model: peerListView._searchActive
+               ? peerListView._searchMergedPeers
+               : AppController.peerDiscoveryViewModel.peers
         delegate: Item {
             id: peerDelegate
 
@@ -228,11 +265,8 @@ Rectangle {
             required property bool pinned
             required property string alias
 
-            readonly property bool _matches: peerListView.matchesPeer(deviceName, ipAddress, alias)
-
             width: listView.width
-            height: _matches ? peerListView.kDeviceCardHeight : 0  // 不匹配时高度为 0 实现隐藏
-            visible: _matches
+            height: peerListView.kDeviceCardHeight  // 模型已按关键字过滤，条目全部可见
 
             DeviceCard {
                 id: deviceCard
@@ -258,12 +292,15 @@ Rectangle {
             }
         }
 
-        // 空状态：搜索无结果与尚未发现设备分别引导
+        // 空状态：搜索无结果与尚未发现设备分别引导；数据库检索进行中不显示，
+        // 避免结果回投前的空态闪现
         ColumnLayout {
             anchors.centerIn: parent
             width: Math.min(parent.width - Style.Space.xl * 2, 190)
             spacing: Style.Space.sm
             visible: peerListView._filteredCount === 0
+                     && !(peerListView._searchActive
+                          && AppController.peerDiscoveryViewModel.searchBusy)
 
             // 搜索无结果
             ColumnLayout {

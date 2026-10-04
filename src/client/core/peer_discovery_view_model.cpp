@@ -62,6 +62,7 @@
 
 namespace {
 constexpr int kRecentPeerLimit = 100;  // 首屏恢复最近设备数量上限
+constexpr int kSearchPeerLimit = 50;  // 设备搜索单次回投上限：控制体量并保持结果可扫视
 
 // 将时间转换成 QML 侧可展示的 ISO 文本
 QString timeToString(const QDateTime &time)
@@ -218,6 +219,28 @@ QVariantList PeerDiscoveryViewModel::hiddenPeers() const
     return result;
 }
 
+// 获取关键字检索的数据库历史命中条目
+QVariantList PeerDiscoveryViewModel::searchResults() const
+{
+    return _searchResults;
+}
+
+// 获取数据库检索进行中状态
+bool PeerDiscoveryViewModel::searchBusy() const
+{
+    return _searchBusy;
+}
+
+// 设置检索进行中状态并通知 QML
+void PeerDiscoveryViewModel::setSearchBusy(bool value)
+{
+    if (_searchBusy == value) {
+        return;
+    }
+    _searchBusy = value;
+    emit searchBusyChanged();
+}
+
 // 按设备 ID 查询展示信息，未命中返回空表
 QVariantMap PeerDiscoveryViewModel::deviceById(const QString &deviceId) const
 {
@@ -299,6 +322,47 @@ void PeerDiscoveryViewModel::initDataBroker(LocalDataBroker *dataBroker)
 {
     _dataBroker = dataBroker;
     refreshHistory();
+}
+
+// 按关键字异步检索设备目录，命中条目经 searchResults 发布给表现层
+void PeerDiscoveryViewModel::searchPeers(const QString &keyword)
+{
+    const QString trimmed = keyword.trimmed();
+    _searchKeyword = trimmed;
+
+    // 空关键字立即清空结果并复位状态，避免旧检索残留到列表
+    if (trimmed.isEmpty()) {
+        setSearchBusy(false);
+        if (!_searchResults.isEmpty()) {
+            _searchResults.clear();
+            emit searchResultsChanged();
+        }
+        return;
+    }
+
+    if (!_dataBroker) {
+        return;  // 数据层未注入时保持现状，已加载列表的过滤仍可用
+    }
+
+    setSearchBusy(true);
+    _dataBroker->searchPeers(
+        this, trimmed, kSearchPeerLimit,
+        [this, trimmed](const QList<PeerRecord> &records, bool succeeded) {
+            // 回调到达时关键字已变化则丢弃过期结果，等待新关键字的回调收尾
+            if (trimmed != _searchKeyword) {
+                return;
+            }
+            setSearchBusy(false);
+            if (!succeeded) {
+                return;  // 检索失败保留上一次结果，已加载列表的过滤不受影响
+            }
+            _searchResults.clear();
+            _searchResults.reserve(records.size());
+            for (const PeerRecord &record : records) {
+                _searchResults.append(peerRecordToVariant(record));
+            }
+            emit searchResultsChanged();
+        });
 }
 
 // 置顶或取消置顶指定设备，落库成功后刷新内存状态

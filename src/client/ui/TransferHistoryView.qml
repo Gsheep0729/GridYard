@@ -62,9 +62,17 @@ Frame {
     property string peerDeviceId: ""  // 可选：按设备 ID 筛选，空字符串表示全部设备
     property string selectedStatus: ""  // 可选：按状态筛选（completed/failed/cancelled/rejected）
 
-    // 按当前筛选条件查询传输历史，每次筛选变化或手动刷新时调用
+    // 按当前筛选条件查询传输历史第一页，每次筛选变化或手动刷新时调用
     function refresh(): void {
         AppController.historyController.queryTransfers({
+            "peerDeviceId": root.peerDeviceId,
+            "status": root.selectedStatus
+        })
+    }
+
+    // 翻页加载更早的历史，游标与筛选条件由 HistoryController 依据当前列表推导
+    function loadMore(): void {
+        AppController.historyController.loadMoreTransfers({
             "peerDeviceId": root.peerDeviceId,
             "status": root.selectedStatus
         })
@@ -162,6 +170,31 @@ Frame {
                         font.pixelSize: 12
                         color: Style.Color.textWeak
                     }
+                }
+            }
+
+            // 底部翻页区：还有更早记录时给"加载更多"入口，取到底后显示提示；
+            // 查询进行中收起（顶部已有加载指示），空列表不占位
+            footer: Item {
+                width: historyList.width
+                height: historyList.count > 0 && !AppController.historyController.loading ? 44 : 0
+                visible: height > 0
+
+                Button {
+                    anchors.centerIn: parent
+                    visible: AppController.historyController.hasMoreTransfers
+                    text: qsTr("加载更多")
+                    flat: true
+                    font.pixelSize: 13
+                    onClicked: root.loadMore()
+                }
+
+                Label {
+                    anchors.centerIn: parent
+                    visible: !AppController.historyController.hasMoreTransfers
+                    text: qsTr("已到底")
+                    font.pixelSize: 12
+                    color: Style.Color.textWeak
                 }
             }
 

@@ -115,6 +115,9 @@ public:
     void loadRecentTransferHistories(QObject *receiver, const TransferHistoriesCallback &callback);
     // 异步加载最近设备目录
     void loadRecentPeers(QObject *receiver, int limit, const PeersCallback &callback);
+    // 异步按关键字检索设备目录
+    void searchPeers(QObject *receiver, const QString &keyword, int limit,
+                     const PeersCallback &callback);
     // 异步加载指定会话的一页聊天历史
     void loadMessages(QObject *receiver, const MessageCursor &cursor, int limit,
                       const MessagesCallback &callback);

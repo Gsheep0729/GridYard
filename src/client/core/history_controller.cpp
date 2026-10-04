@@ -88,6 +88,22 @@ bool HistoryController::loading() const
     return _loading;
 }
 
+// 获取传输历史是否还有更早一页
+bool HistoryController::hasMoreTransfers() const
+{
+    return _hasMoreTransfers;
+}
+
+// 设置传输历史是否还有下一页并通知 QML
+void HistoryController::setHasMoreTransfers(bool value)
+{
+    if (_hasMoreTransfers == value) {
+        return;
+    }
+    _hasMoreTransfers = value;
+    emit hasMoreTransfersChanged();
+}
+
 // 获取历史保留天数
 int HistoryController::retentionDays() const
 {
@@ -128,7 +144,7 @@ void HistoryController::loadMoreMessages(const QString &deviceId)
         });
 }
 
-// 按筛选条件查询传输历史
+// 按筛选条件查询传输历史第一页
 void HistoryController::queryTransfers(const QVariantMap &filter)
 {
     if (!_dataBroker || _loading) {
@@ -139,18 +155,9 @@ void HistoryController::queryTransfers(const QVariantMap &filter)
     TransferQuery query;
     query.peerDeviceId = filter.value("peerDeviceId").toString();  // 可选：按设备筛选
     query.status = filter.value("status").toString();  // 可选：按状态筛选（completed/failed/cancelled）
-    const QString before = filter.value("beforeStartedAt").toString();
-    if (!before.isEmpty()) {
-        query.beforeStartedAt = QDateTime::fromString(before, Qt::ISODateWithMs);  // 可选：时间游标分页
-        // 次键游标取本页最后一条的记录 ID，与排序键对齐避免同毫秒翻页漏重
-        if (!_transfers.isEmpty()) {
-            query.beforeRecordId = _transfers.last().toMap().value("recordId").toString();
-        }
-    }
 
-    // 传输历史一次最多取 200 条，避免历史页打开时阻塞主线程回投。
     _dataBroker->queryTransfers(
-        this, query, 200,  // 单次最多取 200 条
+        this, query, kTransferPageSize,
         [this](const QList<TransferRecord> &records, bool succeeded) {
             if (succeeded) {
                 _transfers.clear();
@@ -158,6 +165,41 @@ void HistoryController::queryTransfers(const QVariantMap &filter)
                     _transfers.append(transferToVariant(record));  // 逐条转换为 QML 可绑定字段
                 }
                 emit transfersChanged();
+                // 取满一页才认为可能还有更早记录，不足一页即已到底
+                setHasMoreTransfers(records.size() == kTransferPageSize);
+            } else {
+                emit operationFailed(tr("查询传输历史失败"));
+            }
+            setLoading(false);
+        });
+}
+
+// 翻页加载更早的传输历史：游标取当前列表最后一条，新记录追加到尾部
+void HistoryController::loadMoreTransfers(const QVariantMap &filter)
+{
+    if (!_dataBroker || _loading || !_hasMoreTransfers || _transfers.isEmpty()) {
+        return;
+    }
+
+    // 次键游标取本页最后一条的记录 ID，与排序键 (started_at, record_id) 对齐避免同毫秒翻页漏重
+    const QVariantMap pageEnd = _transfers.last().toMap();
+    TransferQuery query;
+    query.peerDeviceId = filter.value("peerDeviceId").toString();
+    query.status = filter.value("status").toString();
+    query.beforeStartedAt = QDateTime::fromString(pageEnd.value("startedAt").toString(),
+                                                  Qt::ISODateWithMs);
+    query.beforeRecordId = pageEnd.value("recordId").toString();
+
+    setLoading(true);
+    _dataBroker->queryTransfers(
+        this, query, kTransferPageSize,
+        [this](const QList<TransferRecord> &records, bool succeeded) {
+            if (succeeded) {
+                for (const TransferRecord &record : records) {
+                    _transfers.append(transferToVariant(record));  // 追加到列表尾部而非替换
+                }
+                emit transfersChanged();
+                setHasMoreTransfers(records.size() == kTransferPageSize);
             } else {
                 emit operationFailed(tr("查询传输历史失败"));
             }
@@ -259,6 +301,7 @@ void HistoryController::clearAllTransfers()
             if (succeeded) {
                 _transfers.clear();
                 emit transfersChanged();
+                setHasMoreTransfers(false);  // 列表已清空，翻页状态一并复位
                 if (_transfer) {
                     // 仅移除已结束会话展示项，不删除用户本地文件，操作比 removeSessionAndDeleteFile 更保守
                     _transfer->clearFinishedSessions(false);
