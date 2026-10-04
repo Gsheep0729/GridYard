@@ -119,12 +119,12 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
     if (!database.isValid())
         return records;
     QSqlQuery query(database);
-    // 最近活动优先于发现时间，确保有聊天或传输的设备排在普通心跳设备前。
-    // 按最近活动排序，COALESCE 优先取聊天时间，其次传输时间，最后心跳时间
+    // 置顶设备优先于普通设备恢复，其余按最近活动排序，COALESCE 优先取聊天时间，
+    // 其次传输时间，最后心跳时间
     query.prepare("SELECT device_id, device_name, last_ip_address, last_tcp_port, "
                   "first_seen_at, last_seen_at, last_chat_at, last_transfer_at, "
                   "alias, pinned, hidden FROM "
-                  "peer_devices ORDER BY COALESCE(last_chat_at, last_transfer_at, "
+                  "peer_devices ORDER BY pinned DESC, COALESCE(last_chat_at, last_transfer_at, "
                   "last_seen_at) DESC LIMIT ?");
     query.addBindValue(limit);
     if (!query.exec()) {

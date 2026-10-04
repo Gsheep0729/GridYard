@@ -78,6 +78,9 @@ ItemDelegate {
     required property bool   isOnline
     required property bool   isSelected
 
+    // 置顶状态由视图模型按数据库状态注入，仅用于菜单文案展示
+    property bool isPinned: false
+
     readonly property int   kCardHeight: 76
     readonly property color kOnlineColor:  Style.Color.success   // 在线状态圆点颜色
     readonly property color kOfflineColor: Style.Color.textWeak  // 离线状态圆点颜色
@@ -85,6 +88,8 @@ ItemDelegate {
 
     signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)
+    // 右键菜单上报用户意图（pin/unpin/hide/rename/delete），由装配层接确认弹窗与控制器
+    signal contextActionRequested(string deviceId, string deviceName, string action)
 
     height: kCardHeight
     background: Rectangle {
@@ -124,6 +129,108 @@ ItemDelegate {
 
         onDropped: function(drop) {
             deviceCard.filesDropped(deviceCard.deviceId, drop.urls)
+        }
+    }
+
+    // 右键手势：只接管右键，与左键选中（ItemDelegate onClicked）和拖拽（DropArea）互不干扰
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: contextMenu.popup()
+    }
+
+    // 右键菜单：微信式会话管理入口。菜单只上报用户意图，业务判断全部在 C++ 侧
+    Menu {
+        id: contextMenu
+        width: 160
+        topPadding: 4
+        bottomPadding: 4
+        leftPadding: 4
+        rightPadding: 4
+
+        background: Rectangle {
+            color: Style.Color.surface
+            radius: Style.Radius.md
+            border.color: Style.Color.borderSoft
+            border.width: 1
+        }
+
+        MenuItem {
+            id: pinItem
+            text: deviceCard.isPinned ? qsTr("取消置顶") : qsTr("置顶该聊天")
+            contentItem: Label {
+                text: pinItem.text
+                font.pixelSize: 13
+                color: pinItem.hovered ? Style.Color.primary : Style.Color.textMain
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: pinItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            onTriggered: deviceCard.contextActionRequested(
+                             deviceCard.deviceId, deviceCard.deviceName,
+                             deviceCard.isPinned ? "unpin" : "pin")
+        }
+
+        MenuItem {
+            id: hideItem
+            text: qsTr("不显示该聊天")
+            contentItem: Label {
+                text: hideItem.text
+                font.pixelSize: 13
+                color: hideItem.hovered ? Style.Color.primary : Style.Color.textMain
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: hideItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            onTriggered: deviceCard.contextActionRequested(
+                             deviceCard.deviceId, deviceCard.deviceName, "hide")
+        }
+
+        MenuItem {
+            id: renameItem
+            text: qsTr("设置备注")
+            contentItem: Label {
+                text: renameItem.text
+                font.pixelSize: 13
+                color: renameItem.hovered ? Style.Color.primary : Style.Color.textMain
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: renameItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            // 占位入口：备注编辑由 PhaseN2-D 接线，当前只上报意图
+            onTriggered: deviceCard.contextActionRequested(
+                             deviceCard.deviceId, deviceCard.deviceName, "rename")
+        }
+
+        MenuItem {
+            id: deleteItem
+            text: qsTr("删除该聊天")
+            contentItem: Label {
+                text: deleteItem.text
+                font.pixelSize: 13
+                // 危险操作沿用 Style 语义色 error，与确认弹窗的危险按钮呼应
+                color: deleteItem.hovered ? Style.Color.errorHover : Style.Color.error
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: deleteItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            onTriggered: deviceCard.contextActionRequested(
+                             deviceCard.deviceId, deviceCard.deviceName, "delete")
         }
     }
 

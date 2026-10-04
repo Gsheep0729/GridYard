@@ -79,6 +79,8 @@ set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/TrayIcon.qml
     ui/Sidebar.qml
     ui/CloseConfirmDialog.qml
+    ui/HideDeviceDialog.qml
+    ui/DeleteDeviceDialog.qml
     ui/HomePlaceholder.qml
     ui/CompletionToast.qml
     ui/RelayConfirmDialog.qml

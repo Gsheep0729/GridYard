@@ -56,6 +56,8 @@ Rectangle {
     // 设备选择与拖拽上抛（拖拽先选中再统一裁决）
     signal deviceSelected(string deviceId)
     signal deviceFilesDropped(string deviceId, var urls)
+    // 设备卡右键菜单意图上抛（pin/unpin/hide/rename/delete）
+    signal contextActionRequested(string deviceId, string deviceName, string action)
     // 菜单里的设置入口
     signal settingsRequested()
 
@@ -193,6 +195,8 @@ Rectangle {
             sidebar.deviceSelected(deviceId)
         onFilesDropped: (deviceId, urls) =>
             sidebar.deviceFilesDropped(deviceId, urls)
+        onContextActionRequested: (deviceId, deviceName, action) =>
+            sidebar.contextActionRequested(deviceId, deviceName, action)
     }
 
     // 本机信息弹出窗口(FCL)

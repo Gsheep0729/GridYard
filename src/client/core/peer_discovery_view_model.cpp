@@ -64,25 +64,11 @@ QString timeToString(const QDateTime &time)
     return time.isValid() ? time.toUTC().toString(Qt::ISODateWithMs) : QString{};
 }
 
-// 从在线 PeerInfo 或历史 QVariantMap 中提取设备 ID
-QString deviceIdFromVariant(const QVariant &peer)
-{
-    if (peer.canConvert<PeerInfo>()) {
-        return peer.value<PeerInfo>().deviceId;
-    }
-    return peer.toMap().value("deviceId").toString();
-}
-
 // 设备来源优先级：数值越小优先级越高
 int sourcePriority(const QVariant &peer)
 {
-    QString source = QStringLiteral("history");  // 默认最低优先级
-    if (peer.canConvert<PeerInfo>()) {
-        source = peer.value<PeerInfo>().source;
-    } else {
-        source = peer.toMap().value("source").toString();
-    }
     // broadcast(0) > directed(1) > rendezvous(2) > manual(3) > history(4)
+    const QString source = peer.toMap().value("source").toString();
     if (source == QStringLiteral("broadcast")) return 0;
     if (source == QStringLiteral("directed")) return 1;
     if (source == QStringLiteral("rendezvous")) return 2;
@@ -90,23 +76,33 @@ int sourcePriority(const QVariant &peer)
     return 4;  // history 或空
 }
 
-// 比较函数用于排序
+// 置顶标记：合并列表的条目已统一为展示字段映射
+bool peerPinned(const QVariant &peer)
+{
+    return peer.toMap().value("pinned").toBool();
+}
+
+// 最近活跃时间（ISO 文本，同固定格式下字典序即时间序）
+QString peerLastSeenAt(const QVariant &peer)
+{
+    return peer.toMap().value("lastSeenAt").toString();
+}
+
+// 比较函数用于排序：置顶档优先，其次来源优先级，最后最近活跃时间
 bool peerSortLessThan(const QVariant &a, const QVariant &b)
 {
+    const bool pinnedA = peerPinned(a);
+    const bool pinnedB = peerPinned(b);
+    if (pinnedA != pinnedB) {
+        return pinnedA;  // 置顶设备排最前（微信置顶聊天语义）
+    }
     const int priorityA = sourcePriority(a);
     const int priorityB = sourcePriority(b);
     if (priorityA != priorityB) {
         return priorityA < priorityB;
     }
     // 优先级相同按最后发现时间倒序
-    QDateTime timeA, timeB;
-    if (a.canConvert<PeerInfo>()) {
-        timeA = a.value<PeerInfo>().lastSeen;
-    }
-    if (b.canConvert<PeerInfo>()) {
-        timeB = b.value<PeerInfo>().lastSeen;
-    }
-    return timeA > timeB;  // 较新的排在前面
+    return peerLastSeenAt(a) > peerLastSeenAt(b);  // 较新的排在前面
 }
 }
 
@@ -135,14 +131,25 @@ PeerDiscoveryViewModel::PeerDiscoveryViewModel(DiscoveryService *discovery, QObj
             });
 }
 
-// 合并在线设备和历史设备，按来源优先级排序
+// 合并在线设备和历史设备，置顶优先后按来源优先级与最近活跃排序
 QVariantList PeerDiscoveryViewModel::peers() const
 {
-    QVariantList mergedPeers = _discovery ? _discovery->peers() : QVariantList{};
+    QVariantList mergedPeers;
+    if (_discovery) {
+        const QVariantList discoveredPeers = _discovery->peers();
+        mergedPeers.reserve(discoveredPeers.size() + _historyPeers.size());
+        // 在线条目统一转成展示字段映射，与历史条目共用一套过滤与排序规则
+        for (const QVariant &peer : discoveredPeers) {
+            if (peer.canConvert<PeerInfo>()) {
+                mergedPeers.append(peerInfoToVariant(peer.value<PeerInfo>()));
+            }
+        }
+    }
+
     // 先收集在线设备的 ID 集合，用于去重
     QSet<QString> onlineDeviceIds;
     for (const QVariant &peer : mergedPeers) {
-        const QString deviceId = deviceIdFromVariant(peer);
+        const QString deviceId = peer.toMap().value("deviceId").toString();
         if (!deviceId.isEmpty()) {
             onlineDeviceIds.insert(deviceId);
         }
@@ -159,36 +166,61 @@ QVariantList PeerDiscoveryViewModel::peers() const
     }
 
     // 隐藏态设备不进列表（微信"不显示该聊天"语义），在线与历史条目一体过滤
-    QList<QVariant> filteredPeers;
+    QVariantList filteredPeers;
     filteredPeers.reserve(mergedPeers.size());
     for (const QVariant &peer : mergedPeers) {
-        if (!_hiddenDeviceIds.contains(deviceIdFromVariant(peer))) {
+        if (!_hiddenDeviceIds.contains(peer.toMap().value("deviceId").toString())) {
             filteredPeers.append(peer);
         }
     }
 
-    // 按来源优先级排序：broadcast > directed > rendezvous > manual > history
-    std::sort(filteredPeers.begin(), filteredPeers.end(), peerSortLessThan);
+    // 排序：置顶 > 来源优先级(broadcast > directed > rendezvous > manual > history)
+    //       > 最近活跃时间；stable_sort 保证同序位条目保持装载顺序
+    std::stable_sort(filteredPeers.begin(), filteredPeers.end(), peerSortLessThan);
 
     return filteredPeers;
+}
+
+// 隐藏态设备列表：历史目录保序在前，在线表补充的隐藏条目追加在后，
+// 供设置页"已隐藏设备"区块展示设备名/IP/最后活跃并恢复显示
+QVariantList PeerDiscoveryViewModel::hiddenPeers() const
+{
+    QVariantList result;
+    QSet<QString> collectedIds;
+    for (const QVariant &peer : _historyPeers) {
+        const QVariantMap map = peer.toMap();
+        const QString deviceId = map.value("deviceId").toString();
+        if (deviceId.isEmpty() || !_hiddenDeviceIds.contains(deviceId)) {
+            continue;
+        }
+        result.append(map);
+        collectedIds.insert(deviceId);
+    }
+
+    if (_discovery) {
+        const QVariantList discoveredPeers = _discovery->peers();
+        for (const QVariant &peer : discoveredPeers) {
+            if (!peer.canConvert<PeerInfo>()) {
+                continue;
+            }
+            const PeerInfo info = peer.value<PeerInfo>();
+            if (_hiddenDeviceIds.contains(info.deviceId)
+                    && !collectedIds.contains(info.deviceId)) {
+                result.append(peerInfoToVariant(info));
+            }
+        }
+    }
+    return result;
 }
 
 // 按设备 ID 查询展示信息，未命中返回空表
 QVariantMap PeerDiscoveryViewModel::deviceById(const QString &deviceId) const
 {
     for (const QVariant &peer : peers()) {
-        if (deviceIdFromVariant(peer) != deviceId) {
-            continue;
+        const QVariantMap map = peer.toMap();
+        if (map.value("deviceId").toString() == deviceId) {
+            return map;
         }
-        if (peer.canConvert<PeerInfo>()) {
-            const PeerInfo info = peer.value<PeerInfo>();
-            return {{"deviceId", info.deviceId},
-                    {"deviceName", info.deviceName},
-                    {"ipAddress", info.ipAddress},
-                    {"isOnline", info.isOnline},
-                    {"pinned", _pinnedDeviceIds.contains(deviceId)}};
-        }
-        return peer.toMap();
     }
     return {};
 }
@@ -356,5 +388,23 @@ QVariantMap PeerDiscoveryViewModel::peerRecordToVariant(const PeerRecord &record
         {"lastTransferAt", timeToString(record.lastTransferAt)},
         {"pinned", record.pinned},
         {"hidden", record.hidden},
+    };
+}
+
+// 将在线 PeerInfo 转成与历史条目同构的展示字段映射：
+// 置顶/隐藏状态以内存集合为准，聊天与传输活跃时间在线条目不携带
+QVariantMap PeerDiscoveryViewModel::peerInfoToVariant(const PeerInfo &info) const
+{
+    return {
+        {"deviceId", info.deviceId},
+        {"deviceName", info.deviceName},
+        {"ipAddress", info.ipAddress},
+        {"isOnline", info.isOnline},
+        {"source", info.source},
+        {"lastSeenAt", timeToString(info.lastSeen)},
+        {"lastChatAt", QString{}},
+        {"lastTransferAt", QString{}},
+        {"pinned", _pinnedDeviceIds.contains(info.deviceId)},
+        {"hidden", _hiddenDeviceIds.contains(info.deviceId)},
     };
 }

@@ -113,6 +113,8 @@ private:
     Q_PROPERTY(int activeSessionCount READ activeSessionCount NOTIFY activeSessionCountChanged)
 
 public:
+    // 判断会话状态是否已结束（完成、失败、拒绝、取消），供控制器层复用同一口径
+    static bool isFinishedStatus(const QString &status);
     // 返回会话快照列表（兼容 QML 拉取式消费与测试）
     QVariantList sessions() const;
     // 返回当前全部等待确认的接收会话快照（按到达序），供确认弹窗串行展示

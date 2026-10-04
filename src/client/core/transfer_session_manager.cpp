@@ -122,13 +122,6 @@ using namespace gy::session;
 
 namespace {
 
-// 判断会话状态是否为已结束（完成、失败、拒绝、取消）
-bool isFinishedStatus(const QString &status)
-{
-    return status == kStatusCompleted || status == kStatusFailed
-           || status == kStatusRejected || status == kStatusCancelled;
-}
-
 // 根据 Worker 结果归一化最终状态，避免取消和拒绝被错误折叠成 failed
 QString normalizedFinalStatus(bool success, gy::protocol::ErrorCode errorCode,
                               const QString &currentStatus)
@@ -206,6 +199,13 @@ static constexpr int kRelayDecisionTimeoutMs = 120000;
 // 等待协调服务器受理中继邀请的超时
 static constexpr int kRelayInviteTimeoutMs = 5000;
 
+}
+
+// 判断会话状态是否为已结束（完成、失败、拒绝、取消）
+bool TransferSessionManager::isFinishedStatus(const QString &status)
+{
+    return status == kStatusCompleted || status == kStatusFailed
+           || status == kStatusRejected || status == kStatusCancelled;
 }
 
 // 构造函数

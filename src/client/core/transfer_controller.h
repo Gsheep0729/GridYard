@@ -94,6 +94,8 @@ public:
     Q_INVOKABLE void rejectReceiveSession(const QString &sessionId);
     // 取消传输会话
     Q_INVOKABLE void cancelSession(const QString &sessionId);
+    // 取消指定设备的全部进行中会话（删除设备前的收尾，复用 cancelSession 能力）
+    Q_INVOKABLE void cancelDeviceSessions(const QString &deviceId);
     // 移除已结束会话
     Q_INVOKABLE void removeSession(const QString &sessionId);
     // 移除已结束会话并删除已接收文件

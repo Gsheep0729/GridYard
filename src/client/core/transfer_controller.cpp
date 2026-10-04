@@ -140,6 +140,23 @@ void TransferController::cancelSession(const QString &sessionId)
     }
 }
 
+// 取消指定设备的全部进行中会话：删除设备前的收尾动作，终态会话由
+// cancelSession 的既有守卫幂等跳过，无需在此重复状态判断
+void TransferController::cancelDeviceSessions(const QString &deviceId)
+{
+    if (!_manager || deviceId.isEmpty()) {
+        return;
+    }
+    const QVariantList all = _manager->sessions();
+    for (const QVariant &entry : all) {
+        const QVariantMap session = entry.toMap();
+        if (session.value(gy::session::kDeviceId).toString() != deviceId) {
+            continue;
+        }
+        cancelSession(session.value(gy::session::kSessionId).toString());
+    }
+}
+
 // 移除已结束会话
 void TransferController::removeSession(const QString &sessionId)
 {

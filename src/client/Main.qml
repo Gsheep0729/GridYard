@@ -285,6 +285,23 @@ ApplicationWindow {
 
     SettingsDialog { id: settingsDialog }
 
+    // 不显示该聊天确认：确认后落库隐藏，列表随过滤规则即时移除该卡
+    HideDeviceDialog {
+        id: hideDeviceDialog
+        onHideConfirmed: (deviceId) =>
+            AppController.peerDiscoveryViewModel.setDeviceHidden(deviceId, true)
+    }
+
+    // 删除该聊天确认：先取消该设备全部进行中会话（复用 N1-A/N1-F 取消能力）再删，
+    // 删除接口连带清理聊天与传输历史并同步内存列表
+    DeleteDeviceDialog {
+        id: deleteDeviceDialog
+        onDeleteConfirmed: (deviceId) => {
+            AppController.transferController.cancelDeviceSessions(deviceId)
+            AppController.peerDiscoveryViewModel.deleteDeviceWithHistory(deviceId)
+        }
+    }
+
     // ======== 三栏主体 ========
 
     // 左侧：工具栏 + 设备列表（设备选择/拖拽/设置入口经信号上抛）
@@ -292,6 +309,19 @@ ApplicationWindow {
         id: sidebar
 
         onDeviceSelected: (deviceId) => mainWindow.selectDevice(deviceId)
+        onContextActionRequested: (deviceId, deviceName, action) => {
+            // 菜单意图只做路由：置顶取反走视图模型，隐藏/删除经确认弹窗，
+            // 备注入口为占位，由 PhaseN2-D 接线
+            if (action === "pin") {
+                AppController.peerDiscoveryViewModel.setDevicePinned(deviceId, true)
+            } else if (action === "unpin") {
+                AppController.peerDiscoveryViewModel.setDevicePinned(deviceId, false)
+            } else if (action === "hide") {
+                hideDeviceDialog.openFor(deviceId, deviceName)
+            } else if (action === "delete") {
+                deleteDeviceDialog.openFor(deviceId, deviceName)
+            }
+        }
         onDeviceFilesDropped: (deviceId, urls) => {
             mainWindow.selectDevice(deviceId)  // 拖拽先选中再统一裁决
             mainWindow.handleDroppedFiles(deviceId, urls)

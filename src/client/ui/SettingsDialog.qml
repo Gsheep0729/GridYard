@@ -529,6 +529,69 @@ Dialog {
                 }
             }
 
+            // 已隐藏设备卡片：右键菜单"不显示该聊天"的恢复入口
+            SettingsCard {
+                visible: AppController.peerDiscoveryViewModel.hiddenPeers.length > 0
+
+                Label {
+                    text: qsTr("已隐藏设备")
+                    font.pixelSize: 15
+                    font.bold: true
+                    color: Style.Color.textMain
+                }
+
+                Label {
+                    text: qsTr("这些设备不会出现在设备列表中；对方发来新消息时会自动恢复显示。")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 13
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+
+                Repeater {
+                    model: AppController.peerDiscoveryViewModel.hiddenPeers
+
+                    delegate: RowLayout {
+                        id: hiddenRow
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        spacing: Style.Space.md
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Label {
+                                text: hiddenRow.modelData.deviceName
+                                font.pixelSize: 13
+                                font.bold: true
+                                color: Style.Color.textMain
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+
+                            Label {
+                                text: hiddenRow.modelData.lastSeenAt.length > 0
+                                      ? qsTr("%1 · 最后活跃 %2").arg(hiddenRow.modelData.ipAddress)
+                                        .arg(FormatUtils.formatDateTime(hiddenRow.modelData.lastSeenAt))
+                                      : hiddenRow.modelData.ipAddress
+                                color: Style.Color.textMuted
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Button {
+                            text: qsTr("恢复显示")
+                            onClicked: AppController.peerDiscoveryViewModel.setDeviceHidden(
+                                           hiddenRow.modelData.deviceId, false)
+                        }
+                    }
+                }
+            }
+
             // 清除缓存卡片
             SettingsCard {
                 RowLayout {

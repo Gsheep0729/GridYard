@@ -57,12 +57,15 @@
 
 class DiscoveryService;
 class LocalDataBroker;
+struct PeerInfo;
 
 class PeerDiscoveryViewModel : public QObject {
 private:
     Q_OBJECT
     QML_ANONYMOUS
     Q_PROPERTY(QVariantList peers READ peers NOTIFY peersChanged)
+    // 隐藏态设备列表（设备名/IP/最后活跃），供设置页"已隐藏设备"区块恢复显示
+    Q_PROPERTY(QVariantList hiddenPeers READ hiddenPeers NOTIFY peersChanged)
     Q_PROPERTY(QString selectedDeviceId READ selectedDeviceId WRITE setSelectedDeviceId NOTIFY selectedDeviceIdChanged)
 
 public:
@@ -74,6 +77,8 @@ public:
 
     // 获取 QML 可绑定的在线和历史设备合并列表
     QVariantList peers() const;
+    // 获取隐藏态设备列表，设置页"已隐藏设备"区块据此展示恢复入口
+    QVariantList hiddenPeers() const;
     // 获取当前选中设备 ID（选择状态收编到视图模型，QML 不再手工复制）
     QString selectedDeviceId() const;
     // 更新选中设备
@@ -103,6 +108,8 @@ signals:
 
 private:
     static QVariantMap peerRecordToVariant(const PeerRecord &record);
+    // 将在线 PeerInfo 转成与历史条目同构的展示字段映射，统一过滤与排序规则
+    QVariantMap peerInfoToVariant(const PeerInfo &info) const;
 
     DiscoveryService *_discovery = nullptr;  // 内部设备发现服务
     LocalDataBroker *_dataBroker = nullptr;  // 本地设备目录加载入口

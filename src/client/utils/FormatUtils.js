@@ -60,6 +60,13 @@ function formatTime(timeString) {
     return date.toLocaleTimeString(Qt.locale(), "HH:mm")
 }
 
+// 日期与时刻一起展示（ISO 文本转本地时区），供已隐藏设备等列表使用
+function formatDateTime(timeString) {
+    if (!timeString) return ""
+    const date = new Date(timeString)
+    return date.toLocaleString(Qt.locale(), "yyyy-MM-dd HH:mm")
+}
+
 // 将 FileDialog/FolderDialog 或拖拽返回的 URL 转成本地绝对路径
 // URL 对中文/空格做 percent-encode，直接截断会残留编码字符，必须先 decode
 // 行为与 QUrl::toLocalFile 对齐（file:/// 三斜杠剥离、file:// 双斜杠保留为

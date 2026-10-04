@@ -98,6 +98,8 @@ Rectangle {
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)  // 拖拽文件到设备卡片时触发，由 Main 统一裁决
+    // 右键菜单意图上抛（pin/unpin/hide/rename/delete），由 Main 接确认弹窗与控制器
+    signal contextActionRequested(string deviceId, string deviceName, string action)
 
     color: Style.Color.surfaceMid
 
@@ -217,6 +219,7 @@ Rectangle {
             required property string deviceName
             required property string ipAddress
             required property bool isOnline
+            required property bool pinned
 
             readonly property bool _matches: peerListView.matchesPeer(deviceName, ipAddress)
 
@@ -233,12 +236,16 @@ Rectangle {
                 ipAddress: peerDelegate.ipAddress
                 isOnline: peerDelegate.isOnline
                 isSelected: peerListView.selectedDeviceId === peerDelegate.deviceId
+                isPinned: peerDelegate.pinned
 
                 onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
                     peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)
                 }
                 onFilesDropped: function(deviceId, urls) {
                     peerListView.filesDropped(deviceId, urls)
+                }
+                onContextActionRequested: function(deviceId, deviceName, action) {
+                    peerListView.contextActionRequested(deviceId, deviceName, action)
                 }
             }
         }

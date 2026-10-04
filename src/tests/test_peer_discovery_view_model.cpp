@@ -66,6 +66,7 @@ private slots:
     void testHiddenPeerFilteredFromList();
     void testDeleteDeviceSyncsLists();
     void testHideAndRestoreDevice();
+    void testPinnedPeerSortedFirst();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -74,6 +75,9 @@ private:
     PeerInfo makePeerInfo(const QString &deviceId, const QString &name, const QString &ip);
     // 通过数据层异步写入设备快照并等待落库完成
     void seedPeer(LocalDataBroker &broker, const PeerInfo &peer);
+    // 查询设备在合并列表或隐藏列表中的下标，未命中返回 -1
+    int indexOfPeer(const PeerDiscoveryViewModel &viewModel, const QString &deviceId,
+                    bool hiddenList = false) const;
 
     ConfigManager *_config = nullptr;
     DiscoveryService *_discovery = nullptr;
@@ -130,7 +134,7 @@ void TestPeerDiscoveryViewModel::testPeersSortedBySourcePriority()
     int broadcastIndex = -1;
     int manualIndex = -1;
     for (int i = 0; i < peers.size(); ++i) {
-        const QString deviceId = peers.at(i).value<PeerInfo>().deviceId;
+        const QString deviceId = peers.at(i).toMap().value("deviceId").toString();
         if (deviceId == QStringLiteral("broadcast-test")) {
             broadcastIndex = i;
         } else if (deviceId == QStringLiteral("manual-test")) {
@@ -306,26 +310,37 @@ void TestPeerDiscoveryViewModel::testDeleteDeviceSyncsLists()
 // 隐藏后设备离开列表，入站活动触发 restoreHiddenDevice 后复位并恢复显示
 void TestPeerDiscoveryViewModel::testHideAndRestoreDevice()
 {
-    auto broker = openBroker("hide-restore.sqlite");
-    QVERIFY(broker);
+        auto broker = openBroker("hide-restore.sqlite");
+        QVERIFY(broker);
 
-    const PeerInfo peer = makePeerInfo(QStringLiteral("restore-peer"), QStringLiteral("恢复设备"),
-                                       QStringLiteral("10.254.254.245"));
-    seedPeer(*broker, peer);
+        const PeerInfo peer = makePeerInfo(QStringLiteral("restore-peer"), QStringLiteral("恢复设备"),
+                                           QStringLiteral("10.254.254.245"));
+        seedPeer(*broker, peer);
 
-    PeerDiscoveryViewModel viewModel(_discovery);
-    viewModel.initDataBroker(broker.get());
-    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("restore-peer")).isEmpty(), 3000);
+        PeerDiscoveryViewModel viewModel(_discovery);
+        viewModel.initDataBroker(broker.get());
+        QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("restore-peer")).isEmpty(), 3000);
 
-    // 隐藏落库后列表立即移除条目
-    viewModel.setDeviceHidden(QStringLiteral("restore-peer"), true);
-    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("restore-peer")).isEmpty(), 3000);
+        // 隐藏落库后列表立即移除条目，同时进入 hiddenPeers 列表供设置页展示
+        viewModel.setDeviceHidden(QStringLiteral("restore-peer"), true);
+        QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("restore-peer")).isEmpty(), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(indexOfPeer(viewModel, QStringLiteral("restore-peer"),
+                                            true) >= 0, 3000);
 
-    // 入站消息/传输请求触发的恢复入口：复位 hidden 并把设备带回列表
-    viewModel.restoreHiddenDevice(QStringLiteral("restore-peer"));
-    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("restore-peer")).isEmpty(), 5000);
-    const QVariantMap restored = viewModel.deviceById(QStringLiteral("restore-peer"));
-    QCOMPARE(restored.value("hidden").toBool(), false);
+        // 入站消息/传输请求触发的恢复入口：复位 hidden 并把设备带回列表。
+        // 等待到最终态（在场且 hidden=false）：过滤集合解除先于异步重载完成时，
+        // 存在性可能先由携带旧 hidden=1 的恢复数据短暂满足，单独等待会有假阳性
+        viewModel.restoreHiddenDevice(QStringLiteral("restore-peer"));
+        const auto restoredReady = [&viewModel]() {
+            const QVariantMap snapshot = viewModel.deviceById(QStringLiteral("restore-peer"));
+            return !snapshot.isEmpty() && !snapshot.value("hidden").toBool();
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(restoredReady(), 5000);
+        const QVariantMap restored = viewModel.deviceById(QStringLiteral("restore-peer"));
+        QVERIFY(!restored.isEmpty());
+        QCOMPARE(restored.value("hidden").toBool(), false);
+        QTRY_VERIFY_WITH_TIMEOUT(indexOfPeer(viewModel, QStringLiteral("restore-peer"),
+                                            true) < 0, 3000);
 
     // 数据库中的 hidden 标志已复位
     const auto clearedFlag = QSharedPointer<bool>::create(false);
@@ -345,6 +360,45 @@ void TestPeerDiscoveryViewModel::testHideAndRestoreDevice()
     // 未隐藏设备调用恢复入口是安全空操作
     viewModel.restoreHiddenDevice(QStringLiteral("never-hidden-peer"));
     QVERIFY(true);
+}
+
+// 置顶设备排最前：置顶档优先于最近活跃排序，取消置顶后恢复原排序
+void TestPeerDiscoveryViewModel::testPinnedPeerSortedFirst()
+{
+    auto broker = openBroker("pinned-sort.sqlite");
+    QVERIFY(broker);
+
+    // 先写入较早活跃的设备，再写入较新活跃的设备：未置顶时按最近活跃倒序
+    const PeerInfo oldPeer = makePeerInfo(QStringLiteral("pinned-old"), QStringLiteral("较早设备"),
+                                          QStringLiteral("10.254.254.246"));
+    seedPeer(*broker, oldPeer);
+    QTest::qWait(30);  // 拉开两台设备的 lastSeen 时间戳
+    const PeerInfo newPeer = makePeerInfo(QStringLiteral("pinned-new"), QStringLiteral("较新设备"),
+                                          QStringLiteral("10.254.254.247"));
+    seedPeer(*broker, newPeer);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("pinned-old")).isEmpty(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("pinned-new")).isEmpty(), 3000);
+
+    // 未置顶：较新的设备排在前面（两台均为 history 档，无在线条目干扰）
+    QVERIFY(indexOfPeer(viewModel, QStringLiteral("pinned-new"))
+            < indexOfPeer(viewModel, QStringLiteral("pinned-old")));
+
+    // 置顶较早设备后立即反超排最前，deviceById 同步反映置顶态
+    viewModel.setDevicePinned(QStringLiteral("pinned-old"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("pinned-old"))
+                             .value("pinned").toBool(), 3000);
+    QVERIFY(indexOfPeer(viewModel, QStringLiteral("pinned-old"))
+            < indexOfPeer(viewModel, QStringLiteral("pinned-new")));
+
+    // 取消置顶后恢复按最近活跃排序
+    viewModel.setDevicePinned(QStringLiteral("pinned-old"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("pinned-old"))
+                             .value("pinned").toBool(), 3000);
+    QVERIFY(indexOfPeer(viewModel, QStringLiteral("pinned-new"))
+            < indexOfPeer(viewModel, QStringLiteral("pinned-old")));
 }
 
 // 工具方法：在临时目录打开一份本地历史库
@@ -392,6 +446,19 @@ void TestPeerDiscoveryViewModel::seedPeer(LocalDataBroker &broker, const PeerInf
         }
     });
     QTRY_COMPARE_WITH_TIMEOUT(*seeded, true, 3000);
+}
+
+// 工具方法：查询设备在合并列表或隐藏列表中的下标
+int TestPeerDiscoveryViewModel::indexOfPeer(const PeerDiscoveryViewModel &viewModel,
+                                            const QString &deviceId, bool hiddenList) const
+{
+    const QVariantList peers = hiddenList ? viewModel.hiddenPeers() : viewModel.peers();
+    for (int i = 0; i < peers.size(); ++i) {
+        if (peers.at(i).toMap().value("deviceId").toString() == deviceId) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 QTEST_MAIN(TestPeerDiscoveryViewModel)
