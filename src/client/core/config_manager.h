@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.h
-* @version 7.17.5
-* @date 2026-10-04
+* @version 7.18.0
+* @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
@@ -10,6 +10,9 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 新增关窗行为配置 closeWindowAction（ask / hide / exit，默认 ask）与
+ *   resolveWindowCloseAction 决策函数，记住退出且有活动传输时拦截为警示确认
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
@@ -83,6 +86,13 @@ enum class RelayMode {
     NeverRelay       // 从不使用中继
 };
 
+// 关窗行为枚举（点击窗口关闭按钮时的默认动作）
+enum class CloseWindowAction {
+    Ask,   // 默认：每次关窗弹确认窗
+    Hide,  // 记住隐藏到后台，关窗不再询问
+    Exit   // 记住完全退出；仍有活动传输时仍弹警示确认，不豁免退出防护
+};
+
 class ConfigManager : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -99,9 +109,15 @@ class ConfigManager : public QObject {
     Q_PROPERTY(int      rendezvousPort   READ rendezvousPort   WRITE setRendezvousPort   NOTIFY rendezvousPortChanged)
     Q_PROPERTY(QString  rendezvousToken  READ rendezvousToken  WRITE setRendezvousToken  NOTIFY rendezvousTokenChanged)
     Q_PROPERTY(RelayMode relayMode       READ relayMode       WRITE setRelayMode       NOTIFY relayModeChanged)
+    Q_PROPERTY(CloseWindowAction closeWindowAction READ closeWindowAction WRITE setCloseWindowAction NOTIFY closeWindowActionChanged)
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
+
+    // 关窗动作决策：ask 弹确认窗，hide 直接隐藏到后台，exit 直接退出；
+    // 记住完全退出但仍有活动传输时改为弹警示确认（退出防护不随记忆豁免），
+    // 返回 ask / hide / exit / confirm 供表现层分发，纯函数便于单测
+    static QString resolveWindowCloseAction(CloseWindowAction action, int activeSessionCount);
 
     // 析构函数
     virtual ~ConfigManager() override;
@@ -130,6 +146,8 @@ public:
     QString rendezvousToken() const;
     // 获取 Relay 策略
     RelayMode relayMode() const;
+    // 获取关窗行为配置
+    CloseWindowAction closeWindowAction() const;
 
     // 设置设备名称
     void setDeviceName(const QString &name);
@@ -151,6 +169,8 @@ public:
     void setRendezvousToken(const QString &token);
     // 设置 Relay 策略
     void setRelayMode(RelayMode mode);
+    // 设置关窗行为配置
+    void setCloseWindowAction(CloseWindowAction action);
 
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
@@ -175,6 +195,7 @@ signals:
     void rendezvousPortChanged();
     void rendezvousTokenChanged();
     void relayModeChanged();
+    void closeWindowActionChanged();
 
 private:
     explicit ConfigManager(QObject *parent = nullptr);
@@ -204,4 +225,5 @@ private:
     int _rendezvousPort = 45780;      // 协调服务器端口（避免与 UDP 发现 45678 混淆）
     QString _rendezvousToken;         // 协调服务器访问令牌，空表示服务器未启用认证
     RelayMode _relayMode = RelayMode::AskBeforeRelay; // Relay 策略
+    CloseWindowAction _closeWindowAction = CloseWindowAction::Ask; // 关窗行为，默认每次询问
 };

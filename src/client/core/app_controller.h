@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
-* @version 7.17.5
-* @date 2026-10-04
+* @version 7.18.0
+* @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -10,6 +10,9 @@
 * ShutdownController 承担。
 *
 * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 新增关窗动作决策与记录入口：resolveWindowCloseAction 按关窗行为配置与
+ *   活动传输数返回分发结果，setCloseWindowAction 接收"记住我的选择"上报
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
@@ -165,6 +168,10 @@ public:
     Q_INVOKABLE void quit();
     // 清除本地缓存并退出应用
     Q_INVOKABLE void clearLocalCache();
+    // 关窗动作决策：读取关窗行为配置与活动传输数，返回 ask / hide / exit / confirm
+    Q_INVOKABLE QString resolveWindowCloseAction() const;
+    // 记录关窗行为：写入"记住我的选择"上报的动作，action 取 ask / hide / exit
+    Q_INVOKABLE void setCloseWindowAction(const QString &action);
     // 验证 QML 调用链路
     Q_INVOKABLE void test();
 

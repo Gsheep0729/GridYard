@@ -1,14 +1,16 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.17.5
- * @date 2026-10-04
+ * @version 7.18.0
+ * @date 2026-10-05
  * @author  GridYard Team
  * @brief   设置对话框
  *
- * 编辑设备名、选择接收路径、修改 TCP 端口、配置协调服务器。
+ * 编辑设备名、选择接收路径、修改 TCP 端口、配置协调服务器与关窗行为。
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 新增"关闭窗口"设置卡：三选一配置关窗默认动作，作为记住选择后的恢复入口
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
  * [v7.17.4] GY   2026-10-04
@@ -106,6 +108,7 @@ Dialog {
     property int    _tempRendezvousPort: ConfigManager.rendezvousPort
     property string _tempRendezvousToken: ConfigManager.rendezvousToken
     property int    _tempRelayMode: ConfigManager.relayMode
+    property int    _tempCloseWindowAction: ConfigManager.closeWindowAction
 
     // 表单校验：设备名非空、接收路径非空、端口在合法范围内
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
@@ -123,6 +126,7 @@ Dialog {
                                     || _tempRendezvousPort !== ConfigManager.rendezvousPort
                                     || _tempRendezvousToken !== ConfigManager.rendezvousToken
                                     || _tempRelayMode !== ConfigManager.relayMode
+                                    || _tempCloseWindowAction !== ConfigManager.closeWindowAction
     readonly property int kColorDuration: Style.Motion.base
     readonly property int kEnterDuration: 200  // 弹窗入场动画时长
 
@@ -148,6 +152,7 @@ Dialog {
         _tempRendezvousPort = ConfigManager.rendezvousPort
         _tempRendezvousToken = ConfigManager.rendezvousToken
         _tempRelayMode = ConfigManager.relayMode
+        _tempCloseWindowAction = ConfigManager.closeWindowAction
         // 手输过路径的 TextEdit 会失去 text 绑定，重开时显式回填
         receivePathField.text = _tempReceivePath
     }
@@ -371,6 +376,47 @@ Dialog {
                         model: [qsTr("永久保留"), qsTr("7 天"), qsTr("30 天"), qsTr("90 天")]
                         currentIndex: [0, 7, 30, 90].indexOf(settingsDialog._tempRetentionDays)
                         onActivated: settingsDialog._tempRetentionDays = [0, 7, 30, 90][currentIndex]
+                    }
+                }
+            }
+
+            // 关窗行为卡片：点击窗口关闭按钮时的默认动作，
+            // 也是"记住我的选择"后改回询问的恢复入口
+            SettingsCard {
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.Space.lg
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.Space.xs
+
+                        Label {
+                            text: qsTr("关闭窗口")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+
+                        Label {
+                            text: qsTr("设置点击窗口关闭按钮时的默认动作；保存后立即生效，无需重启。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    ComboBox {
+                        id: closeActionSelector
+                        model: [
+                            { label: qsTr("每次询问"), value: 0 },
+                            { label: qsTr("隐藏到后台"), value: 1 },
+                            { label: qsTr("直接退出"), value: 2 }
+                        ]
+                        textRole: "label"
+                        currentIndex: settingsDialog._tempCloseWindowAction
+                        onActivated: settingsDialog._tempCloseWindowAction = model[currentIndex].value
                     }
                 }
             }
@@ -717,6 +763,7 @@ Dialog {
                     ConfigManager.rendezvousPort = settingsDialog._tempRendezvousPort
                     ConfigManager.rendezvousToken = settingsDialog._tempRendezvousToken
                     ConfigManager.relayMode = settingsDialog._tempRelayMode
+                    ConfigManager.closeWindowAction = settingsDialog._tempCloseWindowAction
                     settingsDialog.accept()
                 }
             }

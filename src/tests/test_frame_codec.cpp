@@ -1,13 +1,15 @@
 /**
 * @file    test_frame_codec.cpp
-* @version 7.17.5
-* @date 2026-10-04
+* @version 7.18.0
+* @date 2026-10-05
 * @author  GY
 * @brief   FrameCodec 单元测试
 *
 * 测试用例：单帧 / 粘包 / 半包 / 空 payload / 超大 payload / 协议版本 / 分级 Payload 上限
 *
 * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04

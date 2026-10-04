@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
-* @version 7.17.5
-* @date 2026-10-04
+* @version 7.18.0
+* @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -10,6 +10,9 @@
 * GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
 *
 * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 新增关窗行为配置读写与持久化（window/closeWindowAction），
+ *   resolveWindowCloseAction 决策：记住退出且有活动传输时拦截为警示确认
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
@@ -152,6 +155,10 @@ ConfigManager::ConfigManager(QObject *parent)
     _rendezvousToken = settings.value("reachability/rendezvousToken").toString();
     int relayModeInt = settings.value("reachability/relayMode", static_cast<int>(RelayMode::AskBeforeRelay)).toInt();
     _relayMode = static_cast<RelayMode>(relayModeInt);
+
+    // 关窗行为：默认每次关窗弹确认窗，勾选"记住我的选择"后写入选中动作
+    int closeActionInt = settings.value("window/closeWindowAction", static_cast<int>(CloseWindowAction::Ask)).toInt();
+    _closeWindowAction = static_cast<CloseWindowAction>(closeActionInt);
 
     // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
     ensureDeviceId();
@@ -417,6 +424,12 @@ RelayMode ConfigManager::relayMode() const
     return _relayMode;
 }
 
+// 获取关窗行为配置
+CloseWindowAction ConfigManager::closeWindowAction() const
+{
+    return _closeWindowAction;
+}
+
 // 设置协调服务器启用状态并持久化
 void ConfigManager::setRendezvousEnabled(bool enabled)
 {
@@ -461,4 +474,29 @@ void ConfigManager::setRelayMode(RelayMode mode)
     _relayMode = mode;
     openSettings().setValue("reachability/relayMode", static_cast<int>(mode));
     emit relayModeChanged();
+}
+
+// 设置关窗行为并持久化
+void ConfigManager::setCloseWindowAction(CloseWindowAction action)
+{
+    if (_closeWindowAction == action) return;
+    _closeWindowAction = action;
+    openSettings().setValue("window/closeWindowAction", static_cast<int>(action));
+    emit closeWindowActionChanged();
+}
+
+// 关窗动作决策：ask 弹确认窗，hide 直接隐藏，exit 直接退出；
+// 记住退出后仍有活动传输时返回 confirm，由表现层弹警示确认窗拦截
+QString ConfigManager::resolveWindowCloseAction(CloseWindowAction action, int activeSessionCount)
+{
+    switch (action) {
+    case CloseWindowAction::Hide:
+        return QStringLiteral("hide");
+    case CloseWindowAction::Exit:
+        // 退出防护（A6）不随记忆豁免：有活动传输时仍需一次警示确认
+        return activeSessionCount > 0 ? QStringLiteral("confirm") : QStringLiteral("exit");
+    case CloseWindowAction::Ask:
+    default:
+        return QStringLiteral("ask");
+    }
 }

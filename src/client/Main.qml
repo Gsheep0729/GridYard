@@ -1,16 +1,20 @@
 /**
  * @file    Main.qml
- * @version 7.17.5
- * @date 2026-10-04
+ * @version 7.18.0
+ * @date 2026-10-05
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
  * 标题通过 AppController.applicationName/Version 绑定，
- * 关窗时由用户选择隐藏到后台或退出程序，有传输进行中时弹窗附警示行。
+ * 关窗行为由 C++ 决策分发：弹窗询问、隐藏到后台或直接退出，
+ * 常规询问附"记住我的选择"复选框，有传输进行中时弹窗附警示行。
  * 左侧显示在线设备列表，右侧显示设备会话页。
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
   * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 关窗行为决策下沉 C++：按 resolveWindowCloseAction 分发弹窗、隐藏与退出，
+ *   确认弹窗勾选记住选择后经 Controller 写入配置，活动传输拦截场景不提供记忆
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
   * [v7.17.4] GY   2026-10-04
@@ -137,8 +141,19 @@ ApplicationWindow {
             return  // 已获准退出，不拦截
         }
         close.accepted = false
-        mainWindow.bringMainWindowToFront()
-        closeChoiceDialog.open()
+        // 关窗行为决策下沉 C++：hide 直接隐藏到后台，exit 直接退出，
+        // 记住退出但仍有活动传输时改返回 confirm，弹警示确认（A6 防护不随记忆豁免）
+        const action = AppController.resolveWindowCloseAction()
+        if (action === "hide") {
+            hideToTray()
+        } else if (action === "exit") {
+            requestApplicationQuit()
+        } else {
+            // ask 为常规询问（可显示记忆复选框），confirm 为活动传输拦截（不再提供记忆）
+            closeChoiceDialog.rememberAllowed = action === "ask"
+            bringMainWindowToFront()
+            closeChoiceDialog.open()
+        }
     }
 
     // 当前选中设备：选择状态由视图模型持有，设备列表刷新时信息自动重算
@@ -261,8 +276,19 @@ ApplicationWindow {
         trayAvailable: trayIcon.available
         // 传输进行中警示：活动会话数由后端属性驱动，弹窗展示当前值
         activeTransferCount: AppController.transferController.activeSessionCount
-        onHideToTrayRequested: mainWindow.hideToTray()
-        onQuitRequested: mainWindow.requestApplicationQuit()
+        // 勾选"记住我的选择"后把所选动作写入关窗行为配置，下次关窗不再询问
+        onHideToTrayRequested: (rememberSelection) => {
+            if (rememberSelection) {
+                AppController.setCloseWindowAction("hide")
+            }
+            mainWindow.hideToTray()
+        }
+        onQuitRequested: (rememberSelection) => {
+            if (rememberSelection) {
+                AppController.setCloseWindowAction("exit")
+            }
+            mainWindow.requestApplicationQuit()
+        }
         onPrepareToShow: mainWindow.bringMainWindowToFront()
     }
 

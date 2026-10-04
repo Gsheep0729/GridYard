@@ -1,11 +1,14 @@
 /**
 * @file    app_controller.cpp
-* @version 7.17.5
-* @date 2026-10-04
+* @version 7.18.0
+* @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
 * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 新增关窗动作决策与记录入口：resolveWindowCloseAction 读取配置与活动
+ *   传输数返回分发结果，setCloseWindowAction 写入"记住我的选择"上报的动作
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
@@ -280,6 +283,26 @@ void AppController::quit()
 void AppController::clearLocalCache()
 {
     _shutdownController->requestClearCacheAndQuit();
+}
+
+// 关窗动作决策：配置与活动传输数的读取都留在 C++ 侧，表现层只按结果分发
+QString AppController::resolveWindowCloseAction() const
+{
+    return ConfigManager::resolveWindowCloseAction(_config->closeWindowAction(),
+                                                   _transfer->activeSessionCount());
+}
+
+// 记录关窗行为：把关窗确认弹窗"记住我的选择"上报的动作写入配置，
+// 取值与 resolveWindowCloseAction 的决策词表一致，非法取值忽略
+void AppController::setCloseWindowAction(const QString &action)
+{
+    if (action == QStringLiteral("ask")) {
+        _config->setCloseWindowAction(CloseWindowAction::Ask);
+    } else if (action == QStringLiteral("hide")) {
+        _config->setCloseWindowAction(CloseWindowAction::Hide);
+    } else if (action == QStringLiteral("exit")) {
+        _config->setCloseWindowAction(CloseWindowAction::Exit);
+    }
 }
 
 // 验证 QML 调用链路

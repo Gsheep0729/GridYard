@@ -1,13 +1,15 @@
 /**
 * @file    test_config_manager.cpp
-* @version 7.17.5
-* @date 2026-10-04
+* @version 7.18.0
+* @date 2026-10-05
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化
 *
 * Change Log:
+ * [v7.18.0] GY   2026-10-05
+ * * 新增关窗行为配置读写与持久化用例、关窗动作决策分支用例（含活动传输拦截）
  * [v7.17.5] GY   2026-10-04
  * * 版本头对齐到 v7.17.5
 * [v7.17.4] GY   2026-10-04
@@ -75,6 +77,8 @@ private slots:
     void testDeviceIdPersistence();
     void testSignalEmission();
     void testLocalIp();
+    void testCloseWindowAction();
+    void testResolveWindowCloseAction();
 
 private:
     ConfigManager *_config = nullptr;
@@ -119,6 +123,8 @@ void TestConfigManager::testDefaultValue()
     QVERIFY(!_config->receivePath().isEmpty());
     QVERIFY(_config->tcpPort() > 0);
     QVERIFY(!_config->autoAcceptFiles());
+    // 关窗行为默认每次询问
+    QVERIFY(_config->closeWindowAction() == CloseWindowAction::Ask);
 }
 
 void TestConfigManager::testDeviceName()
@@ -250,6 +256,61 @@ void TestConfigManager::testLocalIp()
         }
     }
     QVERIFY2(belongsToInterface, "localIp 应是本机接口上的地址");
+}
+
+void TestConfigManager::testCloseWindowAction()
+{
+    QSignalSpy spy(_config, &ConfigManager::closeWindowActionChanged);
+
+    // 记住"隐藏到后台"
+    _config->setCloseWindowAction(CloseWindowAction::Hide);
+    QCOMPARE(static_cast<int>(_config->closeWindowAction()),
+             static_cast<int>(CloseWindowAction::Hide));
+    QCOMPARE(spy.count(), 1);
+
+    // 重复写入相同值不应触发信号
+    _config->setCloseWindowAction(CloseWindowAction::Hide);
+    QCOMPARE(spy.count(), 1);
+
+    // 记住"完全退出"
+    _config->setCloseWindowAction(CloseWindowAction::Exit);
+    QCOMPARE(static_cast<int>(_config->closeWindowAction()),
+             static_cast<int>(CloseWindowAction::Exit));
+    QCOMPARE(spy.count(), 2);
+
+    // 设置页恢复入口：改回"每次询问"
+    _config->setCloseWindowAction(CloseWindowAction::Ask);
+    QCOMPARE(static_cast<int>(_config->closeWindowAction()),
+             static_cast<int>(CloseWindowAction::Ask));
+    QCOMPARE(spy.count(), 3);
+
+    // setter 走 openSettings() 即时落盘，配置文件应已写入所选动作
+    QSettings settings(_tempDir->path() + "/test_config.ini", QSettings::IniFormat);
+    QCOMPARE(settings.value("window/closeWindowAction").toInt(),
+             static_cast<int>(CloseWindowAction::Ask));
+}
+
+void TestConfigManager::testResolveWindowCloseAction()
+{
+    // 每次询问：无论是否有活动传输都弹确认窗
+    QCOMPARE(ConfigManager::resolveWindowCloseAction(CloseWindowAction::Ask, 0),
+             QStringLiteral("ask"));
+    QCOMPARE(ConfigManager::resolveWindowCloseAction(CloseWindowAction::Ask, 3),
+             QStringLiteral("ask"));
+
+    // 记住隐藏到后台：直接隐藏，活动传输后台继续
+    QCOMPARE(ConfigManager::resolveWindowCloseAction(CloseWindowAction::Hide, 0),
+             QStringLiteral("hide"));
+    QCOMPARE(ConfigManager::resolveWindowCloseAction(CloseWindowAction::Hide, 2),
+             QStringLiteral("hide"));
+
+    // 记住完全退出且无活动传输：直接退出
+    QCOMPARE(ConfigManager::resolveWindowCloseAction(CloseWindowAction::Exit, 0),
+             QStringLiteral("exit"));
+
+    // 记住完全退出但仍有活动传输：拦截为警示确认，A6 防护不随记忆豁免
+    QCOMPARE(ConfigManager::resolveWindowCloseAction(CloseWindowAction::Exit, 1),
+             QStringLiteral("confirm"));
 }
 
 QTEST_MAIN(TestConfigManager)
