@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -10,6 +10,8 @@
 * ShutdownController 承担。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增开发者模式窗口标题后缀属性
  * [v7.18.0] GY   2026-10-05
  * * 新增关窗动作决策与记录入口：resolveWindowCloseAction 按关窗行为配置与
  *   活动传输数返回分发结果，setCloseWindowAction 接收"记住我的选择"上报
@@ -131,6 +133,7 @@ private:
     Q_PROPERTY(bool localHistoryAvailable READ localHistoryAvailable CONSTANT)
     Q_PROPERTY(bool historyDatabaseRebuilt READ historyDatabaseRebuilt CONSTANT)
     Q_PROPERTY(QString rebuiltBackupPath READ rebuiltBackupPath CONSTANT)
+    Q_PROPERTY(QString instanceTitleSuffix READ instanceTitleSuffix CONSTANT)
 
 public:
     virtual ~AppController() override;
@@ -159,6 +162,8 @@ public:
     bool historyDatabaseRebuilt() const;
     // 获取重建前损坏库的备份路径
     QString rebuiltBackupPath() const;
+    // 获取开发者模式窗口标题后缀（如 " #2"），正常实例为空串
+    QString instanceTitleSuffix() const;
     // 获取网络可达性控制器
     ReachabilityController *reachabilityController() const;
     // 获取 UI 根对象是否创建成功

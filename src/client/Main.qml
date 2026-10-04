@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.18.0
+ * @version 7.19.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -12,6 +12,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  *
   * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 窗口标题拼接开发者实例标识后缀
  * [v7.18.0] GY   2026-10-05
  * * 关窗行为决策下沉 C++：按 resolveWindowCloseAction 分发弹窗、隐藏与退出，
  *   确认弹窗勾选记住选择后经 Controller 写入配置，活动传输拦截场景不提供记忆
@@ -124,7 +126,9 @@ ApplicationWindow {
     minimumWidth: 860
     minimumHeight: 620
     visible: true
-    title:   "%1 v%2".arg(AppController.applicationName)
+    // 开发者模式实例在名称后追加 " #N" 标识，正常实例后缀为空串
+    title:   "%1%2 v%3".arg(AppController.applicationName)
+                     .arg(AppController.instanceTitleSuffix)
                      .arg(AppController.applicationVersion)
     color: Style.Color.pageBg
 

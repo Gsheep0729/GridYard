@@ -1,6 +1,6 @@
 /**
 * @file    protocol.h
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
@@ -11,6 +11,8 @@
 * uint32 Length 大端序）+ Length 字节载荷。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增开发者模式多实例端口偏移常量与 instanceDiscoveryPort、instanceP2pPort 纯函数
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -102,6 +104,28 @@ inline constexpr quint16 kDefaultP2pPort       = 35100;   // TCP P2P 文件传�
 inline constexpr quint16 kDefaultRendezvousPort = 45679;   // 协调节点（默认）
 inline constexpr quint16 kDefaultRelayPort      = 45679;   // 中继服务器（与协调节点同端口：协调模式内置中继分流，--mode relay 独立部署）
 inline constexpr const char *kDefaultRendezvousRoom = "default";  // 默认协调房间名
+
+// 开发者模式多实例端口偏移（仅客户端本机资源隔离用，实例号不进协议报文）：
+// 实例 N 的 UDP 发现端口 = kDefaultDiscoveryPort + kInstancePortStride * N，
+// TCP P2P 端口 = kDefaultP2pPort + kInstancePortStride * N。
+// 步长 10 使实例端口都落在 10 的倍数上，天然避开协调节点 45679 等非整十端口；
+// 合法实例号为 [0, kMaxInstanceNumber]，越界按边界夹紧，保证端口恒在合法范围内。
+inline constexpr int kInstancePortStride = 10;
+inline constexpr int kMaxInstanceNumber  = 9;
+
+// 实例 N 的 UDP 发现端口（实例号夹紧到 [0, kMaxInstanceNumber]）
+inline quint16 instanceDiscoveryPort(int instance)
+{
+    const int n = qBound(0, instance, kMaxInstanceNumber);
+    return static_cast<quint16>(kDefaultDiscoveryPort + kInstancePortStride * n);
+}
+
+// 实例 N 的 TCP P2P 端口（实例号夹紧到 [0, kMaxInstanceNumber]）
+inline quint16 instanceP2pPort(int instance)
+{
+    const int n = qBound(0, instance, kMaxInstanceNumber);
+    return static_cast<quint16>(kDefaultP2pPort + kInstancePortStride * n);
+}
 
 // ---- V1.0 Type 码 --------------------------------------------------------
 inline constexpr quint32 kTypeHello        = 0x0001;   // UDP 广播：设备上线 / 心跳

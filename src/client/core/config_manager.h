@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.h
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
@@ -10,6 +10,8 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增开发者模式实例号只读属性
  * [v7.18.0] GY   2026-10-05
  * * 新增关窗行为配置 closeWindowAction（ask / hide / exit，默认 ask）与
  *   resolveWindowCloseAction 决策函数，记住退出且有活动传输时拦截为警示确认
@@ -110,6 +112,7 @@ class ConfigManager : public QObject {
     Q_PROPERTY(QString  rendezvousToken  READ rendezvousToken  WRITE setRendezvousToken  NOTIFY rendezvousTokenChanged)
     Q_PROPERTY(RelayMode relayMode       READ relayMode       WRITE setRelayMode       NOTIFY relayModeChanged)
     Q_PROPERTY(CloseWindowAction closeWindowAction READ closeWindowAction WRITE setCloseWindowAction NOTIFY closeWindowActionChanged)
+    Q_PROPERTY(int instanceNumber READ instanceNumber CONSTANT)
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
@@ -148,6 +151,8 @@ public:
     RelayMode relayMode() const;
     // 获取关窗行为配置
     CloseWindowAction closeWindowAction() const;
+    // 获取开发者模式实例号（0 = 正常模式，启动时解析后不再变化）
+    int instanceNumber() const;
 
     // 设置设备名称
     void setDeviceName(const QString &name);
@@ -207,6 +212,7 @@ private:
     friend class TestIntegration;
     friend class TestReachabilityController;
     friend class TestPeerDiscoveryViewModel;
+    friend class TestConfigManager;
 
     void ensureDeviceId();
 
@@ -226,4 +232,5 @@ private:
     QString _rendezvousToken;         // 协调服务器访问令牌，空表示服务器未启用认证
     RelayMode _relayMode = RelayMode::AskBeforeRelay; // Relay 策略
     CloseWindowAction _closeWindowAction = CloseWindowAction::Ask; // 关窗行为，默认每次询问
+    int _instanceNumber = 0;          // 开发者模式实例号，0 表示正常模式（仅影响本机资源隔离）
 };

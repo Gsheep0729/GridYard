@@ -1,15 +1,17 @@
 /**
 * @file    config_manager.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
 * 实现配置的读取、写入和持久化。使用 QSettings 存储设备名、
 * 接收路径、TCP 端口等配置项。支持环境变量覆盖（GRIDYARD_CONFIG、
-* GRIDYARD_NAME、GRIDYARD_PORT），便于单机多实例测试。
+* GRIDYARD_NAME、GRIDYARD_PORT、GRIDYARD_INSTANCE），便于单机多实例测试。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 解析开发者模式实例号，实例默认 TCP 端口按 +10N 确定性偏移
  * [v7.18.0] GY   2026-10-05
  * * 新增关窗行为配置读写与持久化（window/closeWindowAction），
  *   resolveWindowCloseAction 决策：记住退出且有活动传输时拦截为警示确认
@@ -142,10 +144,14 @@ ConfigManager::ConfigManager(QObject *parent)
     _autoAcceptFiles = settings.value("device/autoAcceptFiles", false).toBool();
     _retentionDays = std::max(0, settings.value("history/retentionDays", 0).toInt());
 
-    // TCP 端口：优先使用命令行参数，否则读配置
+    // 开发者模式实例号：正常模式为 0，仅用于本机资源隔离（目录后缀与端口偏移）
+    _instanceNumber = ApplicationPaths::instanceNumber();
+
+    // TCP 端口：优先使用命令行参数，否则读配置；
+    // 开发者实例的默认端口按实例号确定性偏移（+10N），已保存的配置仍然优先
     QString envPort = qEnvironmentVariable("GRIDYARD_PORT");
     _tcpPort = envPort.isEmpty()
-        ? settings.value("network/tcpPort", gy::protocol::kDefaultP2pPort).toUInt()
+        ? settings.value("network/tcpPort", gy::protocol::instanceP2pPort(_instanceNumber)).toUInt()
         : envPort.toUInt();
 
     // Reachability 配置：协调服务器
@@ -428,6 +434,12 @@ RelayMode ConfigManager::relayMode() const
 CloseWindowAction ConfigManager::closeWindowAction() const
 {
     return _closeWindowAction;
+}
+
+// 获取开发者模式实例号（0 = 正常模式）
+int ConfigManager::instanceNumber() const
+{
+    return _instanceNumber;
 }
 
 // 设置协调服务器启用状态并持久化

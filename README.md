@@ -4,7 +4,7 @@
 
 当前版本：v7.12.0
 
-| 项目版本 | v7.18.0 |
+| 项目版本 | v7.19.0 |
 | :--- | :--- |
 
 GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
@@ -73,23 +73,19 @@ cmake --build src/build-ninja -j
 ctest --test-dir src/build-ninja --output-on-failure
 ```
 
-### 本机双实例测试
+### 本机多实例测试（开发者模式）
+
+本机同时开多个实例模拟多设备联调时，使用 `--instance=N`（N 为 1~9）启动开发者实例，多开从碰运气变成确定性行为：
 
 ```bash
-# 实例 A（接收端）
-./src/build-ninja/client/appGridYard \
-  --config ~/gridyard_alice.ini \
-  --port 35100 \
-  --name "接收端" &
+# 终端 1：实例 1
+./build-ninja/client/appGridYard --instance=1 --name "devOne" &
 
-# 实例 B（发送端）
-./src/build-ninja/client/appGridYard \
-  --config ~/gridyard_bob.ini \
-  --port 35101 \
-  --name "发送端" &
+# 终端 2：实例 2
+./build-ninja/client/appGridYard --instance=2 --name "devTwo" &
 ```
 
-默认启动时，配置文件会写入系统配置目录。单机双实例测试时建议显式指定两份不同的稳定配置文件（如 `~/gridyard_alice.ini` 和 `~/gridyard_bob.ini`），避免两个实例共用同一份设备身份。
+实例 N 相对正常启动的差异：数据、配置、日志与数据库目录独立（推导目录名追加 `-devN` 后缀，如 `~/.local/share/CQNU-SED/GridYard-dev1/`），UDP 发现端口与 TCP 监听端口各确定性偏移 +10N（实例 1 为 45688/35110），窗口标题与托盘提示带 `#N` 标识，配置文件互不覆盖、设备身份各自独立。开发者实例之间完全互见、可正常互传文件；生成邀请码时端口按实际绑定值照实携带。**不带 `--instance` 参数的正常启动行为与历史版本完全一致，正常使用不受任何影响。**设置页的"开发者模式"卡附有同样的用法说明。
 
 **命令行参数**
 
@@ -98,6 +94,7 @@ ctest --test-dir src/build-ninja --output-on-failure
 | `--port <port>` | TCP 监听端口 | 35100 |
 | `--name <name>` | 设备显示名称 | 系统主机名 |
 | `--config <path>` | 配置文件路径 | 见下方"运行时数据目录" |
+| `--instance <N>` | 开发者模式实例号（1~9），隔离数据目录并偏移端口 | 不启用 |
 
 ### 运行时数据目录
 
@@ -120,6 +117,8 @@ Linux 示例：
 AppImage 和压缩包运行时也使用上述系统目录，不在发布包同级写入配置、数据库或日志。
 
 使用 `--config` 参数时，配置文件路径以命令行指定的为准，数据库和日志仍在系统应用数据目录下。
+
+开发者模式实例 N 的配置、数据库与日志目录在上述推导上追加 `-devN` 后缀（如 `~/.local/share/CQNU-SED/GridYard-dev1/database/`），与正常实例完全隔离。
 
 **v6.8.1 最终发布验证**
 
@@ -467,6 +466,8 @@ graph TD
 |:-----|:---------|:-----|
 | 协调节点 | 45679 | 设备注册、列表查询、中继邀请信令与内置中继转发 |
 | 客户端 TCP 监听 | 35100 | 接收文件/聊天连接 |
+
+开发者模式实例 N（`--instance=N`，N 为 1~9）：UDP 发现端口取 45678+10N、TCP 监听端口取 35100+10N，偏移规则与合法范围定义在 `src/shared/protocol.h`；步长 10 保证实例端口不会与协调节点 45679 等既有端口冲突。
 
 ---
 

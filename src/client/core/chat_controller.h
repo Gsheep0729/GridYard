@@ -1,6 +1,6 @@
 /**
 * @file    chat_controller.h
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   面向 QML 的聊天控制器
@@ -9,6 +9,8 @@
 * 去重索引和持久化事件由 ChatManager 持有。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 版本头对齐到 v7.19.0
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04

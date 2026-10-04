@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 开发者实例按偏移端口绑定 UDP，广播覆盖全部实例端口，正常实例行为不变
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -101,12 +103,14 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     _socket->setProxy(noProxy);
 
     // ShareAddress + ReuseAddressHint 允许多进程共享同一 UDP 端口，
-    // 这样同一台机器上可以同时运行多个 GridYard 实例互相发现
-    bool bound = _socket->bind(QHostAddress::AnyIPv4, gy::protocol::kDefaultDiscoveryPort,
+    // 这样同一台机器上可以同时运行多个 GridYard 实例互相发现；
+    // 开发者实例按实例号偏移绑定确定性端口，正常实例仍是默认端口
+    const quint16 discoveryPort = gy::protocol::instanceDiscoveryPort(_config->instanceNumber());
+    bool bound = _socket->bind(QHostAddress::AnyIPv4, discoveryPort,
                                 QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
 
     if (!bound) {
-        qWarning() << "DiscoveryService: 绑定端口" << gy::protocol::kDefaultDiscoveryPort
+        qWarning() << "DiscoveryService: 绑定端口" << discoveryPort
                     << "失败:" << _socket->errorString();
         qWarning() << "DiscoveryService: 尝试绑定到任意端口";
 
@@ -194,6 +198,26 @@ QStringList DiscoveryService::rendezvousAlternateAddresses(const QString &device
     return it->addresses;
 }
 
+// 计算本实例的广播目标端口集合：正常实例只发默认端口（历史行为不变）；
+// 开发者实例向全部合法实例端口广播，保证不同偏移端口的实例互相发现，
+// 绑定回退到随机端口时补发实际端口保留既有兜底语义
+static QList<quint16> broadcastTargetPorts(const ConfigManager *config, quint16 localPort)
+{
+    QList<quint16> ports;
+    if (config->instanceNumber() > 0) {
+        for (int n = 0; n <= gy::protocol::kMaxInstanceNumber; ++n) {
+            ports.append(gy::protocol::instanceDiscoveryPort(n));
+        }
+    } else {
+        ports.append(gy::protocol::kDefaultDiscoveryPort);
+    }
+
+    if (localPort != 0 && !ports.contains(localPort)) {
+        ports.append(localPort);
+    }
+    return ports;
+}
+
 // 向所有激活网卡的广播地址发送 Hello 包
 void DiscoveryService::sendHelloPacket()
 {
@@ -208,6 +232,8 @@ void DiscoveryService::sendHelloPacket()
              << "name:" << _config->deviceName()
              << "本地端口:" << _socket->localPort();
 
+    const QList<quint16> targetPorts = broadcastTargetPorts(_config, _socket->localPort());
+
     // 遍历所有激活的网络接口，向每个网卡的广播地址发送
     const auto interfaces = QNetworkInterface::allInterfaces();
     int sentCount = 0;
@@ -221,21 +247,16 @@ void DiscoveryService::sendHelloPacket()
             // 只处理 IPv4 地址
             if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
 
-            // 向该网卡对应子网的广播地址精确发送
-            // 发送到默认端口
-            qint64 sent = _socket->writeDatagram(data, entry.broadcast(),
-                                                  gy::protocol::kDefaultDiscoveryPort);
-            if (sent == -1) {
-                qWarning() << "DiscoveryService: 广播发送失败到"
-                           << entry.broadcast().toString()
-                           << ":" << _socket->errorString();
-            } else {
-                sentCount++;
-            }
-
-            // 备用端口用于单机多实例测试，默认端口失败时仍能互相发现。
-            if (_socket->localPort() != gy::protocol::kDefaultDiscoveryPort) {
-                _socket->writeDatagram(data, entry.broadcast(), _socket->localPort());
+            // 向该网卡对应子网的广播地址逐个目标端口发送
+            for (const quint16 targetPort : targetPorts) {
+                qint64 sent = _socket->writeDatagram(data, entry.broadcast(), targetPort);
+                if (sent == -1) {
+                    qWarning() << "DiscoveryService: 广播发送失败到"
+                               << entry.broadcast().toString()
+                               << ":" << _socket->errorString();
+                } else {
+                    sentCount++;
+                }
             }
         }
     }
@@ -485,6 +506,12 @@ void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 di
     } else {
         qDebug() << "DiscoveryService: 定向 Hello 发送成功，字节数:" << sent;
     }
+}
+
+// 获取本实例实际绑定的 UDP 发现端口（邀请码端口照实携带用，未绑定时为 0）
+quint16 DiscoveryService::localDiscoveryPort() const
+{
+    return _socket ? _socket->localPort() : 0;
 }
 
 // 添加手动端点（只在没有更高优先级在线来源时才插入）

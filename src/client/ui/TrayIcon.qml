@@ -1,6 +1,6 @@
 /**
  * @file    TrayIcon.qml
- * @version 7.18.0
+ * @version 7.19.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   系统托盘图标
@@ -10,6 +10,8 @@
  * 从 Main.qml 拆出。
  *
  * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 托盘提示拼接开发者实例标识后缀
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -63,7 +65,8 @@ Platform.SystemTrayIcon {
     signal quitRequested()
 
     visible: true
-    tooltip: qsTr("GridYard")
+    // 开发者模式实例的托盘提示带 " #N" 标识，正常实例后缀为空串
+    tooltip: qsTr("GridYard") + AppController.instanceTitleSuffix
     icon.source: "qrc:/qt/qml/cqnu/gridyard/client/icons/gridyard.png"
 
     menu: Platform.Menu {

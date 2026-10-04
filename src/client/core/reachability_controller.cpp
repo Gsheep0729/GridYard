@@ -1,6 +1,6 @@
 /**
 * @file    reachability_controller.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   网络可达性控制器实现
@@ -10,6 +10,8 @@
 * 协调服务器启用时，支持向协调节点查询候选设备列表。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 开发者实例邀请码的发现端口照实携带实际绑定值
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -62,6 +64,7 @@
 #include "discovery_service.h"
 #include "endpoint_probe.h"
 #include "network/rendezvous_client.h"
+#include "protocol.h"
 
 #include <QHostAddress>
 #include <QNetworkInterface>
@@ -296,7 +299,13 @@ QString ReachabilityController::generateInvite()
     invite.deviceName = _config->deviceName();
     invite.ipAddress = _config->localIp();
     invite.tcpPort = _config->tcpPort();
-    invite.discoveryPort = 45678;
+
+    // 邀请码端口照实携带：开发者实例的发现端口按实例号偏移绑定，取实际值；
+    // 正常模式维持默认端口（bind 回退随机端口时的既有问题单独立项处理）
+    invite.discoveryPort = gy::protocol::kDefaultDiscoveryPort;
+    if (_config->instanceNumber() > 0 && _discovery) {
+        invite.discoveryPort = _discovery->localDiscoveryPort();
+    }
 
     _lastInviteText = InviteCodec::encode(invite);
     _inviteError.clear();

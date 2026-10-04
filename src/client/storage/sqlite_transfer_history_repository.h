@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_transfer_history_repository.h
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   SQLite 传输历史 Repository 实现
@@ -9,6 +9,8 @@
 * 所有 SQL 均采用预编译参数绑定，禁止字符串拼接业务参数。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 版本头对齐到 v7.19.0
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04

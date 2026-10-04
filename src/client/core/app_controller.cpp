@@ -1,11 +1,13 @@
 /**
 * @file    app_controller.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 实现 instanceTitleSuffix：开发者实例标题带 #N 标识
  * [v7.18.0] GY   2026-10-05
  * * 新增关窗动作决策与记录入口：resolveWindowCloseAction 读取配置与活动
  *   传输数返回分发结果，setCloseWindowAction 写入"记住我的选择"上报的动作
@@ -217,6 +219,13 @@ QString AppController::applicationName() const
 QString AppController::applicationVersion() const
 {
     return QCoreApplication::applicationVersion();
+}
+
+// 获取开发者模式窗口标题后缀（如 " #2"），正常实例为空串
+QString AppController::instanceTitleSuffix() const
+{
+    const int instance = _config->instanceNumber();
+    return instance > 0 ? QStringLiteral(" #%1").arg(instance) : QString();
 }
 
 // 获取设备发现视图模型

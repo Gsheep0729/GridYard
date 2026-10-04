@@ -1,6 +1,6 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GY
 * @brief   Relay 降级链路测试
@@ -11,6 +11,8 @@
 * TTL 夹紧、relay_id 复用竞态、响应写积压断开、会话等待超时）。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 版本头对齐到 v7.19.0
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04

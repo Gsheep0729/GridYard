@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.h
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增 localDiscoveryPort 访问器
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -110,6 +112,9 @@ public:
     void refresh();
     // 向指定地址发送定向 Hello 包（用于跨 AP 场景）
     void sendDirectedHello(const QHostAddress &address, quint16 discoveryPort);
+
+    // 获取本实例实际绑定的 UDP 发现端口（邀请码端口照实携带用，未绑定时为 0）
+    quint16 localDiscoveryPort() const;
 
     // 添加手动端点（来源标记为 manual）
     void addManualPeer(const PeerInfo &peer);

@@ -1,6 +1,6 @@
 /**
  * @file    SettingsDialog.qml
- * @version 7.18.0
+ * @version 7.19.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   设置对话框
@@ -9,6 +9,8 @@
  * 保存时调用 ConfigManager 的 setter 方法。
  *
  * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增开发者模式说明卡（多实例用法与文档指向）
  * [v7.18.0] GY   2026-10-05
  * * 新增"关闭窗口"设置卡：三选一配置关窗默认动作，作为记住选择后的恢复入口
  * [v7.17.5] GY   2026-10-04
@@ -642,6 +644,29 @@ Dialog {
                             onClicked: AppController.peerDiscoveryViewModel.setDeviceHidden(
                                            hiddenRow.modelData.deviceId, false)
                         }
+                    }
+                }
+            }
+
+            // 开发者模式说明卡片：本机多实例联调用法与文档指向（纯说明，无配置项）
+            SettingsCard {
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.Space.xs
+
+                    Label {
+                        text: qsTr("开发者模式")
+                        font.pixelSize: 15
+                        font.bold: true
+                        color: Style.Color.textMain
+                    }
+
+                    Label {
+                        text: qsTr("本机多实例联调：以 --instance=N（N 为 1~9）启动开发者实例，数据、配置、日志与数据库目录独立（GridYard-devN），UDP 发现端口与 TCP 端口各偏移 +10N，窗口标题和托盘提示带 #N 标识。不带该参数的正常启动行为完全不变，详细用法见项目 README 的《开发者模式多实例》。")
+                        color: Style.Color.textMuted
+                        font.pixelSize: 13
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
                     }
                 }
             }

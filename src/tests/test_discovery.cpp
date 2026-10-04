@@ -1,6 +1,6 @@
 /**
 * @file    test_discovery.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
@@ -8,6 +8,8 @@
 * 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增开发者实例 UDP 绑定偏移用例
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -65,6 +67,7 @@
 
 #include "discovery_service.h"
 #include "config_manager.h"
+#include "protocol.h"
 
 class TestDiscovery : public QObject {
     Q_OBJECT
@@ -82,6 +85,7 @@ private slots:
     void testRefreshKeepsManualAndDirected();
     void testRealArrivalMergesOfflineManualEntry();
     void testPeerInfo();
+    void testInstanceBindPortOffset();
 
 private:
     void waitForSignal(QSignalSpy &spy, int timeout = 2000);
@@ -408,6 +412,33 @@ void TestDiscovery::testPeerInfo()
 {
     // 不存在或离线设备不应提供发送端点
     QVERIFY(_discovery1->transferEndpoint("non_existent_device").isEmpty());
+}
+
+void TestDiscovery::testInstanceBindPortOffset()
+{
+    // 开发者实例的 UDP 发现端口按实例号确定性偏移（实例 2 → 45698），
+    // 正常实例（夹具中的 discovery1）仍绑定默认端口 45678
+    QCOMPARE(_discovery1->localDiscoveryPort(),
+             gy::protocol::instanceDiscoveryPort(0));
+
+    qputenv("GRIDYARD_INSTANCE", "2");
+    const QString configPath = _tempDir->path() + "/instance2.ini";
+    qputenv("GRIDYARD_CONFIG", configPath.toUtf8());
+
+    // 局部作用域内构造：声明顺序保证服务先于配置析构，
+    // 不挂父对象，避免越界后定时器访问已释放的配置
+    {
+        ConfigManager instanceConfig{};
+        DiscoveryService instanceDiscovery(&instanceConfig);
+
+        // 构造期完成绑定，端口应恰为默认值 + 10 × 实例号
+        QCOMPARE(instanceDiscovery.localDiscoveryPort(),
+                 gy::protocol::instanceDiscoveryPort(2));
+        QCOMPARE(instanceDiscovery.localDiscoveryPort(), quint16(45698));
+    }
+
+    qunsetenv("GRIDYARD_INSTANCE");
+    qunsetenv("GRIDYARD_CONFIG");
 }
 
 QTEST_MAIN(TestDiscovery)

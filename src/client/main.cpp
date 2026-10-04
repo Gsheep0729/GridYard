@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GY
 * @brief   GridYard 客户端程序入口
@@ -15,8 +15,11 @@
 *   --port <port>       指定 TCP 端口（默认 35100）
 *   --config <path>     指定配置文件路径
 *   --name <name>       指定设备名称
+*   --instance <N>      开发者模式实例号（1~9，本机多实例联调用）
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增 --instance 启动参数（开发者模式本机多实例联调）
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -169,6 +172,7 @@
 #include <QCommandLineParser>
 #include <QIcon>
 #include <QQuickStyle>
+#include <QStringList>
 
 #include "app_controller.h"
 #include "data_types.h"
@@ -176,15 +180,12 @@
 
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
-    QApplication app(argc, argv);
-
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("7.18.0");
+    QGuiApplication::setApplicationVersion("7.19.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
-    // 统一设置窗口图标，覆盖任务栏和窗口标题栏
-    QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 
-    // 命令行参数解析
+    // 命令行参数须在 QApplication 构造前解析：X11 平台层会按 X 工具惯例
+    // 吞掉 -name <值> 参数，导致后解析永远读不到设备名（多实例联调靠它区分实例）
     QCommandLineParser parser;
     parser.setApplicationDescription("GridYard - 局域网文件传输工具");
     parser.addHelpOption();
@@ -202,7 +203,32 @@ int main(int argc, char *argv[]) {
     QCommandLineOption nameOption("name", "设备名称", "name");
     parser.addOption(nameOption);
 
-    parser.process(app);
+    // --instance 参数（开发者模式：本机多实例联调，正常启动不带此参数）
+    QCommandLineOption instanceOption("instance", "开发者实例号（1~9，隔离数据目录并偏移端口）", "N");
+    parser.addOption(instanceOption);
+
+    QStringList rawArguments;
+    rawArguments.reserve(argc);
+    for (int i = 0; i < argc; ++i) {
+        rawArguments << QString::fromLocal8Bit(argv[i]);
+    }
+    if (!parser.parse(rawArguments)) {
+        qWarning("%s", qPrintable(parser.errorText()));
+        return 1;
+    }
+    if (parser.isSet("help")) {
+        parser.showHelp();
+        return 0;
+    }
+    if (parser.isSet("version")) {
+        parser.showVersion();
+        return 0;
+    }
+
+    QApplication app(argc, argv);
+
+    // 统一设置窗口图标，覆盖任务栏和窗口标题栏（QPixmap 依赖 QApplication，须后置）
+    QGuiApplication::setWindowIcon(QIcon(":/qt/qml/cqnu/gridyard/client/icons/gridyard.png"));
 
     // 设置环境变量，供 ConfigManager 读取
     if (parser.isSet(portOption)) {
@@ -213,6 +239,9 @@ int main(int argc, char *argv[]) {
     }
     if (parser.isSet(nameOption)) {
         qputenv("GRIDYARD_NAME", parser.value(nameOption).toUtf8());
+    }
+    if (parser.isSet(instanceOption)) {
+        qputenv("GRIDYARD_INSTANCE", parser.value(instanceOption).toUtf8());
     }
 
     QQuickStyle::setStyle("Material");

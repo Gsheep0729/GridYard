@@ -1,6 +1,6 @@
 /**
  * @file    CloseConfirmDialog.qml
- * @version 7.18.0
+ * @version 7.19.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   关闭确认弹窗
@@ -13,6 +13,8 @@
  * 从 Main.qml 拆出。
  *
  * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 版本头对齐到 v7.19.0
  * [v7.18.0] GY   2026-10-05
  * * 新增"记住我的选择"复选框：勾选后点击隐藏或退出即上报写入关窗行为配置，
  *   仅托盘可用且常规询问时显示，活动传输拦截场景不提供记忆入口，

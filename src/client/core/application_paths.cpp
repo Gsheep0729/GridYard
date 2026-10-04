@@ -1,11 +1,13 @@
 /**
 * @file    application_paths.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用数据目录统一入口实现
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 配置、数据、日志、数据库目录统一收口追加实例后缀，正常模式推导逐字符不变
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04
@@ -56,8 +58,54 @@
 
 #include "application_paths.h"
 
+#include "protocol.h"
+
 #include <QDir>
 #include <QStandardPaths>
+
+// 当前开发者模式实例号：解析 GRIDYARD_INSTANCE，未设置或非法时按正常模式处理，
+// 越界数值夹紧到合法范围；实例号只在启动期由入口写入，此处是唯一的解析点
+int ApplicationPaths::instanceNumber()
+{
+    const QString raw = qEnvironmentVariable("GRIDYARD_INSTANCE");
+    if (raw.isEmpty()) {
+        return 0;
+    }
+
+    bool ok = false;
+    const int value = raw.toInt(&ok);
+    if (!ok) {
+        return 0;
+    }
+    return qBound(0, value, gy::protocol::kMaxInstanceNumber);
+}
+
+// 实例目录名：实例 0 沿用默认名，开发者实例追加 -devN 后缀
+QString ApplicationPaths::instanceDirectoryName(int instance)
+{
+    const int n = qBound(0, instance, gy::protocol::kMaxInstanceNumber);
+    if (n == 0) {
+        return QStringLiteral("GridYard");
+    }
+    return QStringLiteral("GridYard-dev%1").arg(n);
+}
+
+// 对系统推导出的应用目录追加实例后缀：取上级目录拼接实例目录名，
+// 实例 0 原样返回原字符串，保证正常模式的推导路径逐字符不变
+QString ApplicationPaths::applyInstanceSuffix(const QString &systemDir, int instance)
+{
+    if (instance <= 0 || systemDir.isEmpty()) {
+        return systemDir;
+    }
+
+    const QString parent = QDir(systemDir).absolutePath();
+    const int lastSlash = parent.lastIndexOf('/');
+    // 无路径分隔符的裸目录名（正常装配不会出现）：直接对名称追加后缀
+    if (lastSlash < 0) {
+        return parent + "-dev" + QString::number(qBound(0, instance, gy::protocol::kMaxInstanceNumber));
+    }
+    return parent.left(lastSlash) + '/' + instanceDirectoryName(instance);
+}
 
 namespace {
 QString testBaseDir;  // 测试环境覆盖的应用数据根目录，为空时使用系统标准目录
@@ -82,13 +130,18 @@ static QString systemDataDirectory()
     return QDir(dataDir).absolutePath();
 }
 
-// 获取配置根目录：测试使用覆盖目录，正式运行使用系统标准配置目录
+// 当前实例号下的系统配置根目录（开发者实例追加 GridYard-devN 后缀）
 static QString configBaseDirectory()
 {
-    if (!testBaseDir.isEmpty()) {
-        return QDir(testBaseDir).filePath("config");
-    }
-    return systemConfigDirectory();
+    const QString baseDir = testBaseDir.isEmpty() ? systemConfigDirectory() : QDir(testBaseDir).filePath("config");
+    return ApplicationPaths::applyInstanceSuffix(baseDir, ApplicationPaths::instanceNumber());
+}
+
+// 当前实例号下的系统数据根目录（开发者实例追加 GridYard-devN 后缀）
+static QString dataBaseDirectory()
+{
+    const QString baseDir = testBaseDir.isEmpty() ? systemDataDirectory() : testBaseDir;
+    return ApplicationPaths::applyInstanceSuffix(baseDir, ApplicationPaths::instanceNumber());
 }
 
 // 确保目录存在并返回绝对路径
@@ -117,15 +170,13 @@ QString ApplicationPaths::configDir()
 // 获取本地 SQLite 数据库目录
 QString ApplicationPaths::databaseDir()
 {
-    const QString baseDir = testBaseDir.isEmpty() ? systemDataDirectory() : testBaseDir;
-    return ensureChildDirectory(baseDir, "database");
+    return ensureChildDirectory(dataBaseDirectory(), "database");
 }
 
 // 获取运行日志目录
 QString ApplicationPaths::logDir()
 {
-    const QString baseDir = testBaseDir.isEmpty() ? systemDataDirectory() : testBaseDir;
-    return ensureChildDirectory(baseDir, "logs");
+    return ensureChildDirectory(dataBaseDirectory(), "logs");
 }
 
 // 为测试指定独立的应用数据根目录，隔离测试和生产环境的磁盘写入

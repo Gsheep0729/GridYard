@@ -1,6 +1,6 @@
 /**
 * @file    data_types.h
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   跨模块共享数据类型定义（值类型 / POD）
@@ -11,6 +11,8 @@
 * QObject 的身份语义不适合。QML 端通过 Q_PROPERTY MEMBER 反射访问。
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 版本头对齐到 v7.19.0
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04

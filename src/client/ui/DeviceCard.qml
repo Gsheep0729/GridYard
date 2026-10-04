@@ -1,6 +1,6 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.18.0
+ * @version 7.19.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
@@ -13,6 +13,8 @@
  * 由 Main.qml 统一解码、过滤并裁决设备是否在线。
  *
  * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 版本头对齐到 v7.19.0
  * [v7.18.0] GY   2026-10-05
  * * 版本头对齐到 v7.18.0
  * [v7.17.5] GY   2026-10-04

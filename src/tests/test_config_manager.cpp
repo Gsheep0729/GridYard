@@ -1,6 +1,6 @@
 /**
 * @file    test_config_manager.cpp
-* @version 7.18.0
+* @version 7.19.0
 * @date 2026-10-05
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
@@ -8,6 +8,8 @@
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化
 *
 * Change Log:
+ * [v7.19.0] GY   2026-10-05
+ * * 新增实例端口偏移、实例号解析、目录后缀推导与实例默认端口用例
  * [v7.18.0] GY   2026-10-05
  * * 新增关窗行为配置读写与持久化用例、关窗动作决策分支用例（含活动传输拦截）
  * [v7.17.5] GY   2026-10-04
@@ -61,7 +63,9 @@
 #include <QSettings>
 #include <QHostInfo>
 
+#include "application_paths.h"
 #include "config_manager.h"
+#include "protocol.h"
 
 class TestConfigManager : public QObject {
     Q_OBJECT
@@ -79,6 +83,11 @@ private slots:
     void testLocalIp();
     void testCloseWindowAction();
     void testResolveWindowCloseAction();
+    void testInstancePortOffset();
+    void testInstanceNumberParsing();
+    void testInstanceDirectoryName();
+    void testApplyInstanceSuffix();
+    void testInstanceTcpPortDefault();
 
 private:
     ConfigManager *_config = nullptr;
@@ -311,6 +320,116 @@ void TestConfigManager::testResolveWindowCloseAction()
     // 记住完全退出但仍有活动传输：拦截为警示确认，A6 防护不随记忆豁免
     QCOMPARE(ConfigManager::resolveWindowCloseAction(CloseWindowAction::Exit, 1),
              QStringLiteral("confirm"));
+}
+
+void TestConfigManager::testInstancePortOffset()
+{
+    // 偏移公式：实例 N 的发现端口 = 45678 + 10N，TCP 端口 = 35100 + 10N
+    QCOMPARE(gy::protocol::instanceDiscoveryPort(0), quint16(45678));
+    QCOMPARE(gy::protocol::instanceDiscoveryPort(1), quint16(45688));
+    QCOMPARE(gy::protocol::instanceDiscoveryPort(9), quint16(45768));
+    QCOMPARE(gy::protocol::instanceP2pPort(0), quint16(35100));
+    QCOMPARE(gy::protocol::instanceP2pPort(2), quint16(35120));
+    QCOMPARE(gy::protocol::instanceP2pPort(9), quint16(35190));
+
+    // 范围夹紧：越界实例号按边界取值，端口恒在合法范围内
+    QCOMPARE(gy::protocol::instanceDiscoveryPort(-1), quint16(45678));
+    QCOMPARE(gy::protocol::instanceDiscoveryPort(10), quint16(45768));
+    QCOMPARE(gy::protocol::instanceP2pPort(-3), quint16(35100));
+    QCOMPARE(gy::protocol::instanceP2pPort(99), quint16(35190));
+
+    // 冲突规避：全部实例端口不撞协调节点/中继端口，发现与 TCP 两序列互不重叠
+    for (int n = 0; n <= gy::protocol::kMaxInstanceNumber; ++n) {
+        const quint16 discoveryPort = gy::protocol::instanceDiscoveryPort(n);
+        const quint16 tcpPort = gy::protocol::instanceP2pPort(n);
+        QVERIFY2(discoveryPort != gy::protocol::kDefaultRendezvousPort,
+                 "发现端口不得与协调节点端口冲突");
+        QVERIFY2(discoveryPort != gy::protocol::kDefaultRelayPort,
+                 "发现端口不得与中继端口冲突");
+        QVERIFY(discoveryPort >= 1024 && discoveryPort <= 65535);
+        QVERIFY(tcpPort >= 1024 && tcpPort <= 65535);
+        QVERIFY(discoveryPort != tcpPort);
+    }
+}
+
+void TestConfigManager::testInstanceNumberParsing()
+{
+    // 未设置环境变量：正常模式实例 0
+    qunsetenv("GRIDYARD_INSTANCE");
+    QCOMPARE(ApplicationPaths::instanceNumber(), 0);
+
+    // 合法数值原样解析
+    qputenv("GRIDYARD_INSTANCE", "2");
+    QCOMPARE(ApplicationPaths::instanceNumber(), 2);
+
+    // 非法字符串按正常模式处理
+    qputenv("GRIDYARD_INSTANCE", "abc");
+    QCOMPARE(ApplicationPaths::instanceNumber(), 0);
+
+    // 越界数值夹紧到合法范围
+    qputenv("GRIDYARD_INSTANCE", "15");
+    QCOMPARE(ApplicationPaths::instanceNumber(), 9);
+    qputenv("GRIDYARD_INSTANCE", "-3");
+    QCOMPARE(ApplicationPaths::instanceNumber(), 0);
+
+    qunsetenv("GRIDYARD_INSTANCE");
+}
+
+void TestConfigManager::testInstanceDirectoryName()
+{
+    // 实例 0 沿用默认名，实例 N 返回确定性后缀名，越界夹紧
+    QCOMPARE(ApplicationPaths::instanceDirectoryName(0), QStringLiteral("GridYard"));
+    QCOMPARE(ApplicationPaths::instanceDirectoryName(3), QStringLiteral("GridYard-dev3"));
+    QCOMPARE(ApplicationPaths::instanceDirectoryName(12), QStringLiteral("GridYard-dev9"));
+    QCOMPARE(ApplicationPaths::instanceDirectoryName(-1), QStringLiteral("GridYard"));
+}
+
+void TestConfigManager::testApplyInstanceSuffix()
+{
+    const QString systemDir = QStringLiteral("/home/user/.local/share/CQNU-SED/GridYard");
+
+    // 实例 0：逐字符原样返回，正常模式路径推导零变化
+    QCOMPARE(ApplicationPaths::applyInstanceSuffix(systemDir, 0), systemDir);
+
+    // 实例 N：叶目录替换为实例目录名，上级目录保持不变
+    QCOMPARE(ApplicationPaths::applyInstanceSuffix(systemDir, 2),
+             QStringLiteral("/home/user/.local/share/CQNU-SED/GridYard-dev2"));
+
+    // 越界实例号夹紧
+    QCOMPARE(ApplicationPaths::applyInstanceSuffix(systemDir, 20),
+             QStringLiteral("/home/user/.local/share/CQNU-SED/GridYard-dev9"));
+}
+
+void TestConfigManager::testInstanceTcpPortDefault()
+{
+    // 恢复干净环境：实例端口默认值不受命令行端口与既有配置影响
+    qunsetenv("GRIDYARD_PORT");
+    const QString savedConfig = qEnvironmentVariable("GRIDYARD_CONFIG");
+
+    // 实例 0（未设置实例号）：默认 TCP 端口保持 35100 不变
+    qunsetenv("GRIDYARD_INSTANCE");
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/instance0.ini").toUtf8());
+    {
+        ConfigManager normal;
+        QCOMPARE(normal.instanceNumber(), 0);
+        QCOMPARE(normal.tcpPort(), quint16(35100));
+    }
+
+    // 实例 3：默认 TCP 端口确定性偏移为 35130
+    qputenv("GRIDYARD_INSTANCE", "3");
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/instance3.ini").toUtf8());
+    {
+        ConfigManager dev;
+        QCOMPARE(dev.instanceNumber(), 3);
+        QCOMPARE(dev.tcpPort(), quint16(35130));
+    }
+
+    qunsetenv("GRIDYARD_INSTANCE");
+    if (!savedConfig.isEmpty()) {
+        qputenv("GRIDYARD_CONFIG", savedConfig.toUtf8());
+    } else {
+        qunsetenv("GRIDYARD_CONFIG");
+    }
 }
 
 QTEST_MAIN(TestConfigManager)
