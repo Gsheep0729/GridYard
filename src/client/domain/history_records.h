@@ -1,6 +1,6 @@
 /**
 * @file    history_records.h
-* @version 7.16.0
+* @version 7.17.0
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地历史持久化领域记录
@@ -8,6 +8,8 @@
 * 应用层与存储层之间使用的纯值类型，不含 Qt Sql 或 QML 类型。
 *
 * Change Log:
+* [v7.17.0] GY   2026-10-04
+* * PeerRecord 新增 alias/pinned/hidden 用户管理状态字段
 * [v7.16.0] GY   2026-10-04
 * * 版本头对齐到 v7.16.0
 * [v7.15.19] GY   2026-10-04

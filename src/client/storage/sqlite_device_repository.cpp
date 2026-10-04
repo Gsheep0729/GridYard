@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 7.16.0
+* @version 7.17.0
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -8,6 +8,9 @@
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
 *
 * Change Log:
+* [v7.17.0] GY   2026-10-04
+* * recentPeers 恢复链路带出 alias/pinned/hidden 三列
+* * upsert 补注释固定 ON CONFLICT 不触碰管理三列的心跳契约
 * [v7.16.0] GY   2026-10-04
 * * 版本头对齐到 v7.16.0
 * [v7.15.19] GY   2026-10-04

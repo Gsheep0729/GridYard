@@ -1,6 +1,6 @@
 /**
 * @file    test_discovery.cpp
-* @version 7.16.0
+* @version 7.17.0
 * @date    2026-10-04
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
@@ -8,6 +8,8 @@
 * 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()
 *
 * Change Log:
+* [v7.17.0] GY   2026-10-04
+* * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04
 * * 补 directed 注入与优先级守卫、手动 peerUpdated、刷新保留 manual 与 directed、同 IP 合并用例
 * [v7.15.19] GY   2026-10-04
