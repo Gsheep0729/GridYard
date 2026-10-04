@@ -1,6 +1,6 @@
 /**
 * @file    endpoint_probe.h
-* @version 7.17.3
+* @version 7.17.4
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   网络端点探测
@@ -9,6 +9,8 @@
 * 异步执行，不阻塞 UI 线程，探测完成后发射 probeFinished 信号。
 *
 * Change Log:
+* [v7.17.4] GY   2026-10-04
+* * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
 * * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04

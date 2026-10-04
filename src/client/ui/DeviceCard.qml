@@ -1,6 +1,6 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.17.3
+ * @version 7.17.4
  * @date 2026-10-04
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
@@ -13,6 +13,8 @@
  * 由 Main.qml 统一解码、过滤并裁决设备是否在线。
  *
  * Change Log:
+ * [v7.17.4] GY   2026-10-04
+ * * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
 * * 名称行与头像首字母改用备注优先的显示名
 * * delegate 补 alias 字段，设置备注菜单项接线完成

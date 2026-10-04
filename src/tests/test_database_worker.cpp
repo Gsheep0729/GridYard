@@ -1,6 +1,6 @@
 /**
 * @file    test_database_worker.cpp
-* @version 7.17.3
+* @version 7.17.4
 * @date 2026-10-04
 * @author  GY
 * @brief   DatabaseWorker 语义测试
@@ -9,6 +9,8 @@
 * beginShutdown 后拒绝新任务且不崩溃、drained 在全部已受理任务完成后到达。
 *
 * Change Log:
+* [v7.17.4] GY   2026-10-04
+* * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
 * * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04

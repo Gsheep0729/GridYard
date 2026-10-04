@@ -1,6 +1,6 @@
 /**
 * @file    invite_codec.cpp
-* @version 7.17.3
+* @version 7.17.4
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   邀请连接文本编解码器实现
@@ -8,6 +8,8 @@
 * 实现邀请文本的 URL 编码解析和生成。
 *
 * Change Log:
+* [v7.17.4] GY   2026-10-04
+* * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
 * * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04

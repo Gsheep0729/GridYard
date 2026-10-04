@@ -1,6 +1,6 @@
 /**
 * @file    test_config_manager.cpp
-* @version 7.17.3
+* @version 7.17.4
 * @date 2026-10-04
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
@@ -8,6 +8,8 @@
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化
 *
 * Change Log:
+* [v7.17.4] GY   2026-10-04
+* * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
 * * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04

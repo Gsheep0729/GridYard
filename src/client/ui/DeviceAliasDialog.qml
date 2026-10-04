@@ -1,6 +1,6 @@
 /**
  * @file    DeviceAliasDialog.qml
- * @version 7.17.3
+ * @version 7.17.4
  * @date 2026-10-04
  * @author  GridYard Team
  * @brief   设置备注对话框
@@ -10,6 +10,8 @@
  * 调用视图模型落库并刷新列表。
  *
  * Change Log:
+ * [v7.17.4] GY   2026-10-04
+ * * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
 * * 新增设置备注对话框，回车提交、Esc 取消、留空提交即清除
 * [v7.17.2] GY   2026-10-04

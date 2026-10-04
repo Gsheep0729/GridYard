@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_coordinator.h
-* @version 7.17.3
+* @version 7.17.4
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   协调节点编排器
@@ -10,6 +10,8 @@
 * 不再需要重启应用。协调客户端对象本身由组合根持有，多个模块共享。
 *
 * Change Log:
+* [v7.17.4] GY   2026-10-04
+* * 版本头对齐到 v7.17.4
 * [v7.17.3] GY   2026-10-04
 * * 版本头对齐到 v7.17.3
 * [v7.17.2] GY   2026-10-04

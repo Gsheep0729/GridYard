@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.17.3
+ * @version 7.17.4
  * @date 2026-10-04
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -9,6 +9,8 @@
  * 提供搜索过滤、手动刷新和添加设备入口。
  *
  * Change Log:
+ * [v7.17.4] GY   2026-10-04
+ * * 搜索改合并模型：已加载命中在前、数据库历史命中随后，加防抖与空态抑制
 * [v7.17.3] GY   2026-10-04
 * * 搜索过滤在设备名与 IP 之外加入备注匹配，delegate 补 alias 字段
 * [v7.17.2] GY   2026-10-04

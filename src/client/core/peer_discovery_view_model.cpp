@@ -1,11 +1,13 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.17.3
+* @version 7.17.4
 * @date 2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 *
 * Change Log:
+* [v7.17.4] GY   2026-10-04
+* * 新增 searchPeers 关键字检索入口与 searchResults/searchBusy 属性
 * [v7.17.3] GY   2026-10-04
 * * 设置或清除设备备注，落库成功即时刷新列表
 * * 在线与历史条目统一注入 alias 字段，在线条目按 deviceId 从目录回填
