@@ -101,8 +101,10 @@ ItemDelegate {
 
     signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)
-    // 右键菜单上报用户意图（pin/unpin/hide/rename/delete），由装配层接确认弹窗与控制器
-    signal contextActionRequested(string deviceId, string deviceName, string action)
+    // 右键手势只上报"在某设备处请求上下文菜单"的意图并携带打开时的设备上下文；
+    // 菜单实例挂在窗口层单例打开，列表刷新销毁重建 delegate 不影响已打开的菜单，
+    // 菜单项触发时按捕获上下文上报 pin/unpin/hide/rename/delete 意图给装配层
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned)
 
     height: kCardHeight
     background: Rectangle {
@@ -148,103 +150,9 @@ ItemDelegate {
     // 右键手势：只接管右键，与左键选中（ItemDelegate onClicked）和拖拽（DropArea）互不干扰
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: contextMenu.popup()
-    }
-
-    // 右键菜单：微信式会话管理入口。菜单只上报用户意图，业务判断全部在 C++ 侧
-    Menu {
-        id: contextMenu
-        width: 160
-        topPadding: 4
-        bottomPadding: 4
-        leftPadding: 4
-        rightPadding: 4
-
-        background: Rectangle {
-            color: Style.Color.surface
-            radius: Style.Radius.md
-            border.color: Style.Color.borderSoft
-            border.width: 1
-        }
-
-        MenuItem {
-            id: pinItem
-            text: deviceCard.isPinned ? qsTr("取消置顶") : qsTr("置顶该聊天")
-            contentItem: Label {
-                text: pinItem.text
-                font.pixelSize: 13
-                color: pinItem.hovered ? Style.Color.primary : Style.Color.textMain
-                verticalAlignment: Text.AlignVCenter
-                leftPadding: Style.Space.sm
-            }
-            background: Rectangle {
-                color: pinItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
-                radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
-            }
-            onTriggered: deviceCard.contextActionRequested(
-                             deviceCard.deviceId, deviceCard.deviceName,
-                             deviceCard.isPinned ? "unpin" : "pin")
-        }
-
-        MenuItem {
-            id: hideItem
-            text: qsTr("不显示该聊天")
-            contentItem: Label {
-                text: hideItem.text
-                font.pixelSize: 13
-                color: hideItem.hovered ? Style.Color.primary : Style.Color.textMain
-                verticalAlignment: Text.AlignVCenter
-                leftPadding: Style.Space.sm
-            }
-            background: Rectangle {
-                color: hideItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
-                radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
-            }
-            onTriggered: deviceCard.contextActionRequested(
-                             deviceCard.deviceId, deviceCard.deviceName, "hide")
-        }
-
-        MenuItem {
-            id: renameItem
-            text: qsTr("设置备注")
-            contentItem: Label {
-                text: renameItem.text
-                font.pixelSize: 13
-                color: renameItem.hovered ? Style.Color.primary : Style.Color.textMain
-                verticalAlignment: Text.AlignVCenter
-                leftPadding: Style.Space.sm
-            }
-            background: Rectangle {
-                color: renameItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
-                radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
-            }
-            // 备注编辑入口：上报意图，由装配层打开备注弹窗
-            onTriggered: deviceCard.contextActionRequested(
-                             deviceCard.deviceId, deviceCard.deviceName, "rename")
-        }
-
-        MenuItem {
-            id: deleteItem
-            text: qsTr("删除该聊天")
-            contentItem: Label {
-                text: deleteItem.text
-                font.pixelSize: 13
-                // 危险操作沿用 Style 语义色 error，与确认弹窗的危险按钮呼应
-                color: deleteItem.hovered ? Style.Color.errorHover : Style.Color.error
-                verticalAlignment: Text.AlignVCenter
-                leftPadding: Style.Space.sm
-            }
-            background: Rectangle {
-                color: deleteItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
-                radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
-            }
-            onTriggered: deviceCard.contextActionRequested(
-                             deviceCard.deviceId, deviceCard.deviceName, "delete")
-        }
+        onTapped: deviceCard.contextMenuRequested(deviceCard.deviceId,
+                                                  deviceCard.deviceName,
+                                                  deviceCard.isPinned)
     }
 
     // 离线设备用颜色弱化区分：设备名与头像降为次级色，

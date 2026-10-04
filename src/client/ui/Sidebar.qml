@@ -53,6 +53,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 import cqnu.gridyard.client 1.0
 import "../utils/Style.js" as Style
 
@@ -62,7 +63,9 @@ Rectangle {
     // 设备选择与拖拽上抛（拖拽先选中再统一裁决）
     signal deviceSelected(string deviceId)
     signal deviceFilesDropped(string deviceId, var urls)
-    // 设备卡右键菜单意图上抛（pin/unpin/hide/rename/delete）
+    // 设备卡右键打开菜单的意图（携带打开时捕获的设备上下文），由本组件的单例菜单承接
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned)
+    // 菜单里的动作意图上抛（pin/unpin/hide/rename/delete），由 Main 接确认弹窗与控制器
     signal contextActionRequested(string deviceId, string deviceName, string action)
     // 菜单里的设置入口
     signal settingsRequested()
@@ -201,8 +204,137 @@ Rectangle {
             sidebar.deviceSelected(deviceId)
         onFilesDropped: (deviceId, urls) =>
             sidebar.deviceFilesDropped(deviceId, urls)
-        onContextActionRequested: (deviceId, deviceName, action) =>
-            sidebar.contextActionRequested(deviceId, deviceName, action)
+        onContextMenuRequested: (deviceId, deviceName, isPinned) =>
+            deviceContextMenu.openFor(deviceId, deviceName, isPinned)
+    }
+
+    // 设备卡右键菜单：单例挂在窗口层，列表心跳刷新销毁重建 delegate 不影响已打开的菜单。
+    // 打开时捕获设备上下文，菜单项触发时按捕获值上报意图（业务判断全部在 Main 装配层；
+    // 设备若已不存在，后端管理接口的幂等语义自行兜住）
+    Menu {
+        id: deviceContextMenu
+
+        // 打开时捕获的设备上下文：菜单项触发以捕获值为准，不随列表刷新变化
+        property string deviceId: ""
+        property string deviceName: ""
+        property bool isPinned: false
+
+        function openFor(id, name, pinned) {
+            deviceContextMenu.deviceId = id
+            deviceContextMenu.deviceName = name
+            deviceContextMenu.isPinned = pinned
+            deviceContextMenu.popup()  // 光标处打开，即右键所在卡片位置
+        }
+
+        width: 160
+        topPadding: 4
+        bottomPadding: 4
+        leftPadding: 4
+        rightPadding: 4
+
+        background: Item {
+            id: deviceMenuShell
+
+            // 菜单阴影：全应用唯一的阴影使用点，半径与不透明度取克制档位避免脏边
+            MultiEffect {
+                anchors.fill: parent
+                source: deviceMenuPanel
+                autoPaddingEnabled: true
+                shadowEnabled: true
+                shadowBlur: 0.85
+                shadowVerticalOffset: 4
+                shadowColor: Style.Color.menuShadow
+            }
+
+            // 底色用 menuBackground 与白色弹窗/卡片形成深浅层次
+            Rectangle {
+                id: deviceMenuPanel
+                anchors.fill: parent
+                color: Style.Color.menuBackground
+                radius: Style.Radius.md
+                border.color: Style.Color.borderSoft
+                border.width: 1
+            }
+        }
+
+        MenuItem {
+            id: pinItem
+            text: deviceContextMenu.isPinned ? qsTr("取消置顶") : qsTr("置顶该聊天")
+            contentItem: Label {
+                text: pinItem.text
+                font.pixelSize: 13
+                color: pinItem.hovered ? Style.Color.primary : Style.Color.textMain
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: pinItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            onTriggered: sidebar.contextActionRequested(
+                             deviceContextMenu.deviceId, deviceContextMenu.deviceName,
+                             deviceContextMenu.isPinned ? "unpin" : "pin")
+        }
+
+        MenuItem {
+            id: hideItem
+            text: qsTr("不显示该聊天")
+            contentItem: Label {
+                text: hideItem.text
+                font.pixelSize: 13
+                color: hideItem.hovered ? Style.Color.primary : Style.Color.textMain
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: hideItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            onTriggered: sidebar.contextActionRequested(
+                             deviceContextMenu.deviceId, deviceContextMenu.deviceName, "hide")
+        }
+
+        MenuItem {
+            id: renameItem
+            text: qsTr("设置备注")
+            contentItem: Label {
+                text: renameItem.text
+                font.pixelSize: 13
+                color: renameItem.hovered ? Style.Color.primary : Style.Color.textMain
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: renameItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            // 备注编辑入口：上报意图，由装配层打开备注弹窗
+            onTriggered: sidebar.contextActionRequested(
+                             deviceContextMenu.deviceId, deviceContextMenu.deviceName, "rename")
+        }
+
+        MenuItem {
+            id: deleteItem
+            text: qsTr("删除该聊天")
+            contentItem: Label {
+                text: deleteItem.text
+                font.pixelSize: 13
+                // 危险操作沿用 Style 语义色 error，与确认弹窗的危险按钮呼应
+                color: deleteItem.hovered ? Style.Color.errorHover : Style.Color.error
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: deleteItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
+            }
+            onTriggered: sidebar.contextActionRequested(
+                             deviceContextMenu.deviceId, deviceContextMenu.deviceName, "delete")
+        }
     }
 
     // 本机信息弹出窗口(FCL)

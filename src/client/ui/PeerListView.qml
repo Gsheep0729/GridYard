@@ -126,8 +126,8 @@ Rectangle {
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)  // 拖拽文件到设备卡片时触发，由 Main 统一裁决
-    // 右键菜单意图上抛（pin/unpin/hide/rename/delete），由 Main 接确认弹窗与控制器
-    signal contextActionRequested(string deviceId, string deviceName, string action)
+    // 右键打开菜单的意图上抛（携带打开时捕获的设备上下文），菜单实例由侧栏窗口层单例持有
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned)
 
     color: Style.Color.surfaceMid
 
@@ -288,8 +288,8 @@ Rectangle {
                 onFilesDropped: function(deviceId, urls) {
                     peerListView.filesDropped(deviceId, urls)
                 }
-                onContextActionRequested: function(deviceId, deviceName, action) {
-                    peerListView.contextActionRequested(deviceId, deviceName, action)
+                onContextMenuRequested: function(deviceId, deviceName, isPinned) {
+                    peerListView.contextMenuRequested(deviceId, deviceName, isPinned)
                 }
             }
         }

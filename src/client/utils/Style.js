@@ -63,6 +63,8 @@ const Color = {
     surfaceMid: "#F7F7F7",
     surfaceSoft: "#F9FAFB",
     window: "#FFFFFF",
+    menuBackground: "#F2F3F5",  // 菜单底色：比白色弹窗/卡片深一档形成浮层层次
+    menuShadow: "#471F2937",    // 菜单阴影（ARGB，约 28% 冷灰），全应用唯一阴影
     // 边框
     border: "#E5E7EB",
     borderSoft: "#EEF2F7",
