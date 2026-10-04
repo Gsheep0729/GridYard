@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.h
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
@@ -11,6 +11,8 @@
 * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

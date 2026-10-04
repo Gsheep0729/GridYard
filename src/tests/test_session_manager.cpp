@@ -1,6 +1,6 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
@@ -10,6 +10,8 @@
 * waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化 / 活动会话计数增减
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 新增入口信号弹窗与自动接受两路径用例，套件增至 19 用例
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

@@ -1,11 +1,13 @@
 /**
 * @file    migration_runner.cpp
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GY
 * @brief   SQLite Schema 版本迁移执行器实现
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04
 * * Schema 支持上限抬到 2，新增版本二迁移为 peer_devices 补齐备注/置顶/隐藏三列
 * * 各版本迁移拆分为独立事务执行，任一 DDL 失败整体回滚

@@ -1,11 +1,13 @@
 /**
 * @file    history_wiring.cpp
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地历史持久化装配实现
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 入站消息与传输请求接线到视图模型恢复入口，隐藏设备自动恢复显示
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

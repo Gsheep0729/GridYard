@@ -1,11 +1,13 @@
 /**
 * @file    discovery_service.h
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 新增 removePeer 移除入口，删除设备后清在线条目与协调候选
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

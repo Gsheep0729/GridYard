@@ -1,11 +1,13 @@
 /**
  * @file    FormatUtils.js
- * @version 7.17.0
+ * @version 7.17.1
  * @date    2026-10-04
  * @author  GY
  * @brief   界面展示格式化工具
  *
  * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

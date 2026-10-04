@@ -1,11 +1,14 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 合并链路消费 pinned/hidden：hidden 条目不进列表，pinned 数据可用
+* * 新增置顶、隐藏、删除与自动恢复入口，删除链路同步清理内存列表
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

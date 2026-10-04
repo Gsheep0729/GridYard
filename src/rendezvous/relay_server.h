@@ -1,6 +1,6 @@
 /**
 * @file    relay_server.h
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   流式中继服务器
@@ -13,6 +13,8 @@
 * 会话数与积压均有上限。
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

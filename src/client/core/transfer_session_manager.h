@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器
@@ -10,6 +10,8 @@
 * 发送与接收 worker 分别以独立映射管理生命周期。
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 新增 incomingTransferRequested 入站请求入口信号
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04

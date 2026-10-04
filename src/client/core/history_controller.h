@@ -1,6 +1,6 @@
 /**
 * @file    history_controller.h
-* @version 7.17.0
+* @version 7.17.1
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   本地聊天与传输历史的 QML 应用层入口
@@ -10,6 +10,8 @@
 * 并向 QML 提供筛选、删除和保留期限设置入口。
 *
 * Change Log:
+* [v7.17.1] GY   2026-10-04
+* * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04
 * * 版本头对齐到 v7.17.0
 * [v7.16.0] GY   2026-10-04
