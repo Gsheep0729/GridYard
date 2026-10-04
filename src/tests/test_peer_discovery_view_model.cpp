@@ -1,6 +1,6 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.17.1
+* @version 7.17.2
 * @date    2026-10-04
 * @author  GY
 * @brief   设备发现视图模型测试
@@ -9,6 +9,8 @@
 * 无数据层时历史刷新安全、空发现服务的防御行为、选中设备查询。
 *
 * Change Log:
+* [v7.17.2] GY   2026-10-04
+* * 新增置顶排序用例与 hiddenPeers 断言，套件增至 11 用例
 * [v7.17.1] GY   2026-10-04
 * * 新增 hidden 过滤、删除同步与隐藏恢复用例，套件增至 10 用例
 * [v7.17.0] GY   2026-10-04

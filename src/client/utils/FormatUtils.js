@@ -1,11 +1,13 @@
 /**
  * @file    FormatUtils.js
- * @version 7.17.1
+ * @version 7.17.2
  * @date    2026-10-04
  * @author  GY
  * @brief   界面展示格式化工具
  *
  * Change Log:
+* [v7.17.2] GY   2026-10-04
+* * 新增 formatDateTime，供已隐藏设备展示最后活跃时间
 * [v7.17.1] GY   2026-10-04
 * * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04

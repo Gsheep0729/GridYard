@@ -1,11 +1,13 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.17.1
+* @version 7.17.2
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 *
 * Change Log:
+* [v7.17.2] GY   2026-10-04
+* * isFinishedStatus 提为公共静态方法，供控制器层复用终态判断口径
 * [v7.17.1] GY   2026-10-04
 * * 入站传输请求处理入口发射 incomingTransferRequested，先于自动接受分支
 * [v7.17.0] GY   2026-10-04

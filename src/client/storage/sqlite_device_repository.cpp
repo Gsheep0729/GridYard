@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 7.17.1
+* @version 7.17.2
 * @date    2026-10-04
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -8,6 +8,8 @@
 * 所有 SQL 均采用预编译参数绑定；业务活动时间不参与发现节流。
 *
 * Change Log:
+* [v7.17.2] GY   2026-10-04
+* * 设备目录恢复排序加 pinned 次序，置顶设备优先恢复
 * [v7.17.1] GY   2026-10-04
 * * 新增 setDevicePinned/setDeviceHidden/deleteDeviceWithHistory 管理接口与 Step 变体
 * * 新增 noteDeviceDeleted 清除节流缓存，删除后再次发现按全新设备重新入目录

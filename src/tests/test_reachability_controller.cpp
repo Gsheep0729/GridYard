@@ -1,6 +1,6 @@
 /**
 * @file    test_reachability_controller.cpp
-* @version 7.17.1
+* @version 7.17.2
 * @date    2026-10-04
 * @author  GY
 * @brief   网络可达性控制器测试
@@ -9,6 +9,8 @@
 * 校验、手动端点的 IP 校验与添加。
 *
 * Change Log:
+* [v7.17.2] GY   2026-10-04
+* * 版本头对齐到 v7.17.2
 * [v7.17.1] GY   2026-10-04
 * * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04

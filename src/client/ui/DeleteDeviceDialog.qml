@@ -1,6 +1,6 @@
 /**
  * @file    DeleteDeviceDialog.qml
- * @version 7.17.1
+ * @version 7.17.2
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   删除该聊天确认弹窗
@@ -10,7 +10,7 @@
  * 经信号回传设备 ID，由 Main.qml 先取消进行中会话再调用删除接口。
  *
  * Change Log:
-* [v7.17.1] GY   2026-10-04
+* [v7.17.2] GY   2026-10-04
 * * 新增删除该聊天确认弹窗，确认按钮沿用 DangerButton 危险语义
  */
 

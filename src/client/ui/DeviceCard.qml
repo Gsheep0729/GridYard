@@ -1,6 +1,6 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.17.1
+ * @version 7.17.2
  * @date    2026-10-04
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
@@ -13,6 +13,8 @@
  * 由 Main.qml 统一解码、过滤并裁决设备是否在线。
  *
  * Change Log:
+* [v7.17.2] GY   2026-10-04
+* * 新增右键菜单四项：置顶、不显示、设置备注、删除，只上报用户意图
 * [v7.17.1] GY   2026-10-04
 * * 版本头对齐到 v7.17.1
 * [v7.17.0] GY   2026-10-04
