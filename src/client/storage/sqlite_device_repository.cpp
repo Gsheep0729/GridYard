@@ -114,7 +114,8 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
     // 最近活动优先于发现时间，确保有聊天或传输的设备排在普通心跳设备前。
     // 按最近活动排序，COALESCE 优先取聊天时间，其次传输时间，最后心跳时间
     query.prepare("SELECT device_id, device_name, last_ip_address, last_tcp_port, "
-                  "first_seen_at, last_seen_at, last_chat_at, last_transfer_at FROM "
+                  "first_seen_at, last_seen_at, last_chat_at, last_transfer_at, "
+                  "alias, pinned, hidden FROM "
                   "peer_devices ORDER BY COALESCE(last_chat_at, last_transfer_at, "
                   "last_seen_at) DESC LIMIT ?");
     query.addBindValue(limit);
@@ -134,6 +135,9 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
         record.lastSeenAt = QDateTime::fromString(query.value(5).toString(), Qt::ISODateWithMs);
         record.lastChatAt = QDateTime::fromString(query.value(6).toString(), Qt::ISODateWithMs);
         record.lastTransferAt = QDateTime::fromString(query.value(7).toString(), Qt::ISODateWithMs);
+        record.alias = query.value(8).toString();
+        record.pinned = query.value(9).toInt() != 0;
+        record.hidden = query.value(10).toInt() != 0;
         records.append(record);
     }
     return records;
@@ -142,6 +146,8 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
 // 只执行 upsert，不自开事务；节流由 noteWritten 在事务外控制
 SqliteDeviceRepository::SqlStep SqliteDeviceRepository::upsertPeerStep(const PeerRecord &record)
 {
+    // 插入列清单与 ON CONFLICT 更新列刻意不含 alias/pinned/hidden：
+    // 心跳与发现更新不得清除用户的备注、置顶和隐藏状态
     return[record](QSqlDatabase &database, QString *taskError) {
         QSqlQuery query(database);
         query.prepare(

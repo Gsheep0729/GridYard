@@ -57,6 +57,9 @@ struct PeerRecord {
     QDateTime lastSeenAt;     // 最近一次发现设备的 UTC 时间
     QDateTime lastChatAt;     // 最近一次聊天活动的 UTC 时间
     QDateTime lastTransferAt; // 最近一次传输活动的 UTC 时间
+    QString alias;            // 用户设置的本地备注，空表示未设置
+    bool pinned = false;      // 用户置顶标记
+    bool hidden = false;      // 用户隐藏标记（不显示该聊天）
 };
 
 struct MessageRecord {

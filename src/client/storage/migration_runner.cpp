@@ -45,7 +45,7 @@
 
 namespace {
 // 当前程序支持的 Schema 最高版本，随新迁移发布递增
-constexpr int kCurrentSchemaVersion = 1;
+constexpr int kCurrentSchemaVersion = 2;
 
 // 执行一条 DDL 语句，并将底层错误返回给调用方
 bool execute(QSqlQuery &query, const QString &statement, QString *errorMessage)
@@ -58,6 +58,46 @@ bool execute(QSqlQuery &query, const QString &statement, QString *errorMessage)
         *errorMessage = query.lastError().text();
     }
     return false;
+}
+
+// 在单个事务内执行一个版本的全部 DDL 并登记版本号，任一步失败整体回滚
+bool applyMigrationStep(QSqlDatabase &database, const QStringList &statements, int version,
+                        QString *errorMessage)
+{
+    if (!database.transaction()) {
+        if (errorMessage) {
+            *errorMessage = database.lastError().text();
+        }
+        return false;
+    }
+
+    QSqlQuery query(database);
+    for (const QString &statement : statements) {
+        if (!execute(query, statement, errorMessage)) {
+            database.rollback();  // DDL 失败时撤销本版本已做的变更，防止留下半成品 Schema
+            return false;
+        }
+    }
+
+    query.prepare("INSERT INTO schema_version(version, applied_at) VALUES(?, ?)");
+    query.addBindValue(version);
+    query.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    if (!query.exec()) {
+        if (errorMessage) {
+            *errorMessage = query.lastError().text();
+        }
+        database.rollback();
+        return false;
+    }
+
+    if (!database.commit()) {
+        if (errorMessage) {
+            *errorMessage = database.lastError().text();
+        }
+        database.rollback();
+        return false;
+    }
+    return true;
 }
 }
 
@@ -98,61 +138,43 @@ bool MigrationRunner::migrate(QSqlDatabase &database, QString *errorMessage)
         return false;
     }
 
-    if (version >= 1) {  // 已是最新版本，无需迁移
-        return true;
-    }
+    // 各版本迁移在各自事务内按序执行，新库从版本 0 连续升级，旧库只补缺失的版本
 
-    // 整个迁移在事务内执行，任一 DDL 失败则全部回滚，防止留下半成品 Schema
-    if (!database.transaction()) {
-        if (errorMessage) {
-            *errorMessage = database.lastError().text();
-        }
-        return false;
-    }
-
-    // 版本一：4 张业务表 + 3 个查询索引
-    const QStringList statements = {
-        // 设备目录：存储局域网内发现的对端设备快照
-        "CREATE TABLE peer_devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, last_ip_address TEXT, last_tcp_port INTEGER, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, last_chat_at TEXT, last_transfer_at TEXT)",
-        // 聊天会话：每台对端设备一行，外键级联删除消息
-        "CREATE TABLE chat_conversations (peer_device_id TEXT PRIMARY KEY NOT NULL, created_at TEXT NOT NULL, last_message_at TEXT NOT NULL, FOREIGN KEY (peer_device_id) REFERENCES peer_devices(device_id) ON DELETE CASCADE)",
-        // 聊天消息：按会话分区，消息 UUID 为幂等写入键
-        "CREATE TABLE chat_messages (message_id TEXT PRIMARY KEY NOT NULL, peer_device_id TEXT NOT NULL, direction INTEGER NOT NULL CHECK (direction IN (0, 1)), sender_device_id TEXT NOT NULL, sender_name TEXT NOT NULL, content TEXT NOT NULL, sent_at TEXT NOT NULL, local_status INTEGER NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY (peer_device_id) REFERENCES chat_conversations(peer_device_id) ON DELETE CASCADE)",
-        // 聊天消息索引：支持按会话分页（时间倒序 + 消息 ID 稳定排序）
-        "CREATE INDEX idx_chat_messages_peer_time ON chat_messages(peer_device_id, sent_at DESC, message_id DESC)",
-        // 传输历史：只保存结束态快照，不保存发送源路径或文件内容
-        "CREATE TABLE transfer_history (record_id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL UNIQUE, peer_device_id TEXT NOT NULL, peer_name TEXT NOT NULL, direction INTEGER NOT NULL CHECK (direction IN (0, 1)), display_name TEXT NOT NULL, is_directory INTEGER NOT NULL CHECK (is_directory IN (0, 1)), file_count INTEGER NOT NULL, total_bytes INTEGER NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, error_code INTEGER, error_message TEXT, FOREIGN KEY (peer_device_id) REFERENCES peer_devices(device_id) ON DELETE RESTRICT)",
-        // 传输历史索引：按设备+时间分页
-        "CREATE INDEX idx_transfer_history_peer_time ON transfer_history(peer_device_id, started_at DESC, record_id DESC)",
-        // 传输历史索引：按状态筛选
-        "CREATE INDEX idx_transfer_history_status_time ON transfer_history(status, started_at DESC)"
-    };
-
-    for (const QString &statement : statements) {
-        if (!execute(query, statement, errorMessage)) {
-            database.rollback();  // DDL 失败时撤销本版本已创建的表和索引
+    // 版本一：4 张业务表 + 3 个查询索引，仅全新建库执行
+    if (version < 1) {
+        const QStringList statements = {
+            // 设备目录：存储局域网内发现的对端设备快照
+            "CREATE TABLE peer_devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, last_ip_address TEXT, last_tcp_port INTEGER, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, last_chat_at TEXT, last_transfer_at TEXT)",
+            // 聊天会话：每台对端设备一行，外键级联删除消息
+            "CREATE TABLE chat_conversations (peer_device_id TEXT PRIMARY KEY NOT NULL, created_at TEXT NOT NULL, last_message_at TEXT NOT NULL, FOREIGN KEY (peer_device_id) REFERENCES peer_devices(device_id) ON DELETE CASCADE)",
+            // 聊天消息：按会话分区，消息 UUID 为幂等写入键
+            "CREATE TABLE chat_messages (message_id TEXT PRIMARY KEY NOT NULL, peer_device_id TEXT NOT NULL, direction INTEGER NOT NULL CHECK (direction IN (0, 1)), sender_device_id TEXT NOT NULL, sender_name TEXT NOT NULL, content TEXT NOT NULL, sent_at TEXT NOT NULL, local_status INTEGER NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY (peer_device_id) REFERENCES chat_conversations(peer_device_id) ON DELETE CASCADE)",
+            // 聊天消息索引：支持按会话分页（时间倒序 + 消息 ID 稳定排序）
+            "CREATE INDEX idx_chat_messages_peer_time ON chat_messages(peer_device_id, sent_at DESC, message_id DESC)",
+            // 传输历史：只保存结束态快照，不保存发送源路径或文件内容
+            "CREATE TABLE transfer_history (record_id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL UNIQUE, peer_device_id TEXT NOT NULL, peer_name TEXT NOT NULL, direction INTEGER NOT NULL CHECK (direction IN (0, 1)), display_name TEXT NOT NULL, is_directory INTEGER NOT NULL CHECK (is_directory IN (0, 1)), file_count INTEGER NOT NULL, total_bytes INTEGER NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, error_code INTEGER, error_message TEXT, FOREIGN KEY (peer_device_id) REFERENCES peer_devices(device_id) ON DELETE RESTRICT)",
+            // 传输历史索引：按设备+时间分页
+            "CREATE INDEX idx_transfer_history_peer_time ON transfer_history(peer_device_id, started_at DESC, record_id DESC)",
+            // 传输历史索引：按状态筛选
+            "CREATE INDEX idx_transfer_history_status_time ON transfer_history(status, started_at DESC)"
+        };
+        if (!applyMigrationStep(database, statements, 1, errorMessage)) {
             return false;
         }
     }
 
-    // 记录迁移完成时间，供 schemaVersion() 查询
-    query.prepare("INSERT INTO schema_version(version, applied_at) VALUES(?, ?)");
-    query.addBindValue(1);
-    query.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
-    if (!query.exec()) {
-        if (errorMessage) {
-            *errorMessage = query.lastError().text();
+    // 版本二：设备目录补齐用户管理三列（备注/置顶/隐藏），
+    // SQLite 允许带常量 DEFAULT 的 NOT NULL 加列，存量行自动取默认值
+    if (version < 2) {
+        const QStringList statements = {
+            "ALTER TABLE peer_devices ADD COLUMN alias TEXT",
+            "ALTER TABLE peer_devices ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE peer_devices ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"
+        };
+        if (!applyMigrationStep(database, statements, 2, errorMessage)) {
+            return false;
         }
-        database.rollback();
-        return false;
     }
 
-    if (!database.commit()) {
-        if (errorMessage) {
-            *errorMessage = database.lastError().text();
-        }
-        database.rollback();
-        return false;
-    }
     return true;
 }

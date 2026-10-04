@@ -51,6 +51,7 @@
 #include "application_paths.h"
 #include "local_data_broker.h"
 #include "sqlite_database_broker.h"
+#include "sqlite_device_repository.h"
 
 class TestStorageDatabase : public QObject {
 private:
@@ -61,6 +62,8 @@ private slots:
     void cleanupTestCase();
     void testInitializeAndSchema();
     void testRepeatedInitializePreservesData();
+    void testV1MigratedToV2KeepsRows();
+    void testUpsertPeerKeepsManagementColumns();
     void testMissingDriverDegrades();
     void testCorruptDatabaseBackedUpAndRebuilt();
     void testLockedDatabaseWriteFailsButBrokerStaysAvailable();
@@ -90,7 +93,7 @@ void TestStorageDatabase::testInitializeAndSchema()
     const QString path = ApplicationPaths::databaseDir() + "/gridyard-history.sqlite";
 
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
-    QCOMPARE(database.schemaVersion(), 1);
+    QCOMPARE(database.schemaVersion(), 2);
     QVERIFY(QFileInfo::exists(path));
 
     QSqlDatabase connection = database.connectionForWorkerThread(&error);
@@ -129,7 +132,7 @@ void TestStorageDatabase::testRepeatedInitializePreservesData()
 
     SqliteDatabaseBroker database;
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
-    QCOMPARE(database.schemaVersion(), 1);
+    QCOMPARE(database.schemaVersion(), 2);
 
     QSqlDatabase connection = database.connectionForWorkerThread(&error);
     QVERIFY2(connection.isValid(), qPrintable(error));
@@ -137,6 +140,123 @@ void TestStorageDatabase::testRepeatedInitializePreservesData()
     QVERIFY(count.exec("SELECT COUNT(*) FROM peer_devices WHERE device_id='device-repeat'"));
     QVERIFY(count.next());
     QCOMPARE(count.value(0).toInt(), 1);
+}
+
+// v1 存量库升级到 v2：三列存在、默认值正确、存量行数据完整
+void TestStorageDatabase::testV1MigratedToV2KeepsRows()
+{
+    const QString path = _temporaryDir.path() + "/v1-upgrade.sqlite";
+
+    // 手工造一个最小 v1 假库：schema_version 登记 1，peer_devices 为旧列布局并带存量行
+    {
+        QSqlDatabase seed = QSqlDatabase::addDatabase("QSQLITE", "v1-seed");
+        seed.setDatabaseName(path);
+        QVERIFY2(seed.open(), qPrintable(seed.lastError().text()));
+        QSqlQuery build(seed);
+        QVERIFY2(build.exec("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"),
+                 qPrintable(build.lastError().text()));
+        QVERIFY2(build.exec("INSERT INTO schema_version VALUES(1, '2026-06-25T00:00:00.000Z')"),
+                 qPrintable(build.lastError().text()));
+        QVERIFY2(build.exec("CREATE TABLE peer_devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, last_ip_address TEXT, last_tcp_port INTEGER, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, last_chat_at TEXT, last_transfer_at TEXT)"),
+                 qPrintable(build.lastError().text()));
+        QVERIFY2(build.exec("INSERT INTO peer_devices VALUES('device-v1', '存量设备', '192.168.1.20', 35100, "
+                            "'2026-06-25T08:00:00.000Z', '2026-06-25T09:00:00.000Z', "
+                            "'2026-06-25T08:30:00.000Z', NULL)"),
+                 qPrintable(build.lastError().text()));
+        seed.close();
+    }
+    QSqlDatabase::removeDatabase("v1-seed");
+
+    SqliteDatabaseBroker database;
+    QString error;
+    QVERIFY2(database.initialize(path, &error), qPrintable(error));
+    QCOMPARE(database.schemaVersion(), 2);
+
+    QSqlDatabase connection = database.connectionForWorkerThread(&error);
+    QVERIFY2(connection.isValid(), qPrintable(error));
+
+    QSqlQuery check(connection);
+    QVERIFY2(check.exec("SELECT alias, pinned, hidden, device_name, last_ip_address, last_tcp_port, "
+                        "first_seen_at, last_seen_at, last_chat_at, last_transfer_at "
+                        "FROM peer_devices WHERE device_id='device-v1'"),
+             qPrintable(check.lastError().text()));
+    QVERIFY(check.next());
+    QVERIFY(check.isNull(0));  // alias 加列后存量行取 NULL
+    QCOMPARE(check.value(1).toInt(), 0);  // pinned 默认 0
+    QCOMPARE(check.value(2).toInt(), 0);  // hidden 默认 0
+    // 存量行原字段在迁移后必须原样保留
+    QCOMPARE(check.value(3).toString(), QStringLiteral("存量设备"));
+    QCOMPARE(check.value(4).toString(), QStringLiteral("192.168.1.20"));
+    QCOMPARE(check.value(5).toInt(), 35100);
+    QCOMPARE(check.value(6).toString(), QStringLiteral("2026-06-25T08:00:00.000Z"));
+    QCOMPARE(check.value(7).toString(), QStringLiteral("2026-06-25T09:00:00.000Z"));
+    QCOMPARE(check.value(8).toString(), QStringLiteral("2026-06-25T08:30:00.000Z"));
+    QVERIFY(check.isNull(9));
+
+    // 读链路带出新列：恢复记录的三列与 SQL 直查一致
+    SqliteDeviceRepository repository(&database);
+    const QList<PeerRecord> peers = repository.recentPeers(10, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(peers.size(), 1);
+    QCOMPARE(peers.first().deviceId, QStringLiteral("device-v1"));
+    QCOMPARE(peers.first().deviceName, QStringLiteral("存量设备"));
+    QVERIFY(peers.first().alias.isEmpty());
+    QVERIFY(!peers.first().pinned);
+    QVERIFY(!peers.first().hidden);
+}
+
+// 心跳/发现更新不得清除用户管理状态：upsert 后三列保持原值
+void TestStorageDatabase::testUpsertPeerKeepsManagementColumns()
+{
+    SqliteDatabaseBroker database;
+    QString error;
+    const QString path = _temporaryDir.path() + "/upsert-keep.sqlite";
+    QVERIFY2(database.initialize(path, &error), qPrintable(error));
+
+    SqliteDeviceRepository repository(&database);
+    PeerRecord peer;
+    peer.deviceId = "device-manage";
+    peer.deviceName = "原始名";
+    peer.lastIpAddress = "192.168.1.10";
+    peer.lastTcpPort = 35100;
+    peer.firstSeenAt = QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs);
+    peer.lastSeenAt = peer.firstSeenAt;
+    QVERIFY2(repository.upsertPeer(peer, &error), qPrintable(error));
+
+    // 直接落库模拟用户管理状态（管理接口属于 PhaseN2-B），非默认值便于观察被回退
+    QSqlDatabase connection = database.connectionForWorkerThread(&error);
+    QVERIFY2(connection.isValid(), qPrintable(error));
+    QSqlQuery mark(connection);
+    QVERIFY2(mark.exec("UPDATE peer_devices SET alias='旧友备注', pinned=1, hidden=1 "
+                       "WHERE device_id='device-manage'"),
+             qPrintable(mark.lastError().text()));
+
+    // 心跳更新设备名与 IP，名称/IP 变化绕开发现节流，必然写盘
+    PeerRecord heartbeat = peer;
+    heartbeat.deviceName = "改名后";
+    heartbeat.lastIpAddress = "192.168.1.11";
+    heartbeat.lastSeenAt = peer.lastSeenAt.addSecs(60);
+    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
+
+    QSqlQuery check(connection);
+    QVERIFY2(check.exec("SELECT device_name, last_ip_address, alias, pinned, hidden "
+                        "FROM peer_devices WHERE device_id='device-manage'"),
+             qPrintable(check.lastError().text()));
+    QVERIFY(check.next());
+    QCOMPARE(check.value(0).toString(), QStringLiteral("改名后"));
+    QCOMPARE(check.value(1).toString(), QStringLiteral("192.168.1.11"));
+    QCOMPARE(check.value(2).toString(), QStringLiteral("旧友备注"));
+    QCOMPARE(check.value(3).toInt(), 1);
+    QCOMPARE(check.value(4).toInt(), 1);
+
+    // 读链路同样还原管理三列，证明 recentPeers 映射没有丢失
+    const QList<PeerRecord> peers = repository.recentPeers(10, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(peers.size(), 1);
+    QCOMPARE(peers.first().deviceName, QStringLiteral("改名后"));
+    QCOMPARE(peers.first().alias, QStringLiteral("旧友备注"));
+    QVERIFY(peers.first().pinned);
+    QVERIFY(peers.first().hidden);
 }
 
 void TestStorageDatabase::testMissingDriverDegrades()
@@ -161,7 +281,7 @@ void TestStorageDatabase::testCorruptDatabaseBackedUpAndRebuilt()
     QString error;
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
     QVERIFY(database.isAvailable());
-    QCOMPARE(database.schemaVersion(), 1);
+    QCOMPARE(database.schemaVersion(), 2);
 
     // 重建发生后必须报告标志与备份路径，供上层界面提示历史被清零重置
     QVERIFY(database.lastInitializeRebuilt());
@@ -273,9 +393,10 @@ void TestStorageDatabase::testNewerSchemaVersionRejected()
 
         QSqlDatabase connection = database.connectionForWorkerThread(&error);
         QVERIFY2(connection.isValid(), qPrintable(error));
-        // 手工把 Schema 版本抬到 99，模拟由更新版本程序创建的库
+        // 手工把最高 Schema 版本抬到 3（恰高于当前支持上限 2），模拟由更新版本程序创建的库
         QSqlQuery upgrade(connection);
-        QVERIFY2(upgrade.exec("UPDATE schema_version SET version = 99"),
+        QVERIFY2(upgrade.exec("UPDATE schema_version SET version = 3 "
+                              "WHERE version = (SELECT MAX(version) FROM schema_version)"),
                  qPrintable(upgrade.lastError().text()));
         QVERIFY2(upgrade.exec("PRAGMA wal_checkpoint(TRUNCATE)"),
                  qPrintable(upgrade.lastError().text()));
