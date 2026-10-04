@@ -74,6 +74,8 @@ public:
 
     // 纯 SQL 步骤，不自开事务；供 LocalDataBroker 在单个事务内组合
     static SqlStep upsertFinishedTransferStep(const TransferRecord &record);
+    // 删除指定设备的全部传输历史，供设备删除的组合事务调用（不自开事务）
+    static SqlStep deleteForDeviceStep(const QString &deviceId);
 
 private:
     SqliteDatabaseBroker *_database = nullptr;  // 数据库连接和事务入口

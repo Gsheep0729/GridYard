@@ -141,6 +141,8 @@ public:
 
 signals:
     void sessionsChanged();
+    // 入站传输请求的处理入口通知（含自动接受路径），隐藏设备的自动恢复显示据此触发
+    void incomingTransferRequested(const QString &senderDeviceId);
     // 活动会话数量变化（会话创建或迁移到终态），退出前警示据此刷新
     void activeSessionCountChanged();
     // 直连失败后的中继确认请求（AskBeforeRelay 档触发，QML 只负责弹窗）

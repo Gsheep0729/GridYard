@@ -62,11 +62,15 @@
 #include "discovery_service.h"
 #include "frame_codec.h"
 #include "history_records.h"
+#include "local_data_broker.h"
+#include "peer_discovery_view_model.h"
 #include "p2p_server.h"
 #include "protocol.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
 #include "sqlite_message_repository.h"
+
+#include <QSharedPointer>
 
 class TestChatManager : public QObject {
 private:
@@ -82,6 +86,7 @@ private slots:
     void testGlareIncomingMessagePreserved();
     void testInvalidFollowUpFrameRejected();
     void testMessagesPersisted();
+    void testIncomingMessageRestoresHiddenPeer();
 
 private:
     void addOnlinePeer(const QString &deviceId, quint16 port);
@@ -392,6 +397,86 @@ void TestChatManager::testMessagesPersisted()
     disconnect(persistenceConnection);
     peerSocket->disconnectFromHost();
     peerSocket->deleteLater();
+}
+
+// 隐藏设备的入站消息自动复位 hidden 并恢复列表显示（微信语义全链路）
+void TestChatManager::testIncomingMessageRestoresHiddenPeer()
+{
+    const QString deviceId = QStringLiteral("hidden-peer");
+
+    // 本地历史库 + 视图模型，按生产接线把入站消息通知接到恢复入口
+    LocalDataBroker dataBroker;
+    QString storageError;
+    QVERIFY2(dataBroker.initialize(_tempDir->path() + "/unhide-history.sqlite", &storageError),
+             qPrintable(storageError));
+
+    PeerInfo peer;
+    peer.deviceId = deviceId;
+    peer.deviceName = QStringLiteral("HiddenPeer");
+    peer.ipAddress = QStringLiteral("10.254.254.247");
+    peer.tcpPort = 35100;
+    peer.isOnline = true;
+    peer.lastSeen = QDateTime::currentDateTimeUtc();
+    dataBroker.persistDiscoveredPeer(peer);
+    const auto seeded = QSharedPointer<bool>::create(false);
+    dataBroker.loadRecentPeers(this, 10, [seeded, deviceId](const QList<PeerRecord> &records, bool ok) {
+        if (!ok) {
+            return;
+        }
+        for (const PeerRecord &record : records) {
+            if (record.deviceId == deviceId) {
+                *seeded = true;
+            }
+        }
+    });
+    QTRY_COMPARE_WITH_TIMEOUT(*seeded, true, 3000);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(&dataBroker);
+    connect(_manager, &ChatManager::incomingMessageReceived,
+            &viewModel, &PeerDiscoveryViewModel::restoreHiddenDevice);
+
+    // 隐藏落库后设备从列表消失（经视图模型入口，与生产菜单一电同路径）
+    const auto hiddenFlag = QSharedPointer<bool>::create(false);
+    dataBroker.setDeviceHidden(this, deviceId, true,
+                               [hiddenFlag](bool ok) { *hiddenFlag = ok; });
+    QTRY_COMPARE_WITH_TIMEOUT(*hiddenFlag, true, 3000);
+    viewModel.refreshHistory();
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(deviceId).isEmpty(), 3000);
+
+    // 隐藏设备的入站消息（真实 TCP 帧）
+    gy::ChatMessage message = createPeerMessage(
+        "e5b2c1d0-8f9a-4b3c-9d2e-7f6a5b4c3d2e", "恢复显示的入站消息");
+    message.fromDeviceId = deviceId;
+    message.fromName = QStringLiteral("HiddenPeer");
+    const QByteArray frame = encodeMessageFrame(message);
+    QTcpSocket peerSocket;
+    peerSocket.connectToHost(QHostAddress::LocalHost, _p2pPort);
+    QVERIFY(peerSocket.waitForConnected(3000));
+    QVERIFY(peerSocket.write(frame) == frame.size());
+    QVERIFY(peerSocket.waitForBytesWritten(1000));
+
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 1, 3000);
+
+    // hidden 复位且列表恢复显示
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(deviceId).isEmpty(), 5000);
+    QCOMPARE(viewModel.deviceById(deviceId).value("hidden").toBool(), false);
+
+    // 数据库中的 hidden 标志同样复位
+    const auto clearedFlag = QSharedPointer<bool>::create(false);
+    dataBroker.loadRecentPeers(this, 10, [clearedFlag, deviceId](const QList<PeerRecord> &records, bool ok) {
+        if (!ok) {
+            return;
+        }
+        for (const PeerRecord &record : records) {
+            if (record.deviceId == deviceId) {
+                *clearedFlag = !record.hidden;
+            }
+        }
+    });
+    QTRY_COMPARE_WITH_TIMEOUT(*clearedFlag, true, 3000);
+
+    peerSocket.disconnectFromHost();
 }
 
 // 将测试用对端放入发现服务的在线端点表

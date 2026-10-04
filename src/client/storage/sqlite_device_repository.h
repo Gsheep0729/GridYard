@@ -70,13 +70,24 @@ public:
     virtual bool markTransferActivity(const QString &deviceId, const QDateTime &time, QString *errorMessage) override;
     // 获取最近活跃设备列表
     virtual QList<PeerRecord> recentPeers(int limit, QString *errorMessage) const override;
+    // 设置设备置顶状态（幂等，设备行不存在时同样返回成功）
+    virtual bool setDevicePinned(const QString &deviceId, bool pinned, QString *errorMessage) override;
+    // 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）
+    virtual bool setDeviceHidden(const QString &deviceId, bool hidden, QString *errorMessage) override;
+    // 删除设备及其聊天与传输历史；不删除已接收的本地文件
+    virtual bool deleteDeviceWithHistory(const QString &deviceId, QString *errorMessage) override;
 
     // 以下 *Step 返回纯 SQL 步骤，由调用方置于同一事务内组合执行（不含节流、不自开事务）
     static SqlStep upsertPeerStep(const PeerRecord &record);
     static SqlStep markChatActivityStep(const QString &deviceId, const QDateTime &time);
     static SqlStep markTransferActivityStep(const QString &deviceId, const QDateTime &time);
+    static SqlStep setDevicePinnedStep(const QString &deviceId, bool pinned);
+    static SqlStep setDeviceHiddenStep(const QString &deviceId, bool hidden);
+    static SqlStep deleteDeviceStep(const QString &deviceId);
     // 组合写入成功后刷新节流缓存，供 LocalDataBroker 在事务提交后调用
     void noteWritten(const PeerRecord &record);
+    // 设备删除成功后清除节流缓存，再次发现按全新设备重新入目录
+    void noteDeviceDeleted(const QString &deviceId);
 
 private:
     SqliteDatabaseBroker *_database = nullptr;  // 数据库连接和事务入口

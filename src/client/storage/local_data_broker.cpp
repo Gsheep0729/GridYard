@@ -459,6 +459,87 @@ void LocalDataBroker::deleteTransfer(QObject *receiver, const QString &recordId,
         });
 }
 
+// 异步设置设备置顶状态（幂等，设备行不存在时同样回调成功）
+void LocalDataBroker::setDevicePinned(QObject *receiver, const QString &deviceId, bool pinned,
+                                      const OperationCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, deviceId, pinned, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            const bool succeeded = _deviceRepository->setDevicePinned(deviceId, pinned,
+                                                                      errorMessage);
+            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+                callback(succeeded);
+            }, Qt::QueuedConnection);
+            return succeeded;
+        });
+}
+
+// 异步设置设备隐藏状态（幂等，设备行不存在时同样回调成功）
+void LocalDataBroker::setDeviceHidden(QObject *receiver, const QString &deviceId, bool hidden,
+                                      const OperationCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, deviceId, hidden, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            const bool succeeded = _deviceRepository->setDeviceHidden(deviceId, hidden,
+                                                                      errorMessage);
+            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+                callback(succeeded);
+            }, Qt::QueuedConnection);
+            return succeeded;
+        });
+}
+
+// 异步删除设备及其聊天与传输历史（组合事务，不删除已接收的本地文件）
+void LocalDataBroker::deleteDeviceWithHistory(QObject *receiver, const QString &deviceId,
+                                              const OperationCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository || !_transferRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, deviceId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            // 先删该设备传输历史再删设备行（RESTRICT 外键次序），聊天记录走 CASCADE，
+            // 已接收的本地文件不在此清理范围内
+            const bool succeeded = _deviceRepository->deleteDeviceWithHistory(deviceId,
+                                                                              errorMessage);
+            if (succeeded) {
+                // 清除发现节流缓存，该设备再次被发现时按全新设备重新入目录
+                _deviceRepository->noteDeviceDeleted(deviceId);
+            }
+            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+                callback(succeeded);
+            }, Qt::QueuedConnection);
+            return succeeded;
+        });
+}
+
 // 异步清空全部聊天记录（保留设备目录）
 void LocalDataBroker::clearAllMessages(QObject *receiver, const OperationCallback &callback)
 {

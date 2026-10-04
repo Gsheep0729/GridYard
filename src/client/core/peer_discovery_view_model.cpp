@@ -155,10 +155,19 @@ QVariantList PeerDiscoveryViewModel::peers() const
         mergedPeers.append(map);
     }
 
-    // 按来源优先级排序：broadcast > directed > rendezvous > manual > history
-    std::sort(mergedPeers.begin(), mergedPeers.end(), peerSortLessThan);
+    // 隐藏态设备不进列表（微信"不显示该聊天"语义），在线与历史条目一体过滤
+    QList<QVariant> filteredPeers;
+    filteredPeers.reserve(mergedPeers.size());
+    for (const QVariant &peer : mergedPeers) {
+        if (!_hiddenDeviceIds.contains(deviceIdFromVariant(peer))) {
+            filteredPeers.append(peer);
+        }
+    }
 
-    return mergedPeers;
+    // 按来源优先级排序：broadcast > directed > rendezvous > manual > history
+    std::sort(filteredPeers.begin(), filteredPeers.end(), peerSortLessThan);
+
+    return filteredPeers;
 }
 
 // 按设备 ID 查询展示信息，未命中返回空表
@@ -173,7 +182,8 @@ QVariantMap PeerDiscoveryViewModel::deviceById(const QString &deviceId) const
             return {{"deviceId", info.deviceId},
                     {"deviceName", info.deviceName},
                     {"ipAddress", info.ipAddress},
-                    {"isOnline", info.isOnline}};
+                    {"isOnline", info.isOnline},
+                    {"pinned", _pinnedDeviceIds.contains(deviceId)}};
         }
         return peer.toMap();
     }
@@ -220,13 +230,22 @@ void PeerDiscoveryViewModel::refreshHistory()
                     _historyPeers.clear();
                     emit peersChanged();
                 }
-                return;  // 数据库不可用时保持在线发现列表可用
+                return;  // 数据库不可用时保持在线发现列表可用，管理状态沿用上次加载
             }
 
             QVariantList peers;
             peers.reserve(records.size());
+            // 同步重建置顶/隐藏集合，过滤与展示均以此为准
+            _hiddenDeviceIds.clear();
+            _pinnedDeviceIds.clear();
             for (const PeerRecord &record : records) {
                 peers.append(peerRecordToVariant(record));
+                if (record.hidden) {
+                    _hiddenDeviceIds.insert(record.deviceId);
+                }
+                if (record.pinned) {
+                    _pinnedDeviceIds.insert(record.deviceId);
+                }
             }
             _historyPeers = peers;
             emit peersChanged();
@@ -240,6 +259,87 @@ void PeerDiscoveryViewModel::initDataBroker(LocalDataBroker *dataBroker)
     refreshHistory();
 }
 
+// 置顶或取消置顶指定设备，落库成功后刷新内存状态
+void PeerDiscoveryViewModel::setDevicePinned(const QString &deviceId, bool pinned)
+{
+    if (!_dataBroker || deviceId.isEmpty()) {
+        return;
+    }
+
+    _dataBroker->setDevicePinned(this, deviceId, pinned,
+                                 [this, deviceId, pinned](bool succeeded) {
+        if (!succeeded) {
+            return;  // 写库失败时保持现状，不打扰列表
+        }
+        if (pinned) {
+            _pinnedDeviceIds.insert(deviceId);
+        } else {
+            _pinnedDeviceIds.remove(deviceId);
+        }
+        refreshHistory();  // 重新加载目录，条目的 pinned 字段随库更新
+    });
+}
+
+// 隐藏或恢复显示指定设备，落库成功后刷新内存状态
+void PeerDiscoveryViewModel::setDeviceHidden(const QString &deviceId, bool hidden)
+{
+    if (!_dataBroker || deviceId.isEmpty()) {
+        return;
+    }
+
+    _dataBroker->setDeviceHidden(this, deviceId, hidden,
+                                 [this, deviceId, hidden](bool succeeded) {
+        if (!succeeded) {
+            return;  // 写库失败时保持现状，不打扰列表
+        }
+        if (hidden) {
+            _hiddenDeviceIds.insert(deviceId);
+        } else {
+            _hiddenDeviceIds.remove(deviceId);
+        }
+        refreshHistory();  // 重新加载目录，隐藏条目随过滤规则离开/回到列表
+    });
+}
+
+// 删除设备及其聊天与传输历史（不删除已接收的本地文件），成功后同步清理内存列表
+void PeerDiscoveryViewModel::deleteDeviceWithHistory(const QString &deviceId)
+{
+    if (!_dataBroker || deviceId.isEmpty()) {
+        return;
+    }
+
+    _dataBroker->deleteDeviceWithHistory(this, deviceId, [this, deviceId](bool succeeded) {
+        if (!succeeded) {
+            return;  // 删除失败时保持数据库与列表现状
+        }
+        // 在线条目从发现服务移除；被删设备再次广播或被协调发现时
+        // 按全新设备重新入目录（first_seen 语义），属拍板行为
+        if (_discovery) {
+            _discovery->removePeer(deviceId);
+        }
+        if (_selectedDeviceId == deviceId) {
+            setSelectedDeviceId(QString());
+        }
+        refreshHistory();  // 重新加载目录，历史条目与置顶/隐藏集合随之收敛
+    });
+}
+
+// 入站消息或传输请求到达时恢复隐藏设备的显示（微信语义）
+void PeerDiscoveryViewModel::restoreHiddenDevice(const QString &deviceId)
+{
+    if (!_dataBroker || deviceId.isEmpty() || !_hiddenDeviceIds.contains(deviceId)) {
+        return;  // 未处于隐藏态的设备无需复位
+    }
+
+    _dataBroker->setDeviceHidden(this, deviceId, false, [this, deviceId](bool succeeded) {
+        if (!succeeded) {
+            return;
+        }
+        _hiddenDeviceIds.remove(deviceId);  // 先解除过滤，列表刷新后恢复显示
+        refreshHistory();
+    });
+}
+
 // 将设备目录记录转换成 QML 可绑定字段
 QVariantMap PeerDiscoveryViewModel::peerRecordToVariant(const PeerRecord &record)
 {
@@ -251,5 +351,7 @@ QVariantMap PeerDiscoveryViewModel::peerRecordToVariant(const PeerRecord &record
         {"lastSeenAt", timeToString(record.lastSeenAt)},
         {"lastChatAt", timeToString(record.lastChatAt)},
         {"lastTransferAt", timeToString(record.lastTransferAt)},
+        {"pinned", record.pinned},
+        {"hidden", record.hidden},
     };
 }

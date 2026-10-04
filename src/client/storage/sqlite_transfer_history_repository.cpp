@@ -308,3 +308,20 @@ bool SqliteTransferHistoryRepository::clearAllTransfers(QString *errorMessage)
         },
         errorMessage);
 }
+
+// 删除指定设备的全部传输历史，不自开事务；供设备删除的组合事务调用
+SqliteTransferHistoryRepository::SqlStep
+SqliteTransferHistoryRepository::deleteForDeviceStep(const QString &deviceId)
+{
+    return[deviceId](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        // 传输历史对设备行是 RESTRICT 外键，删除设备前必须先清空本表对应行
+        query.prepare("DELETE FROM transfer_history WHERE peer_device_id=?");
+        query.addBindValue(deviceId);
+        if (query.exec())
+            return true;  // 无历史记录时幂等成功
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}

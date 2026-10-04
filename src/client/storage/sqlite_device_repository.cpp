@@ -46,9 +46,11 @@
 #include "sqlite_device_repository.h"
 
 #include "sqlite_database_broker.h"
+#include "sqlite_transfer_history_repository.h"
 
 #include <QSqlError>
 #include <QSqlQuery>
+#include <vector>
 
 namespace {
 constexpr qint64 kDiscoveryWriteIntervalMs = 30000; // 相同发现快照最短写入间隔：30 秒
@@ -208,8 +210,99 @@ SqliteDeviceRepository::SqlStep SqliteDeviceRepository::markTransferActivityStep
     };
 }
 
+// 设置设备置顶状态（幂等，设备行不存在时同样返回成功）
+bool SqliteDeviceRepository::setDevicePinned(const QString &deviceId, bool pinned,
+                                             QString *errorMessage)
+{
+    return _database && _database->runInTransaction(setDevicePinnedStep(deviceId, pinned),
+                                                    errorMessage);
+}
+
+// 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）
+bool SqliteDeviceRepository::setDeviceHidden(const QString &deviceId, bool hidden,
+                                             QString *errorMessage)
+{
+    return _database && _database->runInTransaction(setDeviceHiddenStep(deviceId, hidden),
+                                                    errorMessage);
+}
+
+// 删除设备及其聊天与传输历史；不删除已接收的本地文件
+bool SqliteDeviceRepository::deleteDeviceWithHistory(const QString &deviceId,
+                                                     QString *errorMessage)
+{
+    if (!_database) {
+        if (errorMessage) {
+            *errorMessage = "数据库入口未初始化";
+        }
+        return false;
+    }
+
+    // 传输历史对设备行是 RESTRICT 外键，必须先删该设备的传输历史再删设备行；
+    // 聊天会话与消息依赖两级 CASCADE 随设备行一并清理，已接收的本地文件不受影响
+    const std::vector steps = {
+        SqliteTransferHistoryRepository::deleteForDeviceStep(deviceId),
+        deleteDeviceStep(deviceId)
+    };
+    return _database->runSteps(steps, errorMessage);
+}
+
+// 只执行置顶更新，不自开事务；UPDATE 找不到行即幂等成功
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::setDevicePinnedStep(const QString &deviceId,
+                                                                            bool pinned)
+{
+    return[deviceId, pinned](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE peer_devices SET pinned=? WHERE device_id=?");
+        query.addBindValue(pinned ? 1 : 0);
+        query.addBindValue(deviceId);
+        if (query.exec())
+            return true;
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}
+
+// 只执行隐藏更新，不自开事务；UPDATE 找不到行即幂等成功
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::setDeviceHiddenStep(const QString &deviceId,
+                                                                            bool hidden)
+{
+    return[deviceId, hidden](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE peer_devices SET hidden=? WHERE device_id=?");
+        query.addBindValue(hidden ? 1 : 0);
+        query.addBindValue(deviceId);
+        if (query.exec())
+            return true;
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}
+
+// 只删除设备目录行，不自开事务；供删除组合事务在清空传输历史后调用
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::deleteDeviceStep(const QString &deviceId)
+{
+    return[deviceId](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        query.prepare("DELETE FROM peer_devices WHERE device_id=?");
+        query.addBindValue(deviceId);
+        if (query.exec())
+            return true;  // 设备行不存在时幂等成功
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}
+
 // 事务成功后刷新内存节流缓存，避免下一条写入因时间未推进而被节流拒绝
 void SqliteDeviceRepository::noteWritten(const PeerRecord &record)
 {
     _recentWrites.insert(record.deviceId, record);
+}
+
+// 设备删除成功后清除节流缓存，避免再次发现的心跳被旧缓存节流而无法重新入目录
+void SqliteDeviceRepository::noteDeviceDeleted(const QString &deviceId)
+{
+    _recentWrites.remove(deviceId);
 }

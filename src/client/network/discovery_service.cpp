@@ -521,6 +521,19 @@ void DiscoveryService::addDirectedPeer(const PeerInfo &peer)
     updatePeer(peer.deviceId, info);
 }
 
+// 从设备表移除指定设备（用户删除设备后调用）
+void DiscoveryService::removePeer(const QString &deviceId)
+{
+    if (!_peers.contains(deviceId)) {
+        return;  // 不在设备表时无需清理，保持幂等
+    }
+
+    _peers.remove(deviceId);
+    _rendezvousCandidates.remove(deviceId);  // 移除条目的协调备用候选一并作废
+    qDebug() << "DiscoveryService: 设备已删除，从设备表移除" << deviceId;
+    notifyPeersChanged();
+}
+
 // 处理协调节点返回的候选端点，将其转换为 PeerInfo 并更新本地设备表
 void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers)
 {

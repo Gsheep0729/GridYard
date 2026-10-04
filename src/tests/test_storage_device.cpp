@@ -43,6 +43,7 @@
 
 #include "application_paths.h"
 #include "db_seed.h"
+#include "protocol.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
 
@@ -62,12 +63,20 @@ private slots:
     void testRecentPeersOrderByActivity();
     void testDiscoveryThrottle();
     void testReopenDatabase();
+    void testSetDevicePinnedAndHidden();
+    void testDeleteDeviceWithHistoryCascade();
 
 private:
     // 在当前测试数据库上构造一个已初始化的设备 Repository
     std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
     // 构造一份带固定字段的设备记录
     PeerRecord makeRecord(const QString &deviceId, const QString &name, const QDateTime &seen);
+    // 构造一条指定会话的入站聊天消息记录
+    MessageRecord makeMessage(const QString &deviceId, const QString &messageId,
+                              const QDateTime &sentAt);
+    // 构造一条已完成的传输历史记录
+    TransferRecord makeTransfer(const QString &deviceId, const QString &recordId,
+                                const QDateTime &startedAt);
     // 直接读取 peer_devices 行数，用于幂等校验
     int peerRowCount(SqliteDatabaseBroker &database);
 
@@ -271,6 +280,123 @@ void TestStorageDevice::testReopenDatabase()
     QVERIFY(records.first().lastChatAt.isValid());
 }
 
+// 置顶与隐藏状态落库、幂等、心跳不清状态，且 Step 变体可组合进单事务
+void TestStorageDevice::testSetDevicePinnedAndHidden()
+{
+    auto database = openDatabase("pin-hide.sqlite");
+    QVERIFY(database);
+
+    SqliteDeviceRepository repository(database.get());
+    const QDateTime base = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
+    QString error;
+    QVERIFY2(repository.upsertPeer(makeRecord("device-pin", "Pinned", base), &error),
+             qPrintable(error));
+
+    // 置顶与隐藏各自落库，读链路带出状态
+    QVERIFY2(repository.setDevicePinned("device-pin", true, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceHidden("device-pin", true, &error), qPrintable(error));
+    QList<PeerRecord> records = repository.recentPeers(5, &error);
+    QCOMPARE(records.size(), 1);
+    QVERIFY(records.first().pinned);
+    QVERIFY(records.first().hidden);
+
+    // 重复设置幂等，不产生重复行也不报错
+    QVERIFY2(repository.setDevicePinned("device-pin", true, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceHidden("device-pin", true, &error), qPrintable(error));
+    QCOMPARE(peerRowCount(*database), 1);
+    records = repository.recentPeers(5, &error);
+    QVERIFY(records.first().pinned);
+    QVERIFY(records.first().hidden);
+
+    // 设备行不存在的更新同样幂等返回成功
+    QVERIFY2(repository.setDevicePinned("no-such-device", true, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceHidden("no-such-device", true, &error), qPrintable(error));
+
+    // 心跳 upsert 不清管理状态（ON CONFLICT 不触碰三列的既有契约）
+    PeerRecord heartbeat = makeRecord("device-pin", "Pinned", base.addSecs(60));
+    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
+    records = repository.recentPeers(5, &error);
+    QVERIFY(records.first().pinned);
+    QVERIFY(records.first().hidden);
+
+    // 取消置顶与恢复显示
+    QVERIFY2(repository.setDevicePinned("device-pin", false, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceHidden("device-pin", false, &error), qPrintable(error));
+    records = repository.recentPeers(5, &error);
+    QVERIFY(!records.first().pinned);
+    QVERIFY(!records.first().hidden);
+
+    // Step 变体可与其他步骤组合进同一事务执行
+    QVERIFY2(database->runSteps(
+                 {SqliteDeviceRepository::setDevicePinnedStep("device-pin", true),
+                  SqliteDeviceRepository::setDeviceHiddenStep("device-pin", true)},
+                 &error),
+             qPrintable(error));
+    records = repository.recentPeers(5, &error);
+    QVERIFY(records.first().pinned);
+    QVERIFY(records.first().hidden);
+}
+
+// 删除设备级联清空聊天与传输历史且不触碰文件系统，再次发现按全新设备入目录
+void TestStorageDevice::testDeleteDeviceWithHistoryCascade()
+{
+    auto database = openDatabase("delete-cascade.sqlite");
+    QVERIFY(database);
+
+    SqliteDeviceRepository deviceRepository(database.get());
+    SqliteMessageRepository messageRepository(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
+    QString error;
+
+    const QDateTime base = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs);
+    QVERIFY2(deviceRepository.upsertPeer(makeRecord("device-del", "DeleteMe", base), &error),
+             qPrintable(error));
+    QVERIFY2(deviceRepository.upsertPeer(makeRecord("device-keep", "KeepMe", base), &error),
+             qPrintable(error));
+
+    // 被删设备两条聊天消息（会话行由 saveMessageStep 幂等创建）与两条传输历史
+    QVERIFY2(messageRepository.saveMessage(makeMessage("device-del", "msg-1", base), &error),
+             qPrintable(error));
+    QVERIFY2(messageRepository.saveMessage(makeMessage("device-del", "msg-2", base.addSecs(60)), &error),
+             qPrintable(error));
+    QVERIFY2(transferRepository.upsertFinishedTransfer(makeTransfer("device-del", "tr-1", base), &error),
+             qPrintable(error));
+    QVERIFY2(transferRepository.upsertFinishedTransfer(makeTransfer("device-del", "tr-2", base.addSecs(30)), &error),
+             qPrintable(error));
+    // 保留设备同样有数据，用于验证删除不误伤
+    QVERIFY2(messageRepository.saveMessage(makeMessage("device-keep", "msg-k", base), &error),
+             qPrintable(error));
+    QVERIFY2(transferRepository.upsertFinishedTransfer(makeTransfer("device-keep", "tr-k", base), &error),
+             qPrintable(error));
+
+    // 删除路径只涉及数据库行，不触碰任何本地文件
+    QVERIFY2(deviceRepository.deleteDeviceWithHistory("device-del", &error), qPrintable(error));
+
+    // 级联完整：设备行删除、传输历史清空、聊天会话与消息随 CASCADE 清空，
+    // 保留设备的数据一行不少
+    QCOMPARE(peerRowCount(*database), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_messages")), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_conversations")), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("transfer_history")), 1);
+
+    // 幂等：设备行已不存在时再次删除仍返回成功
+    QVERIFY2(deviceRepository.deleteDeviceWithHistory("device-del", &error), qPrintable(error));
+    QCOMPARE(peerRowCount(*database), 1);
+
+    const QList<PeerRecord> records = deviceRepository.recentPeers(5, &error);
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().deviceId, QStringLiteral("device-keep"));
+
+    // 删除后同快照心跳不被节流缓存拦截，按全新设备重新入目录（first_seen 语义），
+    // 且目录重建不会带回任何旧聊天或传输历史
+    deviceRepository.noteDeviceDeleted("device-del");
+    QVERIFY2(deviceRepository.upsertPeer(makeRecord("device-del", "DeleteMe", base), &error),
+             qPrintable(error));
+    QCOMPARE(peerRowCount(*database), 2);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_messages")), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("transfer_history")), 1);
+}
+
 // 工具方法：在临时目录中创建并初始化数据库
 std::unique_ptr<SqliteDatabaseBroker> TestStorageDevice::openDatabase(const QString &relativePath)
 {
@@ -288,6 +414,42 @@ PeerRecord TestStorageDevice::makeRecord(const QString &deviceId, const QString 
     record.lastTcpPort = 35100;
     record.firstSeenAt = seen;
     record.lastSeenAt = seen;
+    return record;
+}
+
+// 工具方法：构造一条指定会话的入站聊天消息记录
+MessageRecord TestStorageDevice::makeMessage(const QString &deviceId, const QString &messageId,
+                                             const QDateTime &sentAt)
+{
+    MessageRecord record;
+    record.messageId = messageId;
+    record.peerDeviceId = deviceId;
+    record.direction = RecordDirection::Incoming;
+    record.senderDeviceId = deviceId;
+    record.senderName = "Sender";
+    record.content = "级联删除测试消息";
+    record.sentAt = sentAt;
+    record.localStatus = 1;
+    record.createdAt = sentAt;
+    return record;
+}
+
+// 工具方法：构造一条已完成的传输历史记录
+TransferRecord TestStorageDevice::makeTransfer(const QString &deviceId, const QString &recordId,
+                                               const QDateTime &startedAt)
+{
+    TransferRecord record;
+    record.recordId = recordId;
+    record.sessionId = recordId + "-session";
+    record.peerDeviceId = deviceId;
+    record.peerName = "Peer";
+    record.direction = RecordDirection::Incoming;
+    record.displayName = "file.txt";
+    record.fileCount = 1;
+    record.totalBytes = 100;
+    record.status = gy::protocol::kTransferStatusCompleted;
+    record.startedAt = startedAt;
+    record.finishedAt = startedAt.addSecs(10);
     return record;
 }
 

@@ -105,6 +105,9 @@ public:
     // 以真实身份注入定向发现的在线条目（邀请导入探测成功后调用，来源标记为 directed）
     void addDirectedPeer(const PeerInfo &peer);
 
+    // 从设备表移除指定设备（用户删除设备后调用）；再次广播/被协调发现时按全新设备重新入目录
+    void removePeer(const QString &deviceId);
+
     // 处理协调节点返回的候选端点
     Q_INVOKABLE void onRendezvousPeersReceived(const QList<QVariantMap> &peers);
 

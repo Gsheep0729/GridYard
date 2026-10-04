@@ -149,6 +149,17 @@ void HistoryWiring::connectPersistence()
                 _dataBroker->deleteTransfers(recordIds);  // 批量删除投递到 Worker 线程
             });
 
+    // 入站消息与传输请求让隐藏的设备自动恢复显示（微信语义，触发点在 C++，
+    // 列表经视图模型刷新，QML 零轮询）
+    connect(_chat, &ChatManager::incomingMessageReceived,
+            this, [this](const QString &deviceId, const QString &, const QString &) {
+                _peerDiscoveryViewModel->restoreHiddenDevice(deviceId);
+            });
+    connect(_transfer, &TransferSessionManager::incomingTransferRequested,
+            this, [this](const QString &senderDeviceId) {
+                _peerDiscoveryViewModel->restoreHiddenDevice(senderDeviceId);
+            });
+
     loadRecentTransferHistories();
 }
 

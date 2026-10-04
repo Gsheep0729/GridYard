@@ -842,6 +842,10 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     const qint64 fileSize = request.value(kFileSize).toLongLong();
     const int totalFiles = request.value(kTotalFiles).toInt();
     const qint64 totalBytes = request.value(kTotalBytes).toLongLong();
+
+    // 处理入口即通知（先于自动接受分支），隐藏的发送方设备据此自动恢复显示
+    emit incomingTransferRequested(senderDeviceId);
+
     qDebug() << "[TransferSession] 收到传输请求";
     qDebug() << "[TransferSession] 发送方设备ID:" << senderDeviceId;
     qDebug() << "[TransferSession] 发送方:" << senderName;

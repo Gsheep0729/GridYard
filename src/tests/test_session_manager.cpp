@@ -97,6 +97,7 @@ private slots:
     void testSessionStaleSignal();
     void testWaitingConfirmSnapshotQueueing();
     void testActiveSessionCountLifecycle();
+    void testIncomingRequestEntrySignal();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -826,6 +827,73 @@ void TestSessionManager::testActiveSessionCountLifecycle()
     QCOMPARE(countSpy.count(), 4);
     QCOMPARE(_manager->activeSessionCount(), 0);
 
+    _config->setRelayMode(RelayMode::AskBeforeRelay);
+}
+
+// 入站请求的处理入口信号在弹窗确认与自动接受两条路径上都发射（隐藏设备自动恢复显示的触发点）
+void TestSessionManager::testIncomingRequestEntrySignal()
+{
+    _config->setReceivePath(_tempDir->path() + "/entry-recv");
+    _config->setTcpPort(0);
+    QVERIFY(_p2pServer->start());
+    const quint16 port = _p2pServer->serverPort();
+
+    const QString sourcePath = _tempDir->path() + "/entry-source.txt";
+    QFile source{sourcePath};
+    QVERIFY(source.open(QIODevice::WriteOnly));
+    QCOMPARE(source.write(QByteArray("entry-payload")), qint64(13));
+    source.close();
+
+    QSignalSpy entrySpy(_manager, &TransferSessionManager::incomingTransferRequested);
+
+    // 路径一：需要弹窗确认的正常请求
+    FileSenderWorker senderA;
+    QThread threadA;
+    senderA.moveToThread(&threadA);
+    QObject::connect(&threadA, &QThread::started, &senderA, [&senderA, port, &sourcePath]() {
+        senderA.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+                              QStringLiteral("entry-sender-a"), QStringLiteral("EntrySenderA"));
+    });
+    threadA.start();
+    QVERIFY2(gy::test::waitFor([&entrySpy]() { return entrySpy.count() >= 1; }, 5000),
+             "入口信号应在 5 秒内到达");
+    QCOMPARE(entrySpy.first().at(0).toString(), QStringLiteral("entry-sender-a"));
+    const QString firstId = _manager->sessions().last().toMap()["sessionId"].toString();
+    QVERIFY(waitForStatus(firstId, "waiting_confirm"));
+    _manager->rejectReceiveSession(firstId);
+    QVERIFY(waitForStatus(firstId, "rejected"));
+
+    // 路径二：自动接受时不弹 receiveRequestReceived，但入口信号仍必须发射
+    const bool autoAcceptSaved = _config->autoAcceptFiles();
+    _config->setAutoAcceptFiles(true);
+    const int confirmRequestsBefore = entrySpy.count();
+
+    FileSenderWorker senderB;
+    QThread threadB;
+    senderB.moveToThread(&threadB);
+    QObject::connect(&threadB, &QThread::started, &senderB, [&senderB, port, &sourcePath]() {
+        senderB.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+                              QStringLiteral("entry-sender-b"), QStringLiteral("EntrySenderB"));
+    });
+    QSignalSpy confirmSpy(_manager, &TransferSessionManager::receiveRequestReceived);
+    threadB.start();
+    QVERIFY2(gy::test::waitFor([this]() { return _manager->sessions().size() >= 2; }, 5000),
+             "自动接受的会话应在 5 秒内创建");
+    QCOMPARE(confirmSpy.count(), 0);  // 自动接受路径不弹窗
+    QVERIFY2(gy::test::waitFor([&entrySpy, confirmRequestsBefore]() {
+                 return entrySpy.count() >= confirmRequestsBefore + 1;
+             }, 5000), "自动接受路径的入口信号应在 5 秒内到达");
+    QCOMPARE(entrySpy.last().at(0).toString(), QStringLiteral("entry-sender-b"));
+    QVERIFY(waitForStatus(_manager->sessions().last().toMap()["sessionId"].toString(), "transferring"));
+
+    senderB.requestCancel();
+    senderA.requestCancel();
+    threadA.quit();
+    threadB.quit();
+    QVERIFY(threadA.wait(3000));
+    QVERIFY(threadB.wait(3000));
+    _p2pServer->stop();
+    _config->setAutoAcceptFiles(autoAcceptSaved);
     _config->setRelayMode(RelayMode::AskBeforeRelay);
 }
 

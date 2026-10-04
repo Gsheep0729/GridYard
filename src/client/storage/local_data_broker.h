@@ -124,6 +124,15 @@ public:
     // 异步删除单条传输历史
     void deleteTransfer(QObject *receiver, const QString &recordId,
                         const OperationCallback &callback);
+    // 异步设置设备置顶状态（幂等，设备行不存在时同样回调成功）
+    void setDevicePinned(QObject *receiver, const QString &deviceId, bool pinned,
+                         const OperationCallback &callback);
+    // 异步设置设备隐藏状态（幂等，设备行不存在时同样回调成功）
+    void setDeviceHidden(QObject *receiver, const QString &deviceId, bool hidden,
+                         const OperationCallback &callback);
+    // 异步删除设备及其聊天与传输历史；不删除已接收的本地文件
+    void deleteDeviceWithHistory(QObject *receiver, const QString &deviceId,
+                                 const OperationCallback &callback);
     // 异步清空全部聊天记录
     void clearAllMessages(QObject *receiver, const OperationCallback &callback);
     // 异步清空全部传输历史
