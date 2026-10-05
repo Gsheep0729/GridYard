@@ -1,6 +1,6 @@
 /**
 * @file    main.cpp
-* @version 7.19.0
+* @version 7.19.1
 * @date 2026-10-05
 * @author  GY
 * @brief   GridYard 客户端程序入口
@@ -18,6 +18,8 @@
 *   --instance <N>      开发者模式实例号（1~9，本机多实例联调用）
 *
 * Change Log:
+ * [v7.19.1] GY   2026-10-05
+ * * 版本同步到 v7.19.1（右键菜单闪烁与备注占位修复批）
  * [v7.19.0] GY   2026-10-05
  * * 新增 --instance 启动参数（开发者模式本机多实例联调）
  * [v7.18.0] GY   2026-10-05
@@ -181,7 +183,7 @@
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("7.19.0");
+    QGuiApplication::setApplicationVersion("7.19.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数须在 QApplication 构造前解析：X11 平台层会按 X 工具惯例
