@@ -1,13 +1,13 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.20.1
+ * @version 7.20.3
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
  * 全部 property 都声明为 required：当本组件作为 delegate
  * 使用时，QML 引擎会根据名字自动从 model 项里填值（model 项
- * 是 PeerInfo Q_GADGET，其 Q_PROPERTY 名字与本文件 required
+ * 是视图模型输出的展示字段映射，字段名与本文件 required
  * property 名一一对应）。
  * 支持拖拽文件到卡片触发传输；拖拽内容原样向上冒泡，
  * 由 Main.qml 统一解码、过滤并裁决设备是否在线。
@@ -23,13 +23,15 @@ import "../utils/Style.js" as Style
 ItemDelegate {
     id: deviceCard
     hoverEnabled: true
-    // 以下 4 个 required property 与 PeerInfo Q_GADGET 的 Q_PROPERTY 名一一对应，
-    // QML 引擎会根据名字自动从 model 项里填值，无需手动绑定。
+    // 以下 required property 与视图模型条目的字段名一一对应，QML 引擎会
+    // 根据名字自动从 model 项里填值，无需手动绑定。
     required property string deviceId
     required property string deviceName
     required property string ipAddress
     required property bool   isOnline
     required property bool   isSelected
+    // 最后见过时间（ISO 文本）：离线卡片据此显示相对时间，在线卡不消费
+    required property string lastSeenAt
 
     // 置顶状态由视图模型按数据库状态注入，仅用于菜单文案展示
     property bool isPinned: false
@@ -38,6 +40,8 @@ ItemDelegate {
     required property string alias
     readonly property string displayName: FormatUtils.displayName(deviceCard.alias,
                                                                   deviceCard.deviceName)
+    // 备注是否生效：生效时副行补出原名便于核对（远程改名仍可见）
+    readonly property bool hasAlias: String(deviceCard.alias ?? "").trim().length > 0
 
     readonly property int   kCardHeight: 76
     readonly property color kOnlineColor:  Style.Color.success   // 在线状态圆点颜色
@@ -146,8 +150,12 @@ ItemDelegate {
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
+            // 副行：备注生效时"原名 · IP"并存（核对同名设备、察觉远程改名），
+            // 无备注维持纯 IP
             Label {
-                text: deviceCard.ipAddress
+                text: deviceCard.hasAlias
+                      ? deviceCard.deviceName + " · " + deviceCard.ipAddress
+                      : deviceCard.ipAddress
                 color: Style.Color.textMuted
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -177,7 +185,11 @@ ItemDelegate {
             }
 
             Label {
-                text: deviceCard.isOnline ? qsTr("在线") : qsTr("离线")
+                // 在线卡保持"在线"；离线卡把固定状态换成最后在线的相对时间，
+                // 时间缺失时回落"离线"
+                text: deviceCard.isOnline
+                      ? qsTr("在线")
+                      : (FormatUtils.relativeSeen(deviceCard.lastSeenAt) || qsTr("离线"))
                 color: deviceCard.isOnline ? deviceCard.kOnlineColor : deviceCard.kOfflineColor
                 font.pixelSize: 11
             }

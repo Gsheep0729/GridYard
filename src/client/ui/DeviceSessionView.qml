@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 7.19.0
+ * @version 7.20.3
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
@@ -22,6 +22,8 @@ Frame {
 
    required property string deviceId
    required property string deviceName
+   // 对方广播名（原名）：备注生效时在头部小字展示，供人工核对远程改名
+   required property string remoteName
    required property string ipAddress
    required property bool isOnline
 
@@ -119,9 +121,17 @@ Frame {
                        }
 
                        Label {
-                           text: deviceSessionView.ipAddress
+                           // 与设备卡副行同口径：备注生效时"原名 · IP"并存，
+                           // 无备注维持纯 IP
+                           text: deviceSessionView.remoteName.length > 0
+                                 && deviceSessionView.remoteName !== deviceSessionView.deviceName
+                                 ? deviceSessionView.remoteName + " · "
+                                   + deviceSessionView.ipAddress
+                                 : deviceSessionView.ipAddress
                            color: Style.Color.textMuted
                            font.pixelSize: 12
+                           elide: Text.ElideRight
+                           Layout.fillWidth: true
                        }
                    }
                }

@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.20.2
+ * @version 7.20.3
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -290,6 +290,9 @@ Rectangle {
             required property bool isOnline
             required property bool pinned
             required property string alias
+            required property string lastSeenAt
+            // segment 只由 section.property 消费（搜索命中的数据库条目没有该字段，
+            // 不声明为 delegate 角色），不在此声明
 
             width: listView.width
             height: peerListView.kDeviceCardHeight  // 模型已按关键字过滤，条目全部可见
@@ -305,6 +308,7 @@ Rectangle {
                 isSelected: peerListView.selectedDeviceId === peerDelegate.deviceId
                 isPinned: peerDelegate.pinned
                 alias: peerDelegate.alias
+                lastSeenAt: peerDelegate.lastSeenAt
 
                 onCardClicked: function(deviceId, deviceName, ipAddress, isOnline) {
                     peerListView.deviceSelected(deviceId, deviceName, ipAddress, isOnline)

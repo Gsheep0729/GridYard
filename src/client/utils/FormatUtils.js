@@ -1,6 +1,6 @@
 /**
  * @file    FormatUtils.js
- * @version 7.19.0
+ * @version 7.20.3
  * @date 2026-10-05
  * @author  GY
  * @brief   界面展示格式化工具
@@ -54,6 +54,33 @@ function displayName(alias, deviceName) {
         return remark
     }
     return deviceName ? String(deviceName) : ""
+}
+
+// 离线设备最后在线的相对描述：一分钟内"刚刚在线"，一小时内"N 分钟前在线"，
+// 一天内"N 小时前在线"，更早回落到"MM-DD 在线"；入参空或无效返回空串。
+// .pragma library 中 qsTr 不可靠（项目无翻译场景），直接返回中文
+function relativeSeen(lastSeenAtIso) {
+    if (!lastSeenAtIso) {
+        return ""
+    }
+    const seen = new Date(lastSeenAtIso)
+    if (isNaN(seen.getTime())) {
+        return ""
+    }
+    const diffMinutes = Math.floor((Date.now() - seen.getTime()) / 60000)
+    if (diffMinutes < 1) {
+        return "刚刚在线"
+    }
+    if (diffMinutes < 60) {
+        return diffMinutes + " 分钟前在线"
+    }
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) {
+        return diffHours + " 小时前在线"
+    }
+    const month = String(seen.getMonth() + 1).padStart(2, "0")
+    const day = String(seen.getDate()).padStart(2, "0")
+    return month + "-" + day + " 在线"
 }
 
 // 端口合法范围（用户可配置端口须避开 0-1023 特权段）

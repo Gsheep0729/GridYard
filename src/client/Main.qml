@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.19.0
+ * @version 7.20.3
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -301,6 +301,7 @@ ApplicationWindow {
             deviceId: mainWindow._selId
             deviceName: FormatUtils.displayName(mainWindow._selInfo.alias,
                                                 mainWindow._selInfo.deviceName)
+            remoteName: mainWindow._selInfo.deviceName || ""
             ipAddress: mainWindow._selInfo.ipAddress || ""
             isOnline: mainWindow._selInfo.isOnline || false
 
