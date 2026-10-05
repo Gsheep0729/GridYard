@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -38,6 +38,7 @@ PeerRecord readPeerRecordRow(const QSqlQuery &query)
     record.alias = query.value(8).toString();
     record.pinned = query.value(9).toInt() != 0;
     record.hidden = query.value(10).toInt() != 0;
+    record.favorite = query.value(11).toInt() != 0;
     return record;
 }
 }
@@ -103,9 +104,9 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
     // 其次传输时间，最后心跳时间
     query.prepare("SELECT device_id, device_name, last_ip_address, last_tcp_port, "
                   "first_seen_at, last_seen_at, last_chat_at, last_transfer_at, "
-                  "alias, pinned, hidden FROM "
-                  "peer_devices ORDER BY pinned DESC, COALESCE(last_chat_at, last_transfer_at, "
-                  "last_seen_at) DESC LIMIT ?");
+                  "alias, pinned, hidden, favorite FROM "
+                  "peer_devices ORDER BY favorite DESC, pinned DESC, "
+                  "COALESCE(last_chat_at, last_transfer_at, last_seen_at) DESC LIMIT ?");
     query.addBindValue(limit);
     if (!query.exec()) {
         if (errorMessage)
@@ -145,14 +146,14 @@ QList<PeerRecord> SqliteDeviceRepository::searchPeers(const QString &keyword, in
     pattern = "%" + pattern + "%";
 
     QSqlQuery query(database);
-    // 排序口径与 recentPeers 一致：置顶设备优先，其次按最近活动时间倒序
+    // 排序口径与 recentPeers 一致：收藏与置顶优先，其次按最近活动时间倒序
     query.prepare("SELECT device_id, device_name, last_ip_address, last_tcp_port, "
                   "first_seen_at, last_seen_at, last_chat_at, last_transfer_at, "
-                  "alias, pinned, hidden FROM peer_devices "
+                  "alias, pinned, hidden, favorite FROM peer_devices "
                   "WHERE hidden = 0 AND (device_name LIKE ? ESCAPE '\\' "
                   "OR alias LIKE ? ESCAPE '\\' OR last_ip_address LIKE ? ESCAPE '\\') "
-                  "ORDER BY pinned DESC, COALESCE(last_chat_at, last_transfer_at, "
-                  "last_seen_at) DESC LIMIT ?");
+                  "ORDER BY favorite DESC, pinned DESC, "
+                  "COALESCE(last_chat_at, last_transfer_at, last_seen_at) DESC LIMIT ?");
     query.addBindValue(pattern);
     query.addBindValue(pattern);
     query.addBindValue(pattern);
@@ -254,6 +255,14 @@ bool SqliteDeviceRepository::setDeviceAlias(const QString &deviceId, const QStri
                                                     errorMessage);
 }
 
+// 设置设备收藏状态（幂等，设备行不存在时同样返回成功）
+bool SqliteDeviceRepository::setDeviceFavorite(const QString &deviceId, bool favorite,
+                                               QString *errorMessage)
+{
+    return _database && _database->runInTransaction(setDeviceFavoriteStep(deviceId, favorite),
+                                                    errorMessage);
+}
+
 // 删除设备及其聊天与传输历史；不删除已接收的本地文件
 bool SqliteDeviceRepository::deleteDeviceWithHistory(const QString &deviceId,
                                                      QString *errorMessage)
@@ -317,6 +326,24 @@ SqliteDeviceRepository::SqlStep SqliteDeviceRepository::setDeviceAliasStep(const
         QSqlQuery query(database);
         query.prepare("UPDATE peer_devices SET alias=? WHERE device_id=?");
         query.addBindValue(alias);
+        query.addBindValue(deviceId);
+        if (query.exec())
+            return true;
+        if (taskError)
+            *taskError = query.lastError().text();
+        return false;
+    };
+}
+
+// 只执行收藏更新，不自开事务；UPDATE 找不到行即幂等成功。
+// 与 upsert 的 ON CONFLICT 列清单互不重叠，心跳更新天然不动收藏
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::setDeviceFavoriteStep(const QString &deviceId,
+                                                                              bool favorite)
+{
+    return[deviceId, favorite](QSqlDatabase &database, QString *taskError) {
+        QSqlQuery query(database);
+        query.prepare("UPDATE peer_devices SET favorite=? WHERE device_id=?");
+        query.addBindValue(favorite ? 1 : 0);
         query.addBindValue(deviceId);
         if (query.exec())
             return true;

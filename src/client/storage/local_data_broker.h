@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.h
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   本地数据层代管者
@@ -93,6 +93,9 @@ public:
     // 异步设置设备置顶状态（幂等，设备行不存在时同样回调成功）
     void setDevicePinned(QObject *receiver, const QString &deviceId, bool pinned,
                          const OperationCallback &callback);
+    // 异步设置设备收藏状态（幂等，设备行不存在时同样回调成功）
+    void setDeviceFavorite(QObject *receiver, const QString &deviceId, bool favorite,
+                           const OperationCallback &callback);
     // 异步设置设备隐藏状态（幂等，设备行不存在时同样回调成功）
     void setDeviceHidden(QObject *receiver, const QString &deviceId, bool hidden,
                          const OperationCallback &callback);

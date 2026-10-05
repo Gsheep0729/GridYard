@@ -1,6 +1,6 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.20.2
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GY
 * @brief   设备发现视图模型测试
@@ -48,6 +48,7 @@ private slots:
     void testSegmentAssignmentAndInSegmentOrder();
     void testRecentVisibleLimitTruncation();
     void testHiddenFilteredAcrossSegments();
+    void testSegmentFavoritePriorityAndFallback();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -812,6 +813,89 @@ void TestPeerDiscoveryViewModel::testHiddenFilteredAcrossSegments()
              .value("segment").toString(), QStringLiteral("online"));
     QCOMPARE(viewModel.deviceById(QStringLiteral("hs-visible-off"))
              .value("segment").toString(), QStringLiteral("recent"));
+}
+
+// 段内收藏优先：在线与最近见过段内收藏设备排前，取消收藏后回落原排序
+void TestPeerDiscoveryViewModel::testSegmentFavoritePriorityAndFallback()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "favorite-segments.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-10-05T05:00:00.000Z", Qt::ISODateWithMs);
+    QString dbError;
+    // 离线两台：fav-off 较旧但将被收藏，plain-off 较新
+    for (int i = 0; i < 2; ++i) {
+        PeerRecord record;
+        record.deviceId = i == 0 ? QStringLiteral("fav-off") : QStringLiteral("plain-off");
+        record.deviceName = i == 0 ? QStringLiteral("收藏离线") : QStringLiteral("普通离线");
+        record.lastIpAddress = QStringLiteral("10.81.0.%1").arg(i + 1);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 60);
+        record.lastSeenAt = base.addSecs(i * 60);
+        QVERIFY(repository.upsertPeer(record, &dbError));
+    }
+
+    auto broker = openBroker("favorite-segments.sqlite");
+    QVERIFY(broker);
+    bool favSet = false;
+    broker->setDeviceFavorite(this, QStringLiteral("fav-off"), true,
+                              [&favSet](bool) { favSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(favSet, true, 3000);
+
+    // 在线两台：fav-on 较旧但将被收藏，plain-on 较新。
+    // 在线设备同样先落库（收藏是对设备目录行的 UPDATE，行不存在时幂等成功但不产生标记）
+    PeerInfo favOn = makePeerInfo(QStringLiteral("fav-on"), QStringLiteral("收藏在线"),
+                                  QStringLiteral("10.81.1.1"));
+    favOn.lastSeen = base.addSecs(600);
+    PeerInfo plainOn = makePeerInfo(QStringLiteral("plain-on"), QStringLiteral("普通在线"),
+                                    QStringLiteral("10.81.1.2"));
+    plainOn.lastSeen = base.addSecs(1200);
+    for (const PeerInfo *info : {&favOn, &plainOn}) {
+        PeerRecord record;
+        record.deviceId = info->deviceId;
+        record.deviceName = info->deviceName;
+        record.lastIpAddress = info->ipAddress;
+        record.lastTcpPort = info->tcpPort;
+        record.firstSeenAt = info->lastSeen;
+        record.lastSeenAt = info->lastSeen;
+        QVERIFY(repository.upsertPeer(record, &dbError));
+    }
+    _discovery->addManualPeer(favOn);
+    _discovery->addManualPeer(plainOn);
+    bool onFavSet = false;
+    broker->setDeviceFavorite(this, QStringLiteral("fav-on"), true,
+                              [&onFavSet](bool) { onFavSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(onFavSet, true, 3000);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("plain-off")).isEmpty(), 3000);
+
+    const auto idsInOrder = [&viewModel]() {
+        QStringList ids;
+        for (const QVariant &entry : viewModel.peers()) {
+            ids.append(entry.toMap().value("deviceId").toString());
+        }
+        return ids;
+    };
+
+    // 在线段内收藏优先（压过更新的普通设备），最近见过段内收藏优先（压过较新的历史）
+    QStringList ids = idsInOrder();
+    QVERIFY2(ids.indexOf(QStringLiteral("fav-on")) < ids.indexOf(QStringLiteral("plain-on")),
+             "在线段内收藏设备应排前");
+    QVERIFY2(ids.indexOf(QStringLiteral("fav-off")) < ids.indexOf(QStringLiteral("plain-off")),
+             "最近见过段内收藏设备应排前");
+
+    // 取消最近见过段的收藏后回落按时间倒序，在线段收藏不受影响
+    viewModel.setDeviceFavorite(QStringLiteral("fav-off"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("fav-off"))
+                             .value("favorite").toBool(), 3000);
+    ids = idsInOrder();
+    QVERIFY2(ids.indexOf(QStringLiteral("plain-off")) < ids.indexOf(QStringLiteral("fav-off")),
+             "取消收藏后应按最后见过倒序");
+    QVERIFY2(ids.indexOf(QStringLiteral("fav-on")) < ids.indexOf(QStringLiteral("plain-on")),
+             "在线段收藏标记保持");
 }
 
 // 工具方法：在临时目录打开一份本地历史库

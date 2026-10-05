@@ -1,6 +1,6 @@
 /**
 * @file    migration_runner.cpp
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GY
 * @brief   SQLite Schema 版本迁移执行器实现
@@ -15,7 +15,7 @@
 
 namespace {
 // 当前程序支持的 Schema 最高版本，随新迁移发布递增
-constexpr int kCurrentSchemaVersion = 2;
+constexpr int kCurrentSchemaVersion = 3;
 
 // 执行一条 DDL 语句，并将底层错误返回给调用方
 bool execute(QSqlQuery &query, const QString &statement, QString *errorMessage)
@@ -142,6 +142,17 @@ bool MigrationRunner::migrate(QSqlDatabase &database, QString *errorMessage)
             "ALTER TABLE peer_devices ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"
         };
         if (!applyMigrationStep(database, statements, 2, errorMessage)) {
+            return false;
+        }
+    }
+
+    // 版本三：设备目录增加收藏标记（关系语义，与置顶的位置语义分层叠加），
+    // 加列方式与版本二的管理列相同
+    if (version < 3) {
+        const QStringList statements = {
+            "ALTER TABLE peer_devices ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"
+        };
+        if (!applyMigrationStep(database, statements, 3, errorMessage)) {
             return false;
         }
     }

@@ -1,6 +1,6 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.20.2
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
@@ -71,6 +71,8 @@ public:
     Q_INVOKABLE void searchPeers(const QString &keyword);
     // 置顶或取消置顶指定设备（落库成功后刷新内存状态）
     Q_INVOKABLE void setDevicePinned(const QString &deviceId, bool pinned);
+    // 收藏或取消收藏指定设备（落库成功后刷新内存状态）
+    Q_INVOKABLE void setDeviceFavorite(const QString &deviceId, bool favorite);
     // 隐藏或恢复显示指定设备（落库成功后刷新内存状态）
     Q_INVOKABLE void setDeviceHidden(const QString &deviceId, bool hidden);
     // 设置或清除设备本地备注（空串表示清除，落库成功后刷新列表；
@@ -108,7 +110,8 @@ private:
     QString _searchKeyword;  // 最近一次提交的检索关键字，用于丢弃过期回调结果
     bool _searchBusy = false;  // 数据库检索是否进行中
     QSet<QString> _hiddenDeviceIds;  // 数据库中隐藏态的设备（不进合并列表）
-    QSet<QString> _pinnedDeviceIds;  // 数据库中置顶态的设备（排序规则由后续任务接入）
+    QSet<QString> _pinnedDeviceIds;  // 数据库中置顶态的设备（位置语义，决定条目归属段）
+    QSet<QString> _favoriteDeviceIds;  // 数据库中收藏态的设备（关系语义，段内排序优先）
     QHash<QString, QString> _aliasByDeviceId;  // 数据库中的设备备注，在线条目按 deviceId 回填
     QString _selectedDeviceId;  // 当前选中设备 ID
 };

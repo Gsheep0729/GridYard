@@ -1,6 +1,6 @@
 /**
 * @file    history_records.h
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   本地历史持久化领域记录
@@ -30,6 +30,7 @@ struct PeerRecord {
     QString alias;            // 用户设置的本地备注，空表示未设置
     bool pinned = false;      // 用户置顶标记
     bool hidden = false;      // 用户隐藏标记（不显示该聊天）
+    bool favorite = false;    // 用户收藏标记（关系语义，段内排序优先）
 };
 
 struct MessageRecord {

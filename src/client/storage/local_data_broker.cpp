@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
@@ -467,6 +467,31 @@ void LocalDataBroker::setDevicePinned(QObject *receiver, const QString &deviceId
         [this, receiver, deviceId, pinned, callback](SqliteDatabaseBroker &, QString *errorMessage) {
             const bool succeeded = _deviceRepository->setDevicePinned(deviceId, pinned,
                                                                       errorMessage);
+            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+                callback(succeeded);
+            }, Qt::QueuedConnection);
+            return succeeded;
+        });
+}
+
+// 异步设置设备收藏状态（幂等，设备行不存在时同样回调成功）
+void LocalDataBroker::setDeviceFavorite(QObject *receiver, const QString &deviceId, bool favorite,
+                                        const OperationCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, deviceId, favorite, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            const bool succeeded = _deviceRepository->setDeviceFavorite(deviceId, favorite,
+                                                                        errorMessage);
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);

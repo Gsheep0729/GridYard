@@ -1,6 +1,6 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.20.3
+ * @version 7.21.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
@@ -33,8 +33,10 @@ ItemDelegate {
     // 最后见过时间（ISO 文本）：离线卡片据此显示相对时间，在线卡不消费
     required property string lastSeenAt
 
-    // 置顶状态由视图模型按数据库状态注入，仅用于菜单文案展示
+    // 置顶与收藏状态由视图模型按数据库状态注入，前者仅用于菜单文案展示，
+    // 后者同时驱动卡片右上角的星标
     property bool isPinned: false
+    required property bool favorite
 
     // 本地备注由视图模型按数据库状态注入，展示名备注优先于广播名
     required property string alias
@@ -54,7 +56,8 @@ ItemDelegate {
     // （含在线状态，供装配层决定删除入口是否可用）；菜单实例挂在窗口层单例打开，
     // 列表刷新销毁重建 delegate 不影响已打开的菜单，菜单项触发时按捕获上下文
     // 上报 pin/unpin/hide/rename/delete 意图给装配层
-    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline)
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline,
+                                bool isFavorite)
 
     height: kCardHeight
     background: Rectangle {
@@ -73,6 +76,41 @@ ItemDelegate {
             radius: 1.5
             color: Style.Color.primary
             visible: deviceCard.isSelected
+        }
+    }
+
+    // 收藏星标：自绘五角星（禁用主题 icon.name，缺 glyph 会渲染黑块），
+    // 叠在卡片右上角，不与左侧选中指示条和右侧状态列争夺空间
+    Canvas {
+        anchors.right: parent.right
+        anchors.rightMargin: Style.Space.sm
+        anchors.top: parent.top
+        anchors.topMargin: Style.Space.xs
+        width: 13
+        height: 13
+        visible: deviceCard.favorite
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            ctx.fillStyle = Style.Color.warning
+            ctx.beginPath()
+            const cx = width / 2
+            const cy = height / 2 + 1
+            const outer = width / 2
+            const inner = outer * 0.45
+            for (let i = 0; i < 10; i++) {
+                const angle = -Math.PI / 2 + i * Math.PI / 5
+                const radius = i % 2 === 0 ? outer : inner
+                const x = cx + radius * Math.cos(angle)
+                const y = cy + radius * Math.sin(angle)
+                if (i === 0) {
+                    ctx.moveTo(x, y)
+                } else {
+                    ctx.lineTo(x, y)
+                }
+            }
+            ctx.closePath()
+            ctx.fill()
         }
     }
 
@@ -103,7 +141,8 @@ ItemDelegate {
         onTapped: deviceCard.contextMenuRequested(deviceCard.deviceId,
                                                   deviceCard.deviceName,
                                                   deviceCard.isPinned,
-                                                  deviceCard.isOnline)
+                                                  deviceCard.isOnline,
+                                                  deviceCard.favorite)
     }
 
     // 离线设备用颜色弱化区分：设备名与头像降为次级色，

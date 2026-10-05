@@ -1,6 +1,6 @@
 /**
 * @file    history_repositories.h
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   本地历史持久化端口
@@ -34,6 +34,9 @@ public:
                                           QString *errorMessage) const = 0;
     // 设置设备置顶状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDevicePinned(const QString &deviceId, bool pinned, QString *errorMessage) = 0;
+    // 设置设备收藏状态（幂等，设备行不存在时同样返回成功）
+    virtual bool setDeviceFavorite(const QString &deviceId, bool favorite,
+                                   QString *errorMessage) = 0;
     // 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDeviceHidden(const QString &deviceId, bool hidden, QString *errorMessage) = 0;
     // 设置设备本地备注别名（空串表示清除；幂等，设备行不存在时同样返回成功）

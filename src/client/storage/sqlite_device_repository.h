@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.h
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -41,6 +41,9 @@ public:
                                           QString *errorMessage) const override;
     // 设置设备置顶状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDevicePinned(const QString &deviceId, bool pinned, QString *errorMessage) override;
+    // 设置设备收藏状态（幂等，设备行不存在时同样返回成功）
+    virtual bool setDeviceFavorite(const QString &deviceId, bool favorite,
+                                   QString *errorMessage) override;
     // 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDeviceHidden(const QString &deviceId, bool hidden, QString *errorMessage) override;
     // 设置设备本地备注别名（空串表示清除；幂等，设备行不存在时同样返回成功）
@@ -54,6 +57,7 @@ public:
     static SqlStep markChatActivityStep(const QString &deviceId, const QDateTime &time);
     static SqlStep markTransferActivityStep(const QString &deviceId, const QDateTime &time);
     static SqlStep setDevicePinnedStep(const QString &deviceId, bool pinned);
+    static SqlStep setDeviceFavoriteStep(const QString &deviceId, bool favorite);
     static SqlStep setDeviceHiddenStep(const QString &deviceId, bool hidden);
     static SqlStep setDeviceAliasStep(const QString &deviceId, const QString &alias);
     static SqlStep deleteDeviceStep(const QString &deviceId);

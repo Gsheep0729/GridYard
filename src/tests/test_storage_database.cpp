@@ -1,6 +1,6 @@
 /**
 * @file    test_storage_database.cpp
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GY
 * @brief   SQLite 初始化、迁移与异常恢复测试
@@ -63,7 +63,7 @@ void TestStorageDatabase::testInitializeAndSchema()
     const QString path = ApplicationPaths::databaseDir() + "/gridyard-history.sqlite";
 
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
-    QCOMPARE(database.schemaVersion(), 2);
+    QCOMPARE(database.schemaVersion(), 3);
     QVERIFY(QFileInfo::exists(path));
 
     QSqlDatabase connection = database.connectionForWorkerThread(&error);
@@ -102,7 +102,7 @@ void TestStorageDatabase::testRepeatedInitializePreservesData()
 
     SqliteDatabaseBroker database;
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
-    QCOMPARE(database.schemaVersion(), 2);
+    QCOMPARE(database.schemaVersion(), 3);
 
     QSqlDatabase connection = database.connectionForWorkerThread(&error);
     QVERIFY2(connection.isValid(), qPrintable(error));
@@ -140,7 +140,7 @@ void TestStorageDatabase::testV1MigratedToV2KeepsRows()
     SqliteDatabaseBroker database;
     QString error;
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
-    QCOMPARE(database.schemaVersion(), 2);
+    QCOMPARE(database.schemaVersion(), 3);
 
     QSqlDatabase connection = database.connectionForWorkerThread(&error);
     QVERIFY2(connection.isValid(), qPrintable(error));
@@ -251,7 +251,7 @@ void TestStorageDatabase::testCorruptDatabaseBackedUpAndRebuilt()
     QString error;
     QVERIFY2(database.initialize(path, &error), qPrintable(error));
     QVERIFY(database.isAvailable());
-    QCOMPARE(database.schemaVersion(), 2);
+    QCOMPARE(database.schemaVersion(), 3);
 
     // 重建发生后必须报告标志与备份路径，供上层界面提示历史被清零重置
     QVERIFY(database.lastInitializeRebuilt());
@@ -363,9 +363,9 @@ void TestStorageDatabase::testNewerSchemaVersionRejected()
 
         QSqlDatabase connection = database.connectionForWorkerThread(&error);
         QVERIFY2(connection.isValid(), qPrintable(error));
-        // 手工把最高 Schema 版本抬到 3（恰高于当前支持上限 2），模拟由更新版本程序创建的库
+        // 手工把最高 Schema 版本抬到 4（恰高于当前支持上限 3），模拟由更新版本程序创建的库
         QSqlQuery upgrade(connection);
-        QVERIFY2(upgrade.exec("UPDATE schema_version SET version = 3 "
+        QVERIFY2(upgrade.exec("UPDATE schema_version SET version = 4 "
                               "WHERE version = (SELECT MAX(version) FROM schema_version)"),
                  qPrintable(upgrade.lastError().text()));
         QVERIFY2(upgrade.exec("PRAGMA wal_checkpoint(TRUNCATE)"),

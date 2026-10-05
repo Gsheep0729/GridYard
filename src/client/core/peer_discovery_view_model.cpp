@@ -1,6 +1,6 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.20.2
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
@@ -58,14 +58,27 @@ int segmentRank(const QVariant &peer)
     return 2;
 }
 
-// 比较函数用于排序：段间按置顶/在线/最近见过；置顶与在线段内沿用
-// 来源优先级加最近活跃，最近见过段内只按最近活跃倒序
+// 收藏标记：合并列表的条目已统一为展示字段映射
+bool peerFavorite(const QVariant &peer)
+{
+    return peer.toMap().value("favorite").toBool();
+}
+
+// 比较函数用于排序：段间按置顶/在线/最近见过；置顶段内沿用来源优先级加
+// 最近活跃，在线与最近见过段内收藏优先（置顶管位置、收藏管识别，分层叠加）
 bool peerSortLessThan(const QVariant &a, const QVariant &b)
 {
     const int rankA = segmentRank(a);
     const int rankB = segmentRank(b);
     if (rankA != rankB) {
         return rankA < rankB;
+    }
+    if (rankA != 0) {
+        const bool favoriteA = peerFavorite(a);
+        const bool favoriteB = peerFavorite(b);
+        if (favoriteA != favoriteB) {
+            return favoriteA;  // 在线与最近见过段内收藏设备排前
+        }
     }
     if (rankA == 2) {
         return peerLastSeenAt(a) > peerLastSeenAt(b);  // 历史条目按最后见过时间倒序
@@ -307,6 +320,7 @@ void PeerDiscoveryViewModel::refreshHistory()
             // 同步重建置顶/隐藏集合与备注映射，过滤与展示均以此为准
             _hiddenDeviceIds.clear();
             _pinnedDeviceIds.clear();
+            _favoriteDeviceIds.clear();
             _aliasByDeviceId.clear();
             for (const PeerRecord &record : records) {
                 peers.append(peerRecordToVariant(record));
@@ -315,6 +329,9 @@ void PeerDiscoveryViewModel::refreshHistory()
                 }
                 if (record.pinned) {
                     _pinnedDeviceIds.insert(record.deviceId);
+                }
+                if (record.favorite) {
+                    _favoriteDeviceIds.insert(record.deviceId);
                 }
                 _aliasByDeviceId.insert(record.deviceId, record.alias);
             }
@@ -389,6 +406,27 @@ void PeerDiscoveryViewModel::setDevicePinned(const QString &deviceId, bool pinne
             _pinnedDeviceIds.remove(deviceId);
         }
         refreshHistory();  // 重新加载目录，条目的 pinned 字段随库更新
+    });
+}
+
+// 收藏或取消收藏指定设备，落库成功后刷新内存状态
+void PeerDiscoveryViewModel::setDeviceFavorite(const QString &deviceId, bool favorite)
+{
+    if (!_dataBroker || deviceId.isEmpty()) {
+        return;
+    }
+
+    _dataBroker->setDeviceFavorite(this, deviceId, favorite,
+                                   [this, deviceId, favorite](bool succeeded) {
+        if (!succeeded) {
+            return;  // 写库失败时保持现状，不打扰列表
+        }
+        if (favorite) {
+            _favoriteDeviceIds.insert(deviceId);
+        } else {
+            _favoriteDeviceIds.remove(deviceId);
+        }
+        refreshHistory();  // 重新加载目录，条目的 favorite 字段随库更新
     });
 }
 
@@ -486,6 +524,7 @@ QVariantMap PeerDiscoveryViewModel::peerRecordToVariant(const PeerRecord &record
         {"alias", record.alias},
         {"pinned", record.pinned},
         {"hidden", record.hidden},
+        {"favorite", record.favorite},
     };
 }
 
@@ -506,5 +545,6 @@ QVariantMap PeerDiscoveryViewModel::peerInfoToVariant(const PeerInfo &info) cons
         {"alias", _aliasByDeviceId.value(info.deviceId)},
         {"pinned", _pinnedDeviceIds.contains(info.deviceId)},
         {"hidden", _hiddenDeviceIds.contains(info.deviceId)},
+        {"favorite", _favoriteDeviceIds.contains(info.deviceId)},
     };
 }

@@ -1,6 +1,6 @@
 /**
 * @file    test_storage_device.cpp
-* @version 7.19.0
+* @version 7.21.0
 * @date 2026-10-05
 * @author  GY
 * @brief   SQLite 设备目录 Repository 测试
@@ -18,6 +18,7 @@
 #include "sqlite_device_repository.h"
 
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 
@@ -36,6 +37,8 @@ private slots:
     void testSetDevicePinnedAndHidden();
     void testSetDeviceAlias();
     void testDeleteDeviceWithHistoryCascade();
+    void testV2MigratedToV3KeepsManagementColumns();
+    void testSetDeviceFavoriteAndRecentOrder();
 
 private:
     // 在当前测试数据库上构造一个已初始化的设备 Repository
@@ -422,6 +425,88 @@ void TestStorageDevice::testDeleteDeviceWithHistoryCascade()
     QCOMPARE(peerRowCount(*database), 2);
     QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_messages")), 1);
     QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("transfer_history")), 1);
+}
+
+// v2 存量库升级到 v3：favorite 加列默认 0，alias/pinned/hidden 与快照字段全部保留
+void TestStorageDevice::testV2MigratedToV3KeepsManagementColumns()
+{
+    const QString path = _databasePath + ".v2-upgrade.sqlite";
+
+    // 手工造一个最小 v2 假库：schema_version 登记 2，peer_devices 含管理三列并带存量值
+    {
+        QSqlDatabase seed = QSqlDatabase::addDatabase("QSQLITE", "v2-seed");
+        seed.setDatabaseName(path);
+        QVERIFY2(seed.open(), qPrintable(seed.lastError().text()));
+        QSqlQuery build(seed);
+        QVERIFY2(build.exec("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"),
+                 qPrintable(build.lastError().text()));
+        QVERIFY2(build.exec("INSERT INTO schema_version VALUES(2, '2026-10-05T00:00:00.000Z')"),
+                 qPrintable(build.lastError().text()));
+        QVERIFY2(build.exec("CREATE TABLE peer_devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, last_ip_address TEXT, last_tcp_port INTEGER, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, last_chat_at TEXT, last_transfer_at TEXT, alias TEXT, pinned INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0)"),
+                 qPrintable(build.lastError().text()));
+        QVERIFY2(build.exec("INSERT INTO peer_devices VALUES('device-v2', '存量设备', '192.168.1.30', 35100, "
+                            "'2026-06-25T08:00:00.000Z', '2026-06-25T09:00:00.000Z', NULL, NULL, "
+                            "'老王的电脑', 1, 0)"),
+                 qPrintable(build.lastError().text()));
+        seed.close();
+    }
+    QSqlDatabase::removeDatabase("v2-seed");
+
+    SqliteDatabaseBroker database;
+    QString error;
+    QVERIFY2(database.initialize(path, &error), qPrintable(error));
+    QCOMPARE(database.schemaVersion(), 3);
+
+    SqliteDeviceRepository repository(&database);
+    const QList<PeerRecord> records = repository.recentPeers(10, &error);
+    QCOMPARE(records.size(), 1);
+    const PeerRecord &record = records.first();
+    // 管理三列与快照字段在 v2 到 v3 迁移后必须原样保留，收藏默认未勾选
+    QCOMPARE(record.deviceId, QStringLiteral("device-v2"));
+    QCOMPARE(record.alias, QStringLiteral("老王的电脑"));
+    QCOMPARE(record.pinned, true);
+    QCOMPARE(record.hidden, false);
+    QCOMPARE(record.favorite, false);
+}
+
+// 收藏读写与排序：favorite 优先于普通设备恢复，心跳 upsert 不清收藏，取消后回落
+void TestStorageDevice::testSetDeviceFavoriteAndRecentOrder()
+{
+    auto database = openDatabase("favorite.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-06-25T12:00:00.000Z", Qt::ISODateWithMs);
+    QString error;
+    // 普通设备比收藏设备更新，且心跳后的收藏设备仍须保持更旧：
+    // 取消收藏后回落排序的判别才成立
+    QVERIFY2(repository.upsertPeer(makeRecord("device-plain", "普通设备", base.addSecs(120)), &error),
+             qPrintable(error));
+    QVERIFY2(repository.upsertPeer(makeRecord("device-fav", "收藏设备", base), &error),
+             qPrintable(error));
+
+    QVERIFY2(repository.setDeviceFavorite("device-fav", true, &error), qPrintable(error));
+
+    // 收藏设备反超排最前，favorite 标记随行返回
+    QList<PeerRecord> records = repository.recentPeers(10, &error);
+    QCOMPARE(records.size(), 2);
+    QCOMPARE(records.first().deviceId, QStringLiteral("device-fav"));
+    QCOMPARE(records.first().favorite, true);
+    QCOMPARE(records.at(1).deviceId, QStringLiteral("device-plain"));
+    QCOMPARE(records.at(1).favorite, false);
+
+    // 心跳 upsert 不携带 favorite 列，收藏标记不得被清掉（活跃时间保持在普通设备之前）
+    PeerRecord heartbeat = makeRecord("device-fav", "收藏设备", base.addSecs(60));
+    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
+    records = repository.recentPeers(10, &error);
+    QCOMPARE(records.first().deviceId, QStringLiteral("device-fav"));
+    QCOMPARE(records.first().favorite, true);
+
+    // 取消收藏后回落到按活跃时间排序
+    QVERIFY2(repository.setDeviceFavorite("device-fav", false, &error), qPrintable(error));
+    records = repository.recentPeers(10, &error);
+    QCOMPARE(records.first().deviceId, QStringLiteral("device-plain"));
+    QCOMPARE(records.first().favorite, false);
 }
 
 // 工具方法：在临时目录中创建并初始化数据库

@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.20.3
+ * @version 7.21.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -94,8 +94,9 @@ Rectangle {
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)  // 拖拽文件到设备卡片时触发，由 Main 统一裁决
-    // 右键打开菜单的意图上抛（携带打开时捕获的设备上下文，含在线状态），菜单实例由侧栏窗口层单例持有
-    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline)
+    // 右键打开菜单的意图上抛（携带打开时捕获的设备上下文，含在线与收藏状态），菜单实例由侧栏窗口层单例持有
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline,
+                                bool isFavorite)
 
     color: Style.Color.surfaceMid
 
@@ -289,6 +290,7 @@ Rectangle {
             required property string ipAddress
             required property bool isOnline
             required property bool pinned
+            required property bool favorite
             required property string alias
             required property string lastSeenAt
             // segment 只由 section.property 消费（搜索命中的数据库条目没有该字段，
@@ -307,6 +309,7 @@ Rectangle {
                 isOnline: peerDelegate.isOnline
                 isSelected: peerListView.selectedDeviceId === peerDelegate.deviceId
                 isPinned: peerDelegate.pinned
+                favorite: peerDelegate.favorite
                 alias: peerDelegate.alias
                 lastSeenAt: peerDelegate.lastSeenAt
 
@@ -316,8 +319,10 @@ Rectangle {
                 onFilesDropped: function(deviceId, urls) {
                     peerListView.filesDropped(deviceId, urls)
                 }
-                onContextMenuRequested: function(deviceId, deviceName, isPinned, isOnline) {
-                    peerListView.contextMenuRequested(deviceId, deviceName, isPinned, isOnline)
+                onContextMenuRequested: function(deviceId, deviceName, isPinned, isOnline,
+                                                 isFavorite) {
+                    peerListView.contextMenuRequested(deviceId, deviceName, isPinned, isOnline,
+                                                      isFavorite)
                 }
             }
         }

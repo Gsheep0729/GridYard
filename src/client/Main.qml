@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.20.3
+ * @version 7.21.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -264,6 +264,10 @@ ApplicationWindow {
                 AppController.peerDiscoveryViewModel.setDevicePinned(deviceId, true)
             } else if (action === "unpin") {
                 AppController.peerDiscoveryViewModel.setDevicePinned(deviceId, false)
+            } else if (action === "favorite") {
+                AppController.peerDiscoveryViewModel.setDeviceFavorite(deviceId, true)
+            } else if (action === "unfavorite") {
+                AppController.peerDiscoveryViewModel.setDeviceFavorite(deviceId, false)
             } else if (action === "hide") {
                 hideDeviceDialog.openFor(deviceId, deviceName)
             } else if (action === "rename") {
