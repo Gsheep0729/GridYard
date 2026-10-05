@@ -273,10 +273,11 @@ Rectangle {
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: Style.Space.sm
             }
+            // 悬停高亮即时切换：高亮一端是透明色，颜色动画会在快速进出时
+            // 反复穿过深灰半透明区，观感是整行深色闪烁（同 UI-1 悬停纪律）
             background: Rectangle {
                 color: pinItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
                 radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
             }
             onTriggered: sidebar.contextActionRequested(
                              deviceContextMenu.deviceId, deviceContextMenu.deviceName,
@@ -296,7 +297,6 @@ Rectangle {
             background: Rectangle {
                 color: hideItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
                 radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
             }
             onTriggered: sidebar.contextActionRequested(
                              deviceContextMenu.deviceId, deviceContextMenu.deviceName, "hide")
@@ -315,7 +315,6 @@ Rectangle {
             background: Rectangle {
                 color: renameItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
                 radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
             }
             // 备注编辑入口：上报意图，由装配层打开备注弹窗
             onTriggered: sidebar.contextActionRequested(
@@ -336,7 +335,6 @@ Rectangle {
             background: Rectangle {
                 color: deleteItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
                 radius: Style.Radius.sm
-                Behavior on color { ColorAnimation { duration: Style.Motion.base } }
             }
             onTriggered: sidebar.contextActionRequested(
                              deviceContextMenu.deviceId, deviceContextMenu.deviceName, "delete")
@@ -463,7 +461,6 @@ Rectangle {
                 background: Rectangle {
                     color: settingsItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
                     radius: Style.Radius.sm
-                    Behavior on color { ColorAnimation { duration: Style.Motion.base } }
                 }
                 onClicked: {
                     menuPopup.close()
