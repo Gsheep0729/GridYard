@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.h
-* @version 7.19.0
+* @version 7.20.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
@@ -10,6 +10,9 @@
 * 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 *
 * Change Log:
+ * [v7.20.0] GY   2026-10-05
+ * * 新增开发者模式启动入口开关（developer/launchEntryEnabled，仅控制入口可见性）
+ *   与下一实例号分配纯函数 nextLaunchInstance
  * [v7.19.0] GY   2026-10-05
  * * 新增开发者模式实例号只读属性
  * [v7.18.0] GY   2026-10-05
@@ -113,6 +116,7 @@ class ConfigManager : public QObject {
     Q_PROPERTY(RelayMode relayMode       READ relayMode       WRITE setRelayMode       NOTIFY relayModeChanged)
     Q_PROPERTY(CloseWindowAction closeWindowAction READ closeWindowAction WRITE setCloseWindowAction NOTIFY closeWindowActionChanged)
     Q_PROPERTY(int instanceNumber READ instanceNumber CONSTANT)
+    Q_PROPERTY(bool developerLaunchEntryEnabled READ developerLaunchEntryEnabled WRITE setDeveloperLaunchEntryEnabled NOTIFY developerLaunchEntryEnabledChanged)
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
@@ -121,6 +125,11 @@ public:
     // 记住完全退出但仍有活动传输时改为弹警示确认（退出防护不随记忆豁免），
     // 返回 ask / hide / exit / confirm 供表现层分发，纯函数便于单测
     static QString resolveWindowCloseAction(CloseWindowAction action, int activeSessionCount);
+
+    // "启动新实例"的实例号分配：当前实例号 + 1 确定性递增（实例目录与端口由
+    // 实例号推导，不做运行中实例探测，避免端口试探的竞态与权限差异），
+    // 越界输入先夹紧到合法范围；到达上限 9 返回 -1，供表现层给出行内提示，纯函数便于单测
+    static int nextLaunchInstance(int currentInstance);
 
     // 析构函数
     virtual ~ConfigManager() override;
@@ -153,6 +162,8 @@ public:
     CloseWindowAction closeWindowAction() const;
     // 获取开发者模式实例号（0 = 正常模式，启动时解析后不再变化）
     int instanceNumber() const;
+    // 获取开发者模式启动入口开关（仅控制设置页"启动新实例"入口可见性）
+    bool developerLaunchEntryEnabled() const;
 
     // 设置设备名称
     void setDeviceName(const QString &name);
@@ -176,6 +187,8 @@ public:
     void setRelayMode(RelayMode mode);
     // 设置关窗行为配置
     void setCloseWindowAction(CloseWindowAction action);
+    // 设置开发者模式启动入口开关
+    void setDeveloperLaunchEntryEnabled(bool enabled);
 
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
@@ -201,6 +214,7 @@ signals:
     void rendezvousTokenChanged();
     void relayModeChanged();
     void closeWindowActionChanged();
+    void developerLaunchEntryEnabledChanged();
 
 private:
     explicit ConfigManager(QObject *parent = nullptr);
@@ -233,4 +247,5 @@ private:
     RelayMode _relayMode = RelayMode::AskBeforeRelay; // Relay 策略
     CloseWindowAction _closeWindowAction = CloseWindowAction::Ask; // 关窗行为，默认每次询问
     int _instanceNumber = 0;          // 开发者模式实例号，0 表示正常模式（仅影响本机资源隔离）
+    bool _developerLaunchEntryEnabled = false; // 设置页"启动新实例"入口开关，仅控制入口可见性
 };

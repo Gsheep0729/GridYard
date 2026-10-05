@@ -1,6 +1,6 @@
 /**
 * @file    app_controller.h
-* @version 7.19.0
+* @version 7.20.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
@@ -10,6 +10,8 @@
 * ShutdownController 承担。
 *
 * Change Log:
+ * [v7.20.0] GY   2026-10-05
+ * * 新增 launchDeveloperInstance 入口：从设置页拉起下一开发者实例
  * [v7.19.0] GY   2026-10-05
  * * 新增开发者模式窗口标题后缀属性
  * [v7.18.0] GY   2026-10-05
@@ -177,6 +179,9 @@ public:
     Q_INVOKABLE QString resolveWindowCloseAction() const;
     // 记录关窗行为：写入"记住我的选择"上报的动作，action 取 ask / hide / exit
     Q_INVOKABLE void setCloseWindowAction(const QString &action);
+    // 设置页"启动新实例"入口：startDetached 异步拉起下一开发者实例，
+    // 返回空串表示已发起启动，非空为需要行内展示的失败原因
+    Q_INVOKABLE QString launchDeveloperInstance();
     // 验证 QML 调用链路
     Q_INVOKABLE void test();
 

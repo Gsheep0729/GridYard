@@ -1,6 +1,6 @@
 /**
 * @file    config_manager.cpp
-* @version 7.19.0
+* @version 7.20.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用配置管理器实现
@@ -10,6 +10,9 @@
 * GRIDYARD_NAME、GRIDYARD_PORT、GRIDYARD_INSTANCE），便于单机多实例测试。
 *
 * Change Log:
+ * [v7.20.0] GY   2026-10-05
+ * * 读写开发者模式启动入口开关（developer/launchEntryEnabled，默认关闭），
+ *   实现 nextLaunchInstance 实例号分配纯函数
  * [v7.19.0] GY   2026-10-05
  * * 解析开发者模式实例号，实例默认 TCP 端口按 +10N 确定性偏移
  * [v7.18.0] GY   2026-10-05
@@ -165,6 +168,10 @@ ConfigManager::ConfigManager(QObject *parent)
     // 关窗行为：默认每次关窗弹确认窗，勾选"记住我的选择"后写入选中动作
     int closeActionInt = settings.value("window/closeWindowAction", static_cast<int>(CloseWindowAction::Ask)).toInt();
     _closeWindowAction = static_cast<CloseWindowAction>(closeActionInt);
+
+    // 开发者模式启动入口开关：默认关闭，仅控制设置页"启动新实例"入口可见性，
+    // 不改变当前实例的任何运行属性
+    _developerLaunchEntryEnabled = settings.value("developer/launchEntryEnabled", false).toBool();
 
     // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
     ensureDeviceId();
@@ -442,6 +449,12 @@ int ConfigManager::instanceNumber() const
     return _instanceNumber;
 }
 
+// 获取开发者模式启动入口开关
+bool ConfigManager::developerLaunchEntryEnabled() const
+{
+    return _developerLaunchEntryEnabled;
+}
+
 // 设置协调服务器启用状态并持久化
 void ConfigManager::setRendezvousEnabled(bool enabled)
 {
@@ -497,6 +510,15 @@ void ConfigManager::setCloseWindowAction(CloseWindowAction action)
     emit closeWindowActionChanged();
 }
 
+// 设置开发者模式启动入口开关并持久化
+void ConfigManager::setDeveloperLaunchEntryEnabled(bool enabled)
+{
+    if (_developerLaunchEntryEnabled == enabled) return;
+    _developerLaunchEntryEnabled = enabled;
+    openSettings().setValue("developer/launchEntryEnabled", enabled);
+    emit developerLaunchEntryEnabledChanged();
+}
+
 // 关窗动作决策：ask 弹确认窗，hide 直接隐藏，exit 直接退出；
 // 记住退出后仍有活动传输时返回 confirm，由表现层弹警示确认窗拦截
 QString ConfigManager::resolveWindowCloseAction(CloseWindowAction action, int activeSessionCount)
@@ -511,4 +533,17 @@ QString ConfigManager::resolveWindowCloseAction(CloseWindowAction action, int ac
     default:
         return QStringLiteral("ask");
     }
+}
+
+// "启动新实例"的实例号分配：当前实例号 + 1 确定性递增；
+// 实例的目录后缀与端口偏移都由实例号唯一推导，选递增而非"最小空闲探测"，
+// 是为了不在启动路径里做端口试探（有竞态且依赖本机绑定权限），同号重复拉起
+// 由既有 bind 回退路径兜底；到达上限 9 返回 -1，供表现层给出行内提示
+int ConfigManager::nextLaunchInstance(int currentInstance)
+{
+    const int current = qBound(0, currentInstance, gy::protocol::kMaxInstanceNumber);
+    if (current >= gy::protocol::kMaxInstanceNumber) {
+        return -1;
+    }
+    return current + 1;
 }

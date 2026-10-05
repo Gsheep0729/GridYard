@@ -1,15 +1,18 @@
 /**
- * @file    SettingsDialog.qml
- * @version 7.19.0
- * @date 2026-10-05
- * @author  GridYard Team
- * @brief   设置对话框
- *
- * 编辑设备名、选择接收路径、修改 TCP 端口、配置协调服务器与关窗行为。
- * 保存时调用 ConfigManager 的 setter 方法。
- *
- * Change Log:
- * [v7.19.0] GY   2026-10-05
+* @file    SettingsDialog.qml
+* @version 7.20.0
+* @date 2026-10-05
+* @author  GridYard Team
+* @brief   设置对话框
+*
+* 编辑设备名、选择接收路径、修改 TCP 端口、配置协调服务器与关窗行为。
+* 保存时调用 ConfigManager 的 setter 方法。
+*
+* Change Log:
+* [v7.20.0] GY   2026-10-05
+* * 开发者模式说明卡改为开关式：开关即时持久化并控制"启动新实例"入口，
+*   拉起失败与实例数到达上限时给行内提示
+* [v7.19.0] GY   2026-10-05
  * * 新增开发者模式说明卡（多实例用法与文档指向）
  * [v7.18.0] GY   2026-10-05
  * * 新增"关闭窗口"设置卡：三选一配置关窗默认动作，作为记住选择后的恢复入口
@@ -648,26 +651,67 @@ Dialog {
                 }
             }
 
-            // 开发者模式说明卡片：本机多实例联调用法与文档指向（纯说明，无配置项）
+            // 开发者模式卡片：开关只控制"启动新实例"入口的可见性并即时持久化
+            // （不走底部"保存更改"批处理，避免按钮可见但提示"修改尚未应用"的割裂）；
+            // 实例隔离是启动期属性，开关不会把当前实例变成开发者实例
             SettingsCard {
-                ColumnLayout {
+                id: developerCard
+
+                property string _launchHint: ""  // 行内提示：实例号到达上限或拉起失败的原因，空串隐藏
+
+                RowLayout {
                     Layout.fillWidth: true
-                    spacing: Style.Space.xs
+                    spacing: Style.Space.lg
 
-                    Label {
-                        text: qsTr("开发者模式")
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: Style.Color.textMain
-                    }
-
-                    Label {
-                        text: qsTr("本机多实例联调：以 --instance=N（N 为 1~9）启动开发者实例，数据、配置、日志与数据库目录独立（GridYard-devN），UDP 发现端口与 TCP 端口各偏移 +10N，窗口标题和托盘提示带 #N 标识。不带该参数的正常启动行为完全不变，详细用法见项目 README 的《开发者模式多实例》。")
-                        color: Style.Color.textMuted
-                        font.pixelSize: 13
-                        wrapMode: Text.Wrap
+                    ColumnLayout {
                         Layout.fillWidth: true
+                        spacing: Style.Space.xs
+
+                        Label {
+                            text: qsTr("开发者模式")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+
+                        Label {
+                            text: qsTr("本机多实例联调：开启后可在此直接拉起一个隔离的开发者实例，数据、配置、日志目录独立，端口偏移，窗口标题带 #N 标识。开关只控制此入口，不会把当前实例切换为开发者实例；命令行 --instance=N 是等价快捷入口，详细说明见项目 README 的《本机多实例测试（开发者模式）》。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
                     }
+
+                    Switch {
+                        checked: ConfigManager.developerLaunchEntryEnabled
+                        onToggled: {
+                            developerCard._launchHint = ""
+                            ConfigManager.developerLaunchEntryEnabled = checked
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Style.Color.borderSoft
+                    visible: ConfigManager.developerLaunchEntryEnabled
+                }
+
+                Button {
+                    visible: ConfigManager.developerLaunchEntryEnabled
+                    text: qsTr("启动新实例")
+                    onClicked: developerCard._launchHint = AppController.launchDeveloperInstance()
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: developerCard._launchHint.length > 0
+                    text: developerCard._launchHint
+                    color: Style.Color.warning
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
                 }
             }
 

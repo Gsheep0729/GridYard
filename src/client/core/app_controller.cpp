@@ -1,11 +1,14 @@
 /**
 * @file    app_controller.cpp
-* @version 7.19.0
+* @version 7.20.0
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 *
 * Change Log:
+ * [v7.20.0] GY   2026-10-05
+ * * 新增 launchDeveloperInstance：设置页经 startDetached 拉起下一开发者实例，
+ *   子实例走与命令行相同的 --instance 解析链路
  * [v7.19.0] GY   2026-10-05
  * * 实现 instanceTitleSuffix：开发者实例标题带 #N 标识
  * [v7.18.0] GY   2026-10-05
@@ -106,6 +109,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QPointer>
+#include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
 
@@ -312,6 +316,40 @@ void AppController::setCloseWindowAction(const QString &action)
     } else if (action == QStringLiteral("exit")) {
         _config->setCloseWindowAction(CloseWindowAction::Exit);
     }
+}
+
+// 设置页"启动新实例"入口：经 startDetached 异步拉起下一开发者实例（不阻塞 UI），
+// 返回空串表示已发起启动，非空为需要行内展示的失败原因；
+// 实例隔离（目录后缀/端口偏移/标题标识）是启动期属性，子实例走与命令行
+// 完全相同的 --instance 解析链路，开关本身不改变当前实例的任何运行形态
+QString AppController::launchDeveloperInstance()
+{
+    const int target = ConfigManager::nextLaunchInstance(_config->instanceNumber());
+    if (target < 0) {
+        return QStringLiteral("已达本机开发者实例上限（9 个），无法继续新增实例");
+    }
+
+    // 子实例的实例号只来自自身命令行，须剥离父进程残留的 GRIDYARD_* 环境变量，
+    // 避免本实例的端口/配置/设备名覆盖子实例的启动语义
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove(QStringLiteral("GRIDYARD_PORT"));
+    env.remove(QStringLiteral("GRIDYARD_CONFIG"));
+    env.remove(QStringLiteral("GRIDYARD_NAME"));
+    env.remove(QStringLiteral("GRIDYARD_INSTANCE"));
+
+    QProcess launcher;
+    launcher.setProgram(QCoreApplication::applicationFilePath());
+    launcher.setArguments({QStringLiteral("--instance=%1").arg(target)});
+    launcher.setProcessEnvironment(env);
+
+    // startDetached 成功后子进程独立于父进程运行，栈上对象即可安全析构
+    if (!launcher.startDetached()) {
+        qWarning() << "AppController: 拉起开发者实例" << target << "失败";
+        return QStringLiteral("启动新实例失败，请确认程序文件存在且可执行");
+    }
+
+    qDebug() << "AppController: 已拉起开发者实例" << target;
+    return QString();
 }
 
 // 验证 QML 调用链路

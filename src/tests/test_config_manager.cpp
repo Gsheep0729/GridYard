@@ -1,6 +1,6 @@
 /**
 * @file    test_config_manager.cpp
-* @version 7.19.0
+* @version 7.20.0
 * @date 2026-10-05
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
@@ -8,6 +8,8 @@
 * 测试用例：配置读写 / 默认值 / 信号发射 / 持久化
 *
 * Change Log:
+ * [v7.20.0] GY   2026-10-05
+ * * 新增开发者模式启动入口开关持久化用例与下一实例号分配纯函数用例
  * [v7.19.0] GY   2026-10-05
  * * 新增实例端口偏移、实例号解析、目录后缀推导与实例默认端口用例
  * [v7.18.0] GY   2026-10-05
@@ -88,6 +90,8 @@ private slots:
     void testInstanceDirectoryName();
     void testApplyInstanceSuffix();
     void testInstanceTcpPortDefault();
+    void testDeveloperLaunchEntry();
+    void testNextLaunchInstance();
 
 private:
     ConfigManager *_config = nullptr;
@@ -430,6 +434,61 @@ void TestConfigManager::testInstanceTcpPortDefault()
     } else {
         qunsetenv("GRIDYARD_CONFIG");
     }
+}
+
+void TestConfigManager::testDeveloperLaunchEntry()
+{
+    // 默认关闭：干净配置下开关不启用
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/fresh_dev_entry.ini").toUtf8());
+    {
+        ConfigManager fresh;
+        QVERIFY(!fresh.developerLaunchEntryEnabled());
+    }
+
+    // 恢复主配置路径，后续单例的读写都落在 test_config.ini
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+
+    QSignalSpy spy(_config, &ConfigManager::developerLaunchEntryEnabledChanged);
+
+    // 开启开关并持久化到配置文件
+    _config->setDeveloperLaunchEntryEnabled(true);
+    QVERIFY(_config->developerLaunchEntryEnabled());
+    QCOMPARE(spy.count(), 1);
+
+    // 重复写入相同值不应触发信号
+    _config->setDeveloperLaunchEntryEnabled(true);
+    QCOMPARE(spy.count(), 1);
+
+    // setter 走 openSettings() 即时落盘，配置文件应已写入开启状态
+    QSettings settings(_tempDir->path() + "/test_config.ini", QSettings::IniFormat);
+    QCOMPARE(settings.value("developer/launchEntryEnabled").toBool(), true);
+
+    // 重启后保持：重新构造 ConfigManager 从配置文件读回开启状态
+    {
+        ConfigManager reopened;
+        QVERIFY(reopened.developerLaunchEntryEnabled());
+    }
+
+    // 关闭开关恢复默认
+    _config->setDeveloperLaunchEntryEnabled(false);
+    QVERIFY(!_config->developerLaunchEntryEnabled());
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(settings.value("developer/launchEntryEnabled").toBool(), false);
+}
+
+void TestConfigManager::testNextLaunchInstance()
+{
+    // 正常实例（0）拉起实例 1，开发者实例 N 拉起 N+1
+    QCOMPARE(ConfigManager::nextLaunchInstance(0), 1);
+    QCOMPARE(ConfigManager::nextLaunchInstance(3), 4);
+    QCOMPARE(ConfigManager::nextLaunchInstance(8), 9);
+
+    // 到达上限 9：返回 -1 供表现层给出行内提示，不再递增
+    QCOMPARE(ConfigManager::nextLaunchInstance(9), -1);
+
+    // 越界输入先夹紧到合法范围再分配
+    QCOMPARE(ConfigManager::nextLaunchInstance(15), -1);
+    QCOMPARE(ConfigManager::nextLaunchInstance(-2), 1);
 }
 
 QTEST_MAIN(TestConfigManager)
