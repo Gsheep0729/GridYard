@@ -1,13 +1,14 @@
 /**
  * @file    DeleteDeviceDialog.qml
- * @version 7.19.0
+ * @version 7.20.1
  * @date 2026-10-05
  * @author  GridYard Team
- * @brief   删除该聊天确认弹窗
+ * @brief   删除该设备确认弹窗
  *
- * 设备卡右键菜单"删除该聊天"的确认入口：文案明示将删除该设备的聊天
- * 记录与传输历史、不影响已接收文件、对方再次出现按新设备处理，确认后
- * 经信号回传设备 ID，由 Main.qml 先取消进行中会话再调用删除接口。
+ * 设备卡右键菜单"删除该设备"的确认入口：文案明示将删除该设备的聊天
+ * 记录与传输历史、不影响已接收文件，并说明对方再次上线会以全新设备
+ * 身份重新出现，确认后经信号回传设备 ID，由 Main.qml 先取消进行中
+ * 会话再调用删除接口。
  */
 
 import QtQuick
@@ -18,7 +19,7 @@ import "../utils/Style.js" as Style
 Dialog {
     id: deleteDeviceDialog
 
-    title: qsTr("删除该聊天")
+    title: qsTr("删除该设备")
     modal: true
     anchors.centerIn: Overlay.overlay
     width: Math.min(420, parent ? parent.width - 48 : 420)
@@ -43,10 +44,18 @@ Dialog {
         anchors.fill: parent
 
         Label {
-            text: qsTr("将删除与「%1」的聊天记录和传输历史，不影响已接收的文件，且对方再次出现时按新设备处理。")
+            text: qsTr("将删除与「%1」的聊天记录和传输历史，不影响已接收的文件。")
                   .arg(deleteDeviceDialog.deviceName)
             wrapMode: Text.Wrap
             Layout.fillWidth: true
+        }
+
+        // 扫描语义说明：网络里的设备删不掉，删除只清除本地记录
+        Label {
+            text: qsTr("对方再次上线时，会以全新设备身份重新出现。")
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+            color: Style.Color.textSecondary
         }
     }
 

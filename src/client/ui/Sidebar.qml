@@ -1,6 +1,6 @@
 /**
  * @file    Sidebar.qml
- * @version 7.19.1
+ * @version 7.20.1
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   左侧设备栏
@@ -24,8 +24,8 @@ Rectangle {
     // 设备选择与拖拽上抛（拖拽先选中再统一裁决）
     signal deviceSelected(string deviceId)
     signal deviceFilesDropped(string deviceId, var urls)
-    // 设备卡右键打开菜单的意图（携带打开时捕获的设备上下文），由本组件的单例菜单承接
-    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned)
+    // 设备卡右键打开菜单的意图（携带打开时捕获的设备上下文，含在线状态），由本组件的单例菜单承接
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline)
     // 菜单里的动作意图上抛（pin/unpin/hide/rename/delete），由 Main 接确认弹窗与控制器
     signal contextActionRequested(string deviceId, string deviceName, string action)
     // 菜单里的设置入口
@@ -165,8 +165,8 @@ Rectangle {
             sidebar.deviceSelected(deviceId)
         onFilesDropped: (deviceId, urls) =>
             sidebar.deviceFilesDropped(deviceId, urls)
-        onContextMenuRequested: (deviceId, deviceName, isPinned) =>
-            deviceContextMenu.openFor(deviceId, deviceName, isPinned)
+        onContextMenuRequested: (deviceId, deviceName, isPinned, isOnline) =>
+            deviceContextMenu.openFor(deviceId, deviceName, isPinned, isOnline)
     }
 
     // 设备卡右键菜单：单例挂在窗口层，列表心跳刷新销毁重建 delegate 不影响已打开的菜单。
@@ -179,11 +179,13 @@ Rectangle {
         property string deviceId: ""
         property string deviceName: ""
         property bool isPinned: false
+        property bool isOnline: false
 
-        function openFor(id, name, pinned) {
+        function openFor(id, name, pinned, online) {
             deviceContextMenu.deviceId = id
             deviceContextMenu.deviceName = name
             deviceContextMenu.isPinned = pinned
+            deviceContextMenu.isOnline = online
             deviceContextMenu.popup()  // 光标处打开，即右键所在卡片位置
         }
 
@@ -276,23 +278,40 @@ Rectangle {
                              deviceContextMenu.deviceId, deviceContextMenu.deviceName, "rename")
         }
 
+        // 删除只对"本地记录"成立：在线设备删不掉（心跳会立刻按新设备带回来），
+        // 打开菜单时捕获的在线状态决定该入口是否可用。条目保持可悬停而非置 enabled:false，
+        // 因为禁用控件不产生 hover、ToolTip 永不显示（UI-1 实测结论），禁用观感由
+        // 灰字、无悬停高亮与触发无动作共同表达
         MenuItem {
             id: deleteItem
-            text: qsTr("删除该聊天")
+
+            readonly property bool deleteBlocked: deviceContextMenu.isOnline
+
+            text: qsTr("删除该设备")
             contentItem: Label {
                 text: deleteItem.text
                 font.pixelSize: 13
-                // 危险操作沿用 Style 语义色 error，与确认弹窗的危险按钮呼应
-                color: deleteItem.hovered ? Style.Color.errorHover : Style.Color.error
+                // 危险操作沿用 Style 语义色 error，与确认弹窗的危险按钮呼应；不可用时弱化为灰
+                color: deleteItem.deleteBlocked ? Style.Color.textWeak
+                     : (deleteItem.hovered ? Style.Color.errorHover : Style.Color.error)
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: Style.Space.sm
             }
             background: Rectangle {
-                color: deleteItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                color: !deleteItem.deleteBlocked && deleteItem.hovered
+                       ? Style.Color.surfaceSoft : Style.Color.transparent
                 radius: Style.Radius.sm
             }
-            onTriggered: sidebar.contextActionRequested(
-                             deviceContextMenu.deviceId, deviceContextMenu.deviceName, "delete")
+            ToolTip.visible: deleteItem.deleteBlocked && deleteItem.hovered
+            ToolTip.delay: 500
+            ToolTip.text: qsTr("设备在线，无法删除；可使用「不显示该聊天」忽略其后续出现")
+            onTriggered: {
+                if (deleteItem.deleteBlocked) {
+                    return  // 在线设备删除入口不成立，悬停提示已给出替代动作
+                }
+                sidebar.contextActionRequested(
+                            deviceContextMenu.deviceId, deviceContextMenu.deviceName, "delete")
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.19.0
+ * @version 7.20.1
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
@@ -46,10 +46,11 @@ ItemDelegate {
 
     signal cardClicked(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)
-    // 右键手势只上报"在某设备处请求上下文菜单"的意图并携带打开时的设备上下文；
-    // 菜单实例挂在窗口层单例打开，列表刷新销毁重建 delegate 不影响已打开的菜单，
-    // 菜单项触发时按捕获上下文上报 pin/unpin/hide/rename/delete 意图给装配层
-    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned)
+    // 右键手势只上报"在某设备处请求上下文菜单"的意图并携带打开时的设备上下文
+    // （含在线状态，供装配层决定删除入口是否可用）；菜单实例挂在窗口层单例打开，
+    // 列表刷新销毁重建 delegate 不影响已打开的菜单，菜单项触发时按捕获上下文
+    // 上报 pin/unpin/hide/rename/delete 意图给装配层
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline)
 
     height: kCardHeight
     background: Rectangle {
@@ -97,7 +98,8 @@ ItemDelegate {
         acceptedButtons: Qt.RightButton
         onTapped: deviceCard.contextMenuRequested(deviceCard.deviceId,
                                                   deviceCard.deviceName,
-                                                  deviceCard.isPinned)
+                                                  deviceCard.isPinned,
+                                                  deviceCard.isOnline)
     }
 
     // 离线设备用颜色弱化区分：设备名与头像降为次级色，

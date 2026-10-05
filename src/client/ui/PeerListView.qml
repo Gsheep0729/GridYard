@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.19.0
+ * @version 7.20.1
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -72,8 +72,8 @@ Rectangle {
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)  // 拖拽文件到设备卡片时触发，由 Main 统一裁决
-    // 右键打开菜单的意图上抛（携带打开时捕获的设备上下文），菜单实例由侧栏窗口层单例持有
-    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned)
+    // 右键打开菜单的意图上抛（携带打开时捕获的设备上下文，含在线状态），菜单实例由侧栏窗口层单例持有
+    signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline)
 
     color: Style.Color.surfaceMid
 
@@ -234,8 +234,8 @@ Rectangle {
                 onFilesDropped: function(deviceId, urls) {
                     peerListView.filesDropped(deviceId, urls)
                 }
-                onContextMenuRequested: function(deviceId, deviceName, isPinned) {
-                    peerListView.contextMenuRequested(deviceId, deviceName, isPinned)
+                onContextMenuRequested: function(deviceId, deviceName, isPinned, isOnline) {
+                    peerListView.contextMenuRequested(deviceId, deviceName, isPinned, isOnline)
                 }
             }
         }
