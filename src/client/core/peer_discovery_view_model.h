@@ -1,6 +1,6 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.19.0
+* @version 7.20.2
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
@@ -31,6 +31,8 @@ private:
     Q_PROPERTY(QVariantList peers READ peers NOTIFY peersChanged)
     // 隐藏态设备列表（设备名/IP/最后活跃），供设置页"已隐藏设备"区块恢复显示
     Q_PROPERTY(QVariantList hiddenPeers READ hiddenPeers NOTIFY peersChanged)
+    // "最近见过"段在列表中的可见条数上限，超出部分经搜索深检索数据库目录
+    Q_PROPERTY(int recentVisibleLimit READ recentVisibleLimit NOTIFY peersChanged)
     // 关键字检索的数据库历史命中条目，随 searchPeers 异步发布
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchResultsChanged)
     // 数据库检索是否进行中（防抖提交后到回调返回之间），界面据此抑制空态闪现
@@ -44,8 +46,10 @@ public:
     PeerDiscoveryViewModel(const PeerDiscoveryViewModel &) = delete;
     PeerDiscoveryViewModel &operator=(const PeerDiscoveryViewModel &) = delete;
 
-    // 获取 QML 可绑定的在线和历史设备合并列表
+    // 获取 QML 可绑定的在线和历史设备合并列表（分段排序，最近见过段截尾）
     QVariantList peers() const;
+    // 获取"最近见过"段的可见条数上限
+    int recentVisibleLimit() const;
     // 获取隐藏态设备列表，设置页"已隐藏设备"区块据此展示恢复入口
     QVariantList hiddenPeers() const;
     // 获取关键字检索的数据库历史命中条目
@@ -90,6 +94,9 @@ signals:
 private:
     // 设置检索进行中状态并通知 QML
     void setSearchBusy(bool value);
+    // 合并在线与历史条目、过滤隐藏、标注分段并排序；不做最近见过截尾，
+    // 供 deviceById 等需要全量目录的查询复用
+    QVariantList buildMergedPeers() const;
     static QVariantMap peerRecordToVariant(const PeerRecord &record);
     // 将在线 PeerInfo 转成与历史条目同构的展示字段映射，统一过滤与排序规则
     QVariantMap peerInfoToVariant(const PeerInfo &info) const;

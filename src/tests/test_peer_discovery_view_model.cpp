@@ -1,6 +1,6 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.19.0
+* @version 7.20.2
 * @date 2026-10-05
 * @author  GY
 * @brief   设备发现视图模型测试
@@ -45,6 +45,9 @@ private slots:
     void testSearchPeersMatchesNameAliasAndIp();
     void testSearchPeersLimitAndOrder();
     void testSearchPeersEmptyAndNoMatch();
+    void testSegmentAssignmentAndInSegmentOrder();
+    void testRecentVisibleLimitTruncation();
+    void testHiddenFilteredAcrossSegments();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -604,6 +607,211 @@ void TestPeerDiscoveryViewModel::testSearchPeersEmptyAndNoMatch()
     viewModel.searchPeers(QString());
     QVERIFY(viewModel.searchResults().isEmpty());
     QVERIFY(!viewModel.searchBusy());
+}
+
+// 分段归属与段内排序：置顶段（无论在线离线）最前，在线段按来源优先级加活跃，
+// 最近见过段殿后且只按最后见过倒序
+void TestPeerDiscoveryViewModel::testSegmentAssignmentAndInSegmentOrder()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "segments.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    // 两台离线历史设备：rec-old 较早且被置顶，rec-new 较新不置顶
+    const QDateTime base = QDateTime::fromString("2026-10-05T08:00:00.000Z", Qt::ISODateWithMs);
+    const QStringList offlineIds = {QStringLiteral("seg-rec-old"), QStringLiteral("seg-rec-new")};
+    for (int i = 0; i < offlineIds.size(); ++i) {
+        PeerRecord record;
+        record.deviceId = offlineIds.at(i);
+        record.deviceName = QStringLiteral("分段设备%1").arg(i + 1);
+        record.lastIpAddress = QStringLiteral("10.78.0.%1").arg(i + 1);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 600);
+        record.lastSeenAt = base.addSecs(i * 600);
+        QString error;
+        QVERIFY(repository.upsertPeer(record, &error));
+    }
+
+    auto broker = openBroker("segments.sqlite");
+    QVERIFY(broker);
+    bool pinnedSet = false;
+    broker->setDevicePinned(this, QStringLiteral("seg-rec-old"), true,
+                            [&pinnedSet](bool) { pinnedSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(pinnedSet, true, 3000);
+
+    // 两台在线设备：broadcast 来源优先于 manual，与活跃时间先后无关
+    PeerInfo broadcastPeer = makePeerInfo(QStringLiteral("seg-broadcast"), QStringLiteral("分段广播"),
+                                          QStringLiteral("10.78.1.1"));
+    broadcastPeer.source = QStringLiteral("broadcast");
+    broadcastPeer.lastSeen = base.addSecs(60);
+    _discovery->addManualPeer(broadcastPeer);
+    PeerInfo manualPeer = makePeerInfo(QStringLiteral("seg-manual"), QStringLiteral("分段手动"),
+                                       QStringLiteral("10.78.1.2"));
+    manualPeer.lastSeen = base.addSecs(120);
+    _discovery->addManualPeer(manualPeer);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("seg-rec-new")).isEmpty(), 3000);
+
+    // 段间顺序：置顶 < 在线 < 最近见过；段内：在线段 broadcast 先于 manual
+    // （来源优先级压过活跃时间），最近见过段 rec-new 比 rec-old 新但 rec-old 已置顶
+    const QVariantList peers = viewModel.peers();
+    int oldIndex = -1, broadcastIndex = -1, manualIndex = -1, newIndex = -1;
+    QStringList segments;
+    for (int i = 0; i < peers.size(); ++i) {
+        const QVariantMap map = peers.at(i).toMap();
+        const QString deviceId = map.value("deviceId").toString();
+        if (deviceId == QStringLiteral("seg-rec-old")) oldIndex = i;
+        else if (deviceId == QStringLiteral("seg-broadcast")) broadcastIndex = i;
+        else if (deviceId == QStringLiteral("seg-manual")) manualIndex = i;
+        else if (deviceId == QStringLiteral("seg-rec-new")) newIndex = i;
+        segments.append(map.value("segment").toString());
+    }
+    QVERIFY2(oldIndex >= 0 && broadcastIndex >= 0 && manualIndex >= 0 && newIndex >= 0,
+             "四台测试设备都应在合并列表中");
+    QVERIFY2(oldIndex < broadcastIndex && broadcastIndex < manualIndex
+             && manualIndex < newIndex, "段间顺序应为置顶 < 在线 < 最近见过");
+    QCOMPARE(segments.at(oldIndex), QStringLiteral("pinned"));
+    QCOMPARE(segments.at(broadcastIndex), QStringLiteral("online"));
+    QCOMPARE(segments.at(manualIndex), QStringLiteral("online"));
+    QCOMPARE(segments.at(newIndex), QStringLiteral("recent"));
+}
+
+// 最近见过段限流：列表最多露出最近 10 台历史设备，被截尾的设备仍可经
+// 全量查询与数据库搜索命中
+void TestPeerDiscoveryViewModel::testRecentVisibleLimitTruncation()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "recent-limit.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    // 直写 12 台离线历史设备，活跃时间递增：越靠后越新
+    const QDateTime base = QDateTime::fromString("2026-10-04T08:00:00.000Z", Qt::ISODateWithMs);
+    for (int i = 1; i <= 12; ++i) {
+        PeerRecord record;
+        record.deviceId = QStringLiteral("limit-dev-%1").arg(i, 2, 10, QChar('0'));
+        record.deviceName = QStringLiteral("限流设备%1").arg(i, 2, 10, QChar('0'));
+        record.lastIpAddress = QStringLiteral("10.79.0.%1").arg(i);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 60);
+        record.lastSeenAt = base.addSecs(i * 60);
+        QString error;
+        QVERIFY(repository.upsertPeer(record, &error));
+    }
+
+    auto broker = openBroker("recent-limit.sqlite");
+    QVERIFY(broker);
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("limit-dev-12")).isEmpty(), 3000);
+
+    // 只露出最近 10 台：最新的 limit-dev-12 在段首，第 11、12 旧的被截尾
+    QStringList recentIds;
+    const QVariantList peers = viewModel.peers();
+    for (const QVariant &entry : peers) {
+        const QVariantMap map = entry.toMap();
+        if (map.value("segment").toString() == QStringLiteral("recent")) {
+            recentIds.append(map.value("deviceId").toString());
+        }
+    }
+    QCOMPARE(recentIds.size(), viewModel.recentVisibleLimit());
+    QCOMPARE(recentIds.first(), QStringLiteral("limit-dev-12"));
+    QCOMPARE(recentIds.last(), QStringLiteral("limit-dev-03"));
+    QVERIFY(!recentIds.contains(QStringLiteral("limit-dev-01")));
+    QVERIFY(!recentIds.contains(QStringLiteral("limit-dev-02")));
+
+    // 截尾设备经 deviceById 全量查询仍可达（已选会话设备不被截尾挤丢）
+    QVERIFY(!viewModel.deviceById(QStringLiteral("limit-dev-01")).isEmpty());
+
+    // 搜索走数据库目录，命中与数量不受列表截尾影响
+    viewModel.searchPeers(QStringLiteral("限流设备"));
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.searchBusy(), 3000);
+    QCOMPARE(viewModel.searchResults().size(), 12);
+    QStringList searchIds;
+    for (const QVariant &entry : viewModel.searchResults()) {
+        searchIds.append(entry.toMap().value("deviceId").toString());
+    }
+    QVERIFY(searchIds.contains(QStringLiteral("limit-dev-01")));
+    QVERIFY(searchIds.contains(QStringLiteral("limit-dev-02")));
+}
+
+// 隐藏设备在所有段中被一体过滤：在线段的隐藏条目与最近见过段的隐藏条目都不进列表
+void TestPeerDiscoveryViewModel::testHiddenFilteredAcrossSegments()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "hidden-segments.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-10-05T06:00:00.000Z", Qt::ISODateWithMs);
+    PeerRecord hiddenOffline;
+    hiddenOffline.deviceId = QStringLiteral("hs-hidden-off");
+    hiddenOffline.deviceName = QStringLiteral("隐藏离线");
+    hiddenOffline.lastIpAddress = QStringLiteral("10.80.0.1");
+    hiddenOffline.lastTcpPort = 35100;
+    hiddenOffline.firstSeenAt = base;
+    hiddenOffline.lastSeenAt = base;
+    QString dbError;
+    QVERIFY(repository.upsertPeer(hiddenOffline, &dbError));
+    PeerRecord visibleOffline = hiddenOffline;
+    visibleOffline.deviceId = QStringLiteral("hs-visible-off");
+    visibleOffline.deviceName = QStringLiteral("可见离线");
+    visibleOffline.lastIpAddress = QStringLiteral("10.80.0.2");
+    visibleOffline.firstSeenAt = base.addSecs(60);
+    visibleOffline.lastSeenAt = base.addSecs(60);
+    QVERIFY(repository.upsertPeer(visibleOffline, &dbError));
+
+    auto broker = openBroker("hidden-segments.sqlite");
+    QVERIFY(broker);
+
+    // 在线设备也要先落库才能落 hidden 标志（隐藏是对设备目录行的 UPDATE）
+    PeerInfo hiddenOnline = makePeerInfo(QStringLiteral("hs-hidden-on"), QStringLiteral("隐藏在线"),
+                                         QStringLiteral("10.80.1.1"));
+    PeerInfo visibleOnline = makePeerInfo(QStringLiteral("hs-visible-on"), QStringLiteral("可见在线"),
+                                          QStringLiteral("10.80.1.2"));
+    PeerRecord hiddenOnlineRecord;
+    hiddenOnlineRecord.deviceId = hiddenOnline.deviceId;
+    hiddenOnlineRecord.deviceName = hiddenOnline.deviceName;
+    hiddenOnlineRecord.lastIpAddress = hiddenOnline.ipAddress;
+    hiddenOnlineRecord.lastTcpPort = hiddenOnline.tcpPort;
+    hiddenOnlineRecord.firstSeenAt = base.addSecs(120);
+    hiddenOnlineRecord.lastSeenAt = base.addSecs(120);
+    QVERIFY(repository.upsertPeer(hiddenOnlineRecord, &dbError));
+    PeerRecord visibleOnlineRecord = hiddenOnlineRecord;
+    visibleOnlineRecord.deviceId = visibleOnline.deviceId;
+    visibleOnlineRecord.deviceName = visibleOnline.deviceName;
+    visibleOnlineRecord.lastIpAddress = visibleOnline.ipAddress;
+    visibleOnlineRecord.firstSeenAt = base.addSecs(180);
+    visibleOnlineRecord.lastSeenAt = base.addSecs(180);
+    QVERIFY(repository.upsertPeer(visibleOnlineRecord, &dbError));
+
+    bool offlineHidden = false;
+    broker->setDeviceHidden(this, QStringLiteral("hs-hidden-off"), true,
+                            [&offlineHidden](bool) { offlineHidden = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(offlineHidden, true, 3000);
+    bool onlineHidden = false;
+    broker->setDeviceHidden(this, QStringLiteral("hs-hidden-on"), true,
+                            [&onlineHidden](bool) { onlineHidden = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(onlineHidden, true, 3000);
+
+    _discovery->addManualPeer(hiddenOnline);
+    _discovery->addManualPeer(visibleOnline);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("hs-visible-off")).isEmpty(), 3000);
+
+    // 两台隐藏设备（在线与离线各一）都不在合并列表，可见设备分段正常
+    const QVariantList peers = viewModel.peers();
+    for (const QVariant &entry : peers) {
+        const QString deviceId = entry.toMap().value("deviceId").toString();
+        QVERIFY2(deviceId != QStringLiteral("hs-hidden-off")
+                 && deviceId != QStringLiteral("hs-hidden-on"), "隐藏设备不应进列表");
+    }
+    QCOMPARE(viewModel.deviceById(QStringLiteral("hs-visible-on"))
+             .value("segment").toString(), QStringLiteral("online"));
+    QCOMPARE(viewModel.deviceById(QStringLiteral("hs-visible-off"))
+             .value("segment").toString(), QStringLiteral("recent"));
 }
 
 // 工具方法：在临时目录打开一份本地历史库

@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.20.1
+ * @version 7.20.2
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -52,10 +52,32 @@ Rectangle {
         }
         return merged
     }
-    // 过滤后的设备数量，用于标题栏显示"N 台"
+    // 过滤后的设备数量，用于搜索态标题显示"N 台"
     readonly property int _filteredCount: _searchActive
                                            ? _searchMergedPeers.length
                                            : AppController.peerDiscoveryViewModel.peers.length
+    // 在线台数（含置顶段中的在线设备）：标题行常显，回答"现在能传谁"
+    readonly property int _onlineCount: {
+        const peers = AppController.peerDiscoveryViewModel.peers
+        let n = 0
+        for (let i = 0; i < peers.length; i++) {
+            if (peers[i].isOnline) {
+                n++
+            }
+        }
+        return n
+    }
+    // "最近见过"段在列表中的条数：段头计数与截尾提示都以它为准
+    readonly property int _recentCount: {
+        const peers = AppController.peerDiscoveryViewModel.peers
+        let n = 0
+        for (let i = 0; i < peers.length; i++) {
+            if (peers[i].segment === "recent") {
+                n++
+            }
+        }
+        return n
+    }
 
     // 模糊匹配：同时搜索设备名、本地备注和 IP 地址，任一包含关键词即匹配
     function matchesPeer(deviceName: string, ipAddress: string, alias: string): bool {
@@ -182,14 +204,66 @@ Rectangle {
         color: Style.Color.textSecondary
     }
 
-    // 设备数量标签：显示过滤后的设备数量
+    // 标题行计数：常规态一眼可见在线台数（绿色呼应在线圆点），搜索态维持命中数
     Label {
         anchors.right: parent.right
         anchors.rightMargin: Style.Space.lg
         anchors.verticalCenter: deviceTitle.verticalCenter
-        text: qsTr("%1 台").arg(peerListView._filteredCount)
+        text: peerListView._searchActive
+              ? qsTr("%1 台").arg(peerListView._filteredCount)
+              : qsTr("在线 %1 台").arg(peerListView._onlineCount)
         font.pixelSize: 12
-        color: Style.Color.textWeak
+        font.bold: !peerListView._searchActive
+        color: peerListView._searchActive ? Style.Color.textWeak : Style.Color.success
+    }
+
+    // 段头组件：置顶/在线设备/最近见过，样式与"设备"小标题一致；
+    // 最近见过段头自带条数。空段不产生条目，也就没有段头
+    Component {
+        id: sectionHeader
+
+        Item {
+            width: listView.width
+            height: 30
+
+            Label {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.Space.lg
+                anchors.verticalCenter: parent.verticalCenter
+                text: section === "pinned" ? qsTr("置顶")
+                      : (section === "online" ? qsTr("在线设备")
+                         : qsTr("最近见过 · %1").arg(peerListView._recentCount))
+                font.pixelSize: 13
+                font.bold: true
+                color: Style.Color.textSecondary
+            }
+        }
+    }
+
+    // 最近见过截尾提示：搜索态不分段，提示也随之隐藏
+    Component {
+        id: recentLimitHint
+
+        Item {
+            width: listView.width
+            height: 42
+
+            Label {
+                anchors.centerIn: parent
+                text: qsTr("仅显示最近 %1 台，试试搜索")
+                      .arg(AppController.peerDiscoveryViewModel.recentVisibleLimit)
+                color: Style.Color.textWeak
+                font.pixelSize: 12
+            }
+        }
+    }
+
+    // footer 用 Loader 承载并按条件启停，避免 footer 高度绑定卷入视图布局回写
+    Loader {
+        id: recentLimitFooter
+        active: !peerListView._searchActive && peerListView._recentCount >=
+                AppController.peerDiscoveryViewModel.recentVisibleLimit
+        sourceComponent: recentLimitHint
     }
 
     // 设备列表：无关键字绑定全量合并列表，搜索时绑定已加载命中与数据库命中的合并结果
@@ -203,6 +277,10 @@ Rectangle {
         model: peerListView._searchActive
                ? peerListView._searchMergedPeers
                : AppController.peerDiscoveryViewModel.peers
+        // 搜索路径不分段：命中条目平铺展示，行为与数量与改前一致
+        section.property: peerListView._searchActive ? "" : "segment"
+        section.delegate: sectionHeader
+        footer: recentLimitFooter
         delegate: Item {
             id: peerDelegate
 

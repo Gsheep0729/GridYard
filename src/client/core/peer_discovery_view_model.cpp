@@ -1,6 +1,6 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.19.0
+* @version 7.20.2
 * @date 2026-10-05
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
@@ -18,6 +18,7 @@
 namespace {
 constexpr int kRecentPeerLimit = 100;  // 首屏恢复最近设备数量上限
 constexpr int kSearchPeerLimit = 50;  // 设备搜索单次回投上限：控制体量并保持结果可扫视
+constexpr int kRecentVisibleLimit = 10;  // "最近见过"段可见条数上限，其余经搜索深检索
 
 // 将时间转换成 QML 侧可展示的 ISO 文本
 QString timeToString(const QDateTime &time)
@@ -37,25 +38,37 @@ int sourcePriority(const QVariant &peer)
     return 4;  // history 或空
 }
 
-// 置顶标记：合并列表的条目已统一为展示字段映射
-bool peerPinned(const QVariant &peer)
-{
-    return peer.toMap().value("pinned").toBool();
-}
-
 // 最近活跃时间（ISO 文本，同固定格式下字典序即时间序）
 QString peerLastSeenAt(const QVariant &peer)
 {
     return peer.toMap().value("lastSeenAt").toString();
 }
 
-// 比较函数用于排序：置顶档优先，其次来源优先级，最后最近活跃时间
+// 分段序：置顶(0) < 在线(1) < 最近见过(2)；扫描语义下在线是主内容，
+// 历史是记忆，置顶是用户钉住的常用目标（无论在线离线）
+int segmentRank(const QVariant &peer)
+{
+    const QVariantMap map = peer.toMap();
+    if (map.value("pinned").toBool()) {
+        return 0;
+    }
+    if (map.value("isOnline").toBool()) {
+        return 1;
+    }
+    return 2;
+}
+
+// 比较函数用于排序：段间按置顶/在线/最近见过；置顶与在线段内沿用
+// 来源优先级加最近活跃，最近见过段内只按最近活跃倒序
 bool peerSortLessThan(const QVariant &a, const QVariant &b)
 {
-    const bool pinnedA = peerPinned(a);
-    const bool pinnedB = peerPinned(b);
-    if (pinnedA != pinnedB) {
-        return pinnedA;  // 置顶设备排最前（微信置顶聊天语义）
+    const int rankA = segmentRank(a);
+    const int rankB = segmentRank(b);
+    if (rankA != rankB) {
+        return rankA < rankB;
+    }
+    if (rankA == 2) {
+        return peerLastSeenAt(a) > peerLastSeenAt(b);  // 历史条目按最后见过时间倒序
     }
     const int priorityA = sourcePriority(a);
     const int priorityB = sourcePriority(b);
@@ -92,8 +105,9 @@ PeerDiscoveryViewModel::PeerDiscoveryViewModel(DiscoveryService *discovery, QObj
             });
 }
 
-// 合并在线设备和历史设备，置顶优先后按来源优先级与最近活跃排序
-QVariantList PeerDiscoveryViewModel::peers() const
+// 合并在线设备和历史设备，过滤隐藏后标注分段并按段内规则排序；
+// 不做最近见过截尾，供需要全量目录的查询（deviceById）复用
+QVariantList PeerDiscoveryViewModel::buildMergedPeers() const
 {
     QVariantList mergedPeers;
     if (_discovery) {
@@ -126,7 +140,7 @@ QVariantList PeerDiscoveryViewModel::peers() const
         mergedPeers.append(map);
     }
 
-    // 隐藏态设备不进列表（微信"不显示该聊天"语义），在线与历史条目一体过滤
+    // 隐藏态设备不进列表（"不显示该设备"语义），在线与历史条目一体过滤
     QVariantList filteredPeers;
     filteredPeers.reserve(mergedPeers.size());
     for (const QVariant &peer : mergedPeers) {
@@ -135,11 +149,46 @@ QVariantList PeerDiscoveryViewModel::peers() const
         }
     }
 
-    // 排序：置顶 > 来源优先级(broadcast > directed > rendezvous > manual > history)
-    //       > 最近活跃时间；stable_sort 保证同序位条目保持装载顺序
+    // 分段标注：置顶段（无论在线离线）/ 在线段 / 最近见过段，列表据此渲染段头
+    for (QVariant &peer : filteredPeers) {
+        QVariantMap map = peer.toMap();
+        map.insert(QStringLiteral("segment"),
+                   map.value("pinned").toBool() ? QStringLiteral("pinned")
+                   : (map.value("isOnline").toBool() ? QStringLiteral("online")
+                                                     : QStringLiteral("recent")));
+        peer = map;
+    }
+
+    // 排序：段间置顶 < 在线 < 最近见过；置顶与在线段内来源优先级
+    //       (broadcast > directed > rendezvous > manual) 加最近活跃，
+    //       最近见过段内按最后见过时间倒序；stable_sort 保持同序位装载顺序
     std::stable_sort(filteredPeers.begin(), filteredPeers.end(), peerSortLessThan);
 
     return filteredPeers;
+}
+
+// 列表视图数据：在分段排序结果上对最近见过段截尾——扫描语义下在线是
+// 主内容，历史最多露出最近 kRecentVisibleLimit 台，其余经搜索深检索
+QVariantList PeerDiscoveryViewModel::peers() const
+{
+    const QVariantList merged = buildMergedPeers();
+    QVariantList visible;
+    visible.reserve(merged.size());
+    int recentSeen = 0;
+    for (const QVariant &peer : merged) {
+        if (peer.toMap().value("segment").toString() == QStringLiteral("recent")
+                && ++recentSeen > kRecentVisibleLimit) {
+            continue;
+        }
+        visible.append(peer);
+    }
+    return visible;
+}
+
+// 获取"最近见过"段的可见条数上限
+int PeerDiscoveryViewModel::recentVisibleLimit() const
+{
+    return kRecentVisibleLimit;
 }
 
 // 隐藏态设备列表：历史目录保序在前，在线表补充的隐藏条目追加在后，
@@ -196,10 +245,12 @@ void PeerDiscoveryViewModel::setSearchBusy(bool value)
     emit searchBusyChanged();
 }
 
-// 按设备 ID 查询展示信息，未命中返回空表
+// 按设备 ID 查询展示信息，未命中返回空表；走全量合并结果，
+// 被最近见过截尾挡在列表外的历史设备仍可解析（如已选中的会话设备）
 QVariantMap PeerDiscoveryViewModel::deviceById(const QString &deviceId) const
 {
-    for (const QVariant &peer : peers()) {
+    const QVariantList merged = buildMergedPeers();
+    for (const QVariant &peer : merged) {
         const QVariantMap map = peer.toMap();
         if (map.value("deviceId").toString() == deviceId) {
             return map;
