@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.21.0
+ * @version 7.21.1
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -259,12 +259,16 @@ Rectangle {
         }
     }
 
-    // footer 用 Loader 承载并按条件启停，避免 footer 高度绑定卷入视图布局回写
-    Loader {
+    // footer 用 Loader 承载并按条件启停，避免 footer 高度绑定卷入视图布局回写；
+    // footer 属性要的是 Component，Loader 包在 Component 内由视图实例化
+    Component {
         id: recentLimitFooter
-        active: !peerListView._searchActive && peerListView._recentCount >=
-                AppController.peerDiscoveryViewModel.recentVisibleLimit
-        sourceComponent: recentLimitHint
+
+        Loader {
+            active: !peerListView._searchActive && peerListView._recentCount >=
+                    AppController.peerDiscoveryViewModel.recentVisibleLimit
+            sourceComponent: recentLimitHint
+        }
     }
 
     // 设备列表：无关键字绑定全量合并列表，搜索时绑定已加载命中与数据库命中的合并结果
