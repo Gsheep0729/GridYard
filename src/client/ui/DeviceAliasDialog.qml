@@ -95,7 +95,9 @@ Dialog {
             font.pixelSize: 14
             color: Style.Color.textMain
             selectByMouse: true
-            placeholderText: qsTr("输入备注名，留空清除")
+            // 占位提示改由 background 内自绘 Label 实现：Material 原生 placeholder
+            // 不跟随垂直居中，在分数缩放下会沉到输入框下边框之外（v7.15.12 同款模式）
+            placeholderText: ""
 
             background: Rectangle {
                 radius: Style.Radius.sm
@@ -103,6 +105,18 @@ Dialog {
                 border.width: aliasInput.activeFocus ? 1.5 : 1
                 border.color: aliasInput.activeFocus
                               ? Style.Color.primary : Style.Color.border
+
+                // 占位提示：输入为空时显示，左边距对齐 Material 输入内边距（padding 属性
+                // 在新 Material 样式下为 0，实测文本起点在框内 16px），垂直居中
+                Label {
+                    visible: aliasInput.text.length === 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    text: qsTr("输入备注名，留空清除")
+                    color: Style.Color.textWeak
+                    font.pixelSize: 14
+                }
 
                 Behavior on border.color {
                     ColorAnimation { duration: Style.Motion.base }
