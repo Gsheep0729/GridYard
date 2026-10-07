@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
-* @version 7.20.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -178,6 +178,16 @@ int ConfigManager::retentionDays() const
 QString ConfigManager::localIp() const
 {
     return _localIp;
+}
+
+// 备份恢复身份：仅写入配置文件，运行期保持当前身份不变，重启后生效
+void ConfigManager::restoreDeviceIdentity(const QString &deviceId, const QString &deviceName)
+{
+    QSettings settings(openSettings());
+    settings.setValue("device/id", deviceId);
+    if (!deviceName.isEmpty()) {
+        settings.setValue("device/name", deviceName);
+    }
 }
 
 // 刷新本机 IP 地址，优先取默认路由接口，避免多网卡或 VPN 环境选错出口

@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.h
-* @version 7.22.0
+* @version 7.23.0
 * @date 2026-10-07
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -36,6 +36,8 @@ public:
     virtual bool markTransferActivity(const QString &deviceId, const QDateTime &time, QString *errorMessage) override;
     // 获取最近活跃设备列表
     virtual QList<PeerRecord> recentPeers(int limit, QString *errorMessage) const override;
+    // 加载设备目录全表（备份导出用）
+    QList<PeerRecord> allPeers(QString *errorMessage) const;
     // 按关键字模糊检索设备目录（设备名/备注/最近 IP 任一包含即命中，隐藏态不返回）
     virtual QList<PeerRecord> searchPeers(const QString &keyword, int limit,
                                           QString *errorMessage) const override;

@@ -1,7 +1,7 @@
 /**
 * @file    local_data_broker.h
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   本地数据层代管者
 *
@@ -45,6 +45,14 @@ public:
     using MessagesCallback = std::function<void(const QList<MessageRecord> &, bool)>;
     using TransfersCallback = std::function<void(const QList<TransferRecord> &, bool)>;
     using OperationCallback = std::function<void(bool)>;
+    // 备份导出数据回调：devices 必带，messages/transfers 按勾选层返回
+    using BackupDataCallback = std::function<void(const QList<PeerRecord> &,
+                                                  const QList<MessageRecord> &,
+                                                  const QList<TransferRecord> &, bool)>;
+    // 备份导入结果回调：stats 携带各层新增/合并条数，false 表示事务已整体回滚
+    using BackupImportCallback = std::function<void(const QVariantMap &, bool)>;
+    // 备份导入预分析回调：本机各表条目数与导入数据的冲突数
+    using BackupAnalyzeCallback = std::function<void(const QVariantMap &, bool)>;
 
     explicit LocalDataBroker(QObject *parent = nullptr);
     virtual ~LocalDataBroker() override;
@@ -109,6 +117,21 @@ public:
     void clearAllMessages(QObject *receiver, const OperationCallback &callback);
     // 异步清空全部传输历史
     void clearAllTransfers(QObject *receiver, const OperationCallback &callback);
+    // 异步加载备份导出所需的全量数据（设备目录必带，聊天与传输按层加载）
+    void loadBackupData(QObject *receiver, bool includeChat, bool includeTransfers,
+                        const BackupDataCallback &callback);
+    // 异步预分析备份数据：统计本机各表条目数与按 deviceId/message_id/session_id
+    // 计算的冲突数，供导入预览弹窗展示
+    void analyzeBackupRecords(QObject *receiver, const QList<PeerRecord> &devices,
+                              const QList<MessageRecord> &messages,
+                              const QList<TransferRecord> &transfers,
+                              const BackupAnalyzeCallback &callback);
+    // 单事务导入备份数据：设备按字段级合并，聊天按 message_id、传输按
+    // session_id 幂等跳过，任何一步失败整体回滚
+    void importBackupRecords(QObject *receiver, const QList<PeerRecord> &devices,
+                             const QList<MessageRecord> &messages,
+                             const QList<TransferRecord> &transfers,
+                             const BackupImportCallback &callback);
     // 异步删除指定时间前的聊天和传输历史
     void deleteExpiredRecords(const QDateTime &before);
     // 开始排空存储队列并停止接受新任务

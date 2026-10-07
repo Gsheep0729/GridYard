@@ -1,7 +1,7 @@
 /**
 * @file    sqlite_message_repository.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   SQLite 聊天消息 Repository 实现
 *
@@ -40,6 +40,47 @@ bool SqliteMessageRepository::saveMessage(const MessageRecord &record, QString *
 
     // SQL 与组合事务共用同一 Step，避免双份字面量漂移
     return _database->runInTransaction(saveMessageStep(record), errorMessage);
+}
+
+// 加载全部聊天记录（备份导出用），按 (sent_at, message_id) 排序保证顺序稳定
+QList<MessageRecord> SqliteMessageRepository::allMessages(QString *errorMessage) const
+{
+    QList<MessageRecord> records;
+    if (!_database) {
+        if (errorMessage) {
+            *errorMessage = "数据库入口未初始化";
+        }
+        return records;
+    }
+    QSqlDatabase database = _database->connectionForWorkerThread(errorMessage);
+    if (!database.isValid()) {
+        return records;
+    }
+    QSqlQuery query(database);
+    query.prepare("SELECT message_id, peer_device_id, direction, sender_device_id, "
+                  "sender_name, content, sent_at, local_status, created_at "
+                  "FROM chat_messages ORDER BY sent_at, message_id");
+    if (!query.exec()) {
+        if (errorMessage) {
+            *errorMessage = query.lastError().text();
+        }
+        return records;
+    }
+    while (query.next()) {
+        // 存储层完成行到领域值对象的映射，列序与 loadMessages 保持一致
+        MessageRecord record;
+        record.messageId = query.value(0).toString();
+        record.peerDeviceId = query.value(1).toString();
+        record.direction = static_cast<RecordDirection>(query.value(2).toInt());
+        record.senderDeviceId = query.value(3).toString();
+        record.senderName = query.value(4).toString();
+        record.content = query.value(5).toString();
+        record.sentAt = QDateTime::fromString(query.value(6).toString(), Qt::ISODateWithMs);
+        record.localStatus = query.value(7).toInt();
+        record.createdAt = QDateTime::fromString(query.value(8).toString(), Qt::ISODateWithMs);
+        records.append(record);
+    }
+    return records;
 }
 
 // 按游标分页加载聊天记录

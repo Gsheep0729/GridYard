@@ -24,6 +24,7 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/conversation_timeline_model.h
     core/conversation_timeline_model.cpp
     core/history_controller.h
+    core/backup_controller.cpp
     core/history_controller.cpp
     core/config_manager.h
     core/config_manager.cpp
@@ -81,6 +82,8 @@ set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/CloseConfirmDialog.qml
     ui/HideDeviceDialog.qml
     ui/DeleteDeviceDialog.qml
+    ui/BackupExportDialog.qml
+    ui/BackupImportDialog.qml
     ui/DeviceAliasDialog.qml
     ui/HomePlaceholder.qml
     ui/CompletionToast.qml

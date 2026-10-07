@@ -1,12 +1,14 @@
 /**
 * @file    app_controller.cpp
-* @version 7.20.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 */
 
 #include "app_controller.h"
+
+#include "backup_controller.h"
 #include "chat_manager.h"
 #include "chat_controller.h"
 #include "config_manager.h"
@@ -55,6 +57,7 @@ AppController::AppController(QObject *parent)
                                                        _rendezvousClient, this}}
     , _historyWiring{new HistoryWiring{_discovery, _chat, _transfer, _peerDiscoveryViewModel,
                                        _history, _dataBroker, this}}
+    , _backupController{new BackupController{_dataBroker, _config, this}}
     , _shutdownController{new ShutdownController{_dataBroker, this}}
 {
     // 初始化 ReachabilityController 的引用
@@ -195,6 +198,12 @@ QString AppController::rebuiltBackupPath() const
 ReachabilityController *AppController::reachabilityController() const
 {
     return _reachability;
+}
+
+// 获取备份与迁移控制器
+BackupController *AppController::backupController() const
+{
+    return _backupController;
 }
 
 // 获取 UI 根对象是否创建成功

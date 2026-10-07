@@ -1,7 +1,7 @@
 /**
 * @file    SettingsDialog.qml
-* @version 7.20.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   设置对话框
 *
@@ -640,6 +640,52 @@ Dialog {
                 }
             }
 
+            // 备份与迁移卡片：导出/导入三层 JSON 备份包
+            SettingsCard {
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.Space.lg
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.Space.xs
+
+                        Label {
+                            text: qsTr("备份与迁移")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("把设备身份、好友关系与聊天/传输历史导出为备份文件，重装或换机后导入即可恢复，无需任何账号登录。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                        }
+                    }
+
+                    ColumnLayout {
+                        spacing: Style.Space.xs
+
+                        Button {
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("导出数据")
+                            enabled: AppController.localHistoryAvailable
+                            onClicked: backupExportDialog.open()
+                        }
+
+                        Button {
+                            Layout.alignment: Qt.AlignRight
+                            text: qsTr("导入数据")
+                            enabled: AppController.localHistoryAvailable
+                            onClicked: backupImportDialog.open()
+                        }
+                    }
+                }
+            }
+
             // 清除缓存卡片
             SettingsCard {
                 RowLayout {
@@ -762,6 +808,14 @@ Dialog {
                 }
             }
         }
+    }
+
+    BackupExportDialog {
+        id: backupExportDialog
+    }
+
+    BackupImportDialog {
+        id: backupImportDialog
     }
 
     // 文件夹选择对话框：用户选择新接收路径后更新临时变量并回填输入框

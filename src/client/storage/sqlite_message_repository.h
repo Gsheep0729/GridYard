@@ -1,7 +1,7 @@
 /**
 * @file    sqlite_message_repository.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   SQLite 聊天消息 Repository 实现
 *
@@ -32,6 +32,8 @@ public:
     virtual bool saveMessage(const MessageRecord &record, QString *errorMessage) override;
     // 按稳定游标倒序读取一页消息
     virtual QList<MessageRecord> loadMessages(const MessageCursor &cursor, int limit, QString *errorMessage) const override;
+    // 加载全部聊天记录（备份导出用）
+    QList<MessageRecord> allMessages(QString *errorMessage) const;
     // 删除单条聊天消息
     virtual bool deleteMessage(const QString &messageId, QString *errorMessage) override;
     // 删除会话及其级联消息

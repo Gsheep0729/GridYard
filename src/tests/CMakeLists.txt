@@ -436,6 +436,29 @@ target_include_directories(test_peer_discovery_view_model PRIVATE
 target_compile_features(test_peer_discovery_view_model PRIVATE cxx_std_23)
 add_test(NAME test_peer_discovery_view_model COMMAND test_peer_discovery_view_model)
 
+# --- 用户数据备份与迁移测试 ---
+qt_add_executable(test_backup test_backup.cpp
+    ${CLIENT_CORE_DIR}/backup_controller.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_backup PRIVATE
+    gy_shared
+    gy_storage
+    gy_test_utils
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Sql
+)
+target_include_directories(test_backup PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
+target_compile_features(test_backup PRIVATE cxx_std_23)
+add_test(NAME test_backup COMMAND test_backup)
+
 # --- DatabaseWorker 语义测试 ---
 qt_add_executable(test_database_worker test_database_worker.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp

@@ -1,6 +1,6 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 7.22.0
+* @version 7.23.0
 * @date 2026-10-07
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
@@ -115,6 +115,33 @@ QList<PeerRecord> SqliteDeviceRepository::recentPeers(int limit, QString *errorM
     }
     while (query.next()) {
         // 存储层完成行到领域值对象的映射，调用方不接触 QSqlQuery。
+        records.append(readPeerRecordRow(query));
+    }
+    return records;
+}
+
+// 加载设备目录全表（备份导出用），按 device_id 排序保证两次导出顺序稳定
+QList<PeerRecord> SqliteDeviceRepository::allPeers(QString *errorMessage) const
+{
+    QList<PeerRecord> records;
+    if (!_database) {
+        if (errorMessage)
+            *errorMessage = "数据库入口未初始化";
+        return records;
+    }
+    QSqlDatabase database = _database->connectionForWorkerThread(errorMessage);
+    if (!database.isValid())
+        return records;
+    QSqlQuery query(database);
+    query.prepare("SELECT device_id, device_name, last_ip_address, last_tcp_port, "
+                  "first_seen_at, last_seen_at, last_chat_at, last_transfer_at, "
+                  "alias, pinned, hidden, favorite FROM peer_devices ORDER BY device_id");
+    if (!query.exec()) {
+        if (errorMessage)
+            *errorMessage = query.lastError().text();
+        return records;
+    }
+    while (query.next()) {
         records.append(readPeerRecordRow(query));
     }
     return records;

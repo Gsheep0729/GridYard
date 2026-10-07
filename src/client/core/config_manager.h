@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.h
-* @version 7.20.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
@@ -126,6 +126,8 @@ public:
     // 设置开发者模式启动入口开关
     void setDeveloperLaunchEntryEnabled(bool enabled);
 
+    // 备份恢复身份：仅写入配置文件，运行期保持当前身份不变，重启后生效
+    void restoreDeviceIdentity(const QString &deviceId, const QString &deviceName);
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
 
@@ -162,6 +164,7 @@ private:
     friend class TestIntegration;
     friend class TestReachabilityController;
     friend class TestPeerDiscoveryViewModel;
+    friend class TestBackup;
     friend class TestConfigManager;
 
     void ensureDeviceId();

@@ -1,7 +1,7 @@
 /**
 * @file    sqlite_transfer_history_repository.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   SQLite 传输历史 Repository 实现
 *
@@ -31,6 +31,8 @@ public:
     virtual bool upsertFinishedTransfer(const TransferRecord &record, QString *errorMessage) override;
     // 按设备、状态和时间游标查询一页历史
     virtual QList<TransferRecord> queryTransfers(const TransferQuery &query, int limit, QString *errorMessage) const override;
+    // 加载全部传输历史（备份导出用）
+    QList<TransferRecord> allTransfers(QString *errorMessage) const;
     // 删除单条传输历史
     virtual bool deleteTransfer(const QString &recordId, QString *errorMessage) override;
     // 删除早于指定时间的传输历史

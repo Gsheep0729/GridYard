@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
-* @version 7.20.0
-* @date 2026-10-05
+* @version 7.23.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -16,6 +16,7 @@
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
+#include "backup_controller.h"
 #include "chat_controller.h"
 #include "history_controller.h"
 #include "peer_discovery_view_model.h"
@@ -31,6 +32,7 @@ class QQmlApplicationEngine;
 class ConfigManager;
 class ChatManager;
 class DiscoveryService;
+class BackupController;
 class HistoryWiring;
 class LocalDataBroker;
 class P2pServer;
@@ -52,6 +54,7 @@ private:
     Q_PROPERTY(ChatController* chatController READ chatController CONSTANT)
     Q_PROPERTY(HistoryController* historyController READ historyController CONSTANT)
     Q_PROPERTY(ReachabilityController* reachabilityController READ reachabilityController CONSTANT)
+    Q_PROPERTY(BackupController* backupController READ backupController CONSTANT)
     Q_PROPERTY(bool localHistoryAvailable READ localHistoryAvailable CONSTANT)
     Q_PROPERTY(bool historyDatabaseRebuilt READ historyDatabaseRebuilt CONSTANT)
     Q_PROPERTY(QString rebuiltBackupPath READ rebuiltBackupPath CONSTANT)
@@ -88,6 +91,7 @@ public:
     QString instanceTitleSuffix() const;
     // 获取网络可达性控制器
     ReachabilityController *reachabilityController() const;
+    BackupController *backupController() const;
     // 获取 UI 根对象是否创建成功
     bool uiReady() const;
 
@@ -132,6 +136,7 @@ private:
     RendezvousClient *_rendezvousClient = nullptr;  // 协调节点客户端（与可达性、中继降级共享）
     RendezvousCoordinator *_rendezvousCoordinator = nullptr;  // 协调节点编排（动态启停）
     HistoryWiring *_historyWiring = nullptr;  // 本地历史持久化装配
+    BackupController *_backupController = nullptr;  // 备份与迁移控制器
     ShutdownController *_shutdownController = nullptr;  // 退出排空与缓存清理
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
     bool _historyDatabaseRebuilt = false;  // 启动时是否因库损坏重建本地历史库

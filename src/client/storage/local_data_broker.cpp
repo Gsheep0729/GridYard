@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.22.0
+* @version 7.23.0
 * @date 2026-10-07
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
@@ -21,6 +21,9 @@
 #include <QDateTime>
 #include <QMetaObject>
 #include <QSqlDatabase>
+#include <QSqlError>
+#include <QSet>
+#include <QSqlQuery>
 #include <QThread>
 #include <vector>
 
@@ -637,7 +640,311 @@ void LocalDataBroker::clearAllTransfers(QObject *receiver, const OperationCallba
         });
 }
 
-// 异步删除指定时间前的聊天和传输历史（由保留期限定时器触发）
+// 异步加载备份导出所需的全量数据：单任务内完成三张表的读取
+void LocalDataBroker::loadBackupData(QObject *receiver, bool includeChat, bool includeTransfers,
+                                     const BackupDataCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, {}, {}, false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, includeChat, includeTransfers, callback](SqliteDatabaseBroker &,
+                                                                  QString *errorMessage) {
+            const QList<PeerRecord> devices = _deviceRepository->allPeers(errorMessage);
+            const bool succeeded = errorMessage->isEmpty();
+            QList<MessageRecord> messages;
+            QList<TransferRecord> transfers;
+            if (succeeded && includeChat) {
+                messages = _messageRepository->allMessages(errorMessage);
+            }
+            if (succeeded && includeTransfers) {
+                transfers = _transferRepository->allTransfers(errorMessage);
+            }
+            const bool allDone = errorMessage->isEmpty();
+            QMetaObject::invokeMethod(receiver, [callback, devices, messages, transfers, allDone] {
+                callback(devices, messages, transfers, allDone);
+            }, Qt::QueuedConnection);
+            return allDone;
+        });
+}
+
+// 异步预分析备份数据：加载三张表的主键集合做冲突计数，附带本机条目数
+void LocalDataBroker::analyzeBackupRecords(QObject *receiver, const QList<PeerRecord> &devices,
+                                           const QList<MessageRecord> &messages,
+                                           const QList<TransferRecord> &transfers,
+                                           const BackupAnalyzeCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, devices, messages, transfers, callback](SqliteDatabaseBroker &,
+                                                                 QString *errorMessage) {
+            QSqlDatabase database = _storage->connectionForWorkerThread(errorMessage);
+            if (!database.isValid()) {
+                return false;
+            }
+            // 全量主键集合：库内条目数与冲突数一次扫描得出
+            const auto loadIdSet = [&database, errorMessage](const QString &column,
+                                                             const QString &table) {
+                QSet<QString> ids;
+                QSqlQuery query(database);
+                query.prepare(QStringLiteral("SELECT %1 FROM %2").arg(column, table));
+                if (!query.exec()) {
+                    *errorMessage = query.lastError().text();
+                    return ids;
+                }
+                while (query.next()) {
+                    ids.insert(query.value(0).toString());
+                }
+                return ids;
+            };
+
+            const QSet<QString> deviceIds = loadIdSet(QStringLiteral("device_id"),
+                                                      QStringLiteral("peer_devices"));
+            const QSet<QString> messageIds = loadIdSet(QStringLiteral("message_id"),
+                                                       QStringLiteral("chat_messages"));
+            const QSet<QString> sessionIds = loadIdSet(QStringLiteral("session_id"),
+                                                       QStringLiteral("transfer_history"));
+            if (!errorMessage->isEmpty()) {
+                return false;
+            }
+
+            int deviceConflicts = 0;
+            for (const PeerRecord &record : devices) {
+                if (deviceIds.contains(record.deviceId)) {
+                    ++deviceConflicts;
+                }
+            }
+            int messageConflicts = 0;
+            for (const MessageRecord &record : messages) {
+                if (messageIds.contains(record.messageId)) {
+                    ++messageConflicts;
+                }
+            }
+            int transferConflicts = 0;
+            for (const TransferRecord &record : transfers) {
+                if (sessionIds.contains(record.sessionId)) {
+                    ++transferConflicts;
+                }
+            }
+
+            QVariantMap stats;
+            stats.insert(QStringLiteral("libraryDevices"), deviceIds.size());
+            stats.insert(QStringLiteral("libraryMessages"), messageIds.size());
+            stats.insert(QStringLiteral("libraryTransfers"), sessionIds.size());
+            stats.insert(QStringLiteral("deviceConflicts"), deviceConflicts);
+            stats.insert(QStringLiteral("messageConflicts"), messageConflicts);
+            stats.insert(QStringLiteral("transferConflicts"), transferConflicts);
+            QMetaObject::invokeMethod(receiver, [callback, stats] {
+                callback(stats, true);
+            }, Qt::QueuedConnection);
+            return true;
+        });
+}
+
+// 单事务导入备份数据：设备行按字段级规则合并（备注取非空一方、// 单事务导入备份数据：设备行按字段级规则合并（备注取非空一方、
+// 置顶/隐藏/收藏取或、last_seen 取新），聊天按 message_id、传输按
+// session_id 幂等跳过已有条目，任何一步失败整体回滚
+void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRecord> &devices,
+                                          const QList<MessageRecord> &messages,
+                                          const QList<TransferRecord> &transfers,
+                                          const BackupImportCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback({}, false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, devices, messages, transfers, callback](SqliteDatabaseBroker &db,
+                                                                 QString *errorMessage) {
+            // UTC 时间转 ISO 文本，与各仓库的落库口径一致
+            const auto isoTime = [](const QDateTime &time) {
+                return time.toUTC().toString(Qt::ISODateWithMs);
+            };
+            int messagesAdded = 0;
+            int transfersAdded = 0;
+
+            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
+            steps.reserve(devices.size() + messages.size() + transfers.size());
+
+            // 设备行字段级合并：不存在则插入为离线条目，已存在按下述规则合并
+            for (const PeerRecord &record : devices) {
+                steps.push_back([record, isoTime](QSqlDatabase &database, QString *taskError) {
+                    QSqlQuery query(database);
+                    query.prepare(
+                        "INSERT INTO peer_devices(device_id, device_name, last_ip_address, "
+                        "last_tcp_port, first_seen_at, last_seen_at, alias, pinned, hidden, "
+                        "favorite) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT(device_id) DO UPDATE SET "
+                        "last_seen_at=MAX(last_seen_at, excluded.last_seen_at), "
+                        "pinned=MAX(pinned, excluded.pinned), "
+                        "hidden=MAX(hidden, excluded.hidden), "
+                        "favorite=MAX(favorite, excluded.favorite), "
+                        "alias=CASE WHEN alias IS NULL OR alias='' THEN excluded.alias "
+                        "ELSE alias END");
+                    query.addBindValue(record.deviceId);
+                    query.addBindValue(record.deviceName);
+                    query.addBindValue(record.lastIpAddress);
+                    query.addBindValue(record.lastTcpPort);
+                    query.addBindValue(isoTime(record.firstSeenAt));
+                    query.addBindValue(isoTime(record.lastSeenAt));
+                    query.addBindValue(record.alias);
+                    query.addBindValue(record.pinned ? 1 : 0);
+                    query.addBindValue(record.hidden ? 1 : 0);
+                    query.addBindValue(record.favorite ? 1 : 0);
+                    if (!query.exec()) {
+                        if (taskError) {
+                            *taskError = query.lastError().text();
+                        }
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            // 聊天消息：先占会话行再写消息，message_id 冲突即视为已存在跳过
+            for (const MessageRecord &record : messages) {
+                steps.push_back([record, isoTime, &messagesAdded](QSqlDatabase &database,
+                                                                  QString *taskError) {
+                    QSqlQuery conv(database);
+                    conv.prepare("INSERT INTO chat_conversations(peer_device_id, created_at, "
+                                 "last_message_at) VALUES(?, ?, ?) "
+                                 "ON CONFLICT(peer_device_id) DO NOTHING");
+                    conv.addBindValue(record.peerDeviceId);
+                    conv.addBindValue(isoTime(record.createdAt));
+                    conv.addBindValue(isoTime(record.sentAt));
+                    if (!conv.exec()) {
+                        if (taskError) {
+                            *taskError = conv.lastError().text();
+                        }
+                        return false;
+                    }
+                    QSqlQuery msg(database);
+                    msg.prepare("INSERT INTO chat_messages(message_id, peer_device_id, "
+                                "direction, sender_device_id, sender_name, content, sent_at, "
+                                "local_status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                                "ON CONFLICT(message_id) DO NOTHING");
+                    msg.addBindValue(record.messageId);
+                    msg.addBindValue(record.peerDeviceId);
+                    msg.addBindValue(static_cast<int>(record.direction));
+                    msg.addBindValue(record.senderDeviceId);
+                    msg.addBindValue(record.senderName);
+                    msg.addBindValue(record.content);
+                    msg.addBindValue(isoTime(record.sentAt));
+                    msg.addBindValue(record.localStatus);
+                    msg.addBindValue(isoTime(record.createdAt));
+                    if (!msg.exec()) {
+                        if (taskError) {
+                            *taskError = msg.lastError().text();
+                        }
+                        return false;
+                    }
+                    if (msg.numRowsAffected() > 0) {
+                        ++messagesAdded;
+                        // 新消息推动会话最近消息时间，重复条目不影响既有排序
+                        QSqlQuery act(database);
+                        act.prepare("UPDATE chat_conversations SET "
+                                    "last_message_at=MAX(last_message_at, ?) "
+                                    "WHERE peer_device_id=?");
+                        act.addBindValue(isoTime(record.sentAt));
+                        act.addBindValue(record.peerDeviceId);
+                        if (!act.exec()) {
+                            if (taskError) {
+                                *taskError = act.lastError().text();
+                            }
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }
+
+            // 传输历史：record_id 是主键、session_id 唯一，重导入命中
+            // session_id 冲突按幂等跳过，不覆盖本地已有行
+            for (const TransferRecord &record : transfers) {
+                steps.push_back([record, isoTime, &transfersAdded](QSqlDatabase &database,
+                                                                   QString *taskError) {
+                    QSqlQuery query(database);
+                    query.prepare(
+                        "INSERT INTO transfer_history(record_id, session_id, peer_device_id, "
+                        "peer_name, direction, display_name, is_directory, file_count, "
+                        "total_bytes, status, started_at, finished_at, error_code, "
+                        "error_message) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT(session_id) DO NOTHING");
+                    query.addBindValue(record.recordId);
+                    query.addBindValue(record.sessionId);
+                    query.addBindValue(record.peerDeviceId);
+                    query.addBindValue(record.peerName);
+                    query.addBindValue(static_cast<int>(record.direction));
+                    query.addBindValue(record.displayName);
+                    query.addBindValue(record.isDirectory ? 1 : 0);
+                    query.addBindValue(record.fileCount);
+                    query.addBindValue(record.totalBytes);
+                    query.addBindValue(record.status);
+                    query.addBindValue(isoTime(record.startedAt));
+                    query.addBindValue(record.finishedAt.isValid() ? isoTime(record.finishedAt)
+                                                                   : QString());
+                    query.addBindValue(record.errorCode);
+                    query.addBindValue(record.errorMessage);
+                    if (!query.exec()) {
+                        if (taskError) {
+                            *taskError = query.lastError().text();
+                        }
+                        return false;
+                    }
+                    if (query.numRowsAffected() > 0) {
+                        ++transfersAdded;
+                    }
+                    return true;
+                });
+            }
+
+            if (!db.runSteps(steps, errorMessage)) {
+                // 单事务内任一步失败整体回滚；按代管者契约仍需恰好回调一次
+                QMetaObject::invokeMethod(receiver, [callback] {
+                    callback({}, false);
+                }, Qt::QueuedConnection);
+                return false;
+            }
+            for (const PeerRecord &record : devices) {
+                _deviceRepository->noteWritten(record);
+            }
+
+            QVariantMap stats;
+            stats.insert(QStringLiteral("devices"), devices.size());
+            stats.insert(QStringLiteral("messages"), messages.size());
+            stats.insert(QStringLiteral("messagesAdded"), messagesAdded);
+            stats.insert(QStringLiteral("transfers"), transfers.size());
+            stats.insert(QStringLiteral("transfersAdded"), transfersAdded);
+            QMetaObject::invokeMethod(receiver, [callback, stats] {
+                callback(stats, true);
+            }, Qt::QueuedConnection);
+            return true;
+        });
+}
+
+// 异步删除指定时间前的聊天和传输历史// 异步删除指定时间前的聊天和传输历史（由保留期限定时器触发）
 void LocalDataBroker::deleteExpiredRecords(const QDateTime &before)
 {
     if (!_storage->isAvailable() || !_messageRepository || !_transferRepository) {
