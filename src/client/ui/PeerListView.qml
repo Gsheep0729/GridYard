@@ -1,7 +1,7 @@
 /**
  * @file    PeerListView.qml
- * @version 7.21.1
- * @date 2026-10-05
+ * @version 7.21.2
+ * @date 2026-10-06
  * @author  GridYard Team
  * @brief   设备列表组件
  *
@@ -140,13 +140,30 @@ Rectangle {
                     anchors.fill: parent
                     anchors.leftMargin: Style.Space.md
                     anchors.rightMargin: Style.Space.md
+                    // 文本与光标避开清除按钮，不再压到按钮下方
+                    rightPadding: 16
                     verticalAlignment: Text.AlignVCenter
-                    placeholderText: qsTr("搜索设备名、备注或 IP")
+                    // 原生占位留空：Material 样式会把占位浮成标签，输入后浮到
+                    // 固定高度输入框的边框外；占位改由 background 内自绘承载
+                    placeholderText: ""
                     font.pixelSize: 13
                     color: Style.Color.textMain
                     clip: true
                     selectByMouse: true
-                    background: Item {}
+                    background: Item {
+                        // 自绘占位（v7.15.12 同款模式）：空输入时垂直居中显示，
+                        // 超宽自动省略，输入即隐
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            text: qsTr("搜索设备名、备注或 IP")
+                            color: Style.Color.textWeak
+                            font.pixelSize: 13
+                            elide: Text.ElideRight
+                            visible: searchInput.text.length === 0
+                        }
+                    }
                     onTextChanged: {
                         if (text.length === 0) {
                             searchDebounce.stop()

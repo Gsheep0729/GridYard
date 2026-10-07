@@ -1,7 +1,7 @@
 /**
 * @file    test_storage_device.cpp
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.21.2
+* @date 2026-10-06
 * @author  GY
 * @brief   SQLite 设备目录 Repository 测试
 *
@@ -495,11 +495,13 @@ void TestStorageDevice::testSetDeviceFavoriteAndRecentOrder()
     QCOMPARE(records.at(1).deviceId, QStringLiteral("device-plain"));
     QCOMPARE(records.at(1).favorite, false);
 
-    // 心跳 upsert 不携带 favorite 列，收藏标记不得被清掉（活跃时间保持在普通设备之前）
-    PeerRecord heartbeat = makeRecord("device-fav", "收藏设备", base.addSecs(60));
+    // 心跳改名 upsert 不携带 favorite 列：收藏按 device_id 落键，远程改名不清收藏
+    // （活跃时间保持在普通设备之前）
+    PeerRecord heartbeat = makeRecord("device-fav", "收藏设备已改名", base.addSecs(60));
     QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
     records = repository.recentPeers(10, &error);
     QCOMPARE(records.first().deviceId, QStringLiteral("device-fav"));
+    QCOMPARE(records.first().deviceName, QStringLiteral("收藏设备已改名"));
     QCOMPARE(records.first().favorite, true);
 
     // 取消收藏后回落到按活跃时间排序
