@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.21.3
-* @date 2026-10-07
+* @version 7.24.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 */
@@ -530,7 +530,56 @@ void PeerDiscoveryViewModel::deleteDeviceWithHistory(const QString &deviceId)
     });
 }
 
-// 入站消息或传输请求到达时恢复隐藏设备的显示（微信语义）
+// 设备关联合并：单事务完成后同步内存状态——旧条目移出在线表，
+// 选中态指向旧 ID 时切换到新 ID，历史目录重载后旧卡消失、新卡带标记
+void PeerDiscoveryViewModel::mergeDevice(const QString &newDeviceId, const QString &oldDeviceId,
+                                         bool includeHistory)
+{
+    if (!_dataBroker || newDeviceId.isEmpty() || oldDeviceId.isEmpty()
+            || newDeviceId == oldDeviceId) {
+        return;
+    }
+
+    const QVariantMap newInfo = deviceById(newDeviceId);
+    PeerRecord newRecord;
+    newRecord.deviceId = newDeviceId;
+    newRecord.deviceName = newInfo.value("deviceName").toString();
+    newRecord.lastIpAddress = newInfo.value("ipAddress").toString();
+    newRecord.lastTcpPort = static_cast<quint16>(newInfo.value("tcpPort").toUInt());
+    newRecord.lastSeenAt = QDateTime::currentDateTimeUtc();
+    newRecord.firstSeenAt = newRecord.lastSeenAt;
+
+    _dataBroker->mergeDeviceRecords(this, newRecord, oldDeviceId, includeHistory,
+                                    [this, newDeviceId, oldDeviceId](bool succeeded) {
+        if (succeeded) {
+            if (_discovery) {
+                _discovery->removePeer(oldDeviceId);  // 旧条目移出在线表（在记录时才存在）
+            }
+            if (_selectedDeviceId == oldDeviceId) {
+                setSelectedDeviceId(newDeviceId);  // 选中态跟随合并结果
+            }
+            refreshHistory();  // 旧卡消失、新卡带迁移来的管理标记
+        }
+        emit deviceMerged(succeeded, newDeviceId, oldDeviceId);
+    });
+}
+
+// 统计设备名下的聊天与传输条数，异步回投给关联向导预览
+void PeerDiscoveryViewModel::countDeviceHistory(const QString &deviceId)
+{
+    if (!_dataBroker || deviceId.isEmpty()) {
+        emit deviceHistoryCounted(deviceId, 0, 0);
+        return;
+    }
+    _dataBroker->countDeviceRecords(this, deviceId,
+                                    [this, deviceId](int messages, int transfers, bool succeeded) {
+        // 失败按零计数回投，预览界面不因统计不可用而阻塞
+        emit deviceHistoryCounted(deviceId, succeeded ? messages : 0,
+                                  succeeded ? transfers : 0);
+    });
+}
+
+// 入站消息或传输请求到达时恢复隐藏设备的显示（微信语义）// 入站消息或传输请求到达时恢复隐藏设备的显示（微信语义）
 void PeerDiscoveryViewModel::restoreHiddenDevice(const QString &deviceId)
 {
     if (!_dataBroker || deviceId.isEmpty() || !_hiddenDeviceIds.contains(deviceId)) {

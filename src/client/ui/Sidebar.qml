@@ -1,7 +1,7 @@
 /**
  * @file    Sidebar.qml
- * @version 7.22.0
- * @date 2026-10-07
+ * @version 7.24.0
+ * @date 2026-10-08
  * @author  GridYard Team
  * @brief   左侧设备栏
  *
@@ -317,6 +317,25 @@ Rectangle {
                              deviceContextMenu.deviceId, deviceContextMenu.deviceName,
                              deviceContextMenu.isFavorite ? "unfavorite" : "favorite")
             }
+        }
+
+        // 设备 ID 变化治理：对方重装/换机后在本机新条目上发起与旧条目的关联合并
+        MenuItem {
+            id: mergeItem
+            text: qsTr("关联到已有设备")
+            contentItem: Label {
+                text: mergeItem.text
+                font.pixelSize: 13
+                color: mergeItem.hovered ? Style.Color.primary : Style.Color.textMain
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: Style.Space.sm
+            }
+            background: Rectangle {
+                color: mergeItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                radius: Style.Radius.sm
+            }
+            onTriggered: sidebar.contextActionRequested(
+                             deviceContextMenu.deviceId, deviceContextMenu.deviceName, "merge")
         }
 
         // 删除只对"本地记录"成立：在线设备删不掉（心跳会立刻按新设备带回来），

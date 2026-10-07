@@ -1,7 +1,7 @@
 /**
 * @file    test_storage_device.cpp
-* @version 7.22.0
-* @date 2026-10-07
+* @version 7.24.0
+* @date 2026-10-08
 * @author  GY
 * @brief   SQLite 设备目录 Repository 测试
 *
@@ -15,11 +15,16 @@
 #include "db_seed.h"
 #include "protocol.h"
 #include "sqlite_database_broker.h"
+#include "local_data_broker.h"
 #include "sqlite_device_repository.h"
+#include "sqlite_message_repository.h"
+#include "sqlite_transfer_history_repository.h"
 
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+
+#include <QSharedPointer>
 #include <QTemporaryDir>
 
 class TestStorageDevice : public QObject {
@@ -40,6 +45,8 @@ private slots:
     void testV2MigratedToV3KeepsManagementColumns();
     void testSetDeviceFavoriteAndRecentOrder();
     void testMergeManualPeerMarkersToRealPeer();
+    void testMergeDeviceRecordsWithHistory();
+    void testMergeDeviceRecordsWithoutHistory();
 
 private:
     // 在当前测试数据库上构造一个已初始化的设备 Repository
@@ -572,6 +579,130 @@ void TestStorageDevice::testMergeManualPeerMarkersToRealPeer()
              qPrintable(error));
     records = repository.recentPeers(10, &error);
     QCOMPARE(records.size(), 2);
+}
+
+// 关联合并（含历史）：旧行的管理标记并入新行，聊天与传输记录整体改挂新 ID，
+// 旧行删除；新行不存在时先按传入记录建行
+void TestStorageDevice::testMergeDeviceRecordsWithHistory()
+{
+    auto database = openDatabase("merge-device-history.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository deviceRepository(database.get());
+    SqliteMessageRepository messageRepository(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs);
+    QString error;
+    PeerRecord oldDevice = makeRecord("device-old", "旧设备", base);
+    oldDevice.lastIpAddress = "192.168.1.20";
+    QVERIFY2(deviceRepository.upsertPeer(oldDevice, &error), qPrintable(error));
+    QVERIFY2(deviceRepository.setDeviceAlias("device-old", "旧名备注", &error), qPrintable(error));
+    QVERIFY2(deviceRepository.setDeviceFavorite("device-old", true, &error), qPrintable(error));
+    QVERIFY2(deviceRepository.setDevicePinned("device-old", true, &error), qPrintable(error));
+
+    // 旧设备两台消息与一条传输记录
+    MessageRecord message;
+    message.messageId = "old-msg-1";
+    message.peerDeviceId = "device-old";
+    message.direction = RecordDirection::Incoming;
+    message.senderDeviceId = "device-old";
+    message.senderName = "旧设备";
+    message.content = "旧消息";
+    message.sentAt = base.addSecs(60);
+    message.createdAt = base.addSecs(60);
+    QVERIFY2(messageRepository.saveMessage(message, &error), qPrintable(error));
+
+    TransferRecord transfer = makeTransfer("device-old", "old-rec-1", base.addSecs(120));
+    QVERIFY2(transferRepository.upsertFinishedTransfer(transfer, &error), qPrintable(error));
+
+    // 新设备已存在（真身重新出现），带自己的名称
+    PeerRecord newDevice = makeRecord("device-new", "新设备", base.addSecs(300));
+    QVERIFY2(deviceRepository.upsertPeer(newDevice, &error), qPrintable(error));
+
+    const auto done = QSharedPointer<bool>::create(false);
+    auto merge = std::make_unique<LocalDataBroker>();
+    QVERIFY(merge->initialize(_temporaryDir.path() + "/merge-device-history.sqlite", &error));
+    merge->mergeDeviceRecords(merge.get(), newDevice, "device-old", true,
+                              [done](bool succeeded) { *done = succeeded; });
+    QTRY_VERIFY(*done);
+    merge->closeStorage();
+
+    // 旧行已删除，新行带迁移来的标记
+    QList<PeerRecord> records = deviceRepository.recentPeers(10, &error);
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().deviceId, QStringLiteral("device-new"));
+    QCOMPARE(records.first().deviceName, QStringLiteral("新设备"));
+    QCOMPARE(records.first().alias, QStringLiteral("旧名备注"));
+    QCOMPARE(records.first().favorite, true);
+    QCOMPARE(records.first().pinned, true);
+
+    // 聊天与传输已改挂新 ID
+    MessageCursor cursor;
+    cursor.peerDeviceId = "device-new";
+    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).size(), 1);
+    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).first().messageId,
+             QStringLiteral("old-msg-1"));
+    TransferQuery query;
+    query.peerDeviceId = "device-new";
+    QCOMPARE(transferRepository.queryTransfers(query, 10, &error).size(), 1);
+}
+
+// 关联合并（不迁移历史）：管理标记并入、旧行删除、旧聊天与传输一并放弃
+void TestStorageDevice::testMergeDeviceRecordsWithoutHistory()
+{
+    auto database = openDatabase("merge-device-nohistory.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository deviceRepository(database.get());
+    SqliteMessageRepository messageRepository(database.get());
+    SqliteTransferHistoryRepository transferRepository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
+    QString error;
+    PeerRecord oldDevice = makeRecord("device-old2", "旧设备二", base);
+    QVERIFY2(deviceRepository.upsertPeer(oldDevice, &error), qPrintable(error));
+    QVERIFY2(deviceRepository.setDeviceAlias("device-old2", "待并备注", &error), qPrintable(error));
+
+    MessageRecord message;
+    message.messageId = "old2-msg-1";
+    message.peerDeviceId = "device-old2";
+    message.direction = RecordDirection::Incoming;
+    message.senderDeviceId = "device-old2";
+    message.senderName = "旧设备二";
+    message.content = "将放弃的消息";
+    message.sentAt = base.addSecs(60);
+    message.createdAt = base.addSecs(60);
+    QVERIFY2(messageRepository.saveMessage(message, &error), qPrintable(error));
+    QVERIFY2(transferRepository.upsertFinishedTransfer(
+                 makeTransfer("device-old2", "old2-rec-1", base.addSecs(120)), &error),
+             qPrintable(error));
+
+    // 新行不存在：按传入记录建行
+    PeerRecord newDevice = makeRecord("device-new2", "新设备二", base.addSecs(300));
+
+    auto merge = std::make_unique<LocalDataBroker>();
+    QVERIFY(merge->initialize(_temporaryDir.path() + "/merge-device-nohistory.sqlite", &error));
+    const auto done = QSharedPointer<bool>::create(false);
+    merge->mergeDeviceRecords(merge.get(), newDevice, "device-old2", false,
+                              [done](bool succeeded) { *done = succeeded; });
+    QTRY_VERIFY(*done);
+    merge->closeStorage();
+
+    QList<PeerRecord> records = deviceRepository.recentPeers(10, &error);
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().deviceId, QStringLiteral("device-new2"));
+    QCOMPARE(records.first().alias, QStringLiteral("待并备注"));
+
+    // 旧历史被放弃：聊天随旧行级联清理，传输显式删除
+    MessageCursor cursor;
+    cursor.peerDeviceId = "device-old2";
+    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).size(), 0);
+    cursor.peerDeviceId = "device-new2";
+    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).size(), 0);
+    TransferQuery query;
+    query.peerDeviceId = "device-old2";
+    QCOMPARE(transferRepository.queryTransfers(query, 10, &error).size(), 0);
+    query.peerDeviceId = "device-new2";
+    QCOMPARE(transferRepository.queryTransfers(query, 10, &error).size(), 0);
 }
 
 // 工具方法：在临时目录中创建并初始化数据库

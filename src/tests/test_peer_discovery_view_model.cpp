@@ -1,7 +1,7 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.22.0
-* @date 2026-10-07
+* @version 7.24.0
+* @date 2026-10-08
 * @author  GY
 * @brief   设备发现视图模型测试
 *
@@ -23,6 +23,7 @@
 #include "db_seed.h"
 #include "discovery_service.h"
 #include "local_data_broker.h"
+#include "sqlite_message_repository.h"
 #include "peer_discovery_view_model.h"
 
 class TestPeerDiscoveryViewModel : public QObject {
@@ -52,6 +53,7 @@ private slots:
     void testRecentExpandSurvivesHeartbeat();
     void testFavoriteSurvivesRecentTruncation();
     void testPseudoPeerMarkersMigrateToRealPeer();
+    void testMergeDeviceFollowsSelection();
     void testHiddenFilteredAcrossSegments();
     void testSegmentFavoritePriorityAndFallback();
 
@@ -1012,6 +1014,88 @@ void TestPeerDiscoveryViewModel::testPseudoPeerMarkersMigrateToRealPeer()
     const QVariantMap merged = viewModel.deviceById(QStringLiteral("real-peer-61"));
     QCOMPARE(merged.value("alias").toString(), QStringLiteral("实验台旧标签"));
     QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(pseudoId).isEmpty(), 5000);
+}
+
+// 设备关联合并：旧条目的管理标记并入新条目、选中态跟随切换、
+// 历史条数信号按设备回投
+void TestPeerDiscoveryViewModel::testMergeDeviceFollowsSelection()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "merge-selection.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+    SqliteMessageRepository messageRepository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-10-06T12:00:00.000Z", Qt::ISODateWithMs);
+    QString dbError;
+    PeerRecord oldRecord;
+    oldRecord.deviceId = QStringLiteral("vm-merge-old");
+    oldRecord.deviceName = QStringLiteral("旧设备");
+    oldRecord.lastIpAddress = QStringLiteral("10.90.0.1");
+    oldRecord.lastTcpPort = 35100;
+    oldRecord.firstSeenAt = base;
+    oldRecord.lastSeenAt = base;
+    QVERIFY(repository.upsertPeer(oldRecord, &dbError));
+
+    // 旧设备名下两条聊天，供迁移与计数断言
+    for (int i = 1; i <= 2; ++i) {
+        MessageRecord message;
+        message.messageId = QStringLiteral("vm-merge-msg-%1").arg(i);
+        message.peerDeviceId = QStringLiteral("vm-merge-old");
+        message.direction = RecordDirection::Incoming;
+        message.senderDeviceId = QStringLiteral("vm-merge-old");
+        message.senderName = QStringLiteral("旧设备");
+        message.content = QStringLiteral("消息%1").arg(i);
+        message.sentAt = base.addSecs(i * 30);
+        message.createdAt = message.sentAt;
+        QVERIFY(messageRepository.saveMessage(message, &dbError));
+    }
+
+    auto broker = openBroker("merge-selection.sqlite");
+    QVERIFY(broker);
+    bool aliasSet = false;
+    broker->setDeviceAlias(this, QStringLiteral("vm-merge-old"), QStringLiteral("旧友备注"),
+                           [&aliasSet](bool) { aliasSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(aliasSet, true, 3000);
+    bool favSet = false;
+    broker->setDeviceFavorite(this, QStringLiteral("vm-merge-old"), true,
+                              [&favSet](bool) { favSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(favSet, true, 3000);
+
+    // 新设备（真身重新出现）落库
+    const PeerInfo newPeer = makePeerInfo(QStringLiteral("vm-merge-new"), QStringLiteral("新设备"),
+                                          QStringLiteral("10.90.0.2"));
+    seedPeer(*broker, newPeer);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("vm-merge-new")).isEmpty(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("vm-merge-old")).isEmpty(), 3000);
+
+    viewModel.setSelectedDeviceId(QStringLiteral("vm-merge-old"));
+
+    QSignalSpy countedSpy(&viewModel, &PeerDiscoveryViewModel::deviceHistoryCounted);
+    viewModel.countDeviceHistory(QStringLiteral("vm-merge-old"));
+    QTRY_VERIFY_WITH_TIMEOUT(countedSpy.count() >= 1, 3000);
+    QCOMPARE(countedSpy.first().at(0).toString(), QStringLiteral("vm-merge-old"));
+    QCOMPARE(countedSpy.first().at(1).toInt(), 2);
+
+    QSignalSpy mergedSpy(&viewModel, &PeerDiscoveryViewModel::deviceMerged);
+    viewModel.mergeDevice(QStringLiteral("vm-merge-new"), QStringLiteral("vm-merge-old"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(!mergedSpy.isEmpty(), 5000);
+    QCOMPARE(mergedSpy.first().at(0).toBool(), true);
+
+    // 旧卡消失、新卡带迁移来的备注与好友标记，选中态切换到新 ID
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("vm-merge-old")).isEmpty(), 3000);
+    const QVariantMap merged = viewModel.deviceById(QStringLiteral("vm-merge-new"));
+    QCOMPARE(merged.value("alias").toString(), QStringLiteral("旧友备注"));
+    QCOMPARE(merged.value("favorite").toBool(), true);
+    QCOMPARE(viewModel.selectedDeviceId(), QStringLiteral("vm-merge-new"));
+
+    // 历史已改挂新设备：计数信号给出两条消息
+    QSignalSpy newCountedSpy(&viewModel, &PeerDiscoveryViewModel::deviceHistoryCounted);
+    viewModel.countDeviceHistory(QStringLiteral("vm-merge-new"));
+    QTRY_VERIFY_WITH_TIMEOUT(newCountedSpy.count() >= 1, 3000);
+    QCOMPARE(newCountedSpy.first().at(1).toInt(), 2);
 }
 
 // 隐藏设备在所有段中被一体过滤：在线段的隐藏条目与最近见过段的隐藏条目都不进列表

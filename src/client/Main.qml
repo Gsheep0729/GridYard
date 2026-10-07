@@ -1,7 +1,7 @@
 /**
  * @file    Main.qml
- * @version 7.21.0
- * @date 2026-10-05
+ * @version 7.24.0
+ * @date 2026-10-08
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
@@ -243,6 +243,11 @@ ApplicationWindow {
         }
     }
 
+    // 设备关联向导：新设备条目上发起与旧条目的合并（备注/好友等可选连带历史）
+    DeviceMergeDialog {
+        id: mergeDialog
+    }
+
     // 设置备注弹窗：确认后落库并刷新列表，空备注即清除
     DeviceAliasDialog {
         id: aliasDialog
@@ -275,6 +280,8 @@ ApplicationWindow {
                 aliasDialog.openFor(deviceId, deviceName, info.alias || "")
             } else if (action === "delete") {
                 deleteDeviceDialog.openFor(deviceId, deviceName)
+            } else if (action === "merge") {
+                mergeDialog.openFor(deviceId, deviceName)
             }
         }
         onDeviceFilesDropped: (deviceId, urls) => {

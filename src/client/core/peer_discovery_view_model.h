@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.21.3
-* @date 2026-10-07
+* @version 7.24.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
 *
@@ -91,6 +91,12 @@ public:
     Q_INVOKABLE void setDeviceAlias(const QString &deviceId, const QString &alias);
     // 删除设备及其聊天与传输历史（不删除已接收的本地文件），成功后同步清理内存列表
     Q_INVOKABLE void deleteDeviceWithHistory(const QString &deviceId);
+    // 设备关联合并：把 oldDeviceId 行的管理标记（可选连带聊天与传输历史）
+    // 并入 newDeviceId 行并删除旧行；选中态指向旧 ID 时自动切换到新 ID
+    Q_INVOKABLE void mergeDevice(const QString &newDeviceId, const QString &oldDeviceId,
+                                 bool includeHistory);
+    // 统计设备名下的聊天与传输条数（关联向导预览用），结果经 deviceHistoryCounted 发布
+    Q_INVOKABLE void countDeviceHistory(const QString &deviceId);
     // 入站消息或传输请求到达时调用：设备处于隐藏态则复位并刷新列表（自动恢复显示）
     void restoreHiddenDevice(const QString &deviceId);
     // 注入本地数据层入口
@@ -104,6 +110,8 @@ signals:
     void selectedDeviceIdChanged();
     void nodeDiscovered(const QString &deviceId);
     void nodeExpired(const QString &deviceId);
+    void deviceHistoryCounted(QString deviceId, int messages, int transfers);
+    void deviceMerged(bool success, QString newDeviceId, QString oldDeviceId);
 
 private:
     // 设置检索进行中状态并通知 QML

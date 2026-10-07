@@ -1,7 +1,7 @@
 /**
 * @file    local_data_broker.h
-* @version 7.23.0
-* @date 2026-10-07
+* @version 7.24.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   本地数据层代管者
 *
@@ -53,6 +53,8 @@ public:
     using BackupImportCallback = std::function<void(const QVariantMap &, bool)>;
     // 备份导入预分析回调：本机各表条目数与导入数据的冲突数
     using BackupAnalyzeCallback = std::function<void(const QVariantMap &, bool)>;
+    // 设备历史计数回调：该设备名下的聊天与传输条数
+    using DeviceCountsCallback = std::function<void(int, int, bool)>;
 
     explicit LocalDataBroker(QObject *parent = nullptr);
     virtual ~LocalDataBroker() override;
@@ -132,6 +134,14 @@ public:
                              const QList<MessageRecord> &messages,
                              const QList<TransferRecord> &transfers,
                              const BackupImportCallback &callback);
+    // 异步统计设备名下的聊天与传输条数（关联向导预览用）
+    void countDeviceRecords(QObject *receiver, const QString &deviceId,
+                            const DeviceCountsCallback &callback);
+    // 单事务合并设备：把旧行的管理标记并入新行（可选连带聊天与传输历史），
+    // 随后删除旧行，任何一步失败整体回滚
+    void mergeDeviceRecords(QObject *receiver, const PeerRecord &newDevice,
+                            const QString &oldDeviceId, bool includeHistory,
+                            const OperationCallback &callback);
     // 异步删除指定时间前的聊天和传输历史
     void deleteExpiredRecords(const QDateTime &before);
     // 开始排空存储队列并停止接受新任务

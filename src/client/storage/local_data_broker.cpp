@@ -1,7 +1,7 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.23.0
-* @date 2026-10-07
+* @version 7.24.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
 *
@@ -944,7 +944,182 @@ void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRec
         });
 }
 
-// 异步删除指定时间前的聊天和传输历史// 异步删除指定时间前的聊天和传输历史（由保留期限定时器触发）
+// 异步统计设备名下的聊天与传输条数（关联向导预览用）
+void LocalDataBroker::countDeviceRecords(QObject *receiver, const QString &deviceId,
+                                         const DeviceCountsCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(0, 0, false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, deviceId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+            QSqlDatabase database = _storage->connectionForWorkerThread(errorMessage);
+            if (!database.isValid()) {
+                return false;
+            }
+            int messages = 0;
+            int transfers = 0;
+            QSqlQuery query(database);
+            query.prepare("SELECT COUNT(*) FROM chat_messages WHERE peer_device_id = ?");
+            query.addBindValue(deviceId);
+            if (!query.exec() || !query.next()) {
+                if (errorMessage) {
+                    *errorMessage = query.lastError().text();
+                }
+                return false;
+            }
+            messages = query.value(0).toInt();
+            query.prepare("SELECT COUNT(*) FROM transfer_history WHERE peer_device_id = ?");
+            query.addBindValue(deviceId);
+            if (!query.exec() || !query.next()) {
+                if (errorMessage) {
+                    *errorMessage = query.lastError().text();
+                }
+                return false;
+            }
+            transfers = query.value(0).toInt();
+            QMetaObject::invokeMethod(receiver, [callback, messages, transfers] {
+                callback(messages, transfers, true);
+            }, Qt::QueuedConnection);
+            return true;
+        });
+}
+
+// 单事务合并设备：管理标记并入新行（备注取非空一方、置顶/隐藏/收藏取或、
+// last_seen 取新），勾选历史迁移时聊天与传输记录整体改挂新行（同
+// message_id 的旧消息视为重复跳过并随旧行清理），最后删除旧行
+void LocalDataBroker::mergeDeviceRecords(QObject *receiver, const PeerRecord &newDevice,
+                                         const QString &oldDeviceId, bool includeHistory,
+                                         const OperationCallback &callback)
+{
+    if (!receiver) {
+        return;
+    }
+    if (!_storage->isAvailable() || !_deviceRepository) {
+        QMetaObject::invokeMethod(receiver, [callback] {
+            callback(false);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    _storageWorker->submitTask(
+        [this, receiver, newDevice, oldDeviceId, includeHistory, callback](SqliteDatabaseBroker &db,
+                                                                           QString *errorMessage) {
+            const auto isoTime = [](const QDateTime &time) {
+                return time.toUTC().toString(Qt::ISODateWithMs);
+            };
+            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
+            steps.push_back(SqliteDeviceRepository::upsertPeerStep(newDevice));
+            // 历史迁移须先于标记合并：标记步骤尾部会移除旧行，历史必须先行搬走
+            if (includeHistory) {
+                steps.push_back([newDevice, oldDeviceId](QSqlDatabase &database,
+                                                         QString *taskError) {
+                    // 聊天迁移：会话行是子表消息的外键父行，直接 UPDATE 父键会被
+                    // 拒绝（schema 无 ON UPDATE 动作），统一走"新行 + 搬消息 + 删旧行"
+                    QSqlQuery probe(database);
+                    probe.prepare("SELECT created_at, last_message_at FROM chat_conversations "
+                                  "WHERE peer_device_id = ?");
+                    probe.addBindValue(oldDeviceId);
+                    if (!probe.exec()) {
+                        if (taskError) {
+                            *taskError = probe.lastError().text();
+                        }
+                        return false;
+                    }
+                    if (!probe.next()) {
+                        return true;  // 旧设备没有会话行，无历史可迁
+                    }
+                    const QString createdAt = probe.value(0).toString();
+                    const QString lastMessageAt = probe.value(1).toString();
+
+                    // 新会话行不存在则按旧行时间戳建行（存在则沿用，时间取较新）
+                    QSqlQuery ensure(database);
+                    ensure.prepare("INSERT INTO chat_conversations(peer_device_id, created_at, "
+                                   "last_message_at) VALUES(?, ?, ?) "
+                                   "ON CONFLICT(peer_device_id) DO UPDATE SET "
+                                   "last_message_at=MAX(last_message_at, excluded.last_message_at)");
+                    ensure.addBindValue(newDevice.deviceId);
+                    ensure.addBindValue(createdAt);
+                    ensure.addBindValue(lastMessageAt);
+                    if (!ensure.exec()) {
+                        if (taskError) {
+                            *taskError = ensure.lastError().text();
+                        }
+                        return false;
+                    }
+
+                    // 消息改挂新会话（同 message_id 的重复消息跳过并随旧行清理）
+                    QSqlQuery move(database);
+                    move.prepare("UPDATE chat_messages SET peer_device_id = ? "
+                                 "WHERE peer_device_id = ? AND message_id NOT IN "
+                                 "(SELECT message_id FROM chat_messages WHERE peer_device_id = ?)");
+                    move.addBindValue(newDevice.deviceId);
+                    move.addBindValue(oldDeviceId);
+                    move.addBindValue(newDevice.deviceId);
+                    if (!move.exec()) {
+                        if (taskError) {
+                            *taskError = move.lastError().text();
+                        }
+                        return false;
+                    }
+
+                    // 传输历史整体改挂新行（record_id/session_id 不变，无唯一冲突）
+                    QSqlQuery transfers(database);
+                    transfers.prepare("UPDATE transfer_history SET peer_device_id = ? "
+                                      "WHERE peer_device_id = ?");
+                    transfers.addBindValue(newDevice.deviceId);
+                    transfers.addBindValue(oldDeviceId);
+                    if (!transfers.exec()) {
+                        if (taskError) {
+                            *taskError = transfers.lastError().text();
+                        }
+                        return false;
+                    }
+                    return true;
+                });
+            } else {
+                // 不迁移历史：旧传输记录显式删除（RESTRICT 外键要求先清），
+                // 旧聊天随旧行级联清理，语义为"放弃旧记录"
+                steps.push_back([oldDeviceId](QSqlDatabase &database, QString *taskError) {
+                    QSqlQuery query(database);
+                    query.prepare("DELETE FROM transfer_history WHERE peer_device_id = ?");
+                    query.addBindValue(oldDeviceId);
+                    if (!query.exec()) {
+                        if (taskError) {
+                            *taskError = query.lastError().text();
+                        }
+                        return false;
+                    }
+                    return true;
+                });
+            }
+            // 标记合并收尾（含移除旧行），旧历史此时已搬空
+            steps.push_back(SqliteDeviceRepository::mergeManualPeerMarkersStep(newDevice.deviceId,
+                                                                               oldDeviceId));
+
+            if (!db.runSteps(steps, errorMessage)) {
+                QMetaObject::invokeMethod(receiver, [callback] {
+                    callback(false);
+                }, Qt::QueuedConnection);
+                return false;
+            }
+            _deviceRepository->noteWritten(newDevice);
+            _deviceRepository->noteDeviceDeleted(oldDeviceId);
+            QMetaObject::invokeMethod(receiver, [callback] {
+                callback(true);
+            }, Qt::QueuedConnection);
+            return true;
+        });
+}
+
+// 异步删除指定时间前的聊天和传输历史// 异步删除指定时间前的聊天和传输历史// 异步删除指定时间前的聊天和传输历史（由保留期限定时器触发）
 void LocalDataBroker::deleteExpiredRecords(const QDateTime &before)
 {
     if (!_storage->isAvailable() || !_messageRepository || !_transferRepository) {
