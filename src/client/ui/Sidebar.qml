@@ -1,7 +1,7 @@
 /**
  * @file    Sidebar.qml
- * @version 7.21.0
- * @date 2026-10-05
+ * @version 7.22.0
+ * @date 2026-10-07
  * @author  GridYard Team
  * @brief   左侧设备栏
  *
@@ -24,7 +24,7 @@ Rectangle {
     // 设备选择与拖拽上抛（拖拽先选中再统一裁决）
     signal deviceSelected(string deviceId)
     signal deviceFilesDropped(string deviceId, var urls)
-    // 设备卡右键打开菜单的意图（携带打开时捕获的设备上下文，含在线与收藏状态），由本组件的单例菜单承接
+    // 设备卡右键打开菜单的意图（携带打开时捕获的设备上下文，含在线与好友状态），由本组件的单例菜单承接
     signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline,
                                 bool isFavorite)
     // 菜单里的动作意图上抛（pin/unpin/hide/rename/delete），由 Main 接确认弹窗与控制器
@@ -281,25 +281,42 @@ Rectangle {
                              deviceContextMenu.deviceId, deviceContextMenu.deviceName, "rename")
         }
 
-        // 收藏是关系语义（星标 20 台仍可用），与置顶的位置语义分层叠加，
-        // 在线离线均可用
+        // 好友是关系语义（星标标记，数据落 favorite 列），与置顶的位置语义分层叠加，
+        // 在线离线均可用；手动 IP 添加的伪 ID 条目（真身未合并）身份不可信，
+        // 添加入口置灰并提示，真身经同 IP 合并后恢复可用
         MenuItem {
             id: favoriteItem
-            text: deviceContextMenu.isFavorite ? qsTr("取消收藏") : qsTr("收藏该设备")
+
+            // 伪 ID 判定沿用域层约定：手动添加的占位 ID 固定以 manual_ 前缀开头；
+            // 已是好友的伪行（历史遗留标记）保留移除入口
+            readonly property bool pseudoPending: !deviceContextMenu.isFavorite
+                                                  && deviceContextMenu.deviceId.startsWith("manual_")
+
+            text: deviceContextMenu.isFavorite ? qsTr("移除好友") : qsTr("添加为好友")
             contentItem: Label {
                 text: favoriteItem.text
                 font.pixelSize: 13
-                color: favoriteItem.hovered ? Style.Color.primary : Style.Color.textMain
+                color: favoriteItem.pseudoPending ? Style.Color.textWeak
+                     : (favoriteItem.hovered ? Style.Color.primary : Style.Color.textMain)
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: Style.Space.sm
             }
             background: Rectangle {
-                color: favoriteItem.hovered ? Style.Color.surfaceSoft : Style.Color.transparent
+                color: !favoriteItem.pseudoPending && favoriteItem.hovered
+                       ? Style.Color.surfaceSoft : Style.Color.transparent
                 radius: Style.Radius.sm
             }
-            onTriggered: sidebar.contextActionRequested(
+            ToolTip.visible: favoriteItem.pseudoPending && favoriteItem.hovered
+            ToolTip.delay: 500
+            ToolTip.text: qsTr("待确认对方真实身份后可加好友")
+            onTriggered: {
+                if (favoriteItem.pseudoPending) {
+                    return  // 伪身份不可加好友，真身合并后菜单恢复可用
+                }
+                sidebar.contextActionRequested(
                              deviceContextMenu.deviceId, deviceContextMenu.deviceName,
                              deviceContextMenu.isFavorite ? "unfavorite" : "favorite")
+            }
         }
 
         // 删除只对"本地记录"成立：在线设备删不掉（心跳会立刻按新设备带回来），

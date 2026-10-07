@@ -1,7 +1,7 @@
 /**
 * @file    test_storage_device.cpp
-* @version 7.21.2
-* @date 2026-10-06
+* @version 7.22.0
+* @date 2026-10-07
 * @author  GY
 * @brief   SQLite 设备目录 Repository 测试
 *
@@ -39,6 +39,7 @@ private slots:
     void testDeleteDeviceWithHistoryCascade();
     void testV2MigratedToV3KeepsManagementColumns();
     void testSetDeviceFavoriteAndRecentOrder();
+    void testMergeManualPeerMarkersToRealPeer();
 
 private:
     // 在当前测试数据库上构造一个已初始化的设备 Repository
@@ -509,6 +510,68 @@ void TestStorageDevice::testSetDeviceFavoriteAndRecentOrder()
     records = repository.recentPeers(10, &error);
     QCOMPARE(records.first().deviceId, QStringLiteral("device-plain"));
     QCOMPARE(records.first().favorite, false);
+}
+
+// 真身同 IP 合并出现时，手动伪条目的管理标记迁入真行并删除伪行：
+// 备注取非空一方、置顶/隐藏/收藏取或，无伪行时为空操作
+void TestStorageDevice::testMergeManualPeerMarkersToRealPeer()
+{
+    auto database = openDatabase("merge-manual.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs);
+    QString error;
+
+    // 手动伪条目带备注、置顶与好友标记
+    PeerRecord pseudo = makeRecord("manual_192.168.1.77", "手动端点 (192.168.1.77)", base);
+    pseudo.lastIpAddress = "192.168.1.77";
+    QVERIFY2(repository.upsertPeer(pseudo, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceAlias("manual_192.168.1.77", "老王的电脑", &error), qPrintable(error));
+    QVERIFY2(repository.setDevicePinned("manual_192.168.1.77", true, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceFavorite("manual_192.168.1.77", true, &error), qPrintable(error));
+
+    // 真身从同 IP 出现后跑迁移小事务：真行另有隐藏标记，按取或规则保留
+    PeerRecord real = makeRecord("real-uuid-1", "真身设备", base.addSecs(60));
+    real.lastIpAddress = "192.168.1.77";
+    QVERIFY2(repository.upsertPeer(real, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceHidden("real-uuid-1", true, &error), qPrintable(error));
+    QVERIFY2(repository.mergeManualPeerMarkers("real-uuid-1", "manual_192.168.1.77", &error),
+             qPrintable(error));
+
+    QList<PeerRecord> records = repository.recentPeers(10, &error);
+    QCOMPARE(records.size(), 1);  // 伪行已删除，只剩真行
+    const PeerRecord merged = records.first();
+    QCOMPARE(merged.deviceId, QStringLiteral("real-uuid-1"));
+    QCOMPARE(merged.alias, QStringLiteral("老王的电脑"));
+    QCOMPARE(merged.pinned, true);
+    QCOMPARE(merged.favorite, true);
+    QCOMPARE(merged.hidden, true);
+
+    // 真行已有备注时不被伪行值覆盖（备注取非空一方）
+    PeerRecord pseudo2 = makeRecord("manual_192.168.1.78", "手动端点 (192.168.1.78)", base);
+    pseudo2.lastIpAddress = "192.168.1.78";
+    QVERIFY2(repository.upsertPeer(pseudo2, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceAlias("manual_192.168.1.78", "伪身备注", &error), qPrintable(error));
+    PeerRecord real2 = makeRecord("real-uuid-2", "真身设备二", base.addSecs(90));
+    real2.lastIpAddress = "192.168.1.78";
+    QVERIFY2(repository.upsertPeer(real2, &error), qPrintable(error));
+    QVERIFY2(repository.setDeviceAlias("real-uuid-2", "真身备注", &error), qPrintable(error));
+    QVERIFY2(repository.mergeManualPeerMarkers("real-uuid-2", "manual_192.168.1.78", &error),
+             qPrintable(error));
+    records = repository.recentPeers(10, &error);
+    QCOMPARE(records.size(), 2);
+    for (const PeerRecord &record : records) {
+        if (record.deviceId == QStringLiteral("real-uuid-2")) {
+            QCOMPARE(record.alias, QStringLiteral("真身备注"));
+        }
+    }
+
+    // 无伪行时迁移为空操作，真行保持原样
+    QVERIFY2(repository.mergeManualPeerMarkers("real-uuid-1", "manual_10.0.0.1", &error),
+             qPrintable(error));
+    records = repository.recentPeers(10, &error);
+    QCOMPARE(records.size(), 2);
 }
 
 // 工具方法：在临时目录中创建并初始化数据库

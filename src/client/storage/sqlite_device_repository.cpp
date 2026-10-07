@@ -1,7 +1,7 @@
 /**
 * @file    sqlite_device_repository.cpp
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.22.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
 *
@@ -169,6 +169,92 @@ QList<PeerRecord> SqliteDeviceRepository::searchPeers(const QString &keyword, in
     return records;
 }
 
+// 真身同 IP 合并出现时，把手动伪条目的管理标记迁入真行并删除伪行；
+// 备注取非空一方，置顶/隐藏/收藏取或，伪行或真行不存在时为空操作
+SqliteDeviceRepository::SqlStep SqliteDeviceRepository::mergeManualPeerMarkersStep(
+        const QString &realDeviceId, const QString &pseudoDeviceId)
+{
+    return [realDeviceId, pseudoDeviceId](QSqlDatabase &database, QString *taskError) -> bool {
+        QSqlQuery query(database);
+        query.prepare("SELECT alias, pinned, hidden, favorite FROM peer_devices WHERE device_id = ?");
+        query.addBindValue(pseudoDeviceId);
+        if (!query.exec()) {
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        }
+        if (!query.next()) {
+            return true;  // 无伪行（已迁移或从未手动添加）为空操作
+        }
+        const QString pseudoAlias = query.value(0).toString();
+        const bool pseudoPinned = query.value(1).toInt() != 0;
+        const bool pseudoHidden = query.value(2).toInt() != 0;
+        const bool pseudoFavorite = query.value(3).toInt() != 0;
+
+        query.prepare("SELECT alias, pinned, hidden, favorite FROM peer_devices WHERE device_id = ?");
+        query.addBindValue(realDeviceId);
+        if (!query.exec()) {
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        }
+        if (!query.next()) {
+            return true;  // 真行不存在时无迁移落点（upsert 步骤在前，正常不发生）
+        }
+        QString mergedAlias = query.value(0).toString();
+        if (mergedAlias.isEmpty()) {
+            mergedAlias = pseudoAlias;
+        }
+        const bool mergedPinned = query.value(1).toInt() != 0 || pseudoPinned;
+        const bool mergedHidden = query.value(2).toInt() != 0 || pseudoHidden;
+        const bool mergedFavorite = query.value(3).toInt() != 0 || pseudoFavorite;
+
+        query.prepare("UPDATE peer_devices SET alias = ?, pinned = ?, hidden = ?, favorite = ? "
+                      "WHERE device_id = ?");
+        query.addBindValue(mergedAlias);
+        query.addBindValue(mergedPinned ? 1 : 0);
+        query.addBindValue(mergedHidden ? 1 : 0);
+        query.addBindValue(mergedFavorite ? 1 : 0);
+        query.addBindValue(realDeviceId);
+        if (!query.exec()) {
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        }
+
+        // 删除伪行：传输历史是 RESTRICT 外键，先清伪行名下的传输与聊天记录
+        // （伪 ID 不可达正常无历史，防御性清理防孤儿行）
+        query.prepare("DELETE FROM transfer_history WHERE peer_device_id = ?");
+        query.addBindValue(pseudoDeviceId);
+        if (!query.exec()) {
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        }
+        query.prepare("DELETE FROM chat_conversations WHERE peer_device_id = ?");
+        query.addBindValue(pseudoDeviceId);
+        if (!query.exec()) {
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        }
+        query.prepare("DELETE FROM peer_devices WHERE device_id = ?");
+        query.addBindValue(pseudoDeviceId);
+        if (!query.exec()) {
+            if (taskError) {
+                *taskError = query.lastError().text();
+            }
+            return false;
+        }
+        return true;
+    };
+}
+
 // 只执行 upsert，不自开事务；节流由 noteWritten 在事务外控制
 SqliteDeviceRepository::SqlStep SqliteDeviceRepository::upsertPeerStep(const PeerRecord &record)
 {
@@ -261,6 +347,16 @@ bool SqliteDeviceRepository::setDeviceFavorite(const QString &deviceId, bool fav
 {
     return _database && _database->runInTransaction(setDeviceFavoriteStep(deviceId, favorite),
                                                     errorMessage);
+}
+
+// 真身同 IP 合并出现时，把手动伪条目的管理标记迁入真行并删除伪行
+// （独立小事务，幂等：伪行不存在时为空操作）
+bool SqliteDeviceRepository::mergeManualPeerMarkers(const QString &realDeviceId,
+                                                    const QString &pseudoDeviceId,
+                                                    QString *errorMessage)
+{
+    return _database && _database->runInTransaction(
+        mergeManualPeerMarkersStep(realDeviceId, pseudoDeviceId), errorMessage);
 }
 
 // 删除设备及其聊天与传输历史；不删除已接收的本地文件

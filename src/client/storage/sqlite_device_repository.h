@@ -1,7 +1,7 @@
 /**
 * @file    sqlite_device_repository.h
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.22.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   SQLite 设备目录 Repository 实现
 *
@@ -44,6 +44,10 @@ public:
     // 设置设备收藏状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDeviceFavorite(const QString &deviceId, bool favorite,
                                    QString *errorMessage) override;
+    // 真身同 IP 合并出现时，把手动伪条目的管理标记迁入真行并删除伪行
+    // （备注取非空一方，置顶/隐藏/收藏取或；无伪行时为空操作）
+    bool mergeManualPeerMarkers(const QString &realDeviceId, const QString &pseudoDeviceId,
+                                QString *errorMessage);
     // 设置设备隐藏状态（幂等，设备行不存在时同样返回成功）
     virtual bool setDeviceHidden(const QString &deviceId, bool hidden, QString *errorMessage) override;
     // 设置设备本地备注别名（空串表示清除；幂等，设备行不存在时同样返回成功）
@@ -61,6 +65,8 @@ public:
     static SqlStep setDeviceHiddenStep(const QString &deviceId, bool hidden);
     static SqlStep setDeviceAliasStep(const QString &deviceId, const QString &alias);
     static SqlStep deleteDeviceStep(const QString &deviceId);
+    static SqlStep mergeManualPeerMarkersStep(const QString &realDeviceId,
+                                              const QString &pseudoDeviceId);
     // 组合写入成功后刷新节流缓存，供 LocalDataBroker 在事务提交后调用
     void noteWritten(const PeerRecord &record);
     // 设备删除成功后清除节流缓存，再次发现按全新设备重新入目录

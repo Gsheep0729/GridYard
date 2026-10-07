@@ -1,7 +1,7 @@
 /**
  * @file    AddDeviceDialog.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 7.22.0
+ * @date 2026-10-07
  * @author  GY
  * @brief   添加设备对话框
  *
@@ -304,6 +304,14 @@ Dialog {
                 // 失败提示仅在弹窗仍打开时写行内错误，关窗后无处展示，忽略合理
                 addDeviceDialog._importError = errorString.length > 0
                                                ? errorString : qsTr("邀请码无效，请检查后重试")
+            }
+        }
+
+        // 邀请添加即好友：目标探测可达并注入设备目录后自动建立好友标记
+        //（导入自己的邀请码不会注入，也就不会走到这里）
+        function onInvitePeerInjected(deviceId: string): void {
+            if (deviceId.length > 0 && deviceId !== ConfigManager.deviceId) {
+                AppController.peerDiscoveryViewModel.setDeviceFavorite(deviceId, true)
             }
         }
 

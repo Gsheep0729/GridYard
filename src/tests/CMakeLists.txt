@@ -402,6 +402,7 @@ target_include_directories(test_reachability_controller PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
     ${CMAKE_SOURCE_DIR}/client
+    ${CMAKE_SOURCE_DIR}/client/domain
     ${CMAKE_SOURCE_DIR}/shared
 )
 target_compile_features(test_reachability_controller PRIVATE cxx_std_23)

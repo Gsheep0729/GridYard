@@ -161,7 +161,7 @@ target_link_libraries(appGridYard PRIVATE
     gy_storage
 )
 
-target_include_directories(appGridYard PRIVATE core network)
+target_include_directories(appGridYard PRIVATE core network domain)
 set_property(TARGET appGridYard PROPERTY FOLDER "client")
 
 # ---- 安装规则 ---------------------------------------------------------

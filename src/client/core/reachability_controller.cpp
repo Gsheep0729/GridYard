@@ -1,7 +1,7 @@
 /**
 * @file    reachability_controller.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.22.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   网络可达性控制器实现
 *
@@ -15,6 +15,7 @@
 #include "data_types.h"
 #include "discovery_service.h"
 #include "endpoint_probe.h"
+#include "history_records.h"
 #include "network/rendezvous_client.h"
 #include "protocol.h"
 
@@ -198,6 +199,8 @@ void ReachabilityController::onProbeFinished(const EndpointProbe::ProbeResult &r
             && pending.value(gy::keys::kEndpointTcpPort).toInt() == result.targetPort) {
         if (result.tcpConnected) {
             injectDirectedPeerFromInvite(pending);
+            // 注入已提交设备目录落库，界面随后写好友标记即可命中该行
+            emit invitePeerInjected(pending.value(QStringLiteral("deviceId")).toString());
         } else {
             // TCP 不可达时不注入，避免制造无法收发的"在线卡"，失败反馈走既有行内错误
             qDebug() << "ReachabilityController: 邀请目标探测失败，不注入设备条目"
@@ -321,7 +324,7 @@ void ReachabilityController::addManualEndpoint(const QString &ip, quint16 tcpPor
     // 直接添加到设备列表，标记为 manual 来源
     if (_discovery) {
         PeerInfo info;
-        info.deviceId = QStringLiteral("manual_") + ip;  // 临时 ID
+        info.deviceId = gy::domain::manualPseudoDeviceId(ip);  // 真身合并前的占位 ID
         info.deviceName = QStringLiteral("手动端点 (%1)").arg(ip);
         info.ipAddress = ip;
         info.tcpPort = tcpPort;

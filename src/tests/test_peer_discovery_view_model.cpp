@@ -1,6 +1,6 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.21.3
+* @version 7.22.0
 * @date 2026-10-07
 * @author  GY
 * @brief   设备发现视图模型测试
@@ -50,6 +50,8 @@ private slots:
     void testRecentExpandDefaultTruncated();
     void testRecentExpandShowsAllAndCollapses();
     void testRecentExpandSurvivesHeartbeat();
+    void testFavoriteSurvivesRecentTruncation();
+    void testPseudoPeerMarkersMigrateToRealPeer();
     void testHiddenFilteredAcrossSegments();
     void testSegmentFavoritePriorityAndFallback();
 
@@ -904,6 +906,112 @@ void TestPeerDiscoveryViewModel::testRecentExpandSurvivesHeartbeat()
                              3000);
     QVERIFY(!freshViewModel.recentExpanded());
     QCOMPARE(recentCount(freshViewModel), static_cast<int>(freshViewModel.recentVisibleLimit()));
+}
+
+// 好友展示保障：最近见过段截尾在段内排序（好友优先）之后执行，
+// 被收藏的最旧设备不被限流挤掉
+void TestPeerDiscoveryViewModel::testFavoriteSurvivesRecentTruncation()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "fav-truncate.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    // 直写 12 台离线历史设备，活跃时间递增；最旧的 dev-01 将被收藏
+    const QDateTime base = QDateTime::fromString("2026-10-03T08:00:00.000Z", Qt::ISODateWithMs);
+    for (int i = 1; i <= 12; ++i) {
+        PeerRecord record;
+        record.deviceId = QStringLiteral("ftv-dev-%1").arg(i, 2, 10, QChar('0'));
+        record.deviceName = QStringLiteral("保障设备%1").arg(i, 2, 10, QChar('0'));
+        record.lastIpAddress = QStringLiteral("10.87.0.%1").arg(i);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 60);
+        record.lastSeenAt = base.addSecs(i * 60);
+        QString error;
+        QVERIFY(repository.upsertPeer(record, &error));
+    }
+
+    auto broker = openBroker("fav-truncate.sqlite");
+    QVERIFY(broker);
+    bool favSet = false;
+    broker->setDeviceFavorite(this, QStringLiteral("ftv-dev-01"), true,
+                              [&favSet](bool) { favSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(favSet, true, 3000);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("ftv-dev-12")).isEmpty(), 3000);
+
+    // 截尾在好友优先排序之后执行：收藏的最旧设备出现在可见 10 台的段首，
+    // 被挤掉的是排序末尾的两台较新设备
+    QStringList recentIds;
+    for (const QVariant &entry : viewModel.peers()) {
+        if (entry.toMap().value("segment").toString() == QStringLiteral("recent")) {
+            recentIds.append(entry.toMap().value("deviceId").toString());
+        }
+    }
+    QCOMPARE(recentIds.size(), viewModel.recentVisibleLimit());
+    QCOMPARE(recentIds.first(), QStringLiteral("ftv-dev-01"));
+    QVERIFY(!recentIds.contains(QStringLiteral("ftv-dev-02")));
+    QVERIFY(!recentIds.contains(QStringLiteral("ftv-dev-03")));
+
+    // 展开后好友与全部条目可见（任务 A 的展开入口承接）
+    viewModel.setRecentExpanded(true);
+    recentIds.clear();
+    for (const QVariant &entry : viewModel.peers()) {
+        if (entry.toMap().value("segment").toString() == QStringLiteral("recent")) {
+            recentIds.append(entry.toMap().value("deviceId").toString());
+        }
+    }
+    QCOMPARE(recentIds.size(), 12);
+    QVERIFY(recentIds.contains(QStringLiteral("ftv-dev-02")));
+}
+
+// 伪 ID 条目的管理标记随真身同 IP 出现迁入真行：好友/备注跟随真身，
+// 伪行从目录消失
+void TestPeerDiscoveryViewModel::testPseudoPeerMarkersMigrateToRealPeer()
+{
+    auto broker = openBroker("pseudo-merge.sqlite");
+    QVERIFY(broker);
+
+    // 手动添加伪条目（manual_ 前缀占位 ID）并设置备注与好友标记
+    const QString pseudoId = QStringLiteral("manual_10.254.254.61");
+    PeerInfo pseudo;
+    pseudo.deviceId = pseudoId;
+    pseudo.deviceName = QStringLiteral("手动端点 (10.254.254.61)");
+    pseudo.ipAddress = QStringLiteral("10.254.254.61");
+    pseudo.tcpPort = 35100;
+    pseudo.isOnline = true;
+    pseudo.lastSeen = QDateTime::currentDateTimeUtc();
+    pseudo.source = QStringLiteral("manual");
+    broker->persistDiscoveredPeer(pseudo);
+    bool aliasSet = false;
+    broker->setDeviceAlias(this, pseudoId, QStringLiteral("实验台旧标签"),
+                           [&aliasSet](bool) { aliasSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(aliasSet, true, 3000);
+    bool favSet = false;
+    broker->setDeviceFavorite(this, pseudoId, true, [&favSet](bool) { favSet = true; });
+    QTRY_COMPARE_WITH_TIMEOUT(favSet, true, 3000);
+
+    // 真身经同 IP 广播出现（走 persistDiscoveredPeer 的 upsert 加迁移链路）
+    PeerInfo real;
+    real.deviceId = QStringLiteral("real-peer-61");
+    real.deviceName = QStringLiteral("真身设备");
+    real.ipAddress = QStringLiteral("10.254.254.61");
+    real.tcpPort = 35100;
+    real.isOnline = true;
+    real.lastSeen = QDateTime::currentDateTimeUtc();
+    real.source = QStringLiteral("broadcast");
+    broker->persistDiscoveredPeer(real);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+
+    // 真身条目继承伪行的好友与备注标记，伪行从设备目录消失
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("real-peer-61"))
+                             .value("favorite").toBool(), 5000);
+    const QVariantMap merged = viewModel.deviceById(QStringLiteral("real-peer-61"));
+    QCOMPARE(merged.value("alias").toString(), QStringLiteral("实验台旧标签"));
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(pseudoId).isEmpty(), 5000);
 }
 
 // 隐藏设备在所有段中被一体过滤：在线段的隐藏条目与最近见过段的隐藏条目都不进列表

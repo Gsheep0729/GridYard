@@ -1,6 +1,6 @@
 /**
  * @file    PeerListView.qml
- * @version 7.21.3
+ * @version 7.22.0
  * @date 2026-10-07
  * @author  GridYard Team
  * @brief   设备列表组件
@@ -96,7 +96,7 @@ Rectangle {
 
     signal deviceSelected(string deviceId, string deviceName, string ipAddress, bool isOnline)
     signal filesDropped(string deviceId, var urls)  // 拖拽文件到设备卡片时触发，由 Main 统一裁决
-    // 右键打开菜单的意图上抛（携带打开时捕获的设备上下文，含在线与收藏状态），菜单实例由侧栏窗口层单例持有
+    // 右键打开菜单的意图上抛（携带打开时捕获的设备上下文，含在线与好友状态），菜单实例由侧栏窗口层单例持有
     signal contextMenuRequested(string deviceId, string deviceName, bool isPinned, bool isOnline,
                                 bool isFavorite)
 

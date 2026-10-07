@@ -93,6 +93,8 @@ signals:
     void rendezvousEnabledChanged();
     void manualEndpointTestResult(bool success, const QString &errorString);
     void inviteImported(bool success, const QString &deviceId, const QString &errorString);
+    // 邀请目标探测可达并注入设备目录后发出，供界面把该设备标记为好友
+    void invitePeerInjected(const QString &deviceId);
     // 协调服务器返回的候选设备列表
     void rendezvousPeersReceived(const QList<QVariantMap> &peers);
 

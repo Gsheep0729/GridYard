@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.21.0
- * @date 2026-10-05
+ * @version 7.22.0
+ * @date 2026-10-07
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -33,8 +33,8 @@ ItemDelegate {
     // 最后见过时间（ISO 文本）：离线卡片据此显示相对时间，在线卡不消费
     required property string lastSeenAt
 
-    // 置顶与收藏状态由视图模型按数据库状态注入，前者仅用于菜单文案展示，
-    // 后者同时驱动卡片右上角的星标
+    // 置顶与好友状态由视图模型按数据库状态注入，前者仅用于菜单文案展示，
+    // 后者（favorite 列）同时驱动卡片右上角的星标
     property bool isPinned: false
     required property bool favorite
 
@@ -79,7 +79,7 @@ ItemDelegate {
         }
     }
 
-    // 收藏星标：自绘五角星（禁用主题 icon.name，缺 glyph 会渲染黑块），
+    // 好友星标：自绘五角星（禁用主题 icon.name，缺 glyph 会渲染黑块），
     // 叠在卡片右上角，不与左侧选中指示条和右侧状态列争夺空间
     Canvas {
         anchors.right: parent.right

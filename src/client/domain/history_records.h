@@ -1,7 +1,7 @@
 /**
 * @file    history_records.h
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.22.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   本地历史持久化领域记录
 *
@@ -74,3 +74,21 @@ struct TransferQuery {
     QDateTime beforeStartedAt; // 下一页仅查询早于该时间的记录
     QString beforeRecordId;    // 同一时间下的次键游标，与排序键 (started_at, record_id) 对齐
 };
+
+namespace gy {
+namespace domain {
+
+// 手动 IP 添加产生的伪设备 ID 前缀：真身经同 IP 心跳合并前在设备目录占位
+inline QString manualPseudoDeviceId(const QString &ip)
+{
+    return QStringLiteral("manual_") + ip;
+}
+
+// 判定设备 ID 是否为手动添加的伪 ID（真身未合并前不可建立好友等可信关系）
+inline bool isManualPseudoDeviceId(const QString &deviceId)
+{
+    return deviceId.startsWith(QStringLiteral("manual_"));
+}
+
+}  // namespace domain
+}  // namespace gy

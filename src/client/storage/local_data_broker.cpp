@@ -1,7 +1,7 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.22.0
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
 *
@@ -106,7 +106,17 @@ void LocalDataBroker::persistDiscoveredPeer(const PeerInfo &peer)
     _storageWorker->submitTask(
         [this, record](SqliteDatabaseBroker &, QString *errorMessage) {
             // 设备目录存在节流，短时间内重复心跳不会实际写磁盘
-            return _deviceRepository->upsertPeer(record, errorMessage);
+            if (!_deviceRepository->upsertPeer(record, errorMessage)) {
+                return false;
+            }
+            // 真身心跳到达时并入同 IP 手动伪条目的管理标记（独立小事务，
+            // 幂等：伪行删除后为空操作；伪 ID 自身的心跳不做迁移）
+            if (gy::domain::isManualPseudoDeviceId(record.deviceId)) {
+                return true;
+            }
+            return _deviceRepository->mergeManualPeerMarkers(
+                record.deviceId, gy::domain::manualPseudoDeviceId(record.lastIpAddress),
+                errorMessage);
         });
 }
 
