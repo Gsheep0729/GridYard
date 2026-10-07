@@ -1,7 +1,7 @@
 /**
 * @file    reachability_controller.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   网络可达性控制器（QML 单例）
 *
