@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.21.3
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 */
@@ -181,10 +181,14 @@ QVariantList PeerDiscoveryViewModel::buildMergedPeers() const
 }
 
 // 列表视图数据：在分段排序结果上对最近见过段截尾——扫描语义下在线是
-// 主内容，历史最多露出最近 kRecentVisibleLimit 台，其余经搜索深检索
+// 主内容，历史最多露出最近 kRecentVisibleLimit 台，其余经搜索深检索；
+// 展开态（段尾"展开全部"入口）不做截尾，段内排序保持不变
 QVariantList PeerDiscoveryViewModel::peers() const
 {
     const QVariantList merged = buildMergedPeers();
+    if (_recentExpanded) {
+        return merged;
+    }
     QVariantList visible;
     visible.reserve(merged.size());
     int recentSeen = 0;
@@ -202,6 +206,38 @@ QVariantList PeerDiscoveryViewModel::peers() const
 int PeerDiscoveryViewModel::recentVisibleLimit() const
 {
     return kRecentVisibleLimit;
+}
+
+// 获取"最近见过"段是否处于展开态
+bool PeerDiscoveryViewModel::recentExpanded() const
+{
+    return _recentExpanded;
+}
+
+// 设置"最近见过"段展开态并通知列表重渲染；标记仅存于视图模型，
+// 心跳触发的目录重载不会复位（会话内记忆，应用重启随对象重建复位）
+void PeerDiscoveryViewModel::setRecentExpanded(bool expanded)
+{
+    if (_recentExpanded == expanded) {
+        return;
+    }
+    _recentExpanded = expanded;
+    emit recentExpandedChanged();
+    emit peersChanged();
+}
+
+// "最近见过"段全量条数：走不截尾的合并结果，被限流隐藏的条目也计入，
+// 段尾展开入口据此显示"共 N 台"
+int PeerDiscoveryViewModel::recentTotalCount() const
+{
+    int total = 0;
+    const QVariantList merged = buildMergedPeers();
+    for (const QVariant &peer : merged) {
+        if (peer.toMap().value("segment").toString() == QStringLiteral("recent")) {
+            ++total;
+        }
+    }
+    return total;
 }
 
 // 隐藏态设备列表：历史目录保序在前，在线表补充的隐藏条目追加在后，

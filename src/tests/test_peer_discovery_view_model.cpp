@@ -1,7 +1,7 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.21.3
+* @date 2026-10-07
 * @author  GY
 * @brief   设备发现视图模型测试
 *
@@ -47,6 +47,9 @@ private slots:
     void testSearchPeersEmptyAndNoMatch();
     void testSegmentAssignmentAndInSegmentOrder();
     void testRecentVisibleLimitTruncation();
+    void testRecentExpandDefaultTruncated();
+    void testRecentExpandShowsAllAndCollapses();
+    void testRecentExpandSurvivesHeartbeat();
     void testHiddenFilteredAcrossSegments();
     void testSegmentFavoritePriorityAndFallback();
 
@@ -735,6 +738,172 @@ void TestPeerDiscoveryViewModel::testRecentVisibleLimitTruncation()
     }
     QVERIFY(searchIds.contains(QStringLiteral("limit-dev-01")));
     QVERIFY(searchIds.contains(QStringLiteral("limit-dev-02")));
+}
+
+// 展开开关默认收起：最近见过段保持限流截尾，全量条数经 recentTotalCount 暴露
+void TestPeerDiscoveryViewModel::testRecentExpandDefaultTruncated()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "expand-default.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    // 直写 12 台离线历史设备，活跃时间递增：越靠后越新
+    const QDateTime base = QDateTime::fromString("2026-10-04T08:00:00.000Z", Qt::ISODateWithMs);
+    for (int i = 1; i <= 12; ++i) {
+        PeerRecord record;
+        record.deviceId = QStringLiteral("edef-dev-%1").arg(i, 2, 10, QChar('0'));
+        record.deviceName = QStringLiteral("默认设备%1").arg(i, 2, 10, QChar('0'));
+        record.lastIpAddress = QStringLiteral("10.84.0.%1").arg(i);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 60);
+        record.lastSeenAt = base.addSecs(i * 60);
+        QString error;
+        QVERIFY(repository.upsertPeer(record, &error));
+    }
+
+    auto broker = openBroker("expand-default.sqlite");
+    QVERIFY(broker);
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("edef-dev-12")).isEmpty(), 3000);
+
+    // 默认收起态：只露最近 10 台，旧的两台被限流，全量条数可供段尾入口显示
+    QVERIFY(!viewModel.recentExpanded());
+    QCOMPARE(viewModel.recentTotalCount(), 12);
+    QStringList recentIds;
+    for (const QVariant &entry : viewModel.peers()) {
+        if (entry.toMap().value("segment").toString() == QStringLiteral("recent")) {
+            recentIds.append(entry.toMap().value("deviceId").toString());
+        }
+    }
+    QCOMPARE(recentIds.size(), viewModel.recentVisibleLimit());
+    QVERIFY(!recentIds.contains(QStringLiteral("edef-dev-01")));
+    QVERIFY(!recentIds.contains(QStringLiteral("edef-dev-02")));
+
+    // 限流条目经 deviceById 全量查询仍可达（不截尾路径回归）
+    QVERIFY(!viewModel.deviceById(QStringLiteral("edef-dev-01")).isEmpty());
+}
+
+// 展开后最近见过段全量可见且段内排序不变，收起恢复限流
+void TestPeerDiscoveryViewModel::testRecentExpandShowsAllAndCollapses()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "expand-toggle.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-10-04T09:00:00.000Z", Qt::ISODateWithMs);
+    for (int i = 1; i <= 12; ++i) {
+        PeerRecord record;
+        record.deviceId = QStringLiteral("etg-dev-%1").arg(i, 2, 10, QChar('0'));
+        record.deviceName = QStringLiteral("展开设备%1").arg(i, 2, 10, QChar('0'));
+        record.lastIpAddress = QStringLiteral("10.85.0.%1").arg(i);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 60);
+        record.lastSeenAt = base.addSecs(i * 60);
+        QString error;
+        QVERIFY(repository.upsertPeer(record, &error));
+    }
+
+    auto broker = openBroker("expand-toggle.sqlite");
+    QVERIFY(broker);
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("etg-dev-12")).isEmpty(), 3000);
+
+    const auto recentIds = [&viewModel]() {
+        QStringList ids;
+        for (const QVariant &entry : viewModel.peers()) {
+            if (entry.toMap().value("segment").toString() == QStringLiteral("recent")) {
+                ids.append(entry.toMap().value("deviceId").toString());
+            }
+        }
+        return ids;
+    };
+
+    // 展开：被限流的条目全部可见，段内仍按最后见过倒序
+    QSignalSpy changedSpy(&viewModel, &PeerDiscoveryViewModel::peersChanged);
+    viewModel.setRecentExpanded(true);
+    QVERIFY(viewModel.recentExpanded());
+    QVERIFY(!changedSpy.isEmpty());
+    const QStringList expanded = recentIds();
+    QCOMPARE(expanded.size(), 12);
+    QCOMPARE(expanded.first(), QStringLiteral("etg-dev-12"));
+    QCOMPARE(expanded.last(), QStringLiteral("etg-dev-01"));
+
+    // 收起：恢复限流，最早的两台再次被截尾
+    viewModel.setRecentExpanded(false);
+    QCOMPARE(recentIds().size(), viewModel.recentVisibleLimit());
+    QVERIFY(!recentIds().contains(QStringLiteral("etg-dev-01")));
+    QVERIFY(!recentIds().contains(QStringLiteral("etg-dev-02")));
+
+    // 重复写入同一状态不重复发通知
+    const int notified = changedSpy.count();
+    viewModel.setRecentExpanded(false);
+    QCOMPARE(changedSpy.count(), notified);
+}
+
+// 展开态会话内记忆：心跳触发的目录重载不收起；视图模型重建（应用重启）复位
+void TestPeerDiscoveryViewModel::testRecentExpandSurvivesHeartbeat()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "expand-heartbeat.sqlite");
+    QVERIFY(database);
+    SqliteDeviceRepository repository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-10-04T10:00:00.000Z", Qt::ISODateWithMs);
+    for (int i = 1; i <= 12; ++i) {
+        PeerRecord record;
+        record.deviceId = QStringLiteral("ehb-dev-%1").arg(i, 2, 10, QChar('0'));
+        record.deviceName = QStringLiteral("心跳设备%1").arg(i, 2, 10, QChar('0'));
+        record.lastIpAddress = QStringLiteral("10.86.0.%1").arg(i);
+        record.lastTcpPort = 35100;
+        record.firstSeenAt = base.addSecs(i * 60);
+        record.lastSeenAt = base.addSecs(i * 60);
+        QString error;
+        QVERIFY(repository.upsertPeer(record, &error));
+    }
+
+    auto broker = openBroker("expand-heartbeat.sqlite");
+    QVERIFY(broker);
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("ehb-dev-12")).isEmpty(), 3000);
+
+    const auto recentCount = [](const PeerDiscoveryViewModel &vm) {
+        int n = 0;
+        for (const QVariant &entry : vm.peers()) {
+            if (entry.toMap().value("segment").toString() == QStringLiteral("recent")) {
+                ++n;
+            }
+        }
+        return n;
+    };
+
+    viewModel.setRecentExpanded(true);
+    QCOMPARE(recentCount(viewModel), 12);
+
+    // 模拟心跳后续：同设备改名换 IP 再落库并触发目录重载（peersChanged 链路）
+    PeerInfo heartbeat;
+    heartbeat.deviceId = QStringLiteral("ehb-dev-01");
+    heartbeat.deviceName = QStringLiteral("心跳设备01改名");
+    heartbeat.ipAddress = QStringLiteral("10.86.0.99");
+    heartbeat.tcpPort = 35100;
+    heartbeat.isOnline = true;
+    heartbeat.lastSeen = QDateTime::currentDateTimeUtc();
+    heartbeat.source = QStringLiteral("manual");
+    seedPeer(*broker, heartbeat);
+    viewModel.refreshHistory();
+
+    QVERIFY(viewModel.recentExpanded());
+    QCOMPARE(recentCount(viewModel), 12);
+    QCOMPARE(viewModel.recentTotalCount(), 12);
+
+    // 新建视图模型模拟应用重启：展开态复位为收起
+    PeerDiscoveryViewModel freshViewModel(_discovery);
+    freshViewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!freshViewModel.deviceById(QStringLiteral("ehb-dev-12")).isEmpty(),
+                             3000);
+    QVERIFY(!freshViewModel.recentExpanded());
+    QCOMPARE(recentCount(freshViewModel), static_cast<int>(freshViewModel.recentVisibleLimit()));
 }
 
 // 隐藏设备在所有段中被一体过滤：在线段的隐藏条目与最近见过段的隐藏条目都不进列表

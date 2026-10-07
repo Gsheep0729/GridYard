@@ -1,7 +1,7 @@
 /**
 * @file    main.cpp
-* @version   7.21.2
-* @date 2026-10-05
+* @version   7.21.3
+* @date 2026-10-07
 * @author  GY
 * @brief   GridYard 客户端程序入口
 *
@@ -31,7 +31,7 @@
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("7.21.2");
+    QGuiApplication::setApplicationVersion("7.21.3");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数须在 QApplication 构造前解析：X11 平台层会按 X 工具惯例

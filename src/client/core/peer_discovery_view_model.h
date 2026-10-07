@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.21.0
-* @date 2026-10-05
+* @version 7.21.3
+* @date 2026-10-07
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
 *
@@ -33,6 +33,11 @@ private:
     Q_PROPERTY(QVariantList hiddenPeers READ hiddenPeers NOTIFY peersChanged)
     // "最近见过"段在列表中的可见条数上限，超出部分经搜索深检索数据库目录
     Q_PROPERTY(int recentVisibleLimit READ recentVisibleLimit NOTIFY peersChanged)
+    // "最近见过"段是否展开全部条目（会话内记忆：心跳刷新不收起，重启复位）
+    Q_PROPERTY(bool recentExpanded READ recentExpanded WRITE setRecentExpanded
+               NOTIFY recentExpandedChanged)
+    // "最近见过"段全量条数（不受截尾影响），段尾展开入口据此显示"共 N 台"
+    Q_PROPERTY(int recentTotalCount READ recentTotalCount NOTIFY peersChanged)
     // 关键字检索的数据库历史命中条目，随 searchPeers 异步发布
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchResultsChanged)
     // 数据库检索是否进行中（防抖提交后到回调返回之间），界面据此抑制空态闪现
@@ -50,6 +55,12 @@ public:
     QVariantList peers() const;
     // 获取"最近见过"段的可见条数上限
     int recentVisibleLimit() const;
+    // 获取"最近见过"段是否处于展开态
+    bool recentExpanded() const;
+    // 设置"最近见过"段展开态，展开/收起后列表立即重渲染
+    void setRecentExpanded(bool expanded);
+    // 获取"最近见过"段全量条数（不截尾，被限流隐藏的条目也计入）
+    int recentTotalCount() const;
     // 获取隐藏态设备列表，设置页"已隐藏设备"区块据此展示恢复入口
     QVariantList hiddenPeers() const;
     // 获取关键字检索的数据库历史命中条目
@@ -87,6 +98,7 @@ public:
 
 signals:
     void peersChanged();
+    void recentExpandedChanged();
     void searchResultsChanged();
     void searchBusyChanged();
     void selectedDeviceIdChanged();
@@ -114,4 +126,5 @@ private:
     QSet<QString> _favoriteDeviceIds;  // 数据库中收藏态的设备（关系语义，段内排序优先）
     QHash<QString, QString> _aliasByDeviceId;  // 数据库中的设备备注，在线条目按 deviceId 回填
     QString _selectedDeviceId;  // 当前选中设备 ID
+    bool _recentExpanded = false;  // "最近见过"段展开态，仅存于视图模型（重启复位）
 };

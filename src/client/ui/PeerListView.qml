@@ -1,7 +1,7 @@
 /**
  * @file    PeerListView.qml
- * @version 7.21.2
- * @date 2026-10-06
+ * @version 7.21.3
+ * @date 2026-10-07
  * @author  GridYard Team
  * @brief   设备列表组件
  *
@@ -67,7 +67,7 @@ Rectangle {
         }
         return n
     }
-    // "最近见过"段在列表中的条数：段头计数与截尾提示都以它为准
+    // "最近见过"段在列表中的条数：段头计数以它为准
     readonly property int _recentCount: {
         const peers = AppController.peerDiscoveryViewModel.peers
         let n = 0
@@ -78,6 +78,8 @@ Rectangle {
         }
         return n
     }
+    // "最近见过"段全量条数（不受截尾影响）：段尾展开开关的计数以它为准
+    readonly property int _recentTotal: AppController.peerDiscoveryViewModel.recentTotalCount
 
     // 模糊匹配：同时搜索设备名、本地备注和 IP 地址，任一包含关键词即匹配
     function matchesPeer(deviceName: string, ipAddress: string, alias: string): bool {
@@ -258,7 +260,8 @@ Rectangle {
         }
     }
 
-    // 最近见过截尾提示：搜索态不分段，提示也随之隐藏
+    // 最近见过段尾开关：默认紧凑 10 台时提供"展开全部"浏览入口，展开后
+    // 提供"收起"；搜索态不分段，开关随之隐藏
     Component {
         id: recentLimitHint
 
@@ -266,23 +269,33 @@ Rectangle {
             width: listView.width
             height: 42
 
-            Label {
+            ItemDelegate {
+                id: expandToggle
                 anchors.centerIn: parent
-                text: qsTr("仅显示最近 %1 台，试试搜索")
-                      .arg(AppController.peerDiscoveryViewModel.recentVisibleLimit)
-                color: Style.Color.textWeak
-                font.pixelSize: 12
+                hoverEnabled: true
+
+                contentItem: Label {
+                    text: AppController.peerDiscoveryViewModel.recentExpanded
+                          ? qsTr("收起")
+                          : qsTr("展开全部（共 %1 台）").arg(peerListView._recentTotal)
+                    color: expandToggle.hovered ? Style.Color.primary : Style.Color.textWeak
+                    font.pixelSize: 12
+                }
+
+                onClicked: AppController.peerDiscoveryViewModel.recentExpanded =
+                           !AppController.peerDiscoveryViewModel.recentExpanded
             }
         }
     }
 
     // footer 用 Loader 承载并按条件启停，避免 footer 高度绑定卷入视图布局回写；
-    // footer 属性要的是 Component，Loader 包在 Component 内由视图实例化
+    // footer 属性要的是 Component，Loader 包在 Component 内由视图实例化。
+    // 只在确有被限流条目时出现（全量条数超出可见上限），展开后仍显示供收起
     Component {
         id: recentLimitFooter
 
         Loader {
-            active: !peerListView._searchActive && peerListView._recentCount >=
+            active: !peerListView._searchActive && peerListView._recentTotal >
                     AppController.peerDiscoveryViewModel.recentVisibleLimit
             sourceComponent: recentLimitHint
         }
