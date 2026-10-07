@@ -1,7 +1,7 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 */
@@ -71,6 +71,43 @@ void TransferController::createSendSession(const QString &deviceId, const QStrin
 {
     if (_manager) {
         _manager->createSendSession(deviceId, filePath);
+    }
+}
+
+// 多选群发：委托会话管理器逐台建立独立发送会话
+void TransferController::createMultiSendSessions(const QStringList &deviceIds,
+                                                 const QString &filePath)
+{
+    if (_manager) {
+        _manager->createMultiSendSessions(deviceIds, filePath);
+    }
+}
+
+// 上次多选群发勾选的目标集合
+QStringList TransferController::lastMultiTargets() const
+{
+    return _manager ? _manager->lastMultiTargets() : QStringList{};
+}
+
+// 记录本次多选群发的目标集合
+void TransferController::saveMultiTargets(const QStringList &deviceIds)
+{
+    if (_manager) {
+        _manager->saveMultiTargets(deviceIds);
+    }
+}
+
+// 上次群发的内容路径
+QString TransferController::lastMultiPath() const
+{
+    return _manager ? _manager->lastMultiPath() : QString();
+}
+
+// 记录本次群发的内容路径
+void TransferController::saveMultiPath(const QString &filePath)
+{
+    if (_manager) {
+        _manager->saveMultiPath(filePath);
     }
 }
 

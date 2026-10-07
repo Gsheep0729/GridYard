@@ -1,7 +1,7 @@
 /**
 * @file    transfer_controller.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器
 */
@@ -46,6 +46,14 @@ public:
 
     // 创建发送会话
     Q_INVOKABLE void createSendSession(const QString &deviceId, const QString &filePath);
+    // 多选群发：逐台独立 1:1 会话，序列化与哈希一次复用
+    Q_INVOKABLE void createMultiSendSessions(const QStringList &deviceIds, const QString &filePath);
+    // 上次多选群发勾选的目标集合（多选弹窗默认勾选）
+    Q_INVOKABLE QStringList lastMultiTargets() const;
+    Q_INVOKABLE void saveMultiTargets(const QStringList &deviceIds);
+    // 上次群发的内容路径（多选弹窗预填）
+    Q_INVOKABLE QString lastMultiPath() const;
+    Q_INVOKABLE void saveMultiPath(const QString &filePath);
     // 接受接收会话
     Q_INVOKABLE void acceptReceiveSession(const QString &sessionId);
     // 拒绝接收会话

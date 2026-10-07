@@ -1,7 +1,7 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 7.20.3
- * @date 2026-10-05
+ * @version 7.25.0
+ * @date 2026-10-08
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
  *
@@ -75,6 +75,7 @@ Frame {
 
    signal sendFileRequested()
    signal sendFolderRequested()
+   signal sendMultiRequested()
    signal filesDropped(var urls)  // 拖拽内容原样冒泡，由 Main.qml 统一裁决
 
    ColumnLayout {
@@ -391,11 +392,58 @@ Frame {
                        }
                    }
 
+                   // 群发胶囊：绿色系（share 语义），与文件/文件夹胶囊并列
+                   Button {
+                       id: multiPill
+                       anchors.left: folderPill.right
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       visible: opacity > 0
+                       opacity: inputBox.attachExpanded ? 1 : 0
+                       width: inputBox.attachExpanded ? implicitWidth : 0
+                       clip: true
+                       leftPadding: 10
+                       rightPadding: 10
+                       Behavior on width {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+                       Behavior on opacity {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+
+                       contentItem: RowLayout {
+                           spacing: 5
+                           FileTypeIcon {
+                               fileName: ""
+                               isDirectory: true
+                               Layout.preferredWidth: 15
+                               Layout.preferredHeight: 15
+                           }
+                           Label {
+                               text: qsTr("群发")
+                               font.pixelSize: 13
+                               font.bold: true
+                               color: multiPill.enabled ? Style.Color.success : Style.Color.textWeak
+                           }
+                       }
+                       background: Rectangle {
+                           radius: multiPill.height / 2
+                           color: !multiPill.enabled ? Style.Color.surfaceSoft
+                                  : (multiPill.hovered ? Style.Color.successHover
+                                                       : Style.Color.successSoft)
+                       }
+                       onClicked: {
+                           inputBox.attachExpanded = false
+                           deviceSessionView.sendMultiRequested()
+                       }
+                   }
+
                    TextArea {
                        id: messageInput
                        anchors {
                            top: parent.top
-                           left: folderPill.right
+                           left: multiPill.right
                            right: parent.right
                            bottom: parent.bottom
                            topMargin: Style.Space.sm

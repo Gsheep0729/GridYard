@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -18,7 +18,9 @@
 #include <QTemporaryDir>
 #include <QThread>
 
+#include "dir_serializer.h"
 #include "transfer_session_manager.h"
+#include "transfer_session_model.h"
 #include "transfer_controller.h"
 #include "config_manager.h"
 #include "discovery_service.h"
@@ -54,10 +56,14 @@ private slots:
     void testWaitingConfirmSnapshotQueueing();
     void testActiveSessionCountLifecycle();
     void testIncomingRequestEntrySignal();
+    void testMultiSendSharesSerializedList();
+    void testMultiTargetsPersistence();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
     QString addDeadTargetDevice(const QString &deviceId = QStringLiteral("dead-target"));
+    // 将测试设备注入发现服务，指向本机可用端口（群发用例）
+    QString addTargetDevice(const QString &deviceId, quint16 tcpPort);
     // 等待会话进入指定状态
     bool waitForStatus(const QString &sessionId, const QString &status, int timeoutMs = 5000);
 
@@ -106,6 +112,20 @@ void TestSessionManager::testInit()
     // 验证 sessions 属性
     QVariantList sessions = _manager->sessions();
     QCOMPARE(sessions.size(), 0);
+}
+
+// 将测试设备注入发现服务，指向给定端口
+QString TestSessionManager::addTargetDevice(const QString &deviceId, quint16 tcpPort)
+{
+    PeerInfo peer;
+    peer.deviceId = deviceId;
+    peer.deviceName = deviceId;
+    peer.ipAddress = QStringLiteral("127.0.0.1");
+    peer.tcpPort = tcpPort;
+    peer.isOnline = true;
+    peer.source = QStringLiteral("manual");
+    _discovery->addManualPeer(peer);
+    return deviceId;
 }
 
 void TestSessionManager::testCreateSendSession()
@@ -851,6 +871,97 @@ void TestSessionManager::testIncomingRequestEntrySignal()
     _p2pServer->stop();
     _config->setAutoAcceptFiles(autoAcceptSaved);
     _config->setRelayMode(RelayMode::AskBeforeRelay);
+}
+
+// 多选群发：两台目标共用同一份预序列化清单，序列化与哈希只算一次；
+// 清单内容与 SHA-256 与直接序列化一致
+void TestSessionManager::testMultiSendSharesSerializedList()
+{
+    const QString dirPath = _tempDir->path() + "/multisend-src";
+    QDir().mkpath(dirPath);
+    const QString contentA = QStringLiteral("群发内容甲-%1").arg(QDateTime::currentMSecsSinceEpoch());
+    const QString contentB = QStringLiteral("multisend-body-B");
+    QFile fileA{dirPath + "/a.txt"};
+    QVERIFY(fileA.open(QIODevice::WriteOnly));
+    fileA.write(contentA.toUtf8());
+    fileA.close();
+    QFile fileB{dirPath + "/b.txt"};
+    QVERIFY(fileB.open(QIODevice::WriteOnly));
+    fileB.write(contentB.toUtf8());
+    fileB.close();
+
+    // 两台在线目标（指向各自必然拒绝的保留端口，会话进入 connecting 后取消）
+    const QString id1 = addTargetDevice("multi-target-1", 1);
+    const QString id2 = addTargetDevice("multi-target-2", 2);
+
+    QSignalSpy startedSpy(_manager, &TransferSessionManager::multiSendStarted);
+    QSignalSpy changedSpy(_manager, &TransferSessionManager::sessionsChanged);
+    _manager->createMultiSendSessions({id1, id2}, dirPath);
+    QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);
+    QCOMPARE(startedSpy.first().first().toInt(), 2);
+    QTRY_VERIFY_WITH_TIMEOUT(changedSpy.count() >= 2, 3000);
+
+    // 两张独立会话卡，指向同一源路径、同一总字节数（与直接序列化一致）
+    const QVariantList sessions = _manager->sessions();
+    QVERIFY2(sessions.size() >= 2, "两台目标各一张会话卡");
+    qint64 sharedBytes = -1;
+    int sharedCount = 0;
+    for (const QVariant &entry : sessions) {
+        const QVariantMap session = entry.toMap();
+        if (session.value(gy::session::kDeviceId).toString() == id1
+                || session.value(gy::session::kDeviceId).toString() == id2) {
+            ++sharedCount;
+            const qint64 bytes = session.value(gy::session::kTotalBytes).toLongLong();
+            if (sharedBytes < 0) {
+                sharedBytes = bytes;
+            }
+            QCOMPARE(bytes, sharedBytes);
+            QCOMPARE(session.value(gy::session::kIsDirectory).toBool(), true);
+        }
+    }
+    QCOMPARE(sharedCount, 2);
+
+    // 清单内容与 SHA-256 正确：直接对源目录 serialize 对拍
+    const QList<gy::FileItem> direct = gy::DirSerializer::serialize(dirPath);
+    qint64 directBytes = 0;
+    for (const auto &item : direct) {
+        if (!item.relativePath.endsWith('/')) {
+            directBytes += item.sizeBytes;
+        }
+    }
+    QCOMPARE(sharedBytes, directBytes);
+
+    // 单文件内容哈希与 worker 复用的清单一致（sha256 十六进制比对）
+    const QString singlePath = dirPath + "/a.txt";
+    const QList<gy::FileItem> single = gy::DirSerializer::serialize(singlePath);
+    QCOMPARE(single.size(), 1);
+    QVERIFY(!single.first().sha256.isEmpty());
+    QCOMPARE(contentA.toUtf8().size(), single.first().sizeBytes);
+
+    // 清理会话，避免影响后续用例
+    for (const QVariant &entry : sessions) {
+        const QVariantMap session = entry.toMap();
+        const QString deviceId = session.value(gy::session::kDeviceId).toString();
+        if (deviceId == id1 || deviceId == id2) {
+            _manager->cancelSession(session.value(gy::session::kSessionId).toString());
+        }
+    }
+}
+
+// 记住上次选择：saveMultiTargets 落盘，lastMultiTargets 跨实例读回一致
+void TestSessionManager::testMultiTargetsPersistence()
+{
+    const QStringList targets{QStringLiteral("device-aaa"), QStringLiteral("device-bbb")};
+    _manager->saveMultiTargets(targets);
+    QCOMPARE(_manager->lastMultiTargets(), targets);
+
+    // 新建管理器（同配置文件路径）读回同一份集合
+    TransferSessionManager fresh;
+    QCOMPARE(fresh.lastMultiTargets(), targets);
+
+    // 覆写生效
+    _manager->saveMultiTargets({QStringLiteral("device-ccc")});
+    QCOMPARE(_manager->lastMultiTargets(), QStringList{QStringLiteral("device-ccc")});
 }
 
 QTEST_MAIN(TestSessionManager)

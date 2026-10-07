@@ -84,6 +84,7 @@ set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/DeleteDeviceDialog.qml
     ui/BackupExportDialog.qml
     ui/DeviceMergeDialog.qml
+    ui/MultiTargetDialog.qml
     ui/BackupImportDialog.qml
     ui/DeviceAliasDialog.qml
     ui/HomePlaceholder.qml

@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
@@ -59,6 +59,11 @@ public slots:
     void startTransfer(const QList<QPair<QString, quint16>> &endpoints, const QString &path,
                        const QString &senderDeviceId, const QString &senderName,
                        const QString &relayId = {});
+    // 启动传输：多目标群发场景复用调用方预序列化的文件清单（含 SHA-256），
+    // 避免同一份内容对 N 台设备重复序列化与哈希；清单为空时行为与上一重载一致
+    void startTransfer(const QList<QPair<QString, quint16>> &endpoints, const QString &path,
+                       const QString &senderDeviceId, const QString &senderName,
+                       const QString &relayId, const QList<gy::FileItem> &sharedFileList);
     // 取消传输
     void cancel();
 

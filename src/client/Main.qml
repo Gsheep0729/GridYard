@@ -1,6 +1,6 @@
 /**
  * @file    Main.qml
- * @version 7.24.0
+ * @version 7.25.0
  * @date 2026-10-08
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
@@ -16,6 +16,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Dialogs
+import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "utils/FormatUtils.js" as FormatUtils
 import "utils/Style.js" as Style
@@ -248,6 +249,11 @@ ApplicationWindow {
         id: mergeDialog
     }
 
+    // 多选群发：内容源与目标选择合并在一个弹窗内完成
+    MultiTargetDialog {
+        id: multiTargetDialog
+    }
+
     // 设置备注弹窗：确认后落库并刷新列表，空备注即清除
     DeviceAliasDialog {
         id: aliasDialog
@@ -320,6 +326,10 @@ ApplicationWindow {
 
             onSendFileRequested: fileDialog.open()
             onSendFolderRequested: folderDialog.open()
+            onSendMultiRequested: {
+                // 目标多选弹窗内先确定内容（选择器或粘贴路径），再勾选目标
+                multiTargetDialog.openFor("")
+            }
             onFilesDropped: (urls) => mainWindow.handleDroppedFiles(mainWindow._selId, urls)
         }
     }

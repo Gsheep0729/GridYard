@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_manager.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   传输会话管理器
 *
@@ -55,6 +55,17 @@ public:
 
     // 传输会话命令
     void createSendSession(const QString &deviceId, const QString &filePath);
+    // 多选群发：对每台目标各建一个独立 1:1 发送会话，同一份内容的序列化与
+    // SHA-256 只计算一次，N 个发送 worker 复用同一份文件清单
+    void createMultiSendSessions(const QStringList &deviceIds, const QString &filePath);
+    // 返回上次多选群发勾选的目标集合（QSettings 持久化，多选弹窗默认勾选）
+    Q_INVOKABLE QStringList lastMultiTargets() const;
+    // 记录本次多选群发的目标集合
+    Q_INVOKABLE void saveMultiTargets(const QStringList &deviceIds);
+    // 返回上次群发的内容路径（多选弹窗预填，记住上次选择的一部分）
+    Q_INVOKABLE QString lastMultiPath() const;
+    // 记录本次群发的内容路径
+    Q_INVOKABLE void saveMultiPath(const QString &filePath);
     void acceptReceiveSession(const QString &sessionId);
     void rejectReceiveSession(const QString &sessionId);
     void cancelSession(const QString &sessionId);
@@ -100,6 +111,8 @@ signals:
     void transferToPersist(const TransferRecord &record);
     // 用户移除历史记录后同步删除持久化行
     void transferHistoryDeleteRequested(const QStringList &recordIds);
+    // 群发序列化完成：各目标会话已建立，携带台数供界面提示
+    void multiSendStarted(int targetCount);
 
 private slots:
     // 处理新的传输请求
@@ -116,9 +129,12 @@ private:
                          gy::protocol::ErrorCode errorCode, const QString &errorMessage,
                          const QString &savedPath = {});
     // 创建发送 worker 并在工作线程中运行；allowRelayFallback 标记直连失败后可降级
+    // 序列化完成后逐台建立群发会话（UI 线程回调）
+    void finishMultiSendStart(const QList<gy::FileItem> &fileList);
     void startSendWorker(const QVariantMap &session,
                          const QList<QPair<QString, quint16>> &endpoints,
-                         const QString &relayId, bool allowRelayFallback);
+                         const QString &relayId, bool allowRelayFallback,
+                         const QList<gy::FileItem> &sharedFileList = {});
     // 直连失败后进入等待中继决策状态，并启动决策超时保护
     void enterAwaitingRelay(const QString &sessionId);
     // 判断当前是否具备中继降级条件：策略允许且协调服务器在线
@@ -138,6 +154,20 @@ private:
     RendezvousClient *_rendezvous = nullptr; // 协调节点客户端（中继降级信令）
     TransferSessionModel *_model = nullptr; // 会话行存储与 QML 增量通知
 
+    // 多选群发的暂存上下文：序列化在后台线程完成后由 UI 线程消费
+    struct MultiTarget
+    {
+        QString deviceId;  // 目标设备 ID
+        QString peerName;  // 目标设备名快照
+        QList<QPair<QString, quint16>> endpoints;  // 候选端点（直连优先）
+    };
+    QList<MultiTarget> _multiTargets;  // 待建会话的目标清单
+    QString _multiFilePath;  // 群发源路径
+    bool _multiIsDirectory = false;  // 源是否为目录
+    QString _multiRootName;  // 源名称
+    int _multiFileCount = 0;  // 文件总数
+    qint64 _multiTotalBytes = 0;  // 内容总字节数
+    int _multiOfflineCount = 0;  // 已剔除的离线目标数
     QHash<QString, FileSenderWorker*> _sendWorkers;      // 发送方 worker 映射（sessionId -> worker）
     QHash<QString, FileReceiverWorker*> _receiveWorkers; // 接收方 worker 映射（sessionId -> worker）
     QHash<QString, QTimer*> _relayDecisionTimers;        // awaiting_relay 决策超时（sessionId -> timer）

@@ -1,7 +1,7 @@
 /**
  * @file    Style.js
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 7.25.0
+ * @date 2026-10-08
  * @author  GY
  * @brief   QML 界面样式常量
  *
@@ -29,6 +29,7 @@ const Color = {
     // 状态色（实色用于文字、圆点与标签底，Soft 用于大面积浅底）
     success: "#10B981",
     successSoft: "#ECFDF5",
+    successHover: "#D1FAE5",
     warning: "#F59E0B",
     warningSoft: "#FFFBEB",
     error: "#EF4444",

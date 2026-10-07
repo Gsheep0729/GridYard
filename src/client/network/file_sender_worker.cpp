@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -83,6 +83,16 @@ void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpo
                                      const QString &path, const QString &senderDeviceId,
                                      const QString &senderName, const QString &relayId)
 {
+    startTransfer(endpoints, path, senderDeviceId, senderName, relayId, {});
+}
+
+// 发起文件传输：群发场景复用预序列化清单（QList 隐式共享，逐 worker 拷贝廉价），
+// 清单为空时退回自行序列化
+void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpoints,
+                                     const QString &path, const QString &senderDeviceId,
+                                     const QString &senderName, const QString &relayId,
+                                     const QList<gy::FileItem> &sharedFileList)
+{
     qDebug() << "[FileSender] 开始传输流程";
     qDebug() << "[FileSender] 候选端点数量:" << endpoints.size();
     qDebug() << "[FileSender] 文件路径:" << path;
@@ -95,7 +105,7 @@ void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpo
     _relayReady = false;
     _relayLineBuffer.clear();
 
-    _fileList = gy::DirSerializer::serialize(path);
+    _fileList = sharedFileList.isEmpty() ? gy::DirSerializer::serialize(path) : sharedFileList;
     const QFileInfo rootInfo{path};
     _isDirectory = rootInfo.isDir();
     _rootName = rootInfo.fileName();

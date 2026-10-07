@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-08
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 */
@@ -22,6 +22,7 @@ Q_DECLARE_METATYPE(FileReceiverWorker*)
 
 #include <QDebug>
 #include <QFileInfo>
+#include <QSettings>
 #include <QSet>
 #include <QThread>
 #include <QTimer>
@@ -58,6 +59,17 @@ QString normalizedFinalStatus(bool success, gy::protocol::ErrorCode errorCode,
 }
 
 // 统计发送任务中的真实文件数和总字节数，为早失败场景保留完整历史快照
+// 多选群发的"记住上次选择"存储：与主配置同一文件（GRIDYARD_CONFIG 或默认位置），
+// 避免默认 QSettings 与隔离配置漂移
+QSettings multiTargetSettings()
+{
+    const QByteArray customPath = qgetenv("GRIDYARD_CONFIG");
+    if (!customPath.isEmpty()) {
+        return QSettings(QString::fromLocal8Bit(customPath), QSettings::IniFormat);
+    }
+    return QSettings();
+}
+
 QPair<int, qint64> transferStatsForPath(const QString &path)
 {
     const QFileInfo info(path);
@@ -286,10 +298,158 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     startSendWorker(session, endpoints, QString(), true);
 }
 
+// 多选群发：后台线程对源路径只做一次 DirSerializer::serialize（含 SHA-256），
+// 完成后回 UI 线程为每台目标建立独立 1:1 发送会话并复用同一份文件清单；
+// 接收方收到的是普通传输请求，发送方逐台看结果（微信转发语义）
+void TransferSessionManager::createMultiSendSessions(const QStringList &deviceIds,
+                                                     const QString &filePath)
+{
+    if (deviceIds.isEmpty() || !QFileInfo{filePath}.exists()) {
+        emit errorOccurred(tr("没有可发送的目标或文件不存在"));
+        return;
+    }
+
+    // 解析全部目标的端点快照，离线目标在此剔除并提示
+    QList<MultiTarget> targets;
+    int offlineCount = 0;
+    for (const QString &deviceId : deviceIds) {
+        const QVariantMap endpoint = _discovery->transferEndpoint(deviceId);
+        if (endpoint.isEmpty()) {
+            ++offlineCount;
+            continue;
+        }
+        MultiTarget target;
+        target.deviceId = deviceId;
+        target.peerName = endpoint[gy::keys::kEndpointDeviceName].toString();
+        const QString host = endpoint[gy::keys::kEndpointIpAddress].toString();
+        quint16 port = static_cast<quint16>(endpoint[gy::keys::kEndpointTcpPort].toUInt());
+        if (port == 0) {
+            port = _config->tcpPort();
+        }
+        target.endpoints.append({host, port});
+        quint16 alternatePort = 0;
+        const QStringList alternates = _discovery->rendezvousAlternateAddresses(deviceId,
+                                                                                &alternatePort);
+        QSet<QString> seenHosts{host};
+        for (const QString &address : alternates) {
+            if (address.isEmpty() || seenHosts.contains(address)) {
+                continue;
+            }
+            seenHosts.insert(address);
+            target.endpoints.append({address, alternatePort != 0 ? alternatePort : port});
+        }
+        targets.append(target);
+    }
+    if (targets.isEmpty()) {
+        emit errorOccurred(tr("目标设备均已离线，无法发起传输"));
+        return;
+    }
+
+    // 预览统计一次（transferStatsForPath 内部走 serializeNoHash），
+    // 序列化含哈希在专用线程执行一次，完成后逐台建会话
+    const auto [fileCount, totalBytes] = transferStatsForPath(filePath);
+    const bool isDirectory = QFileInfo{filePath}.isDir();
+    const QString rootName = QFileInfo{filePath}.fileName();
+
+    auto *serializeThread = new QThread{this};
+    auto *serializer = new QObject{};
+    serializer->moveToThread(serializeThread);
+    connect(serializeThread, &QThread::finished, serializer, &QObject::deleteLater);
+    connect(serializeThread, &QThread::finished, serializeThread, &QObject::deleteLater);
+    connect(serializeThread, &QThread::started, serializer,
+            [this, serializer, serializeThread, filePath] {
+        // 一次序列化含 SHA-256，QList 隐式共享跨线程传递只增加引用计数
+        const QList<gy::FileItem> fileList = gy::DirSerializer::serialize(filePath);
+        serializer->deleteLater();
+        serializeThread->quit();  // 一次性线程：任务完成即退出，销毁走 finished 链
+        QMetaObject::invokeMethod(this, [this, fileList] {
+            finishMultiSendStart(fileList);
+        }, Qt::QueuedConnection);
+    });
+    // 暂存目标与元数据，序列化完成后取用
+    _multiTargets = targets;
+    _multiFilePath = filePath;
+    _multiIsDirectory = isDirectory;
+    _multiRootName = rootName;
+    _multiFileCount = fileCount;
+    _multiTotalBytes = totalBytes;
+    _multiOfflineCount = offlineCount;
+    serializeThread->start();
+}
+
+// 序列化完成后逐台建立群发会话（UI 线程）
+void TransferSessionManager::finishMultiSendStart(const QList<gy::FileItem> &fileList)
+{
+    // 会话预览清单：只含相对路径，与单发口径一致
+    QStringList paths;
+    for (const auto &item : fileList) {
+        if (!item.relativePath.endsWith('/')) {
+            paths.append(item.relativePath);
+        }
+    }
+    const QVariantList preview = buildRootPreview(paths);
+
+    for (const MultiTarget &target : std::as_const(_multiTargets)) {
+        QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QVariantMap session;
+        session[kSessionId] = sessionId;
+        session[kType]      = kTypeSend;
+        session[kDeviceId]  = target.deviceId;
+        session[kPeerDeviceName] = target.peerName;
+        session[kFilePath]  = _multiFilePath;
+        session[kFileName]  = _multiRootName;
+        session[kIsDirectory] = _multiIsDirectory;
+        session[kFileCount] = _multiFileCount;
+        session[kStatus]    = kStatusConnecting;
+        session[kProgress]  = 0;
+        session[kBytesTransferred] = 0;
+        session[kTotalBytes] = _multiTotalBytes;
+        session[kCreatedAt] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        session[kFileList]  = preview;
+        session[kLocalPath] = "";
+        session[kCanDeleteLocalFile] = false;
+        _config->fillSenderInfo(session);
+
+        _model->appendSession(session);
+        startSendWorker(session, target.endpoints, QString(), true, fileList);
+    }
+    emit sessionsChanged();
+    refreshActiveSessionCount();
+
+    const int started = _multiTargets.size();
+    _multiTargets.clear();
+    emit multiSendStarted(started);
+}
+
+// 上次多选群发的目标集合（多选弹窗默认勾选仍在线的部分）
+QStringList TransferSessionManager::lastMultiTargets() const
+{
+    return multiTargetSettings().value("transfer/lastMultiTargets").toStringList();
+}
+
+// 记录本次多选群发的目标集合
+void TransferSessionManager::saveMultiTargets(const QStringList &deviceIds)
+{
+    multiTargetSettings().setValue("transfer/lastMultiTargets", deviceIds);
+}
+
+// 返回上次群发的内容路径（多选弹窗预填）
+QString TransferSessionManager::lastMultiPath() const
+{
+    return multiTargetSettings().value("transfer/lastMultiPath").toString();
+}
+
+// 记录本次群发的内容路径
+void TransferSessionManager::saveMultiPath(const QString &filePath)
+{
+    multiTargetSettings().setValue("transfer/lastMultiPath", filePath);
+}
+
 // 创建发送 worker 并在工作线程中运行；allowRelayFallback 标记直连失败后可降级
 void TransferSessionManager::startSendWorker(const QVariantMap &session,
                                              const QList<QPair<QString, quint16>> &endpoints,
-                                             const QString &relayId, bool allowRelayFallback)
+                                             const QString &relayId, bool allowRelayFallback,
+                                             const QList<gy::FileItem> &sharedFileList)
 {
     const QString sessionId = session.value(kSessionId).toString();
     const QString filePath = session.value(kFilePath).toString();
@@ -316,8 +476,9 @@ void TransferSessionManager::startSendWorker(const QVariantMap &session,
     _sendWorkers[sessionId] = worker;
 
     connect(thread, &QThread::started, worker,
-            [worker, endpoints, filePath, senderDeviceId, senderName, relayId]() {
-        worker->startTransfer(endpoints, filePath, senderDeviceId, senderName, relayId);
+            [worker, endpoints, filePath, senderDeviceId, senderName, relayId, sharedFileList]() {
+        worker->startTransfer(endpoints, filePath, senderDeviceId, senderName, relayId,
+                              sharedFileList);
     });
 
     connect(worker, &FileSenderWorker::progressChanged,
