@@ -1,7 +1,7 @@
 /**
 * @file    test_invite_codec.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.25.0
+* @date 2026-10-20
 * @author  GridYard Team
 * @brief   InviteCodec 单元测试
 *
@@ -126,7 +126,7 @@ void TestInviteCodec::testInvalidSchema()
 {
     // 错误的 schema
     {
-        QString text = "http://example.com/invite?deviceId=test&ip=192.168.1.1&tcpPort=35100";
+        QString text = "ftp://example.com/invite?deviceId=test&ip=192.168.1.1&tcpPort=35100";
         InviteCodec::Error error = InviteCodec::Error::None;
         InviteCodec::parse(text, &error);
         QVERIFY(error == InviteCodec::Error::InvalidSchema);

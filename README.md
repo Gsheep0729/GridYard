@@ -343,7 +343,7 @@ sequenceDiagram
     participant B as 室友的电脑
 
     Note over A: 开机，启用协调服务器
-    A->>RV: TCP 连接（WebSocket/JSON）
+    A->>RV: TCP 连接（JSON 行协议）
     A->>RV: register {"deviceId": "A", "ip": "10.0.1.50", "tcpPort": 35100}
     RV-->>A: register_ack {"status": "ok"}
 
