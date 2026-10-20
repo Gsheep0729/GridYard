@@ -1,6 +1,6 @@
 /**
 * @file    test_invite_codec.cpp
-* @version 7.25.0
+* @version 7.25.1
 * @date 2026-10-20
 * @author  GridYard Team
 * @brief   InviteCodec 单元测试
