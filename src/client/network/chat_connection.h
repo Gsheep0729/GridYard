@@ -1,7 +1,7 @@
 /**
 * @file    chat_connection.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接
 *
@@ -14,14 +14,18 @@
 #include "chat_message.h"
 #include "protocol.h"
 
-#include <QAbstractSocket>
+#include "posix_net_types.h"
+
 #include <QList>
 #include <QObject>
 #include <QString>
 
 class FrameCodec;
-class QHostAddress;
-class QTcpSocket;
+
+namespace gy::net {
+class IpAddress;
+class PosixTcpSocket;
+}
 
 class ChatConnection : public QObject {
     Q_OBJECT
@@ -34,9 +38,9 @@ public:
     ChatConnection &operator=(const ChatConnection &) = delete;
 
     // 接管 P2pServer 已完成首帧路由的入站 socket
-    void adoptSocket(QTcpSocket *socket);
+    void adoptSocket(gy::net::PosixTcpSocket *socket);
     // 发起到在线对端的连接
-    void connectToHost(const QHostAddress &address, quint16 port);
+    void connectToHost(const gy::net::IpAddress &address, quint16 port);
     // 编码并排队发送一条聊天消息
     bool sendMessage(const gy::ChatMessage &message, gy::ChatMessageError *error,
                      QString *errorMessage);
@@ -59,7 +63,7 @@ private slots:
     // 建连后写出等待中的消息
     void onConnected();
     // socket 发生网络错误时结束待写消息
-    void onSocketError(QAbstractSocket::SocketError socketError);
+    void onSocketError(gy::net::SocketError socketError);
     // socket 断开后通知管理器移除连接
     void onDisconnected();
     // 处理 FrameCodec 交付的完整帧
@@ -74,13 +78,13 @@ private:
     };
 
     // 绑定 socket 信号与 FrameCodec
-    void bindSocket(QTcpSocket *socket);
+    void bindSocket(gy::net::PosixTcpSocket *socket);
     // 尝试将待写帧全部交给 socket 缓冲区
     void writePendingFrames();
     // 用统一错误状态结束所有尚未写入的消息
     void failPendingFrames(gy::ChatMessageError error, const QString &errorMessage);
 
-    QTcpSocket *_socket = nullptr;    // 当前聊天 TCP socket
+    gy::net::PosixTcpSocket *_socket = nullptr;  // 当前聊天 TCP socket
     FrameCodec *_codec = nullptr;     // 连续 TLV 解码器
     QList<PendingFrame> _pendingFrames; // 已创建但尚未写入的消息
 };

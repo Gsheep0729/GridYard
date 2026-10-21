@@ -1,7 +1,7 @@
 /**
 * @file    chat_manager.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
 *
@@ -18,12 +18,12 @@
 #include "config_manager.h"
 #include "discovery_service.h"
 #include "history_records.h"
+#include "ip_address.h"
 #include "p2p_server.h"
+#include "posix_tcp_socket.h"
 
 #include <algorithm>
 #include <QDateTime>
-#include <QHostAddress>
-#include <QTcpSocket>
 #include <QUuid>
 
 // 构造聊天管理器
@@ -173,7 +173,7 @@ void ChatManager::prependHistoryMessages(const QString &deviceId,
 }
 
 // 接管 P2P 服务分流后的入站聊天 socket
-void ChatManager::onChatConnectionReceived(QTcpSocket *socket)
+void ChatManager::onChatConnectionReceived(gy::net::PosixTcpSocket *socket)
 {
     if (!socket) {
         return;
@@ -305,9 +305,10 @@ ChatConnection *ChatManager::connectionForDevice(const QString &deviceId)
     }
 
     const QVariantMap endpoint = _discovery->transferEndpoint(deviceId);
-    const QHostAddress address{endpoint.value(gy::keys::kEndpointIpAddress).toString()};
+    const gy::net::IpAddress address = gy::net::IpAddress::fromString(
+        endpoint.value(gy::keys::kEndpointIpAddress).toString());
     const quint16 port = endpoint.value(gy::keys::kEndpointTcpPort).toUInt();
-    if (address.isNull() || port == 0) {
+    if (!address.isValid() || port == 0) {
         // 发现快照不完整时不创建无目标连接。
         return nullptr;
     }

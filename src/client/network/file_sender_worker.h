@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.h
-* @version 7.25.0
-* @date 2026-10-08
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   文件发送 Worker（Worker-Object 模式）
 *
@@ -23,14 +23,17 @@
 #include <QObject>
 #include <QPair>
 #include <QStringList>
-#include <QTcpSocket>
 #include <QTimer>
 
 class FrameCodec;
 
+namespace gy::net {
+class PosixTcpSocket;
+}
+
 // 分块大小：8MB（优化吞吐量）
 static constexpr qint64 kChunkSize = 8 * 1024 * 1024;
-// 限制 Qt socket 写队列，避免大型文件一次性堆积到内存
+// 限制套接字写队列，避免大型文件一次性堆积到内存
 static constexpr qint64 kMaxQueuedBytes = 16 * 1024 * 1024;
 
 class FileSenderWorker : public QObject {
@@ -112,7 +115,7 @@ private:
     // 解析中继控制行（relay_ready / relay_error），返回 false 表示会话已终结
     bool processRelayControlData(const QByteArray &data);
 
-    QTcpSocket  *_socket = nullptr;       // 与接收端通信的 TCP 连接
+    gy::net::PosixTcpSocket *_socket = nullptr;  // 与接收端通信的 TCP 连接
     FrameCodec  *_codec  = nullptr;       // 接收响应帧的 TLV 解码器
     QFile        _file;                    // 当前正在读取的源文件
     QTimer      *_timeoutTimer = nullptr; // 等待响应和传输进度的超时计时器
@@ -127,6 +130,7 @@ private:
     bool         _waitingForFileAck = false; // 是否等待当前文件校验确认
     bool         _sendScheduled = false;  // 是否已投递下一块发送任务
     bool         _finished = false;        // 是否已发射过 transferFinished，防止取消/断开路径重复终结
+    bool         _cancelInProgress = false; // 主动发送取消帧期间忽略断开兜底，由取消路径统一终结
     QString      _relayId;                 // 中继会话 ID，非空表示经中继服务器转发
     QString      _relayToken;              // 中继握手的访问令牌，由会话管理器在启动前注入
     // 取消请求标志：UI 线程经 requestCancel() 置位，工作线程在阻塞等待间隙轮询。

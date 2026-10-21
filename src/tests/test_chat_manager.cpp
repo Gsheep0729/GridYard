@@ -1,7 +1,7 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   在线聊天连接与内存会话测试
 *
@@ -11,12 +11,9 @@
 #include <QtTest/QtTest>
 
 #include <QDateTime>
-#include <QHostAddress>
 #include <QMetaObject>
 #include <QSignalSpy>
 #include <QStringList>
-#include <QTcpServer>
-#include <QTcpSocket>
 #include <QTemporaryDir>
 
 #include "chat_manager.h"
@@ -26,9 +23,12 @@
 #include "discovery_service.h"
 #include "frame_codec.h"
 #include "history_records.h"
+#include "ip_address.h"
 #include "local_data_broker.h"
 #include "peer_discovery_view_model.h"
 #include "p2p_server.h"
+#include "posix_tcp_server.h"
+#include "posix_tcp_socket.h"
 #include "protocol.h"
 #include "sqlite_database_broker.h"
 #include "sqlite_device_repository.h"
@@ -122,8 +122,8 @@ void TestChatManager::testSendTextReturnMatchesAcceptance()
     QVERIFY(_manager->messagesForDevice("ghost-device").isEmpty());
 
     // 在线桩设备：消息被接受先入模型，不触发同步失败
-    QTcpServer peerServer;
-    QVERIFY(peerServer.listen(QHostAddress::LocalHost, 0));
+    gy::net::PosixTcpServer peerServer;
+    QVERIFY(peerServer.listen(gy::net::IpAddress::localHost(), 0));
     const QString deviceId = "accepting-peer";
     addOnlinePeer(deviceId, peerServer.serverPort());
     failedSpy.clear();
@@ -132,7 +132,7 @@ void TestChatManager::testSendTextReturnMatchesAcceptance()
     QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 1, 3000);
 
     QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
-    QTcpSocket *peerSocket = peerServer.nextPendingConnection();
+    gy::net::PosixTcpSocket *peerSocket = peerServer.nextPendingConnection();
     QVERIFY(peerSocket != nullptr);
     peerSocket->disconnectFromHost();
     peerSocket->deleteLater();
@@ -141,14 +141,14 @@ void TestChatManager::testSendTextReturnMatchesAcceptance()
 // 验证在线设备可发送并在断线后按需重连
 void TestChatManager::testOnlineSendAndReconnect()
 {
-    QTcpServer peerServer;
-    QVERIFY(peerServer.listen(QHostAddress::LocalHost, 0));
+    gy::net::PosixTcpServer peerServer;
+    QVERIFY(peerServer.listen(gy::net::IpAddress::localHost(), 0));
     const QString deviceId = "online-peer";
     addOnlinePeer(deviceId, peerServer.serverPort());
 
     QVERIFY(_manager->sendText(deviceId, "第一条消息"));
     QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
-    QTcpSocket *firstSocket = peerServer.nextPendingConnection();
+    gy::net::PosixTcpSocket *firstSocket = peerServer.nextPendingConnection();
     QVERIFY(firstSocket != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(firstSocket->bytesAvailable() > 0, 3000);
 
@@ -179,7 +179,7 @@ void TestChatManager::testOnlineSendAndReconnect()
 
     _manager->sendText(deviceId, "第二条消息");
     QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
-    QTcpSocket *secondSocket = peerServer.nextPendingConnection();
+    gy::net::PosixTcpSocket *secondSocket = peerServer.nextPendingConnection();
     QVERIFY(secondSocket != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(secondSocket->bytesAvailable() > 0, 3000);
 
@@ -204,8 +204,8 @@ void TestChatManager::testIncomingMessageDeduplicated()
     QSignalSpy notificationSpy(_manager, &ChatManager::incomingMessageReceived);
     const QByteArray frame = encodeMessageFrame(message);
 
-    QTcpSocket peer;
-    peer.connectToHost(QHostAddress::LocalHost, _p2pPort);
+    gy::net::PosixTcpSocket peer;
+    peer.connectToHost(gy::net::IpAddress::localHost(), _p2pPort);
     QVERIFY(peer.waitForConnected(3000));
     QVERIFY(peer.write(frame) == frame.size());
     QVERIFY(peer.waitForBytesWritten(1000));
@@ -237,15 +237,15 @@ void TestChatManager::testIncomingMessageDeduplicated()
 // 验证双方同时建连时，多余入站连接的首帧消息不会被丢弃
 void TestChatManager::testGlareIncomingMessagePreserved()
 {
-    QTcpServer peerServer;
-    QVERIFY(peerServer.listen(QHostAddress::LocalHost, 0));
+    gy::net::PosixTcpServer peerServer;
+    QVERIFY(peerServer.listen(gy::net::IpAddress::localHost(), 0));
     const QString deviceId = "glare-peer";
     addOnlinePeer(deviceId, peerServer.serverPort());
     _manager->clearMessages(deviceId);
 
     _manager->sendText(deviceId, "本机先发消息");
     QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
-    QTcpSocket *outboundSocket = peerServer.nextPendingConnection();
+    gy::net::PosixTcpSocket *outboundSocket = peerServer.nextPendingConnection();
     QVERIFY(outboundSocket != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(outboundSocket->bytesAvailable() > 0, 3000);
     outboundSocket->readAll();
@@ -258,8 +258,8 @@ void TestChatManager::testGlareIncomingMessagePreserved()
     const QByteArray frame = encodeMessageFrame(incoming);
 
     QSignalSpy notificationSpy(_manager, &ChatManager::incomingMessageReceived);
-    QTcpSocket inboundSocket;
-    inboundSocket.connectToHost(QHostAddress::LocalHost, _p2pPort);
+    gy::net::PosixTcpSocket inboundSocket;
+    inboundSocket.connectToHost(gy::net::IpAddress::localHost(), _p2pPort);
     QVERIFY(inboundSocket.waitForConnected(3000));
     QVERIFY(inboundSocket.write(frame) == frame.size());
     QVERIFY(inboundSocket.waitForBytesWritten(1000));
@@ -285,9 +285,9 @@ void TestChatManager::testInvalidFollowUpFrameRejected()
     const QByteArray validFrame = encodeMessageFrame(message);
     const QByteArray invalidFrame = FrameCodec::encode(gy::protocol::kTypeChatText, "{}");
 
-    QTcpSocket peer;
-    QSignalSpy disconnectedSpy(&peer, &QTcpSocket::disconnected);
-    peer.connectToHost(QHostAddress::LocalHost, _p2pPort);
+    gy::net::PosixTcpSocket peer;
+    QSignalSpy disconnectedSpy(&peer, &gy::net::PosixTcpSocket::disconnected);
+    peer.connectToHost(gy::net::IpAddress::localHost(), _p2pPort);
     QVERIFY(peer.waitForConnected(3000));
     QVERIFY(peer.write(validFrame) == validFrame.size());
     QVERIFY(peer.waitForBytesWritten(1000));
@@ -323,14 +323,14 @@ void TestChatManager::testMessagesPersisted()
             ++persistedCount;
         });
 
-    QTcpServer peerServer;
-    QVERIFY(peerServer.listen(QHostAddress::LocalHost, 0));
+    gy::net::PosixTcpServer peerServer;
+    QVERIFY(peerServer.listen(gy::net::IpAddress::localHost(), 0));
     const QString deviceId = "storage-peer";
     addOnlinePeer(deviceId, peerServer.serverPort());
 
     _manager->sendText(deviceId, "持久化出站消息");
     QTRY_VERIFY_WITH_TIMEOUT(peerServer.hasPendingConnections(), 3000);
-    QTcpSocket *peerSocket = peerServer.nextPendingConnection();
+    gy::net::PosixTcpSocket *peerSocket = peerServer.nextPendingConnection();
     QVERIFY(peerSocket != nullptr);
     QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 3000);
     QVERIFY2(persisted, qPrintable(errorMessage));
@@ -414,8 +414,8 @@ void TestChatManager::testIncomingMessageRestoresHiddenPeer()
     message.fromDeviceId = deviceId;
     message.fromName = QStringLiteral("HiddenPeer");
     const QByteArray frame = encodeMessageFrame(message);
-    QTcpSocket peerSocket;
-    peerSocket.connectToHost(QHostAddress::LocalHost, _p2pPort);
+    gy::net::PosixTcpSocket peerSocket;
+    peerSocket.connectToHost(gy::net::IpAddress::localHost(), _p2pPort);
     QVERIFY(peerSocket.waitForConnected(3000));
     QVERIFY(peerSocket.write(frame) == frame.size());
     QVERIFY(peerSocket.waitForBytesWritten(1000));
@@ -424,7 +424,7 @@ void TestChatManager::testIncomingMessageRestoresHiddenPeer()
 
     // hidden 复位且列表恢复显示
     QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(deviceId).isEmpty(), 5000);
-    QCOMPARE(viewModel.deviceById(deviceId).value("hidden").toBool(), false);
+    QTRY_COMPARE_WITH_TIMEOUT(viewModel.deviceById(deviceId).value("hidden").toBool(), false, 5000);
 
     // 数据库中的 hidden 标志同样复位
     const auto clearedFlag = QSharedPointer<bool>::create(false);
@@ -449,7 +449,7 @@ void TestChatManager::addOnlinePeer(const QString &deviceId, quint16 port)
     PeerInfo peer;
     peer.deviceId = deviceId;
     peer.deviceName = "OnlinePeer";
-    peer.ipAddress = QHostAddress{QHostAddress::LocalHost}.toString();
+    peer.ipAddress = gy::net::IpAddress::localHost().toString();
     peer.tcpPort = port;
     peer.isOnline = true;
     peer.lastSeen = QDateTime::currentDateTimeUtc();
@@ -482,8 +482,8 @@ QByteArray TestChatManager::encodeMessageFrame(const gy::ChatMessage &message) c
 // 请求系统分配一个可用 TCP 端口
 quint16 TestChatManager::reservePort()
 {
-    QTcpServer server;
-    if (!server.listen(QHostAddress::LocalHost, 0)) {
+    gy::net::PosixTcpServer server;
+    if (!server.listen(gy::net::IpAddress::localHost(), 0)) {
         return 0;
     }
     return server.serverPort();

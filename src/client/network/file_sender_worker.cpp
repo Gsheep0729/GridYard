@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.25.0
-* @date 2026-10-08
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -13,6 +13,7 @@
 #include "file_sender_worker.h"
 #include "rendezvous_protocol_keys.h"
 #include "frame_codec.h"
+#include "posix_tcp_socket.h"
 #include "protocol.h"
 
 #include <QDataStream>
@@ -21,7 +22,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkProxy>
 #include <QTimer>
 #include <QUuid>
 
@@ -35,19 +35,15 @@ static constexpr int kRelayReadyTimeoutMs = 30000;
 // 构造函数，初始化 TCP socket、FrameCodec 和超时定时器
 FileSenderWorker::FileSenderWorker(QObject *parent)
     : QObject{parent}
-    , _socket{new QTcpSocket{this}}
+    , _socket{new gy::net::PosixTcpSocket{this}}
     , _codec{new FrameCodec{this}}
     , _timeoutTimer{new QTimer{this}}
 {
-    // 禁用代理，避免局域网连接被代理拦截
-    QNetworkProxy noProxy;
-    noProxy.setType(QNetworkProxy::NoProxy);
-    _socket->setProxy(noProxy);
-    connect(_socket, &QTcpSocket::readyRead,
+    connect(_socket, &gy::net::PosixTcpSocket::readyRead,
             this,    &FileSenderWorker::onReadyRead);
-    connect(_socket, &QTcpSocket::disconnected,
+    connect(_socket, &gy::net::PosixTcpSocket::disconnected,
             this,    &FileSenderWorker::onDisconnected);
-    connect(_socket, &QTcpSocket::bytesWritten,
+    connect(_socket, &gy::net::PosixTcpSocket::bytesWritten,
             this,    &FileSenderWorker::onBytesWritten);
     connect(_codec,  &FrameCodec::frameReady,
             this,    &FileSenderWorker::onFrameReady);
@@ -189,8 +185,8 @@ void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpo
     }
 
     // 扩大收发缓冲到 4MB，配合分块发送降低大文件吞吐波动。
-    _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
-    _socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
+    _socket->setSocketOption(gy::net::PosixTcpSocket::SendBufferSizeOption, 4 * 1024 * 1024);
+    _socket->setSocketOption(gy::net::PosixTcpSocket::ReceiveBufferSizeOption, 4 * 1024 * 1024);
 
     if (!sendTransferRequest()) {
         return;
@@ -247,7 +243,7 @@ bool FileSenderWorker::waitForRelayReady()
             finish(false, gy::protocol::ErrorCode::UserCancelled, tr("已取消"));
             return false;
         }
-        if (_socket->state() != QAbstractSocket::ConnectedState) {
+        if (_socket->state() != gy::net::SocketState::ConnectedState) {
             finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("中继连接已断开"));
             return false;
         }
@@ -315,6 +311,9 @@ void FileSenderWorker::onReadyRead()
 // 处理连接断开事件，传输活跃时清理资源并通知失败
 void FileSenderWorker::onDisconnected()
 {
+    if (_cancelInProgress) {
+        return;
+    }
     if (_transferActive) {
         finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("连接断开"));
     }
@@ -379,7 +378,7 @@ void FileSenderWorker::finishAfterSend()
         return;
     }
     // 局域网下等待时间很短；即便超时也继续终结，可靠交付由接收端的完成确认兜底
-    if (_socket && _socket->state() == QAbstractSocket::ConnectedState
+    if (_socket && _socket->state() == gy::net::SocketState::ConnectedState
         && _socket->bytesToWrite() > 0) {
         _socket->waitForBytesWritten(3000);
     }
@@ -681,9 +680,13 @@ bool FileSenderWorker::sendCancel(const QString &reason)
     const qint64 written = _socket->write(frame);
     if (written != frame.size()) {
         qWarning() << "[FileSender] 取消帧写入失败:" << _socket->errorString();
+    } else if (_socket->bytesToWrite() > 0) {
+        // 背压窗口下先把取消帧刷到内核，再进入关闭等待
+        _socket->waitForBytesWritten(1000);
     }
 
-    _socket->disconnectFromHost();
+    // 等接收方读到取消帧并完成收尾，避免带未读数据关闭触发 RST 把取消帧丢弃
+    _socket->disconnectFromHost(true);
     if (_file.isOpen()) {
         _file.close();
     }
@@ -716,8 +719,8 @@ void FileSenderWorker::cancel()
     }
     _cancelRequested.store(true);
     // 先发取消帧（此时 socket 尚未关闭），再走统一终结出口。
-    // finish() 内部 cleanup 会把 _transferActive 置 false，随后 disconnectFromHost
-    // 触发的 onDisconnected 因此不会再次终结，配合 _finished 标志杜绝重复发射。
+    // 关闭期间可能同步收到断开事件，由 _cancelInProgress 抑制，避免被改写成连接丢失。
+    _cancelInProgress = true;
     sendCancel(tr("用户取消"));
     finish(false, gy::protocol::ErrorCode::UserCancelled, tr("已取消"));
 }

@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   文件接收 Worker（Worker-Object 模式）
 *
@@ -22,17 +22,20 @@
 #include <QFile>
 #include <QObject>
 #include <QStringList>
-#include <QTcpSocket>
 #include <QTimer>
 #include <QVariantMap>
 
 class FrameCodec;
 
+namespace gy::net {
+class PosixTcpSocket;
+}
+
 class FileReceiverWorker : public QObject {
     Q_OBJECT
 
 public:
-    explicit FileReceiverWorker(QTcpSocket *socket, QObject *parent = nullptr);
+    explicit FileReceiverWorker(gy::net::PosixTcpSocket *socket, QObject *parent = nullptr);
     virtual ~FileReceiverWorker() override;
 
     FileReceiverWorker(const FileReceiverWorker &)            = delete;
@@ -100,7 +103,7 @@ private:
     // 构建接收请求的不可变快照，跨线程交付给会话管理器
     QVariantMap receiveRequestSnapshot() const;
 
-    QTcpSocket  *_socket = nullptr;       // 与发送端通信的 TCP 连接
+    gy::net::PosixTcpSocket *_socket = nullptr;  // 与发送端通信的 TCP 连接
     FrameCodec  *_codec  = nullptr;       // 解析入站 TLV 帧的编解码器
     QFile        _file;                    // 当前正在写入的接收文件
     QTimer      *_timeoutTimer = nullptr; // 等待确认和数据帧的超时计时器
@@ -129,6 +132,7 @@ private:
     bool _transferActive = false;        // 是否处于实际接收数据阶段
     bool _isDirectory = false;           // 当前任务是否为目录传输
     bool _finished = false;              // 是否已发射过 transferFinished，防止拒绝/断开路径重复或遗漏终结
+    bool _localCancelInProgress = false; // 本端取消关闭连接期间忽略断开兜底，由取消路径统一终结
     // 取消请求标志：UI 线程经 requestCancel() 置位，工作线程在分块处理边界检查。
     // 跨线程仅约定"置位即请求取消"这一单向语义，依赖原子默认顺序一致性，
     // 不与其他状态构成复合同步

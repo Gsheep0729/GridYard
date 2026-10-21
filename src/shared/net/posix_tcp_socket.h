@@ -98,8 +98,8 @@ public:
     // 阻塞等待连接断开
     bool waitForDisconnected(int msecs = 30000);
 
-    // 优雅关闭：先刷出待写数据再关闭
-    void disconnectFromHost();
+    // 优雅关闭：先刷出待写数据再关闭；waitForPeer 为真时等待对端关闭并排空到达数据
+    void disconnectFromHost(bool waitForPeer = false, int waitMs = 500);
     // 立即关闭并丢弃待写数据
     void abort();
     // 关闭连接
@@ -178,6 +178,10 @@ private:
     qint64 _readBufferLimit = 0;               // 读缓冲上限，0 表示不限
     std::atomic_bool _movedPending{false};     // 线程移交窗口标志，跨线程可见
     bool _pumpingWrite = false;                // 写泵重入保护
+    bool _pumpingRead = false;                 // 读泵重入保护，保证回调用尽缓冲后再发断开
+    bool _gracefulWaitPending = false;         // 写缓冲未排空时记录的等待对端关闭请求
+    int _gracefulWaitMs = 0;                   // 写缓冲排空后等待对端关闭的时长
+    bool _peerEofSeen = false;                 // 重入排空期间已看到对端关闭，交由外层读泵收尾
 };
 
 }  // namespace gy::net

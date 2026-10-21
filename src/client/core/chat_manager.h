@@ -1,7 +1,7 @@
 /**
 * @file    chat_manager.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器
 *
@@ -24,7 +24,10 @@ class ChatMessageModel;
 class ConfigManager;
 class DiscoveryService;
 class P2pServer;
-class QTcpSocket;
+
+namespace gy::net {
+class PosixTcpSocket;
+}
 
 class ChatManager : public QObject {
 private:
@@ -75,7 +78,7 @@ private:
     };
 
     // 接管 P2P 服务分流的入站 socket
-    void onChatConnectionReceived(QTcpSocket *socket);
+    void onChatConnectionReceived(gy::net::PosixTcpSocket *socket);
     // 处理已通过协议校验的远端消息
     void onMessageReceived(ChatConnection *connection, const gy::ChatMessage &message);
     // 写入内存模型并建立持久化记录

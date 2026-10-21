@@ -112,6 +112,7 @@ bool PosixTcpSocket::adoptDescriptor(int descriptor)
     _errorText.clear();
     _txBuf.clear();
     _txOffset = 0;
+    _peerEofSeen = false;
     ensureNotifiers();
     syncReadNotifier();
     return true;
@@ -233,6 +234,7 @@ void PosixTcpSocket::connectToHost(const IpAddress &address, quint16 port)
         targetLength = sizeof(sockaddr_in);
     }
 
+    _peerEofSeen = false;
     _state = SocketState::ConnectingState;
     const int result = ::connect(_fd, reinterpret_cast<const sockaddr *>(&target), targetLength);
     if (result == 0) {
@@ -592,13 +594,17 @@ bool PosixTcpSocket::waitForDisconnected(int msecs)
             continue;
         }
 
-        pumpReadBuffer(true);
+        // 关闭等待期间只排空缓冲，不再向业务层派发可读事件
+        pumpReadBuffer(false);
+        if (_peerEofSeen) {
+            return true;
+        }
     }
     return true;
 }
 
 // 优雅关闭
-void PosixTcpSocket::disconnectFromHost()
+void PosixTcpSocket::disconnectFromHost(bool waitForPeer, int waitMs)
 {
     if (_state == SocketState::UnconnectedState) {
         return;
@@ -612,15 +618,34 @@ void PosixTcpSocket::disconnectFromHost()
         return;
     }
 
-    _state = SocketState::ClosingState;
-    if (bytesToWrite() == 0) {
-        ::shutdown(_fd, SHUT_WR);
-        finishGracefulClose();
+    // 先在连接态把待写数据送出，避免写泵看到关闭态后提前收尾
+    if (bytesToWrite() > 0) {
+        pumpWriteBuffer();
+    }
+    if (bytesToWrite() > 0) {
+        // 写缓冲尚未排空，记录等待语义，待写泵清空后由写事件续走关闭流程
+        _gracefulWaitPending = waitForPeer;
+        _gracefulWaitMs = waitMs;
+        _state = SocketState::ClosingState;
+        syncWriteNotifier();
+        return;
+    }
+    if (_fd < 0) {
         return;
     }
 
-    pumpWriteBuffer();
-    syncWriteNotifier();
+    _state = SocketState::ClosingState;
+    _gracefulWaitPending = false;
+    ::shutdown(_fd, SHUT_WR);
+
+    // 取消帧等场景需要等对端读到并先关闭，持续排空到达数据可避免带未读数据关闭触发 RST
+    if (waitForPeer) {
+        waitForDisconnected(waitMs);
+    }
+
+    if (_fd >= 0) {
+        finishGracefulClose();
+    }
 }
 
 // 立即关闭
@@ -637,6 +662,9 @@ void PosixTcpSocket::abort()
     _txOffset = 0;
     _rxBuf.clear();
     _rxOffset = 0;
+    _gracefulWaitPending = false;
+    _gracefulWaitMs = 0;
+    _peerEofSeen = false;
 
     if (wasActive) {
         emit disconnected();
@@ -837,6 +865,38 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
         return;
     }
 
+    // 已在读泵内时只允许无通知的强制排空，不再递归派发可读/断开信号
+    if (_pumpingRead) {
+        if (notify) {
+            return;
+        }
+        while (true) {
+            if (_readBufferLimit > 0 && bufferedBytes() >= _readBufferLimit) {
+                break;
+            }
+            char chunk[kReceiveChunkBytes];
+            const ssize_t amount = ::recv(_fd, chunk, sizeof(chunk), 0);
+            if (amount > 0) {
+                _rxBuf.append(chunk, static_cast<int>(amount));
+                continue;
+            }
+            if (amount == 0) {
+                _peerEofSeen = true;
+                break;
+            }
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            }
+            _peerEofSeen = true;
+            break;
+        }
+        return;
+    }
+
+    _pumpingRead = true;
     bool received = false;
     while (true) {
         if (_readBufferLimit > 0 && bufferedBytes() >= _readBufferLimit) {
@@ -858,9 +918,14 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
             teardownNotifiers();
             closeDescriptor();
             _state = SocketState::UnconnectedState;
+            _txBuf.clear();
+            _txOffset = 0;
+            _gracefulWaitPending = false;
+            _peerEofSeen = false;
             if (wasActive) {
                 emit disconnected();
             }
+            _pumpingRead = false;
             return;
         }
 
@@ -872,17 +937,22 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
         }
 
         const int savedErrno = errno;
-        const bool wasActive = _state != SocketState::UnconnectedState;
         if (notify && received) {
             emit readyRead();
         }
+        const bool wasActive = _state != SocketState::UnconnectedState;
         setError(socketErrorFromErrno(savedErrno), errorMessageFromErrno(savedErrno));
         teardownNotifiers();
         closeDescriptor();
         _state = SocketState::UnconnectedState;
+        _txBuf.clear();
+        _txOffset = 0;
+        _gracefulWaitPending = false;
+        _peerEofSeen = false;
         if (wasActive) {
             emit disconnected();
         }
+        _pumpingRead = false;
         return;
     }
 
@@ -890,6 +960,22 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
         emit readyRead();
     }
     syncReadNotifier();
+    _pumpingRead = false;
+
+    // 可读回调内调用过无通知排空并看到对端关闭时，由最外层读泵补发断开
+    if (_peerEofSeen) {
+        _peerEofSeen = false;
+        const bool wasActive = _state != SocketState::UnconnectedState;
+        teardownNotifiers();
+        closeDescriptor();
+        _state = SocketState::UnconnectedState;
+        _txBuf.clear();
+        _txOffset = 0;
+        _gracefulWaitPending = false;
+        if (wasActive) {
+            emit disconnected();
+        }
+    }
 }
 
 // 把用户态写缓冲送入内核
@@ -947,7 +1033,18 @@ void PosixTcpSocket::pumpWriteBuffer()
     }
 
     if (_state == SocketState::ClosingState && _txBuf.isEmpty()) {
-        finishGracefulClose();
+        const bool waitForPeer = _gracefulWaitPending;
+        const int waitMs = _gracefulWaitMs;
+        _gracefulWaitPending = false;
+        _gracefulWaitMs = 0;
+
+        if (waitForPeer && _fd >= 0) {
+            ::shutdown(_fd, SHUT_WR);
+            waitForDisconnected(waitMs);
+        }
+        if (_fd >= 0) {
+            finishGracefulClose();
+        }
     }
 }
 
@@ -1003,13 +1100,20 @@ void PosixTcpSocket::syncWriteNotifier()
 void PosixTcpSocket::finishGracefulClose()
 {
     if (_fd >= 0) {
+        // 关闭前取走内核中已到达的对端数据，避免带未读数据关闭触发 RST
+        pumpReadBuffer(false);
+    }
+    if (_fd >= 0) {
         ::shutdown(_fd, SHUT_WR);
     }
     teardownNotifiers();
     closeDescriptor();
     if (_state != SocketState::UnconnectedState) {
         _state = SocketState::UnconnectedState;
-        emit disconnected();
+        // 本端主动关闭时把断开通知排到事件循环，让"发送后主动终结"的业务状态先落定
+        QMetaObject::invokeMethod(this, [this]() {
+            emit disconnected();
+        }, Qt::QueuedConnection);
     }
 }
 

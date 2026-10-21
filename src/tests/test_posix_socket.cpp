@@ -71,6 +71,8 @@ private slots:
     void testTcpConnectAndEcho();
     void testTcpConnectEventDriven();
     void testTcpHalfCloseAndEof();
+    void testTcpReadyReadBeforeDisconnect();
+    void testTcpWaitForPeerGracefulClose();
     void testTcpPeekDoesNotConsume();
     void testTcpBytesAvailableIncludesKernelBuffer();
     void testTcpWriteAcceptsFullLength();
@@ -152,6 +154,60 @@ void TestPosixSocket::testTcpHalfCloseAndEof()
         return client.state() == gy::net::SocketState::UnconnectedState;
     }));
     QVERIFY(disconnectedSpy.count() >= 1);
+}
+
+// 数据与对端关闭同时到达时，先派发可读再派发断开，回调内读取不丢尾部数据
+void TestPosixSocket::testTcpReadyReadBeforeDisconnect()
+{
+    PosixTcpServer server;
+    QVERIFY(server.listen(IpAddress::localHost(), 0));
+
+    PosixTcpSocket client;
+    client.connectToHost(IpAddress::localHost(), server.serverPort());
+    QVERIFY(client.waitForConnected(2000));
+    auto accepted = acceptOne(server);
+    QVERIFY(accepted);
+
+    QByteArray received;
+    QStringList events;
+    int disconnectedCount = 0;
+    connect(&client, &PosixTcpSocket::readyRead, this, [&client, &received, &events]() {
+        received += client.readAll();
+        events.append(QStringLiteral("read"));
+    });
+    connect(&client, &PosixTcpSocket::disconnected, this, [&events, &disconnectedCount]() {
+        events.append(QStringLiteral("disconnected"));
+        ++disconnectedCount;
+    });
+
+    QCOMPARE(accepted->write(QByteArrayLiteral("tail")), qint64(4));
+    accepted->disconnectFromHost();
+
+    QVERIFY(waitFor([&client]() {
+        return client.state() == gy::net::SocketState::UnconnectedState;
+    }));
+    QCOMPARE(received, QByteArrayLiteral("tail"));
+    QCOMPARE(events, QStringList({QStringLiteral("read"), QStringLiteral("disconnected")}));
+    QCOMPARE(disconnectedCount, 1);
+}
+
+// 等待对端关闭的优雅关闭在超时后仍能完成收尾
+void TestPosixSocket::testTcpWaitForPeerGracefulClose()
+{
+    PosixTcpServer server;
+    QVERIFY(server.listen(IpAddress::localHost(), 0));
+
+    PosixTcpSocket client;
+    client.connectToHost(IpAddress::localHost(), server.serverPort());
+    QVERIFY(client.waitForConnected(2000));
+    auto accepted = acceptOne(server);
+    QVERIFY(accepted);
+
+    QElapsedTimer elapsed;
+    elapsed.start();
+    client.disconnectFromHost(true, 150);
+    QVERIFY(elapsed.elapsed() >= 100);
+    QCOMPARE(client.state(), gy::net::SocketState::UnconnectedState);
 }
 
 // 窥探不消费缓冲内容

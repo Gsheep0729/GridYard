@@ -1,7 +1,7 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   文件传输完整流程测试
 *
@@ -16,8 +16,6 @@
 #include <QDir>
 #include <QTimer>
 #include <QThread>
-#include <QTcpServer>
-#include <QTcpSocket>
 
 #include "file_sender_worker.h"
 #include "file_receiver_worker.h"
@@ -27,6 +25,9 @@
 #include "config_manager.h"
 #include "discovery_service.h"
 #include "dir_serializer.h"
+#include "ip_address.h"
+#include "posix_tcp_server.h"
+#include "posix_tcp_socket.h"
 #include "protocol.h"
 #include "transfer_session_manager.h"
 
@@ -821,23 +822,24 @@ void TestFileTransfer::testConnectionLost()
 
     _config->setReceivePath(_recvDir->path());
 
-    // 使用原始 QTcpServer 模拟连接断开
-    QTcpServer server;
-    QVERIFY(server.listen(QHostAddress::AnyIPv4, 0));
+    // 使用原始 gy::net::PosixTcpServer 模拟连接断开
+    gy::net::PosixTcpServer server;
+    QVERIFY(server.listen(gy::net::IpAddress::any(), 0));
     const quint16 serverPort = server.serverPort();
     QVERIFY(serverPort != 0);
 
     bool receiverFinished = false;
     bool receiverSuccess = true;
     bool receiverThreadFinished = false;
-    connect(&server, &QTcpServer::newConnection, this,
+    connect(&server, &gy::net::PosixTcpServer::newConnection, this,
             [this, &server, &receiverFinished, &receiverSuccess, &receiverThreadFinished]() {
-        QTcpSocket *socket = server.nextPendingConnection();
+        gy::net::PosixTcpSocket *socket = server.nextPendingConnection();
         if (!socket) return;
 
         // 创建后台线程处理接收
         auto *thread = new QThread{this};
         auto *worker = new FileReceiverWorker{socket};
+        socket->prepareThreadMove();
         worker->moveToThread(thread);
 
         connect(worker, &FileReceiverWorker::transferFinished, this,
@@ -864,7 +866,9 @@ void TestFileTransfer::testConnectionLost()
         thread->start();
 
         // 传输开始后断开连接
-        QTimer::singleShot(100, socket, &QTcpSocket::disconnectFromHost);
+        QTimer::singleShot(100, socket, [socket]() {
+            socket->disconnectFromHost();
+        });
     });
 
     FileSenderWorker sender;
@@ -894,8 +898,8 @@ void TestFileTransfer::testTransferTimeout()
 {
     // 真实超时行为：接收端只监听不应答，发送端注入 300ms 短超时后
     // 应以 TransferTimeout 终结，而不是等满默认 30 秒
-    QTcpServer silentServer;
-    QVERIFY(silentServer.listen(QHostAddress::LocalHost, 0));
+    gy::net::PosixTcpServer silentServer;
+    QVERIFY(silentServer.listen(gy::net::IpAddress::localHost(), 0));
 
     QString sendPath = _sendDir->path() + "/timeout.txt";
     createTestFile(sendPath, "timeout-payload");
@@ -1087,8 +1091,8 @@ void TestFileTransfer::testProtocolVersionMismatch()
     });
 
     // 手动连接到接收端并发送错误版本的帧
-    QTcpSocket socket;
-    socket.connectToHost(QHostAddress::LocalHost, _testPort);
+    gy::net::PosixTcpSocket socket;
+    socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
     QVERIFY(socket.waitForConnected(5000));
 
     // 构造主版本号为 99 的 TransferReq
@@ -1113,10 +1117,10 @@ void TestFileTransfer::testProtocolVersionMismatch()
     QVERIFY(!rejected);
 
     // 验证连接被关闭（接收端断开）
-    if (socket.state() != QAbstractSocket::UnconnectedState) {
+    if (socket.state() != gy::net::SocketState::UnconnectedState) {
         socket.waitForDisconnected(2000);
     }
-    QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+    QVERIFY(socket.state() == gy::net::SocketState::UnconnectedState);
 }
 
 void TestFileTransfer::testMalformedTransferRequest()
@@ -1135,8 +1139,8 @@ void TestFileTransfer::testMalformedTransferRequest()
 
     // 测试 1：发送无效 JSON
     {
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        gy::net::PosixTcpSocket socket;
+        socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
         QVERIFY(socket.waitForConnected(5000));
 
         QByteArray badJson = "{invalid json!!!";
@@ -1145,16 +1149,16 @@ void TestFileTransfer::testMalformedTransferRequest()
         socket.flush();
 
         QTest::qWait(200);
-        if (socket.state() != QAbstractSocket::UnconnectedState) {
+        if (socket.state() != gy::net::SocketState::UnconnectedState) {
             socket.waitForDisconnected(2000);
         }
-        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+        QVERIFY(socket.state() == gy::net::SocketState::UnconnectedState);
     }
 
     // 测试 2：发送缺少必需字段的 JSON
     {
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        gy::net::PosixTcpSocket socket;
+        socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
         QVERIFY(socket.waitForConnected(5000));
 
         QJsonObject json;
@@ -1166,16 +1170,16 @@ void TestFileTransfer::testMalformedTransferRequest()
         socket.flush();
 
         QTest::qWait(200);
-        if (socket.state() != QAbstractSocket::UnconnectedState) {
+        if (socket.state() != gy::net::SocketState::UnconnectedState) {
             socket.waitForDisconnected(2000);
         }
-        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+        QVERIFY(socket.state() == gy::net::SocketState::UnconnectedState);
     }
 
     // 测试 3：发送 total_files 与 files 数组不一致
     {
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        gy::net::PosixTcpSocket socket;
+        socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
         QVERIFY(socket.waitForConnected(5000));
 
         QJsonObject json;
@@ -1196,10 +1200,10 @@ void TestFileTransfer::testMalformedTransferRequest()
         socket.flush();
 
         QTest::qWait(200);
-        if (socket.state() != QAbstractSocket::UnconnectedState) {
+        if (socket.state() != gy::net::SocketState::UnconnectedState) {
             socket.waitForDisconnected(2000);
         }
-        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+        QVERIFY(socket.state() == gy::net::SocketState::UnconnectedState);
     }
 
     // 验证从未收到请求
@@ -1222,8 +1226,8 @@ void TestFileTransfer::testInvalidFilePath()
 
     // 测试 1：../ 路径
     {
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        gy::net::PosixTcpSocket socket;
+        socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
         QVERIFY(socket.waitForConnected(5000));
 
         QJsonObject fileObj;
@@ -1250,16 +1254,16 @@ void TestFileTransfer::testInvalidFilePath()
         socket.flush();
 
         QTest::qWait(200);
-        if (socket.state() != QAbstractSocket::UnconnectedState) {
+        if (socket.state() != gy::net::SocketState::UnconnectedState) {
             socket.waitForDisconnected(2000);
         }
-        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+        QVERIFY(socket.state() == gy::net::SocketState::UnconnectedState);
     }
 
     // 测试 2：绝对路径
     {
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        gy::net::PosixTcpSocket socket;
+        socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
         QVERIFY(socket.waitForConnected(5000));
 
         QJsonObject fileObj;
@@ -1286,16 +1290,16 @@ void TestFileTransfer::testInvalidFilePath()
         socket.flush();
 
         QTest::qWait(200);
-        if (socket.state() != QAbstractSocket::UnconnectedState) {
+        if (socket.state() != gy::net::SocketState::UnconnectedState) {
             socket.waitForDisconnected(2000);
         }
-        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+        QVERIFY(socket.state() == gy::net::SocketState::UnconnectedState);
     }
 
     // 测试 3：负数大小
     {
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, _testPort);
+        gy::net::PosixTcpSocket socket;
+        socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
         QVERIFY(socket.waitForConnected(5000));
 
         QJsonObject fileObj;
@@ -1322,10 +1326,10 @@ void TestFileTransfer::testInvalidFilePath()
         socket.flush();
 
         QTest::qWait(200);
-        if (socket.state() != QAbstractSocket::UnconnectedState) {
+        if (socket.state() != gy::net::SocketState::UnconnectedState) {
             socket.waitForDisconnected(2000);
         }
-        QVERIFY(socket.state() == QAbstractSocket::UnconnectedState);
+        QVERIFY(socket.state() == gy::net::SocketState::UnconnectedState);
     }
 
     // 验证从未收到请求
@@ -1339,7 +1343,7 @@ void TestFileTransfer::testChatConnectionRouting()
     P2pServer server(_config);
     QVERIFY(server.start());
 
-    QTcpSocket *routedSocket = nullptr;
+    gy::net::PosixTcpSocket *routedSocket = nullptr;
     QByteArray routedData;
     bool transferRequestReceived = false;
     connect(&server, &P2pServer::transferRequestReceived, this,
@@ -1347,7 +1351,7 @@ void TestFileTransfer::testChatConnectionRouting()
         transferRequestReceived = true;
     });
     connect(&server, &P2pServer::chatConnectionReceived, this,
-            [this, &routedSocket, &routedData](QTcpSocket *socket) {
+            [this, &routedSocket, &routedData](gy::net::PosixTcpSocket *socket) {
         routedSocket = socket;
         socket->setParent(this);
         routedData = socket->readAll();
@@ -1365,8 +1369,8 @@ void TestFileTransfer::testChatConnectionRouting()
     const QByteArray frame = FrameCodec::encode(gy::protocol::kTypeChatText, payload);
     QVERIFY(!frame.isEmpty());
 
-    QTcpSocket client;
-    client.connectToHost(QHostAddress::LocalHost, _testPort);
+    gy::net::PosixTcpSocket client;
+    client.connectToHost(gy::net::IpAddress::localHost(), _testPort);
     QVERIFY(client.waitForConnected(5000));
 
     QVERIFY(client.write(frame.left(gy::protocol::kHeaderBytes)) > 0);
@@ -1401,7 +1405,7 @@ void TestFileTransfer::testUnsupportedFirstFrameRejected()
     bool chatConnectionReceived = false;
     bool transferRequestReceived = false;
     connect(&server, &P2pServer::chatConnectionReceived, this,
-            [&chatConnectionReceived](QTcpSocket *socket) {
+            [&chatConnectionReceived](gy::net::PosixTcpSocket *socket) {
         chatConnectionReceived = true;
         socket->setParent(nullptr);
         socket->deleteLater();
@@ -1411,9 +1415,9 @@ void TestFileTransfer::testUnsupportedFirstFrameRejected()
         transferRequestReceived = true;
     });
 
-    QTcpSocket client;
-    QSignalSpy disconnectedSpy(&client, &QTcpSocket::disconnected);
-    client.connectToHost(QHostAddress::LocalHost, _testPort);
+    gy::net::PosixTcpSocket client;
+    QSignalSpy disconnectedSpy(&client, &gy::net::PosixTcpSocket::disconnected);
+    client.connectToHost(gy::net::IpAddress::localHost(), _testPort);
     QVERIFY(client.waitForConnected(5000));
 
     const QByteArray frame = FrameCodec::encode(0x0503, "{}");
@@ -1423,9 +1427,9 @@ void TestFileTransfer::testUnsupportedFirstFrameRejected()
     QVERIFY(!chatConnectionReceived);
     QVERIFY(!transferRequestReceived);
 
-    QTcpSocket invalidChatClient;
-    QSignalSpy invalidChatDisconnectedSpy(&invalidChatClient, &QTcpSocket::disconnected);
-    invalidChatClient.connectToHost(QHostAddress::LocalHost, _testPort);
+    gy::net::PosixTcpSocket invalidChatClient;
+    QSignalSpy invalidChatDisconnectedSpy(&invalidChatClient, &gy::net::PosixTcpSocket::disconnected);
+    invalidChatClient.connectToHost(gy::net::IpAddress::localHost(), _testPort);
     QVERIFY(invalidChatClient.waitForConnected(5000));
 
     const QByteArray invalidChatFrame = FrameCodec::encode(gy::protocol::kTypeChatText, "{}");

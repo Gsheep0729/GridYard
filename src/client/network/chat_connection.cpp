@@ -1,7 +1,7 @@
 /**
 * @file    chat_connection.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接实现
 *
@@ -11,11 +11,9 @@
 
 #include "chat_connection.h"
 #include "frame_codec.h"
+#include "ip_address.h"
+#include "posix_tcp_socket.h"
 #include "protocol.h"
-
-#include <QAbstractSocket>
-#include <QHostAddress>
-#include <QTcpSocket>
 
 // 构造函数
 ChatConnection::ChatConnection(QObject *parent)
@@ -29,7 +27,7 @@ ChatConnection::ChatConnection(QObject *parent)
 }
 
 // 接管 P2pServer 已完成首帧路由的入站 socket
-void ChatConnection::adoptSocket(QTcpSocket *socket)
+void ChatConnection::adoptSocket(gy::net::PosixTcpSocket *socket)
 {
     if (!socket || _socket) {
         return;
@@ -40,13 +38,13 @@ void ChatConnection::adoptSocket(QTcpSocket *socket)
 }
 
 // 发起到在线对端的连接
-void ChatConnection::connectToHost(const QHostAddress &address, quint16 port)
+void ChatConnection::connectToHost(const gy::net::IpAddress &address, quint16 port)
 {
     if (_socket) {
         return;
     }
 
-    auto *socket = new QTcpSocket{this};
+    auto *socket = new gy::net::PosixTcpSocket{this};
     bindSocket(socket);
     socket->connectToHost(address, port);
 }
@@ -83,17 +81,17 @@ bool ChatConnection::isUsable() const
         return false;
     }
 
-    const QAbstractSocket::SocketState state = _socket->state();
-    return state == QAbstractSocket::HostLookupState
-           || state == QAbstractSocket::ConnectingState
-           || state == QAbstractSocket::ConnectedState;
+    const gy::net::SocketState state = _socket->state();
+    return state == gy::net::SocketState::HostLookupState
+           || state == gy::net::SocketState::ConnectingState
+           || state == gy::net::SocketState::ConnectedState;
 }
 
 // 主动关闭连接并丢弃尚未写入的数据
 void ChatConnection::close()
 {
     failPendingFrames(gy::ChatMessageError::ConnectionLost, tr("聊天连接已关闭"));
-    if (_socket && _socket->state() != QAbstractSocket::UnconnectedState) {
+    if (_socket && _socket->state() != gy::net::SocketState::UnconnectedState) {
         _socket->disconnectFromHost();
     }
 }
@@ -113,13 +111,13 @@ void ChatConnection::onConnected()
 }
 
 // socket 发生网络错误时结束待写消息
-void ChatConnection::onSocketError(QAbstractSocket::SocketError)
+void ChatConnection::onSocketError(gy::net::SocketError)
 {
     if (!_socket) {
         return;
     }
 
-    const gy::ChatMessageError error = _socket->state() == QAbstractSocket::ConnectedState
+    const gy::ChatMessageError error = _socket->state() == gy::net::SocketState::ConnectedState
         ? gy::ChatMessageError::WriteFailed
         : gy::ChatMessageError::ConnectionFailed;
     failPendingFrames(error, _socket->errorString());
@@ -161,28 +159,28 @@ void ChatConnection::onCodecError(gy::protocol::ErrorCode, const QString &errorM
 }
 
 // 绑定 socket 信号与 FrameCodec
-void ChatConnection::bindSocket(QTcpSocket *socket)
+void ChatConnection::bindSocket(gy::net::PosixTcpSocket *socket)
 {
     _socket = socket;
     _socket->setParent(this);
     // 聊天复用 TCP 通道，调大缓冲可兼容首帧分流后已积压的数据。
-    _socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
-    _socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
+    _socket->setSocketOption(gy::net::PosixTcpSocket::SendBufferSizeOption, 4 * 1024 * 1024);
+    _socket->setSocketOption(gy::net::PosixTcpSocket::ReceiveBufferSizeOption, 4 * 1024 * 1024);
 
-    connect(_socket, &QTcpSocket::readyRead,
+    connect(_socket, &gy::net::PosixTcpSocket::readyRead,
             this,    &ChatConnection::onReadyRead);
-    connect(_socket, &QTcpSocket::connected,
+    connect(_socket, &gy::net::PosixTcpSocket::connected,
             this,    &ChatConnection::onConnected);
-    connect(_socket, &QTcpSocket::errorOccurred,
+    connect(_socket, &gy::net::PosixTcpSocket::errorOccurred,
             this,    &ChatConnection::onSocketError);
-    connect(_socket, &QTcpSocket::disconnected,
+    connect(_socket, &gy::net::PosixTcpSocket::disconnected,
             this,    &ChatConnection::onDisconnected);
 }
 
 // 尝试将待写帧全部交给 socket 缓冲区
 void ChatConnection::writePendingFrames()
 {
-    if (!_socket || _socket->state() != QAbstractSocket::ConnectedState) {
+    if (!_socket || _socket->state() != gy::net::SocketState::ConnectedState) {
         return;
     }
 
@@ -190,7 +188,7 @@ void ChatConnection::writePendingFrames()
         const PendingFrame pending = _pendingFrames.takeFirst();
         const qint64 written = _socket->write(pending.frame);
         if (written != pending.frame.size()) {
-            // Qt 写入短帧表示本地 socket 缓冲异常，剩余待写消息必须统一失败。
+            // 套接字返回 -1 表示本地连接已不可写，剩余待写消息必须统一失败。
             const QString errorMessage = _socket->errorString().isEmpty()
                 ? tr("聊天消息写入失败")
                 : _socket->errorString();

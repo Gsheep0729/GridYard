@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
 *
@@ -13,6 +13,7 @@
 #include "file_receiver_worker.h"
 #include "config_manager.h"
 #include "frame_codec.h"
+#include "posix_tcp_socket.h"
 #include "protocol.h"
 
 #include <QCryptographicHash>
@@ -71,7 +72,7 @@ QString uniqueTargetPath(const QString &path, bool directory)
 }
 
 // 构造函数，绑定 socket 并创建 SHA-256 哈希计算器
-FileReceiverWorker::FileReceiverWorker(QTcpSocket *socket, QObject *parent)
+FileReceiverWorker::FileReceiverWorker(gy::net::PosixTcpSocket *socket, QObject *parent)
     : QObject{parent}
     , _socket{socket}
     , _hash{new QCryptographicHash{QCryptographicHash::Sha256}}
@@ -87,14 +88,17 @@ void FileReceiverWorker::initialize()
 {
     qDebug() << "[FileReceiver] 初始化（线程:" << QThread::currentThreadId() << ")";
 
+    // 通知器随 socket 迁到本线程，先在此线程重新启用再接入信号
+    _socket->finishThreadMove();
+
     // 在当前线程中创建 FrameCodec 和 QTimer
     _codec = new FrameCodec{this};
     _timeoutTimer = new QTimer{this};
 
     // 连接 socket 信号
-    connect(_socket, &QTcpSocket::readyRead,
+    connect(_socket, &gy::net::PosixTcpSocket::readyRead,
             this,    &FileReceiverWorker::onReadyRead);
-    connect(_socket, &QTcpSocket::disconnected,
+    connect(_socket, &gy::net::PosixTcpSocket::disconnected,
             this,    &FileReceiverWorker::onDisconnected);
 
     // 连接 codec 信号
@@ -119,14 +123,11 @@ void FileReceiverWorker::initialize()
     qDebug() << "[FileReceiver] 初始化完成";
 }
 
-// 析构函数，释放资源并延迟删除 socket
+// 析构函数，释放资源；socket 作为子对象随本对象析构时关闭描述符
 FileReceiverWorker::~FileReceiverWorker()
 {
     cleanup();
     delete _hash;
-    if (_socket) {
-        _socket->deleteLater();
-    }
 }
 
 // 用户确认接受传输，准备接收目录和文件并发送接受响应
@@ -239,7 +240,7 @@ void FileReceiverWorker::onReadyRead()
 // 协议拒绝分支只 disconnectFromHost 而不主动终结，全靠这里保证后台线程能退出、不泄漏
 void FileReceiverWorker::onDisconnected()
 {
-    if (_finished) {
+    if (_finished || _localCancelInProgress) {
         return;
     }
     // 传输中途断开按连接丢失处理；确认前（或拒绝后）断开则说明会话已无意义，同样需要终结
@@ -253,10 +254,16 @@ void FileReceiverWorker::onDisconnected()
 // 处理传输超时，清理资源并通知超时失败
 void FileReceiverWorker::onTimeout()
 {
-    if (_transferActive) {
-        qWarning() << "FileReceiverWorker: 传输超时";
-        finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
+    if (!_transferActive) {
+        return;
     }
+    // 对端停发时取消标志可能等到超时才被看到，先补一次取消收尾
+    if (_cancelRequested.load()) {
+        handleLocalCancel();
+        return;
+    }
+    qWarning() << "FileReceiverWorker: 传输超时";
+    finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
 }
 
 // 清理传输资源：停止定时器、关闭文件、删除不完整文件、重置哈希
@@ -669,7 +676,9 @@ void FileReceiverWorker::handleCancel(const QByteArray &payload)
 
     QString reason = json["reason"].toString();
 
-    // 关闭连接并终结；cleanup()（由 finish 调用）会关闭并删除不完整文件
+    // 关闭连接并终结；cleanup()（由 finish 调用）会关闭并删除不完整文件。
+    // 主动关闭期间屏蔽断开兜底，确保远端取消不会被改写成连接丢失。
+    _localCancelInProgress = true;
     _socket->disconnectFromHost();
     finish(false, gy::protocol::ErrorCode::UserCancelled, tr("传输被取消: %1").arg(reason));
 }
@@ -689,12 +698,16 @@ void FileReceiverWorker::handleLocalCancel()
     json["reason"] = tr("用户取消");
 
     const QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+    _localCancelInProgress = true;
     // 写入失败时 writeControlFrame 内部已终结会话，后面的重复终结被 _finished 拦截
-    writeControlFrame(gy::protocol::kTypeCancel, data, tr("发送取消帧"));
+    const bool cancelWritten = writeControlFrame(gy::protocol::kTypeCancel, data, tr("发送取消帧"));
+    if (cancelWritten && _socket->bytesToWrite() > 0) {
+        _socket->waitForBytesWritten(1000);
+    }
 
-    // 取消帧写入后断开连接（Qt 会先刷完待写字节再关闭），
-    // 发送方收到取消帧或断连后按对端取消终结
-    _socket->disconnectFromHost();
+    // 取消帧写入后先等发送方读到并自行关闭，期间排空到达数据，
+    // 避免带未读数据关闭触发 RST 把取消帧一起丢弃
+    _socket->disconnectFromHost(true);
     finish(false, gy::protocol::ErrorCode::UserCancelled, tr("用户取消"));
 }
 

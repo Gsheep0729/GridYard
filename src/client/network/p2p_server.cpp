@@ -1,7 +1,7 @@
 /**
 * @file    p2p_server.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
 *
@@ -17,12 +17,16 @@
 #include "config_manager.h"
 #include "file_receiver_worker.h"
 #include "frame_codec.h"
+#include "ip_address.h"
+#include "posix_tcp_server.h"
+#include "posix_tcp_socket.h"
 #include "protocol.h"
 
 #include <QDataStream>
 #include <QDebug>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QPointer>
 
 namespace {
 
@@ -55,10 +59,10 @@ bool readFrameHeader(const QByteArray &header, quint32 *type, quint32 *payloadLe
 P2pServer::P2pServer(ConfigManager *config, QObject *parent)
     : QObject{parent}
     , _config{config}
-    , _server{new QTcpServer{this}}
+    , _server{new gy::net::PosixTcpServer{this}}
 {
     // 新连接信号
-    connect(_server, &QTcpServer::newConnection,
+    connect(_server, &gy::net::PosixTcpServer::newConnection,
             this,    &P2pServer::onNewConnection);
 }
 
@@ -76,7 +80,12 @@ P2pServer::~P2pServer()
         if (auto *thread = qobject_cast<QThread*>(child)) {
             if (thread->isRunning()) {
                 thread->quit();
-                thread->wait(1000);
+                // 接收 worker 取消时可能正等待对端关闭，预留足够收尾时间
+                if (!thread->wait(3000)) {
+                    qWarning() << "[P2pServer] 后台线程未在超时内退出，强制终止";
+                    thread->terminate();
+                    thread->wait();
+                }
             }
         }
     }
@@ -87,7 +96,7 @@ bool P2pServer::start()
 {
     const quint16 port = _config->tcpPort();
 
-    if (_server->listen(QHostAddress::AnyIPv4, port)) {
+    if (_server->listen(gy::net::IpAddress::any(), port)) {
         qDebug() << "P2pServer: 监听端口" << port << "成功";
         return true;
     } else {
@@ -131,7 +140,7 @@ void P2pServer::joinRelaySession(const QString &host, quint16 port, const QStrin
         return;
     }
 
-    auto *socket = new QTcpSocket{this};
+    auto *socket = new gy::net::PosixTcpSocket{this};
     auto *timer = new QTimer{socket};
     timer->setSingleShot(true);
     _relayJoins.insert(socket, relayId);
@@ -139,7 +148,7 @@ void P2pServer::joinRelaySession(const QString &host, quint16 port, const QStrin
     connect(timer, &QTimer::timeout, this, [this, socket]() {
         failRelayJoin(socket, tr("中继连接超时"));
     });
-    connect(socket, &QTcpSocket::connected, this, [this, socket, relayId, timer]() {
+    connect(socket, &gy::net::PosixTcpSocket::connected, this, [this, socket, relayId, timer]() {
         qDebug() << "[P2pServer] 已连接中继服务器，发送 relay_join";
         QJsonObject hello;
         hello[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayJoin;
@@ -158,12 +167,12 @@ void P2pServer::joinRelaySession(const QString &host, quint16 port, const QStrin
         timer->stop();
         monitorFirstFrame(socket, kRelayFirstFrameTimeoutMs);
     });
-    connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
+    connect(socket, &gy::net::PosixTcpSocket::disconnected, this, [this, socket]() {
         if (_relayJoins.contains(socket)) {
             failRelayJoin(socket, tr("中继连接已断开"));
         }
     });
-    connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError) {
+    connect(socket, &gy::net::PosixTcpSocket::errorOccurred, this, [this, socket](gy::net::SocketError) {
         if (_relayJoins.contains(socket)) {
             failRelayJoin(socket, socket->errorString());
         }
@@ -174,7 +183,7 @@ void P2pServer::joinRelaySession(const QString &host, quint16 port, const QStrin
 }
 
 // 结束一次未完成的中继加入：清理连接并通知失败
-void P2pServer::failRelayJoin(QTcpSocket *socket, const QString &reason)
+void P2pServer::failRelayJoin(gy::net::PosixTcpSocket *socket, const QString &reason)
 {
     const QString relayId = _relayJoins.take(socket);
     if (relayId.isEmpty()) {
@@ -194,7 +203,7 @@ void P2pServer::onNewConnection()
     qDebug() << "[P2pServer] 检测到新连接";
 
     while (_server->hasPendingConnections()) {
-        QTcpSocket *socket = _server->nextPendingConnection();
+        gy::net::PosixTcpSocket *socket = _server->nextPendingConnection();
         if (!socket) {
             qWarning() << "[P2pServer] 获取 socket 失败";
             continue;
@@ -207,17 +216,18 @@ void P2pServer::onNewConnection()
         socket->setParent(this);
 
         // 扩大收发缓冲到 4MB，减少大文件传输时系统调用和窗口抖动。
-        socket->setSocketOption(QAbstractSocket::SendBufferSizeSocketOption, 4 * 1024 * 1024);
-        socket->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 4 * 1024 * 1024);
+        socket->setSocketOption(gy::net::PosixTcpSocket::SendBufferSizeOption, 4 * 1024 * 1024);
+        socket->setSocketOption(gy::net::PosixTcpSocket::ReceiveBufferSizeOption, 4 * 1024 * 1024);
 
         monitorFirstFrame(socket, kDefaultFirstFrameTimeoutMs);
     }
 }
 
 // 监听 socket，等待首个完整 TLV 帧
-void P2pServer::monitorFirstFrame(QTcpSocket *socket, int timeoutMs)
+void P2pServer::monitorFirstFrame(gy::net::PosixTcpSocket *socket, int timeoutMs)
 {
-    auto *firstFrameTimer = new QTimer{socket};
+    // 计时器归 P2pServer 持有，避免随 socket 移交到工作线程后才延迟销毁
+    auto *firstFrameTimer = new QTimer{this};
     firstFrameTimer->setSingleShot(true);
     _firstFrameTimers.insert(socket, firstFrameTimer);
 
@@ -227,9 +237,9 @@ void P2pServer::monitorFirstFrame(QTcpSocket *socket, int timeoutMs)
             closePendingConnection(socket, tr("首帧路由超时"));
         }
     });
-    connect(socket, &QTcpSocket::readyRead,
+    connect(socket, &gy::net::PosixTcpSocket::readyRead,
             this,   [this, socket]() { routeFirstFrame(socket); });
-    connect(socket, &QTcpSocket::disconnected,
+    connect(socket, &gy::net::PosixTcpSocket::disconnected,
             this,   [this, socket]() {
         stopFirstFrameTimeout(socket);
         if (socket->parent() == this) {
@@ -238,7 +248,11 @@ void P2pServer::monitorFirstFrame(QTcpSocket *socket, int timeoutMs)
     });
     connect(socket, &QObject::destroyed,
             this, [this, socket]() {
-        _firstFrameTimers.remove(socket);
+        QTimer *timer = _firstFrameTimers.take(socket);
+        if (timer) {
+            timer->stop();
+            timer->deleteLater();
+        }
     });
 
     firstFrameTimer->start(timeoutMs);
@@ -246,7 +260,7 @@ void P2pServer::monitorFirstFrame(QTcpSocket *socket, int timeoutMs)
 }
 
 // 校验首帧并按 Type 路由连接
-void P2pServer::routeFirstFrame(QTcpSocket *socket)
+void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
 {
     // socket 已被其他处理者接管（parent 变化）时不再处理
     if (!socket || socket->parent() != this) {
@@ -306,12 +320,27 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
     }
 
     stopFirstFrameTimeout(socket);
-    disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
-    disconnect(socket, &QTcpSocket::disconnected, this, nullptr);
+    disconnect(socket, &gy::net::PosixTcpSocket::readyRead, this, nullptr);
+    disconnect(socket, &gy::net::PosixTcpSocket::disconnected, this, nullptr);
 
     if (type == gy::protocol::kTypeTransferReq) {
-        // 文件接收 Worker 会在线程启动后重新读取保留在 socket 缓冲区里的首帧。
-        startFileReceiver(socket);
+        // 当前仍在 socket 的 readyRead 回调栈内，等读泵退出后再移交通知器与描述符；
+        // 文件接收 Worker 会在新线程启动后重新读取保留在 socket 缓冲区里的首帧。
+        QPointer<gy::net::PosixTcpSocket> guardedSocket{socket};
+        QMetaObject::invokeMethod(this, [this, guardedSocket]() {
+            if (!guardedSocket) {
+                return;
+            }
+            if (guardedSocket->parent() != this
+                || guardedSocket->state() == gy::net::SocketState::UnconnectedState) {
+                // 对端在移交前关闭时不再启动 worker，同时补做删除
+                if (guardedSocket->parent() == this) {
+                    guardedSocket->deleteLater();
+                }
+                return;
+            }
+            startFileReceiver(guardedSocket);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -334,10 +363,17 @@ void P2pServer::routeFirstFrame(QTcpSocket *socket)
 }
 
 // 创建后台文件接收 Worker
-void P2pServer::startFileReceiver(QTcpSocket *socket)
+void P2pServer::startFileReceiver(gy::net::PosixTcpSocket *socket)
 {
+    if (!socket || socket->parent() != this) {
+        return;
+    }
+
     auto *thread = new QThread{this};
     auto *worker = new FileReceiverWorker{socket};
+
+    // 移交通知器：先在当前线程停用，再把 socket 的父对象交给 worker 一并迁移
+    socket->prepareThreadMove();
     worker->moveToThread(thread);
 
     qDebug() << "[P2pServer] 创建 FileReceiverWorker 处理文件传输（后台线程）";
@@ -373,7 +409,7 @@ void P2pServer::startFileReceiver(QTcpSocket *socket)
 }
 
 // 关闭尚未交接的入站连接
-void P2pServer::closePendingConnection(QTcpSocket *socket, const QString &reason)
+void P2pServer::closePendingConnection(gy::net::PosixTcpSocket *socket, const QString &reason)
 {
     qWarning() << "[P2pServer] 关闭入站连接:" << reason;
     stopFirstFrameTimeout(socket);
@@ -383,7 +419,7 @@ void P2pServer::closePendingConnection(QTcpSocket *socket, const QString &reason
 }
 
 // 清理待路由首帧的超时计时器
-void P2pServer::stopFirstFrameTimeout(QTcpSocket *socket)
+void P2pServer::stopFirstFrameTimeout(gy::net::PosixTcpSocket *socket)
 {
     QTimer *timer = _firstFrameTimers.take(socket);
     if (!timer) {

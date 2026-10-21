@@ -1,7 +1,7 @@
 /**
 * @file    p2p_server.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器
 *
@@ -15,8 +15,6 @@
 
 #include <QObject>
 #include <QHash>
-#include <QTcpServer>
-#include <QTcpSocket>
 #include <QThread>
 #include <QTimer>
 #include <QVariantMap>
@@ -24,6 +22,11 @@
 class ConfigManager;
 class FrameCodec;
 class FileReceiverWorker;
+
+namespace gy::net {
+class PosixTcpServer;
+class PosixTcpSocket;
+}
 
 class P2pServer : public QObject {
     Q_OBJECT
@@ -48,7 +51,7 @@ signals:
     // 新的传输请求到达（需要弹窗确认）
     void transferRequestReceived(FileReceiverWorker *worker, const QVariantMap &request);
     // 聊天连接到达，接收方须在当前线程同步接管 socket 的对象归属
-    void chatConnectionReceived(QTcpSocket *socket);
+    void chatConnectionReceived(gy::net::PosixTcpSocket *socket);
     // 中继加入失败（连接不上、握手超时等）
     void relayJoinFailed(const QString &relayId, const QString &reason);
 
@@ -58,20 +61,20 @@ private slots:
 
 private:
     // 监听 socket，等待首个完整 TLV 帧；中继加入的连接等待期更长
-    void monitorFirstFrame(QTcpSocket *socket, int timeoutMs);
+    void monitorFirstFrame(gy::net::PosixTcpSocket *socket, int timeoutMs);
     // 校验首帧并按 Type 路由连接
-    void routeFirstFrame(QTcpSocket *socket);
+    void routeFirstFrame(gy::net::PosixTcpSocket *socket);
     // 创建后台文件接收 Worker
-    void startFileReceiver(QTcpSocket *socket);
+    void startFileReceiver(gy::net::PosixTcpSocket *socket);
     // 关闭尚未交接的入站连接
-    void closePendingConnection(QTcpSocket *socket, const QString &reason);
+    void closePendingConnection(gy::net::PosixTcpSocket *socket, const QString &reason);
     // 清理待路由首帧的超时计时器
-    void stopFirstFrameTimeout(QTcpSocket *socket);
+    void stopFirstFrameTimeout(gy::net::PosixTcpSocket *socket);
     // 结束一次未完成的中继加入：清理连接并通知失败
-    void failRelayJoin(QTcpSocket *socket, const QString &reason);
+    void failRelayJoin(gy::net::PosixTcpSocket *socket, const QString &reason);
 
     ConfigManager *_config = nullptr; // TCP 监听端口配置来源
-    QTcpServer    *_server = nullptr; // 接受入站传输连接的服务器
-    QHash<QTcpSocket *, QTimer *> _firstFrameTimers;
-    QHash<QTcpSocket *, QString> _relayJoins;  // 待就绪的中继连接 -> relayId
+    gy::net::PosixTcpServer *_server = nullptr;  // 接受入站传输连接的服务器
+    QHash<gy::net::PosixTcpSocket *, QTimer *> _firstFrameTimers;  // 待路由连接的首帧计时器
+    QHash<gy::net::PosixTcpSocket *, QString> _relayJoins;  // 待就绪的中继连接 -> relayId
 };
