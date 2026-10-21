@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
-* @version 7.23.0
-* @date 2026-10-07
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -14,17 +14,18 @@
 #include "application_paths.h"
 #include "protocol.h"
 
+#include "net_interfaces.h"
+
 #include <algorithm>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
-#include <QHostInfo>
 #include <QJsonObject>
-#include <QNetworkInterface>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSysInfo>
 #include <QUrl>
 #include <QUuid>
 
@@ -73,7 +74,7 @@ ConfigManager::ConfigManager(QObject *parent)
     // 设备名：优先使用命令行参数，否则读配置，否则用主机名
     QString envName = qEnvironmentVariable("GRIDYARD_NAME");
     _deviceName = envName.isEmpty()
-        ? settings.value("device/name", QHostInfo::localHostName()).toString()
+        ? settings.value("device/name", QSysInfo::machineHostName()).toString()
         : envName;
 
     // 接收路径默认为 ~/GridYard/document，不存在则自动创建
@@ -198,20 +199,13 @@ void ConfigManager::refreshLocalIp()
 
     // 与默认路由同接口的地址才是真实出口网段
     if (!routeInterface.isEmpty()) {
-        const auto interfaces = QNetworkInterface::allInterfaces();
-        for (const QNetworkInterface &iface : interfaces) {
-            if (iface.name() != routeInterface
-                    || !(iface.flags() & QNetworkInterface::IsUp)) {
+        const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
+        for (const gy::net::NetInterface &interface : interfaces) {
+            if (interface.name != routeInterface || !interface.isUp || interface.isLoopback) {
                 continue;
             }
-            for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
-                if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol
-                        && !entry.ip().isLoopback()) {
-                    newIp = entry.ip().toString();
-                    break;
-                }
-            }
-            if (!newIp.isEmpty()) {
+            if (interface.address.isValid()) {
+                newIp = interface.address.toString();
                 break;
             }
         }
@@ -219,11 +213,10 @@ void ConfigManager::refreshLocalIp()
 
     // 兜底：没有默认路由信息时退回第一个非回环 IPv4
     if (newIp.isEmpty()) {
-        const auto addresses = QNetworkInterface::allAddresses();
-        for (const QHostAddress &addr : addresses) {
-            if (addr.protocol() == QAbstractSocket::IPv4Protocol
-                && !addr.isLoopback()) {
-                newIp = addr.toString();
+        const QList<gy::net::IpAddress> addresses = gy::net::listIpv4Addresses();
+        for (const gy::net::IpAddress &address : addresses) {
+            if (!address.isNull() && !address.isLoopback()) {
+                newIp = address.toString();
                 break;
             }
         }

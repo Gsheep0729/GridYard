@@ -1,7 +1,7 @@
 /**
 * @file    invite_codec.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   邀请连接文本编解码器实现
 *
@@ -10,7 +10,8 @@
 
 #include "invite_codec.h"
 
-#include <QHostAddress>
+#include "ip_address.h"
+
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -59,12 +60,12 @@ InviteCodec::Invite InviteCodec::parse(const QString &text, Error *error)
     result.deviceName = query.queryItemValue(QStringLiteral("name"));
 
     const QString ip = query.queryItemValue(QStringLiteral("ip"));
-    QHostAddress addr;
-    if (ip.isEmpty() || !addr.setAddress(ip)) {
+    const gy::net::IpAddress parsedAddress = gy::net::IpAddress::fromString(ip);
+    if (ip.isEmpty() || !parsedAddress.isValid()) {
         *error = Error::InvalidIp;
         return result;
     }
-    result.ipAddress = ip;
+    result.ipAddress = parsedAddress.toString();
 
     bool ok = false;
     const QString tcpPortStr = query.queryItemValue(QStringLiteral("tcpPort"));

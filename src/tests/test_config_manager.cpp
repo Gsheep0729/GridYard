@@ -1,7 +1,7 @@
 /**
 * @file    test_config_manager.cpp
-* @version 7.20.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
@@ -9,14 +9,14 @@
 */
 
 #include <QtTest/QtTest>
-#include <QNetworkInterface>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QSettings>
-#include <QHostInfo>
+#include <QSysInfo>
 
 #include "application_paths.h"
 #include "config_manager.h"
+#include "net_interfaces.h"
 #include "protocol.h"
 
 class TestConfigManager : public QObject {
@@ -105,7 +105,7 @@ void TestConfigManager::testDeviceName()
     QCOMPARE(spy.count(), 1);
 
     // 恢复原名称
-    _config->setDeviceName(QHostInfo::localHostName());
+    _config->setDeviceName(QSysInfo::machineHostName());
 }
 
 void TestConfigManager::testReceivePath()
@@ -175,7 +175,7 @@ void TestConfigManager::testSignalEmission()
     QSignalSpy nameSpy(_config, &ConfigManager::deviceNameChanged);
     _config->setDeviceName("SignalTest");
     QCOMPARE(nameSpy.count(), 1);
-    _config->setDeviceName(QHostInfo::localHostName());
+    _config->setDeviceName(QSysInfo::machineHostName());
 
     // 测试 receivePathChanged 信号
     QSignalSpy pathSpy(_config, &ConfigManager::receivePathChanged);
@@ -206,15 +206,10 @@ void TestConfigManager::testLocalIp()
     }
 
     bool belongsToInterface = false;
-    const auto interfaces = QNetworkInterface::allInterfaces();
-    for (const QNetworkInterface &iface : interfaces) {
-        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
-            if (entry.ip().toString() == ip) {
-                belongsToInterface = true;
-                break;
-            }
-        }
-        if (belongsToInterface) {
+    const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
+    for (const gy::net::NetInterface &interface : interfaces) {
+        if (interface.address.toString() == ip) {
+            belongsToInterface = true;
             break;
         }
     }

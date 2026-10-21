@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 */
@@ -11,11 +11,13 @@
 #include "data_types.h"
 #include "protocol.h"
 
+#include "ip_address.h"
+#include "net_interfaces.h"
+#include "posix_udp_socket.h"
+
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkInterface>
-#include <QNetworkProxy>
 
 // 心跳间隔：5 秒，兼顾发现速度和局域网广播噪声
 static constexpr int kBroadcastIntervalSec = 5;
@@ -30,19 +32,15 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
     , _config{config}
 {
     // 初始化 UDP Socket
-    _socket = new QUdpSocket(this);
-
-    // 禁用代理（UDP 不支持某些代理类型）
-    QNetworkProxy noProxy;
-    noProxy.setType(QNetworkProxy::NoProxy);
-    _socket->setProxy(noProxy);
+    _socket = new gy::net::PosixUdpSocket(this);
 
     // ShareAddress + ReuseAddressHint 允许多进程共享同一 UDP 端口，
     // 这样同一台机器上可以同时运行多个 GridYard 实例互相发现；
     // 开发者实例按实例号偏移绑定确定性端口，正常实例仍是默认端口
     const quint16 discoveryPort = gy::protocol::instanceDiscoveryPort(_config->instanceNumber());
-    bool bound = _socket->bind(QHostAddress::AnyIPv4, discoveryPort,
-                                QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+    const auto bindFlags = gy::net::PosixUdpSocket::ShareAddress
+        | gy::net::PosixUdpSocket::ReuseAddressHint;
+    bool bound = _socket->bind(gy::net::IpAddress::any(), discoveryPort, bindFlags);
 
     if (!bound) {
         qWarning() << "DiscoveryService: 绑定端口" << discoveryPort
@@ -50,8 +48,7 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
         qWarning() << "DiscoveryService: 尝试绑定到任意端口";
 
         // 绑定到任意可用端口
-        bound = _socket->bind(QHostAddress::AnyIPv4, 0,
-                              QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+        bound = _socket->bind(gy::net::IpAddress::any(), 0, bindFlags);
 
         if (bound) {
             qDebug() << "DiscoveryService: 绑定到备用端口:" << _socket->localPort();
@@ -65,7 +62,7 @@ DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
                  << _socket->localPort();
     }
 
-    connect(_socket, &QUdpSocket::readyRead,
+    connect(_socket, &gy::net::PosixUdpSocket::readyRead,
             this,    &DiscoveryService::onDatagramReceived);
 
     // 设备名称变化时立即广播，让其他设备尽快更新
@@ -157,7 +154,7 @@ static QList<quint16> broadcastTargetPorts(const ConfigManager *config, quint16 
 void DiscoveryService::sendHelloPacket()
 {
     // 检查 socket 是否已绑定
-    if (!_socket || _socket->state() == QAbstractSocket::UnconnectedState) {
+    if (!_socket || !_socket->isBound()) {
         qDebug() << "DiscoveryService: socket 未绑定，跳过广播";
         return;
     }
@@ -170,28 +167,26 @@ void DiscoveryService::sendHelloPacket()
     const QList<quint16> targetPorts = broadcastTargetPorts(_config, _socket->localPort());
 
     // 遍历所有激活的网络接口，向每个网卡的广播地址发送
-    const auto interfaces = QNetworkInterface::allInterfaces();
+    const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
     int sentCount = 0;
-    for (const QNetworkInterface &iface : interfaces) {
+    for (const gy::net::NetInterface &interface : interfaces) {
         // 过滤：必须是激活中的、非回环的、支持广播的物理网卡
-        if (!(iface.flags() & QNetworkInterface::IsUp))       continue;
-        if (!(iface.flags() & QNetworkInterface::CanBroadcast)) continue;
-        if (  iface.flags() & QNetworkInterface::IsLoopBack)  continue;
+        if (!interface.isUp || !interface.canBroadcast || interface.isLoopback) {
+            continue;
+        }
+        if (!interface.broadcast.isValid()) {
+            continue;
+        }
 
-        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
-            // 只处理 IPv4 地址
-            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
-
-            // 向该网卡对应子网的广播地址逐个目标端口发送
-            for (const quint16 targetPort : targetPorts) {
-                qint64 sent = _socket->writeDatagram(data, entry.broadcast(), targetPort);
-                if (sent == -1) {
-                    qWarning() << "DiscoveryService: 广播发送失败到"
-                               << entry.broadcast().toString()
-                               << ":" << _socket->errorString();
-                } else {
-                    sentCount++;
-                }
+        // 向该网卡对应子网的广播地址逐个目标端口发送
+        for (const quint16 targetPort : targetPorts) {
+            const qint64 sent = _socket->writeDatagram(data, interface.broadcast, targetPort);
+            if (sent == -1) {
+                qWarning() << "DiscoveryService: 广播发送失败到"
+                           << interface.broadcast.toString()
+                           << ":" << _socket->errorString();
+            } else {
+                sentCount++;
             }
         }
     }
@@ -204,13 +199,16 @@ void DiscoveryService::onDatagramReceived()
     // 循环读取所有待处理数据报，避免 readyRead 在高频率广播下被合并
     while (_socket->hasPendingDatagrams()) {
         QByteArray datagram;
-        datagram.resize(_socket->pendingDatagramSize());
+        datagram.resize(static_cast<int>(_socket->pendingDatagramSize()));
 
-        QHostAddress sender;
+        gy::net::IpAddress sender;
         quint16 senderPort = 0;
 
-        _socket->readDatagram(datagram.data(), datagram.size(),
-                              &sender, &senderPort);
+        const qint64 readBytes = _socket->readDatagram(datagram.data(), datagram.size(),
+                                                       &sender, &senderPort);
+        if (readBytes <= 0) {
+            continue;
+        }
 
         // 只处理合法 JSON 对象，其他格式静默丢弃
         QJsonParseError error;
@@ -270,7 +268,7 @@ QByteArray DiscoveryService::buildHelloPayload() const
 }
 
 // 解析收到的 Hello 包，进行版本兼容性检查后更新在线设备表
-void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAddress &sender)
+void DiscoveryService::handleHelloPacket(const QJsonObject &json, const gy::net::IpAddress &sender)
 {
     // 提取字段
     const QString deviceId   = json["device_id"].toString();
@@ -423,9 +421,9 @@ void DiscoveryService::refresh()
 }
 
 // 向指定地址发送定向 Hello 包，复用 buildHelloPayload() 构建内容
-void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 discoveryPort)
+void DiscoveryService::sendDirectedHello(const gy::net::IpAddress &address, quint16 discoveryPort)
 {
-    if (!_socket || _socket->state() == QAbstractSocket::UnconnectedState) {
+    if (!_socket || !_socket->isBound()) {
         qDebug() << "DiscoveryService: socket 未绑定，跳过定向 Hello";
         return;
     }
@@ -434,7 +432,7 @@ void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 di
     qDebug() << "DiscoveryService: 发送定向 Hello 到" << address.toString()
              << "端口" << discoveryPort;
 
-    qint64 sent = _socket->writeDatagram(data, address, discoveryPort);
+    const qint64 sent = _socket->writeDatagram(data, address, discoveryPort);
     if (sent == -1) {
         qWarning() << "DiscoveryService: 定向 Hello 发送失败:"
                    << address.toString() << ":" << _socket->errorString();
@@ -446,7 +444,7 @@ void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 di
 // 获取本实例实际绑定的 UDP 发现端口（邀请码端口照实携带用，未绑定时为 0）
 quint16 DiscoveryService::localDiscoveryPort() const
 {
-    return _socket ? _socket->localPort() : 0;
+    return (_socket && _socket->isBound()) ? _socket->localPort() : 0;
 }
 
 // 添加手动端点（只在没有更高优先级在线来源时才插入）

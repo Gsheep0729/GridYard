@@ -24,12 +24,17 @@
 #include <QQuickStyle>
 #include <QStringList>
 
+#include <csignal>
+
 #include "app_controller.h"
 #include "data_types.h"
 #include "logger.h"
 
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
+    // 对端关闭后继续写入时忽略 SIGPIPE，套接字层另有 MSG_NOSIGNAL 逐次兜底
+    std::signal(SIGPIPE, SIG_IGN);
+
     QGuiApplication::setApplicationName("GridYard");
     QGuiApplication::setApplicationVersion("7.26.0");
     QGuiApplication::setOrganizationName("CQNU-SED");

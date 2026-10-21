@@ -1,7 +1,7 @@
 /**
 * @file    test_discovery.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
@@ -9,8 +9,6 @@
 */
 
 #include <QtTest/QtTest>
-#include <QHostAddress>
-#include <QNetworkInterface>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QJsonObject>
@@ -19,6 +17,7 @@
 
 #include "discovery_service.h"
 #include "config_manager.h"
+#include "net_interfaces.h"
 #include "protocol.h"
 
 class TestDiscovery : public QObject {
@@ -312,20 +311,13 @@ void TestDiscovery::testRealArrivalMergesOfflineManualEntry()
 {
     // 同机广播的来源 IP 是广播网卡的地址，接口筛选与 sendHelloPacket 同口径
     QString hostIp;
-    const auto interfaces = QNetworkInterface::allInterfaces();
-    for (const QNetworkInterface &iface : interfaces) {
-        if (!(iface.flags() & QNetworkInterface::IsUp)
-                || !(iface.flags() & QNetworkInterface::CanBroadcast)
-                || (iface.flags() & QNetworkInterface::IsLoopBack)) {
+    const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
+    for (const gy::net::NetInterface &interface : interfaces) {
+        if (!interface.isUp || !interface.canBroadcast || interface.isLoopback) {
             continue;
         }
-        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
-            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol) {
-                hostIp = entry.ip().toString();
-                break;
-            }
-        }
-        if (!hostIp.isEmpty()) {
+        if (interface.address.isValid()) {
+            hostIp = interface.address.toString();
             break;
         }
     }

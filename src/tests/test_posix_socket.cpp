@@ -83,6 +83,7 @@ private slots:
     void testTcpNoSigpipeOnPeerClosed();
     void testUdpBroadcastReceive();
     void testUdpUnicastReceive();
+    void testUdpLargeDatagramIntegrity();
     void testNetInterfaceEnumeration();
     void testThreadHandoverKeepsBufferedBytes();
     void testThreadHandoverLatch();
@@ -432,6 +433,27 @@ void TestPosixSocket::testUdpUnicastReceive()
     QCOMPARE(receiver.readDatagram(second, sizeof(second), &source, &sourcePort), qint64(6));
     QCOMPARE(QByteArray(second, 6), QByteArrayLiteral("second"));
     QCOMPARE(sourcePort, sender.localPort());
+}
+
+// 接近 64KB 的数据报完整送达，不被接收缓冲截断
+void TestPosixSocket::testUdpLargeDatagramIntegrity()
+{
+    PosixUdpSocket receiver;
+    QVERIFY(receiver.bind(IpAddress::localHost(), 0));
+
+    PosixUdpSocket sender;
+    QVERIFY(sender.bind(IpAddress::localHost(), 0));
+
+    const QByteArray payload(60000, 'd');
+    QCOMPARE(sender.writeDatagram(payload, IpAddress::localHost(), receiver.localPort()),
+             qint64(payload.size()));
+    QVERIFY(waitFor([&receiver]() { return receiver.hasPendingDatagrams(); }, 5000));
+    QCOMPARE(receiver.pendingDatagramSize(), qint64(payload.size()));
+
+    QByteArray buffer(payload.size(), '\0');
+    const qint64 amount = receiver.readDatagram(buffer.data(), payload.size());
+    QCOMPARE(amount, qint64(payload.size()));
+    QCOMPARE(buffer.left(static_cast<int>(amount)), payload);
 }
 
 // 网卡枚举返回有效 IPv4 地址与广播地址

@@ -1,7 +1,7 @@
 /**
 * @file    reachability_controller.cpp
-* @version 7.22.0
-* @date 2026-10-07
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   网络可达性控制器实现
 *
@@ -19,8 +19,9 @@
 #include "network/rendezvous_client.h"
 #include "protocol.h"
 
-#include <QHostAddress>
-#include <QNetworkInterface>
+#include "ip_address.h"
+#include "net_interfaces.h"
+
 #include <QJSEngine>
 
 // 单例静态成员定义
@@ -107,8 +108,8 @@ void ReachabilityController::sendDirectedHello(const QString &ip, quint16 discov
         return;
     }
 
-    QHostAddress address;
-    if (ip.isEmpty() || !address.setAddress(ip)) {
+    const gy::net::IpAddress address = gy::net::IpAddress::fromString(ip);
+    if (ip.isEmpty() || !address.isValid()) {
         qWarning() << "ReachabilityController: 无效的 IP 地址:" << ip;
         return;
     }
@@ -170,17 +171,13 @@ void ReachabilityController::queryRendezvousPeers()
 QStringList ReachabilityController::collectLocalAddresses() const
 {
     QStringList addresses;
-    const auto interfaces = QNetworkInterface::allInterfaces();
+    const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
 
-    for (const QNetworkInterface &iface : interfaces) {
-        if (!(iface.flags() & QNetworkInterface::IsUp)) continue;
-        if (  iface.flags() & QNetworkInterface::IsLoopBack) continue;
-        if (iface.type() == QNetworkInterface::Loopback) continue;
-
-        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
-            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
-            addresses.append(entry.ip().toString());
+    for (const gy::net::NetInterface &interface : interfaces) {
+        if (!interface.isUp || interface.isLoopback || !interface.address.isValid()) {
+            continue;
         }
+        addresses.append(interface.address.toString());
     }
 
     return addresses;
@@ -311,8 +308,7 @@ void ReachabilityController::addManualEndpoint(const QString &ip, quint16 tcpPor
         return;
     }
 
-    QHostAddress addr;
-    if (!addr.setAddress(ip)) {
+    if (!gy::net::IpAddress::fromString(ip).isValid()) {
         _inviteError = QStringLiteral("无效的 IP 地址格式");
         emit inviteErrorChanged();
         return;
@@ -346,8 +342,7 @@ void ReachabilityController::testManualEndpoint(const QString &ip, quint16 tcpPo
         return;
     }
 
-    QHostAddress addr;
-    if (!addr.setAddress(ip)) {
+    if (!gy::net::IpAddress::fromString(ip).isValid()) {
         emit manualEndpointTestResult(false, QStringLiteral("无效的 IP 地址格式"));
         return;
     }

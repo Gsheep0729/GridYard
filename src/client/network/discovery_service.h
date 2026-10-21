@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   局域网设备发现服务
 */
@@ -12,7 +12,6 @@
 #include <QHash>
 #include <QObject>
 #include <QTimer>
-#include <QUdpSocket>
 #include <QVariantList>
 
 #include "data_types.h"
@@ -20,6 +19,11 @@
 class ConfigManager;
 class TestChatManager;
 class RendezvousClient;
+
+namespace gy::net {
+class IpAddress;
+class PosixUdpSocket;
+}
 
 class DiscoveryService : public QObject {
     Q_OBJECT
@@ -31,10 +35,10 @@ public:
     DiscoveryService(const DiscoveryService &)            = delete;
     DiscoveryService &operator=(const DiscoveryService &) = delete;
 
-    // 获取当前在线节点列表（供 QML 绑定）
     // 调整节点超时秒数（测试可调小；仅影响后续 prune 判定）
     void setNodeTimeoutSec(int seconds);
 
+    // 获取当前在线节点列表（供 QML 绑定）
     QVariantList peers() const;
 
     // 查询可用于发送传输的对端快照；目标不存在或离线时返回空 map
@@ -46,7 +50,7 @@ public:
     // 立即发送一次广播并清理离线节点
     void refresh();
     // 向指定地址发送定向 Hello 包（用于跨 AP 场景）
-    void sendDirectedHello(const QHostAddress &address, quint16 discoveryPort);
+    void sendDirectedHello(const gy::net::IpAddress &address, quint16 discoveryPort);
 
     // 获取本实例实际绑定的 UDP 发现端口（邀请码端口照实携带用，未绑定时为 0）
     quint16 localDiscoveryPort() const;
@@ -93,14 +97,14 @@ private:
     // 构建 Hello 包 JSON 内容
     QByteArray buildHelloPayload() const;
     // 处理收到的 Hello 包
-    void handleHelloPacket(const QJsonObject &json, const QHostAddress &sender);
+    void handleHelloPacket(const QJsonObject &json, const gy::net::IpAddress &sender);
     // 更新节点信息
     void updatePeer(const QString &deviceId, const PeerInfo &info);
     // 通知 QML 列表变化
     void notifyPeersChanged();
 
     ConfigManager *_config = nullptr;          // 本机身份和网络配置来源
-    QUdpSocket    *_socket = nullptr;          // UDP 广播收发 socket
+    gy::net::PosixUdpSocket *_socket = nullptr;  // UDP 广播收发 socket
     QTimer        *_broadcastTimer = nullptr;  // 周期发送 Hello 广播
     QTimer        *_pruneTimer = nullptr;      // 周期清理过期节点
 

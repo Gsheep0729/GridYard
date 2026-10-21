@@ -1,7 +1,7 @@
 /**
 * @file    test_endpoint_probe.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   EndpointProbe 单元测试
 *
@@ -12,9 +12,10 @@
 
 #include "test_utils/port.h"
 
-#include <QHostAddress>
-#include <QTcpServer>
 #include <QTest>
+
+#include "ip_address.h"
+#include "posix_tcp_server.h"
 
 class TestEndpointProbe : public QObject {
     Q_OBJECT
@@ -101,8 +102,8 @@ void TestEndpointProbe::testConnectionRefused()
 void TestEndpointProbe::testLocalPortConnected()
 {
     // 启动本地服务器
-    QTcpServer server;
-    QVERIFY(server.listen(QHostAddress::LocalHost));
+    gy::net::PosixTcpServer server;
+    QVERIFY(server.listen(gy::net::IpAddress::localHost(), 0));
     const quint16 listenPort = server.serverPort();
 
     EndpointProbe probe;

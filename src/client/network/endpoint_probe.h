@@ -1,7 +1,7 @@
 /**
 * @file    endpoint_probe.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   网络端点探测
 *
@@ -13,7 +13,8 @@
 
 #include <QObject>
 #include <QString>
-#include <QHostAddress>
+
+#include "posix_net_types.h"
 
 class EndpointProbe : public QObject {
     Q_OBJECT
@@ -44,6 +45,6 @@ signals:
 
 private:
     // 生成错误码和错误信息
-    static QString errorCodeFromSocketError(QAbstractSocket::SocketError socketError);
-    static QString errorMessageFromSocketError(QAbstractSocket::SocketError socketError);
+    static QString errorCodeFromSocketError(gy::net::SocketError socketError);
+    static QString errorMessageFromSocketError(gy::net::SocketError socketError);
 };

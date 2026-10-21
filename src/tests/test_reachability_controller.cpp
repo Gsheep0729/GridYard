@@ -1,7 +1,7 @@
 /**
 * @file    test_reachability_controller.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   网络可达性控制器测试
 *
@@ -10,14 +10,14 @@
 */
 
 #include <QtTest/QtTest>
-#include <QHostAddress>
 #include <QSignalSpy>
-#include <QTcpServer>
 #include <QTemporaryDir>
 
 #include "config_manager.h"
 #include "data_types.h"
 #include "discovery_service.h"
+#include "ip_address.h"
+#include "posix_tcp_server.h"
 #include "reachability_controller.h"
 
 class TestReachabilityController : public QObject {
@@ -88,8 +88,8 @@ void TestReachabilityController::testRefreshLocalAddresses()
 // 探测本机在线端口应返回连接成功
 void TestReachabilityController::testProbeEndpointOnline()
 {
-    QTcpServer listener;
-    QVERIFY(listener.listen(QHostAddress::LocalHost));
+    gy::net::PosixTcpServer listener;
+    QVERIFY(listener.listen(gy::net::IpAddress::localHost(), 0));
 
     ReachabilityController controller;
     controller.probeEndpoint(QStringLiteral("127.0.0.1"), listener.serverPort(), 2000);
@@ -107,8 +107,8 @@ void TestReachabilityController::testProbeEndpointOffline()
 {
     quint16 closedPort = 0;
     {
-        QTcpServer probe;
-        QVERIFY(probe.listen(QHostAddress::LocalHost));
+        gy::net::PosixTcpServer probe;
+        QVERIFY(probe.listen(gy::net::IpAddress::localHost(), 0));
         closedPort = probe.serverPort();
         probe.close();
     }
@@ -182,8 +182,8 @@ void TestReachabilityController::testImportInviteAcceptsValidText()
 // 邀请导入的探测成功后，邀请携带的真实身份应注入发现列表
 void TestReachabilityController::testImportInviteInjectsDirectedPeer()
 {
-    QTcpServer listener;
-    QVERIFY(listener.listen(QHostAddress::LocalHost));
+    gy::net::PosixTcpServer listener;
+    QVERIFY(listener.listen(gy::net::IpAddress::localHost(), 0));
 
     // 构造指向本机真实监听端口的邀请文本，探测必然成功
     InviteCodec::Invite invite;
@@ -226,8 +226,8 @@ void TestReachabilityController::testImportInviteProbeFailureDoesNotInject()
 {
     quint16 closedPort = 0;
     {
-        QTcpServer probe;
-        QVERIFY(probe.listen(QHostAddress::LocalHost));
+        gy::net::PosixTcpServer probe;
+        QVERIFY(probe.listen(gy::net::IpAddress::localHost(), 0));
         closedPort = probe.serverPort();
         probe.close();
     }
