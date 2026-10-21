@@ -67,6 +67,12 @@ target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)
 target_compile_features(test_frame_codec PRIVATE cxx_std_23)
 add_test(NAME test_frame_codec COMMAND test_frame_codec)
 
+# --- 原生套接字原语测试 ---
+qt_add_executable(test_posix_socket test_posix_socket.cpp)
+target_link_libraries(test_posix_socket PRIVATE gy_net Qt6::Test Qt6::Core)
+target_compile_features(test_posix_socket PRIVATE cxx_std_23)
+add_test(NAME test_posix_socket COMMAND test_posix_socket)
+
 # --- 在线聊天消息测试 ---
 qt_add_executable(test_chat_message test_chat_message.cpp)
 target_link_libraries(test_chat_message PRIVATE gy_shared Qt6::Test)
@@ -515,5 +521,5 @@ set_tests_properties(test_relay_chain test_rendezvous_client test_rendezvous_coo
 set_tests_properties(test_frame_codec test_chat_message test_chat_manager test_history_controller
     test_edge_cases test_transfer test_endpoint_probe test_invite_codec test_config_manager
     test_discovery test_reachability_controller test_peer_discovery_view_model
-    test_conversation_timeline_model
+    test_conversation_timeline_model test_posix_socket
     PROPERTIES TIMEOUT 300)
