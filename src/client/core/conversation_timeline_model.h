@@ -1,7 +1,7 @@
 /**
 * @file    conversation_timeline_model.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型
 *
@@ -27,8 +27,8 @@ class ConversationTimelineModel : public QAbstractListModel {
     QML_ELEMENT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(QString deviceId READ deviceId WRITE setDeviceId NOTIFY deviceIdChanged)
-    Q_PROPERTY(QObject *chatController READ chatController WRITE setChatController CONSTANT)
-    Q_PROPERTY(QObject *transferSessions READ transferSessions WRITE setTransferSessions CONSTANT)
+    Q_PROPERTY(QObject *chatController READ chatController WRITE setChatController)
+    Q_PROPERTY(QObject *transferSessions READ transferSessions WRITE setTransferSessions)
 
 public:
     enum Role {
