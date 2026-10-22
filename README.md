@@ -7,7 +7,7 @@
 | 项目版本 | v7.26.0 |
 | :--- | :--- |
 
-GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
+GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议、Qt6 全 QML 界面与 Linux 原生 POSIX socket 网络层构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
 
 ---
 
@@ -37,6 +37,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 |:-----|:-----|
 | 语言标准 | C++23 |
 | GUI 框架 | Qt 6.11（QML 界面，Widgets 仅系统托盘依赖） |
+| 网络层 | Linux 原生 POSIX socket（自研 `gy_net` 封装） |
 | 构建系统 | CMake 4.2.3 + Ninja |
 | 编译器 | GCC 16.1 |
 | 数据库 | SQLite（WAL 模式） |
@@ -51,7 +52,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 
 - GCC 15+ 或 Clang 17+
 - CMake 4.2.3+
-- Qt 6.5+（含 Quick、Network、QuickControls2、Sql 模块）
+- Qt 6.5+（含 Quick、QuickControls2、Sql 模块）
 - Ninja（推荐）
 - Linux 桌面门户（KDE 使用 `xdg-desktop-portal-kde`）
 
@@ -184,6 +185,7 @@ graph LR
         DOM_LIB["gy_domain<br/>（INTERFACE）"]
         STORAGE_LIB["gy_storage<br/>（STATIC）"]
         SHARED_LIB["gy_shared<br/>（STATIC）"]
+        NET_LIB["gy_net<br/>（STATIC，原生套接字）"]
     end
 
     QML --> DOM_LIB
@@ -191,11 +193,16 @@ graph LR
     STORAGE_LIB --> DOM_LIB
     STORAGE_LIB -.->|"PRIVATE"| QTSQL["Qt6::Sql"]
     DOM_LIB --> SHARED_LIB
+    SHARED_LIB --> NET_LIB
 
     style QTSQL fill:#f96,stroke:#333
 ```
 
 `Qt6::Sql` 通过 PRIVATE 链接隔离，不传播到 QML 模块或网络 Worker。
+
+**网络实现**
+
+UDP 广播、TCP 监听与连接、网卡枚举和地址解析均由 `src/shared/net/` 下的 `gy_net` 封装调用 Linux 系统接口完成，源码与 CMake 不依赖 `Qt6::Network`。协调/中继服务 `gridyard_rendezvous` 的 `ldd` 输出不含 `libQt6Network.so.6`；客户端 `appGridYard` 可用 `readelf -d build-ninja/client/appGridYard | grep NEEDED` 核对二进制直接依赖，在默认启用 `--as-needed` 的链接配置下其中同样没有该库。`ldd` 中若出现 `libQt6Network.so.6`，它来自 Qt 官方 QML 引擎自身的传递依赖，与本项目网络实现无关。
 
 ---
 
@@ -496,7 +503,12 @@ GridYard/
     │   ├── protocol.h                   # TLV 协议 Type 码与常量
     │   ├── data_types.h                 # PeerInfo / FileEntry / TransferSession
     │   ├── chat_message.{h,cpp}         # 聊天消息 JSON 编解码
-    │   └── frame_codec.{h,cpp}          # TLV 帧编解码（粘包状态机）
+    │   ├── frame_codec.{h,cpp}          # TLV 帧编解码（粘包状态机）
+    │   └── net/                         # gy_net 原生套接字封装（TCP/UDP/地址/网卡）
+    │       ├── posix_tcp_socket.{h,cpp}
+    │       ├── posix_tcp_server.{h,cpp}
+    │       ├── posix_udp_socket.{h,cpp}
+    │       └── ip_address.{h,cpp} / net_interfaces.{h,cpp}
     ├── client/
     │   ├── CMakeLists.txt               # 客户端 QML 模块与 IDE 分组
     │   ├── main.cpp                     # 程序入口，显式创建 AppController

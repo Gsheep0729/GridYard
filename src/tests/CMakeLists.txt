@@ -99,7 +99,6 @@ target_link_libraries(test_chat_manager PRIVATE
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
     Qt6::Qml
     Qt6::Sql
 )
@@ -139,7 +138,6 @@ target_link_libraries(test_history_controller PRIVATE
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
     Qt6::Sql
 )
 target_include_directories(test_history_controller PRIVATE
@@ -175,7 +173,7 @@ qt_add_executable(test_endpoint_probe test_endpoint_probe.cpp
     ${CLIENT_NET_DIR}/endpoint_probe.cpp
 )
 target_link_libraries(test_endpoint_probe PRIVATE
-    gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Network)
+    gy_test_utils gy_shared Qt6::Test Qt6::Core)
 target_include_directories(test_endpoint_probe PRIVATE
     ${CLIENT_NET_DIR}
     ${CMAKE_SOURCE_DIR}/shared
@@ -187,7 +185,7 @@ add_test(NAME test_endpoint_probe COMMAND test_endpoint_probe)
 qt_add_executable(test_invite_codec test_invite_codec.cpp
     ${CLIENT_NET_DIR}/invite_codec.cpp
 )
-target_link_libraries(test_invite_codec PRIVATE gy_net Qt6::Test Qt6::Core Qt6::Network)
+target_link_libraries(test_invite_codec PRIVATE gy_net Qt6::Test Qt6::Core)
 target_include_directories(test_invite_codec PRIVATE
     ${CLIENT_NET_DIR}
     ${CMAKE_SOURCE_DIR}/shared
@@ -201,7 +199,7 @@ qt_add_executable(test_config_manager test_config_manager.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
-target_link_libraries(test_config_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_link_libraries(test_config_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui)
 target_include_directories(test_config_manager PRIVATE ${CLIENT_CORE_DIR})
 target_compile_features(test_config_manager PRIVATE cxx_std_23)
 add_test(NAME test_config_manager COMMAND test_config_manager)
@@ -213,7 +211,7 @@ qt_add_executable(test_discovery test_discovery.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
 )
-target_link_libraries(test_discovery PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_link_libraries(test_discovery PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui)
 target_include_directories(test_discovery PRIVATE ${CLIENT_CORE_DIR} ${CLIENT_NET_DIR})
 target_compile_features(test_discovery PRIVATE cxx_std_23)
 add_test(NAME test_discovery COMMAND test_discovery)
@@ -234,7 +232,7 @@ qt_add_executable(test_file_transfer test_file_transfer.cpp
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_file_transfer PRIVATE
-    gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+    gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Gui)
 target_include_directories(test_file_transfer PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
@@ -261,7 +259,7 @@ qt_add_executable(test_session_manager test_session_manager.cpp
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
 target_link_libraries(test_session_manager PRIVATE
-    gy_test_utils gy_shared gy_rendezvous Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+    gy_test_utils gy_shared gy_rendezvous Qt6::Test Qt6::Core Qt6::Gui)
 target_include_directories(test_session_manager PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
@@ -285,7 +283,7 @@ qt_add_executable(test_integration test_integration.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
 )
-target_link_libraries(test_integration PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_link_libraries(test_integration PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui)
 target_include_directories(test_integration PRIVATE
     ${CLIENT_CORE_DIR}
     ${CLIENT_NET_DIR}
@@ -312,7 +310,6 @@ target_link_libraries(test_relay_chain PRIVATE
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
 )
 target_include_directories(test_relay_chain PRIVATE
     ${CLIENT_CORE_DIR}
@@ -340,7 +337,6 @@ target_link_libraries(test_rendezvous_coordinator PRIVATE
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
 )
 target_include_directories(test_rendezvous_coordinator PRIVATE
     ${CLIENT_CORE_DIR}
@@ -359,7 +355,6 @@ target_link_libraries(test_rendezvous_client PRIVATE
     gy_rendezvous
     Qt6::Test
     Qt6::Core
-    Qt6::Network
 )
 target_include_directories(test_rendezvous_client PRIVATE
     ${CLIENT_CORE_DIR}
@@ -377,7 +372,6 @@ target_link_libraries(test_rendezvous_protocol PRIVATE
     gy_shared
     Qt6::Test
     Qt6::Core
-    Qt6::Network
 )
 target_include_directories(test_rendezvous_protocol PRIVATE
     ${CMAKE_SOURCE_DIR}/rendezvous
@@ -402,7 +396,6 @@ target_link_libraries(test_reachability_controller PRIVATE
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
     Qt6::Qml
 )
 target_include_directories(test_reachability_controller PRIVATE
@@ -430,7 +423,6 @@ target_link_libraries(test_peer_discovery_view_model PRIVATE
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
     Qt6::Sql
 )
 target_include_directories(test_peer_discovery_view_model PRIVATE
@@ -499,7 +491,6 @@ target_link_libraries(test_conversation_timeline_model PRIVATE
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
     Qt6::Qml
     Qt6::Sql
 )

@@ -10,7 +10,7 @@ set(CMAKE_CXX_MODULE_STD ON)
 project(GridYard VERSION 7.26.0 LANGUAGES CXX)
 
 # QuickDialogs2 提供原生 FileDialog / FolderDialog，替代已废弃的 Qt.labs.platform 方案
-find_package(Qt6 REQUIRED COMPONENTS Quick Network QuickControls2 QuickDialogs2 Sql Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Sql Widgets)
 qt_standard_project_setup(REQUIRES 6.10)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

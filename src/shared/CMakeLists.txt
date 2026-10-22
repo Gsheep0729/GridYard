@@ -27,5 +27,5 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "shared" FILES ${GRIDYARD_S
 
 target_include_directories(gy_shared PUBLIC .)
 target_compile_features(gy_shared    PUBLIC cxx_std_23)
-target_link_libraries(gy_shared      PUBLIC Qt6::Core Qt6::Network gy_net gy_protocol_contracts)
+target_link_libraries(gy_shared      PUBLIC Qt6::Core gy_net gy_protocol_contracts)
 set_property(TARGET gy_shared PROPERTY FOLDER "shared")

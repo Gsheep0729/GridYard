@@ -57,7 +57,6 @@ target 名保留 `gy_` 前缀，是为了避免和系统库、Qt 模块或未来
 appGridYard
 ├── Qt6::Quick
 ├── Qt6::QuickControls2
-├── Qt6::Network
 ├── gy_shared
 └── gy_storage
 
@@ -72,10 +71,13 @@ gy_domain
 
 gy_shared
 ├── Qt6::Core
-└── Qt6::Network
+└── gy_net
+
+gy_net
+└── Qt6::Core
 ```
 
-`Qt6::Sql` 只在 `storage` 层使用，不传播到 QML 页面和网络 Worker。QML、网络和应用控制层不直接执行 SQL，也不直接持有数据库连接。
+`gy_net` 是 `src/shared/net/` 下的原生套接字封装，网络收发由 Linux 系统调用完成，源码与构建均不依赖 `Qt6::Network`。`Qt6::Sql` 只在 `storage` 层使用，不传播到 QML 页面和网络 Worker。QML、网络和应用控制层不直接执行 SQL，也不直接持有数据库连接。
 
 ## 5. 客户端 QML 模块
 
