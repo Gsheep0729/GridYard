@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   协调节点服务器实现
 */
@@ -12,14 +12,17 @@
 #include "rendezvous_protocol.h"
 #include "rendezvous_protocol_keys.h"
 
-#include <QHostAddress>
+#include "ip_address.h"
+#include "posix_tcp_server.h"
+#include "posix_tcp_socket.h"
+
 #include <QJsonDocument>
 #include <QTimer>
 
 using namespace gy::rendezvous;
 
 // 会话构造函数
-RendezvousSession::RendezvousSession(QTcpSocket *socket, OnlineRegistry *registry, const QString &token,
+RendezvousSession::RendezvousSession(gy::net::PosixTcpSocket *socket, OnlineRegistry *registry, const QString &token,
                                      int handshakeTimeoutMs, int idleTimeoutMs, QObject *parent)
     : LineSession{socket, kMaxRendezvousLineBytes, parent}
     , _registry{registry}
@@ -84,8 +87,13 @@ void RendezvousSession::processRequest(const QJsonObject &json)
     const QString rawType = json[gy::rendezvous::kKeyType].toString();
     if (rawType == gy::rendezvous::kTypeRelayCreate || rawType == gy::rendezvous::kTypeRelayJoin) {
         const QByteArray pending = pendingBytes();
-        QTcpSocket *pipeSocket = takeSocket();
+        gy::net::PosixTcpSocket *pipeSocket = takeSocket();
         emit relayPipeRequested(pipeSocket, json, pending);
+        // 没有接收方接管时主动回收，避免摘除父对象后的连接悬挂
+        if (pipeSocket && !pipeSocket->parent()) {
+            pipeSocket->abort();
+            pipeSocket->deleteLater();
+        }
         emit closed();  // 会话职责已移交，通知服务器回收本对象
         return;
     }
@@ -195,19 +203,19 @@ RendezvousServer::RendezvousServer(quint16 port, const QString &token,
     , _handshakeTimeoutMs{kRendezvousHandshakeTimeoutMs}
     , _idleTimeoutMs{kRendezvousIdleTimeoutMs}
 {
-    _server = new QTcpServer{this};
+    _server = new gy::net::PosixTcpServer{this};
 }
 
 // 启动监听服务
 bool RendezvousServer::start()
 {
-    if (!_server->listen(QHostAddress::Any, _port)) {
+    if (!_server->listen(gy::net::IpAddress::anyIpv6(), _port, gy::net::PosixTcpServer::DualStack)) {
         emit serverStarted(false, _server->errorString());
         return false;
     }
 
     qInfo() << "[RendezvousServer] 监听端口" << _server->serverPort();
-    connect(_server, &QTcpServer::newConnection, this, &RendezvousServer::onNewConnection);
+    connect(_server, &gy::net::PosixTcpServer::newConnection, this, &RendezvousServer::onNewConnection);
 
     // 定期清理过期设备和中继邀请
     QTimer *pruneTimer = new QTimer{this};
@@ -270,7 +278,7 @@ void RendezvousServer::setMaxResponseQueueBytes(qint64 maxBytes)
 void RendezvousServer::onNewConnection()
 {
     while (_server->hasPendingConnections()) {
-        QTcpSocket *socket = _server->nextPendingConnection();
+        gy::net::PosixTcpSocket *socket = _server->nextPendingConnection();
         if (!socket) {
             continue;
         }

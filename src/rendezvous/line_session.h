@@ -1,7 +1,7 @@
 /**
 * @file    line_session.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   带上限的按行分帧会话基类
 *
@@ -16,14 +16,17 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
-#include <QTcpSocket>
+
+namespace gy::net {
+class PosixTcpSocket;
+}
 
 class LineSession : public QObject {
     Q_OBJECT
 
 public:
     // 会话接管 socket 归属；maxLineBytes 为单行长度上限
-    explicit LineSession(QTcpSocket *socket, qsizetype maxLineBytes, QObject *parent = nullptr);
+    explicit LineSession(gy::net::PosixTcpSocket *socket, qsizetype maxLineBytes, QObject *parent = nullptr);
     virtual ~LineSession() override;
 
     LineSession(const LineSession &)            = delete;
@@ -37,11 +40,11 @@ public:
     void finishWithError(const QString &reason);
 
     // 会话持有的连接；已移交或终结后返回 nullptr
-    QTcpSocket *socket() const { return _socket; }
+    gy::net::PosixTcpSocket *socket() const { return _socket; }
     // 握手行之后已到达的剩余字节（中继移交时一并转交）
     QByteArray pendingBytes() const;
     // 剥离 socket 归属并返回（连接移交场景）；此后会话不再触达该 socket
-    QTcpSocket *takeSocket();
+    gy::net::PosixTcpSocket *takeSocket();
     // 会话是否已终结（终结后不再发任何信号）
     bool isFinished() const { return _finished; }
 
@@ -61,12 +64,13 @@ private:
     // 统一终结出口：断开 socket 并只发射一次 closed
     void finish();
 
-    QTcpSocket *_socket = nullptr;  // 会话持有的连接
+    gy::net::PosixTcpSocket *_socket = nullptr;  // 会话持有的连接
     QTimer *_timeoutTimer = nullptr; // 握手/空闲共用计时器
     QString _timeoutReason;          // 当前计时器到期的原因描述
     QByteArray _buffer;              // 半行缓冲
     qsizetype _maxLineBytes = 0;     // 单行长度上限
     bool _handshakePhase = false;    // 是否仍处于首行握手阶段
     bool _finished = false;          // 是否已终结
+    bool _errorSignaled = false;     // 是否已报告协议错误，避免关闭过程中的重复错误
     bool _detached = false;          // socket 是否已移交（移交后停止一切处理）
 };

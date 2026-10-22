@@ -9,6 +9,7 @@ set(CLIENT_NET_DIR ${CMAKE_SOURCE_DIR}/client/network)
 # --- 测试公共工具（header-only：JSON 行读写、数据库种子、轮询等待、临时端口） ---
 add_library(gy_test_utils INTERFACE)
 target_include_directories(gy_test_utils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/test_utils)
+target_link_libraries(gy_test_utils INTERFACE gy_net)
 
 # --- SQLite 数据库基础测试 ---
 qt_add_executable(test_storage_database test_storage_database.cpp

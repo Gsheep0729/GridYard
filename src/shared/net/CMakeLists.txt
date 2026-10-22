@@ -22,6 +22,8 @@ add_library(gy_net STATIC ${GY_NET_SOURCES})
 target_include_directories(gy_net PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gy_net PUBLIC Qt6::Core)
 target_compile_features(gy_net PUBLIC cxx_std_23)
+# 独立项目引用本目录时也需要生成 Q_OBJECT 元对象
+set_target_properties(gy_net PROPERTIES AUTOMOC ON)
 set_property(TARGET gy_net PROPERTY FOLDER "shared")
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "shared/net" FILES ${GY_NET_SOURCES})

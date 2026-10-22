@@ -1,7 +1,7 @@
 /**
 * @file    relay_server.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   流式中继服务器
 *
@@ -15,19 +15,21 @@
 
 #pragma once
 
-#include <QHash>
 #include <QJsonObject>
 #include <QList>
 #include <QMap>
 #include <QObject>
 #include <QSet>
-#include <QTcpServer>
-#include <QTcpSocket>
 #include <QString>
 #include <QTimer>
 
 #include "line_session.h"
 #include "rendezvous_limits.h"
+
+namespace gy::net {
+class PosixTcpServer;
+class PosixTcpSocket;
+}
 
 class RelaySession : public QObject {
     Q_OBJECT
@@ -40,8 +42,8 @@ public:
 
     QString relayId() const { return _relayId; }
     bool isComplete() const;  // 两端都连接完成
-    bool addSender(QTcpSocket *socket, const QByteArray &pendingData = {});
-    bool addReceiver(QTcpSocket *socket, const QByteArray &pendingData = {});
+    bool addSender(gy::net::PosixTcpSocket *socket, const QByteArray &pendingData = {});
+    bool addReceiver(gy::net::PosixTcpSocket *socket, const QByteArray &pendingData = {});
     // 两端齐备后向发送端写 relay_ready，门控其开始 TLV 传输
     void notifyReady();
     // 向两端广播错误消息
@@ -60,13 +62,15 @@ private slots:
 
 private:
     // 把 from 缓冲里的字节向 to 转发；对端写队列超限时暂停，等待排空续传
-    void pump(QTcpSocket *from, QTcpSocket *to);
+    void pump(gy::net::PosixTcpSocket *from, gy::net::PosixTcpSocket *to);
     // 会话未齐备时缓存积压字节，超限返回 false
     bool appendBacklog(QByteArray &backlog, const QByteArray &data);
+    // 摘除归属后排空写队列再删除连接，保证错误帧不被提前丢弃
+    void closeSocketLater(gy::net::PosixTcpSocket *socket);
 
     QString _relayId;
-    QTcpSocket *_sender = nullptr;
-    QTcpSocket *_receiver = nullptr;
+    gy::net::PosixTcpSocket *_sender = nullptr;
+    gy::net::PosixTcpSocket *_receiver = nullptr;
     QByteArray _senderBacklog;   // 会话未齐备前缓存的发送端字节
     QByteArray _receiverBacklog; // 会话未齐备前缓存的接收端字节
     QTimer *_idleTimer = nullptr; // 会话未齐备时的超时回收定时器
@@ -89,7 +93,7 @@ public:
     void setSessionWaitMs(int waitMs);
 
     // 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
-    void adoptConnection(QTcpSocket *socket, const QJsonObject &hello, const QByteArray &pendingData);
+    void adoptConnection(gy::net::PosixTcpSocket *socket, const QJsonObject &hello, const QByteArray &pendingData);
 
 signals:
     void serverStarted(bool success, const QString &error);
@@ -102,11 +106,11 @@ private slots:
 
 private:
     // 解析中继握手并按角色加入会话
-    void handleRelayHello(QTcpSocket *socket, const QJsonObject &json, const QByteArray &pendingData);
+    void handleRelayHello(gy::net::PosixTcpSocket *socket, const QJsonObject &json, const QByteArray &pendingData);
     // 丢弃未完成握手的连接
-    void dropConnection(QTcpSocket *socket, const QString &reason);
+    void dropConnection(gy::net::PosixTcpSocket *socket, const QString &reason);
 
-    QTcpServer *_server = nullptr;
+    gy::net::PosixTcpServer *_server = nullptr;
     quint16 _port = 0;
     QString _token;
     QMap<QString, RelaySession *> _sessions;

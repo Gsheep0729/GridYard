@@ -1,7 +1,7 @@
 /**
 * @file    relay_server.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 */
@@ -10,7 +10,10 @@
 #include "rendezvous_limits.h"
 #include "rendezvous_protocol_keys.h"
 
-#include <QHostAddress>
+#include "ip_address.h"
+#include "posix_tcp_server.h"
+#include "posix_tcp_socket.h"
+
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
@@ -40,14 +43,10 @@ RelaySession::RelaySession(const QString &relayId, int waitMs, QObject *parent)
 // 析构函数，清理 socket
 RelaySession::~RelaySession()
 {
-    if (_sender) {
-        _sender->disconnect();
-        _sender->deleteLater();
-    }
-    if (_receiver) {
-        _receiver->disconnect();
-        _receiver->deleteLater();
-    }
+    closeSocketLater(_sender);
+    _sender = nullptr;
+    closeSocketLater(_receiver);
+    _receiver = nullptr;
 }
 
 // 检查两端是否都连接完成
@@ -56,7 +55,7 @@ bool RelaySession::isComplete() const
     return _sender != nullptr && _receiver != nullptr;
 }
 
-bool RelaySession::addSender(QTcpSocket *socket, const QByteArray &pendingData)
+bool RelaySession::addSender(gy::net::PosixTcpSocket *socket, const QByteArray &pendingData)
 {
     if (_sender != nullptr) {
         return false;
@@ -67,9 +66,9 @@ bool RelaySession::addSender(QTcpSocket *socket, const QByteArray &pendingData)
     // 读缓冲封顶：转发暂停时形成 TCP 背压，内存有界
     _sender->setReadBufferSize(kRelayPipeReadBufferBytes);
 
-    connect(_sender, &QTcpSocket::readyRead, this, &RelaySession::onSenderReadyRead);
-    connect(_sender, &QTcpSocket::bytesWritten, this, &RelaySession::onReceiverReadyRead);
-    connect(_sender, &QTcpSocket::disconnected, this, &RelaySession::onSenderDisconnected);
+    connect(_sender, &gy::net::PosixTcpSocket::readyRead, this, &RelaySession::onSenderReadyRead);
+    connect(_sender, &gy::net::PosixTcpSocket::bytesWritten, this, &RelaySession::onReceiverReadyRead);
+    connect(_sender, &gy::net::PosixTcpSocket::disconnected, this, &RelaySession::onSenderDisconnected);
 
     // 同端口复用场景下握手行之后可能已捎带少量字节，缓存到齐备后转发
     if (!appendBacklog(_senderBacklog, pendingData)) {
@@ -85,7 +84,7 @@ bool RelaySession::addSender(QTcpSocket *socket, const QByteArray &pendingData)
 }
 
 // 添加接收端连接
-bool RelaySession::addReceiver(QTcpSocket *socket, const QByteArray &pendingData)
+bool RelaySession::addReceiver(gy::net::PosixTcpSocket *socket, const QByteArray &pendingData)
 {
     if (_receiver != nullptr) {
         return false;
@@ -95,9 +94,9 @@ bool RelaySession::addReceiver(QTcpSocket *socket, const QByteArray &pendingData
     _receiver->setParent(this);
     _receiver->setReadBufferSize(kRelayPipeReadBufferBytes);
 
-    connect(_receiver, &QTcpSocket::readyRead, this, &RelaySession::onReceiverReadyRead);
-    connect(_receiver, &QTcpSocket::bytesWritten, this, &RelaySession::onSenderReadyRead);
-    connect(_receiver, &QTcpSocket::disconnected, this, &RelaySession::onReceiverDisconnected);
+    connect(_receiver, &gy::net::PosixTcpSocket::readyRead, this, &RelaySession::onReceiverReadyRead);
+    connect(_receiver, &gy::net::PosixTcpSocket::bytesWritten, this, &RelaySession::onSenderReadyRead);
+    connect(_receiver, &gy::net::PosixTcpSocket::disconnected, this, &RelaySession::onReceiverDisconnected);
 
     if (!appendBacklog(_receiverBacklog, pendingData)) {
         // 拒绝接入前先断开已连的信号，否则 socket 后续事件仍会打进本会话
@@ -155,20 +154,30 @@ void RelaySession::abort(const QString &code, const QString &message)
     broadcastError(code, message);
 
     // 先摘除引用再关闭，避免 disconnected 槽重入
-    QTcpSocket *sockets[] = {_sender, _receiver};
+    gy::net::PosixTcpSocket *sockets[] = {_sender, _receiver};
     _sender = nullptr;
     _receiver = nullptr;
     _idleTimer->stop();
 
-    for (QTcpSocket *socket : sockets) {
-        if (socket) {
-            socket->disconnect(this);
-            socket->disconnectFromHost();
-            socket->deleteLater();
-        }
+    for (gy::net::PosixTcpSocket *socket : sockets) {
+        closeSocketLater(socket);
     }
 
     emit sessionClosed();
+}
+
+// 摘除归属后先排空写队列，断开完成或超时后再删除
+void RelaySession::closeSocketLater(gy::net::PosixTcpSocket *socket)
+{
+    if (!socket) {
+        return;
+    }
+    socket->setParent(nullptr);
+    socket->disconnect(this);
+    QObject::connect(socket, &gy::net::PosixTcpSocket::disconnected,
+                     socket, &QObject::deleteLater);
+    QTimer::singleShot(1000, socket, &QObject::deleteLater);
+    socket->disconnectFromHost();
 }
 
 // 向两端广播错误消息
@@ -181,10 +190,10 @@ void RelaySession::broadcastError(const QString &code, const QString &message)
 
     QByteArray data = QJsonDocument(error).toJson(QJsonDocument::Compact) + '\n';
 
-    if (_sender && _sender->state() == QTcpSocket::ConnectedState) {
+    if (_sender && _sender->state() == gy::net::SocketState::ConnectedState) {
         _sender->write(data);
     }
-    if (_receiver && _receiver->state() == QTcpSocket::ConnectedState) {
+    if (_receiver && _receiver->state() == gy::net::SocketState::ConnectedState) {
         _receiver->write(data);
     }
 }
@@ -202,7 +211,7 @@ void RelaySession::onReceiverReadyRead()
 }
 
 // 把 from 缓冲里的字节向 to 转发；对端写队列超限时暂停，其排空后由 bytesWritten 续传
-void RelaySession::pump(QTcpSocket *from, QTcpSocket *to)
+void RelaySession::pump(gy::net::PosixTcpSocket *from, gy::net::PosixTcpSocket *to)
 {
     if (!from || !to || !isComplete()) {
         return;
@@ -229,7 +238,9 @@ void RelaySession::onSenderDisconnected()
     // 关闭对端让传输方立刻感知断连，而不是等到超时
     if (_receiver) {
         broadcastError(QStringLiteral("peer_left"), QStringLiteral("对端已断开"));
-        _receiver->disconnectFromHost();
+        gy::net::PosixTcpSocket *receiver = _receiver;
+        _receiver = nullptr;
+        closeSocketLater(receiver);
     }
 
     emit sessionClosed();
@@ -243,7 +254,9 @@ void RelaySession::onReceiverDisconnected()
 
     if (_sender) {
         broadcastError(QStringLiteral("peer_left"), QStringLiteral("对端已断开"));
-        _sender->disconnectFromHost();
+        gy::net::PosixTcpSocket *sender = _sender;
+        _sender = nullptr;
+        closeSocketLater(sender);
     }
 
     emit sessionClosed();
@@ -258,7 +271,7 @@ RelayServer::RelayServer(quint16 port, const QString &token, QObject *parent)
     , _token{token}
     , _maxSessions{kMaxRelaySessions}
 {
-    _server = new QTcpServer{this};
+    _server = new gy::net::PosixTcpServer{this};
 }
 
 // 析构函数，停止服务
@@ -270,13 +283,13 @@ RelayServer::~RelayServer()
 // 启动中继服务
 bool RelayServer::start()
 {
-    if (!_server->listen(QHostAddress::Any, _port)) {
+    if (!_server->listen(gy::net::IpAddress::anyIpv6(), _port, gy::net::PosixTcpServer::DualStack)) {
         emit serverStarted(false, _server->errorString());
         return false;
     }
 
     qInfo() << "[RelayServer] 中继服务监听端口" << _server->serverPort();
-    connect(_server, &QTcpServer::newConnection, this, &RelayServer::onNewConnection);
+    connect(_server, &gy::net::PosixTcpServer::newConnection, this, &RelayServer::onNewConnection);
 
     emit serverStarted(true, QString());
     return true;
@@ -324,7 +337,7 @@ void RelayServer::setSessionWaitMs(int waitMs)
 }
 
 // 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
-void RelayServer::adoptConnection(QTcpSocket *socket, const QJsonObject &hello,
+void RelayServer::adoptConnection(gy::net::PosixTcpSocket *socket, const QJsonObject &hello,
                                   const QByteArray &pendingData)
 {
     handleRelayHello(socket, hello, pendingData);
@@ -334,7 +347,7 @@ void RelayServer::adoptConnection(QTcpSocket *socket, const QJsonObject &hello,
 void RelayServer::onNewConnection()
 {
     while (_server->hasPendingConnections()) {
-        QTcpSocket *socket = _server->nextPendingConnection();
+        gy::net::PosixTcpSocket *socket = _server->nextPendingConnection();
         if (!socket) {
             continue;
         }
@@ -362,7 +375,7 @@ void RelayServer::onNewConnection()
             // 拿到合法握手：socket 移交中继会话，等待对象完成使命
             _pendingHellos.remove(hello);
             const QByteArray leftover = hello->pendingBytes();
-            QTcpSocket *pipe = hello->takeSocket();
+            gy::net::PosixTcpSocket *pipe = hello->takeSocket();
             hello->deleteLater();
             handleRelayHello(pipe, doc.object(), leftover);
         });
@@ -376,7 +389,7 @@ void RelayServer::onNewConnection()
 }
 
 // 解析中继握手并按角色加入会话
-void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
+void RelayServer::handleRelayHello(gy::net::PosixTcpSocket *socket, const QJsonObject &json,
                                    const QByteArray &pendingData)
 {
     const QString type = json[gy::rendezvous::kKeyType].toString();
@@ -434,11 +447,18 @@ void RelayServer::handleRelayHello(QTcpSocket *socket, const QJsonObject &json,
 }
 
 // 丢弃未完成握手的连接
-void RelayServer::dropConnection(QTcpSocket *socket, const QString &reason)
+void RelayServer::dropConnection(gy::net::PosixTcpSocket *socket, const QString &reason)
 {
     qWarning() << "[RelayServer] 关闭中继连接:" << reason;
+    if (!socket) {
+        return;
+    }
+    // 错误帧可能仍在写队列里，等断连后再删除，超时兜底回收
+    socket->setParent(nullptr);
+    QObject::connect(socket, &gy::net::PosixTcpSocket::disconnected,
+                     socket, &QObject::deleteLater);
+    QTimer::singleShot(1000, socket, &QObject::deleteLater);
     socket->disconnectFromHost();
-    socket->deleteLater();
 }
 
 // 处理会话关闭事件

@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_client.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   协调节点客户端
 *
@@ -22,10 +22,15 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
-#include <QTcpSocket>
 #include <QTimerEvent>
 
+#include "posix_net_types.h"
+
 class ConfigManager;
+
+namespace gy::net {
+class PosixTcpSocket;
+}
 
 class RendezvousClient : public QObject {
     Q_OBJECT
@@ -92,7 +97,7 @@ signals:
 private slots:
     void onSocketConnected();
     void onSocketDisconnected();
-    void onSocketError(QAbstractSocket::SocketError socketError);
+    void onSocketError(gy::net::SocketError socketError);
     void onReadyRead();
 
 protected:
@@ -109,7 +114,7 @@ private:
     // 按本机 deviceId 轮询待领取的中继邀请
     void sendRelayPoll();
 
-    QTcpSocket *_socket = nullptr;
+    gy::net::PosixTcpSocket *_socket = nullptr;
     QByteArray _buffer;
     bool _isConnected = false;
     bool _wantConnected = false;

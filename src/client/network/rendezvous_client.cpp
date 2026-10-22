@@ -1,13 +1,14 @@
 /**
 * @file    rendezvous_client.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   协调节点客户端实现
 */
 
 #include "rendezvous_client.h"
 #include "config_manager.h"
+#include "posix_tcp_socket.h"
 #include "rendezvous_protocol_keys.h"
 
 using namespace gy::rendezvous;
@@ -37,11 +38,11 @@ void RendezvousClient::connectToServer(const QString &host, int port)
     stopHeartbeat();
     closeSocket();
 
-    _socket = new QTcpSocket(this);
-    connect(_socket, &QTcpSocket::connected, this, &RendezvousClient::onSocketConnected);
-    connect(_socket, &QTcpSocket::disconnected, this, &RendezvousClient::onSocketDisconnected);
-    connect(_socket, &QTcpSocket::errorOccurred, this, &RendezvousClient::onSocketError);
-    connect(_socket, &QTcpSocket::readyRead, this, &RendezvousClient::onReadyRead);
+    _socket = new gy::net::PosixTcpSocket(this);
+    connect(_socket, &gy::net::PosixTcpSocket::connected, this, &RendezvousClient::onSocketConnected);
+    connect(_socket, &gy::net::PosixTcpSocket::disconnected, this, &RendezvousClient::onSocketDisconnected);
+    connect(_socket, &gy::net::PosixTcpSocket::errorOccurred, this, &RendezvousClient::onSocketError);
+    connect(_socket, &gy::net::PosixTcpSocket::readyRead, this, &RendezvousClient::onReadyRead);
 
     qDebug() << "RendezvousClient: 连接协调服务器" << host << ":" << port;
     _socket->connectToHost(host, port);
@@ -184,7 +185,7 @@ void RendezvousClient::onSocketDisconnected()
     scheduleReconnect();
 }
 
-void RendezvousClient::onSocketError(QAbstractSocket::SocketError socketError)
+void RendezvousClient::onSocketError(gy::net::SocketError socketError)
 {
     Q_UNUSED(socketError);
     QString errorMsg = _socket ? _socket->errorString() : QStringLiteral("未知错误");
@@ -209,7 +210,7 @@ void RendezvousClient::onReadyRead()
 
 void RendezvousClient::sendJson(const QJsonObject &json)
 {
-    if (!_socket || _socket->state() != QAbstractSocket::ConnectedState) {
+    if (!_socket || _socket->state() != gy::net::SocketState::ConnectedState) {
         return;
     }
 
@@ -232,12 +233,18 @@ void RendezvousClient::closeSocket()
         return;
     }
 
-    disconnect(_socket, nullptr, this, nullptr);
-    if (_socket->state() != QAbstractSocket::UnconnectedState) {
-        _socket->disconnectFromHost();
-    }
-    _socket->deleteLater();
+    gy::net::PosixTcpSocket *socket = _socket;
     _socket = nullptr;
+    disconnect(socket, nullptr, this, nullptr);
+    if (socket->state() != gy::net::SocketState::UnconnectedState) {
+        // 等写队列排空并完成断连后再删除，避免最后一条控制报文被提前丢弃
+        QObject::connect(socket, &gy::net::PosixTcpSocket::disconnected,
+                         socket, &QObject::deleteLater);
+        QTimer::singleShot(1000, socket, &QObject::deleteLater);
+        socket->disconnectFromHost();
+    } else {
+        socket->deleteLater();
+    }
 }
 
 void RendezvousClient::stopHeartbeat()
@@ -260,9 +267,9 @@ void RendezvousClient::scheduleReconnect()
         if (!_wantConnected || _serverHost.isEmpty() || _serverPort <= 0) {
             return;
         }
-        if (_socket && (_socket->state() == QAbstractSocket::HostLookupState
-                        || _socket->state() == QAbstractSocket::ConnectingState
-                        || _socket->state() == QAbstractSocket::ConnectedState)) {
+        if (_socket && (_socket->state() == gy::net::SocketState::HostLookupState
+                        || _socket->state() == gy::net::SocketState::ConnectingState
+                        || _socket->state() == gy::net::SocketState::ConnectedState)) {
             return;
         }
 

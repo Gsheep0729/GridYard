@@ -1,17 +1,19 @@
 /**
 * @file    line_session.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   带上限的按行分帧会话基类实现
 */
 
 #include "line_session.h"
 
+#include "posix_tcp_socket.h"
+
 #include <QDebug>
 
 // 构造函数：接管 socket 并启动分帧读取
-LineSession::LineSession(QTcpSocket *socket, qsizetype maxLineBytes, QObject *parent)
+LineSession::LineSession(gy::net::PosixTcpSocket *socket, qsizetype maxLineBytes, QObject *parent)
     : QObject{parent}
     , _socket{socket}
     , _maxLineBytes{maxLineBytes}
@@ -26,11 +28,11 @@ LineSession::LineSession(QTcpSocket *socket, qsizetype maxLineBytes, QObject *pa
         finishWithError(_timeoutReason);
     });
 
-    connect(_socket, &QTcpSocket::readyRead, this, &LineSession::onReadyRead);
-    connect(_socket, &QTcpSocket::disconnected, this, &LineSession::onDisconnected);
-    connect(_socket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError error) {
+    connect(_socket, &gy::net::PosixTcpSocket::readyRead, this, &LineSession::onReadyRead);
+    connect(_socket, &gy::net::PosixTcpSocket::disconnected, this, &LineSession::onDisconnected);
+    connect(_socket, &gy::net::PosixTcpSocket::errorOccurred, this, [this](gy::net::SocketError error) {
         // 远端正常关闭不算错误，由 disconnected 路径终结
-        if (error != QAbstractSocket::RemoteHostClosedError && !_finished && !_detached) {
+        if (error != gy::net::SocketError::RemoteHostClosedError && !_finished && !_detached) {
             finishWithError(_socket->errorString());
         }
     });
@@ -58,9 +60,10 @@ void LineSession::startIdleTimeout(int ms)
 // 服务端主动以协议错误终结会话
 void LineSession::finishWithError(const QString &reason)
 {
-    if (_finished || _detached) {
+    if (_finished || _detached || _errorSignaled) {
         return;
     }
+    _errorSignaled = true;
     qWarning() << "[LineSession] 终结会话:" << reason;
     emit protocolError(reason);
     _socket->disconnectFromHost();
@@ -73,14 +76,14 @@ QByteArray LineSession::pendingBytes() const
 }
 
 // 剥离 socket 归属并返回（连接移交场景）
-QTcpSocket *LineSession::takeSocket()
+gy::net::PosixTcpSocket *LineSession::takeSocket()
 {
     if (!_socket) {
         return nullptr;
     }
     disconnect(_socket, nullptr, this, nullptr);
     _socket->setParent(nullptr);
-    QTcpSocket *socket = _socket;
+    gy::net::PosixTcpSocket *socket = _socket;
     _socket = nullptr;
     _detached = true;
     return socket;

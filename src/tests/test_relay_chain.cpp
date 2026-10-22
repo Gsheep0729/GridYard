@@ -1,7 +1,7 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   Relay 降级链路测试
 *
@@ -13,19 +13,21 @@
 
 #include <QtTest/QtTest>
 #include <QElapsedTimer>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
-#include <QTcpServer>
-#include <QTcpSocket>
 #include <QThread>
 
 #include "config_manager.h"
 #include "file_receiver_worker.h"
 #include "file_sender_worker.h"
+#include "ip_address.h"
 #include "protocol.h"
 #include "online_registry.h"
 #include "p2p_server.h"
+#include "posix_tcp_server.h"
+#include "posix_tcp_socket.h"
 #include "relay_server.h"
 #include "rendezvous_client.h"
 #include "rendezvous_server.h"
@@ -57,6 +59,7 @@ private slots:
     void testRegisterAckClampsTtl();
     void testRelaySessionWaitTimeout();
     void testRelayIdReuseStaleCloseIgnored();
+    void testRelayResidualBytesOrder();
     void testResponseBackpressureDisconnects();
     void testRelayPipeWithToken();
     void testStandaloneRelayWithToken();
@@ -96,8 +99,8 @@ void TestRelayChain::testInvitePollFlow()
     const quint16 port = server.serverPort();
 
     // 发送端注册并发出邀请
-    QTcpSocket sender;
-    sender.connectToHost(QHostAddress::LocalHost, port);
+    gy::net::PosixTcpSocket sender;
+    sender.connectToHost(gy::net::IpAddress::localHost(), port);
     QVERIFY(waitConnected(&sender));
     QJsonObject registerRequest;
     registerRequest[QStringLiteral("type")] = QStringLiteral("register");
@@ -108,8 +111,8 @@ void TestRelayChain::testInvitePollFlow()
     QCOMPARE(readJsonLine(&sender)[QStringLiteral("type")].toString(), QStringLiteral("register_ack"));
 
     // 接收端先注册，邀请才允许登记（服务端校验目标在线）
-    QTcpSocket receiver;
-    receiver.connectToHost(QHostAddress::LocalHost, port);
+    gy::net::PosixTcpSocket receiver;
+    receiver.connectToHost(gy::net::IpAddress::localHost(), port);
     QVERIFY(waitConnected(&receiver));
     QJsonObject receiverRegister = registerRequest;
     receiverRegister[QStringLiteral("device_id")] = QStringLiteral("device-b");
@@ -165,8 +168,8 @@ void TestRelayChain::testRelayPipeOnRendezvousPort()
                      &relay, &RelayServer::adoptConnection);
 
     // 发送端握手建会话；中继会话会接管 socket 的归属，必须堆分配
-    auto *sender = new QTcpSocket;
-    sender->connectToHost(QHostAddress::LocalHost, port);
+    auto *sender = new gy::net::PosixTcpSocket;
+    sender->connectToHost(gy::net::IpAddress::localHost(), port);
     QVERIFY(waitConnected(sender));
     QJsonObject createHello;
     createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
@@ -174,8 +177,8 @@ void TestRelayChain::testRelayPipeOnRendezvousPort()
     writeJsonLine(sender, createHello);
 
     // 接收端加入后会话齐备
-    auto *receiver = new QTcpSocket;
-    receiver->connectToHost(QHostAddress::LocalHost, port);
+    auto *receiver = new gy::net::PosixTcpSocket;
+    receiver->connectToHost(gy::net::IpAddress::localHost(), port);
     QVERIFY(waitConnected(receiver));
     QJsonObject joinHello;
     joinHello[QStringLiteral("type")] = QStringLiteral("relay_join");
@@ -312,15 +315,15 @@ void TestRelayChain::testRoomIsolation()
     const quint16 port = server.serverPort();
 
     // 在房间 a 与房间 a:b 各注册一台设备（非 void lambda，不能使用 QTest 断言宏）
-    auto registerInRoom = [&port](const QString &room, const QString &deviceId) -> QTcpSocket *{
-        auto *socket = new QTcpSocket;
-        socket->connectToHost(QHostAddress::LocalHost, port);
+    auto registerInRoom = [&port](const QString &room, const QString &deviceId) -> gy::net::PosixTcpSocket *{
+        auto *socket = new gy::net::PosixTcpSocket;
+        socket->connectToHost(gy::net::IpAddress::localHost(), port);
         QElapsedTimer elapsed;
         elapsed.start();
-        while (socket->state() != QAbstractSocket::ConnectedState && !elapsed.hasExpired(3000)) {
+        while (socket->state() != gy::net::SocketState::ConnectedState && !elapsed.hasExpired(3000)) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         }
-        if (socket->state() != QAbstractSocket::ConnectedState) {
+        if (socket->state() != gy::net::SocketState::ConnectedState) {
             qWarning() << "房间测试连接超时";
             return socket;  // 后续 writeJsonLine 是无害的空操作，用例会在断言处失败
         }
@@ -368,15 +371,15 @@ void TestRelayChain::testOversizeLineDrops()
     RendezvousServer server{0, QString()};
     QVERIFY(server.start());
 
-    auto *socket = new QTcpSocket;
-    socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *socket = new gy::net::PosixTcpSocket;
+    socket->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == gy::net::SocketState::ConnectedState, 3000);
 
     // 发送超过 64KB 上限且不含换行的数据
     socket->write(QByteArray(128 * 1024, 'x'));
     socket->flush();
 
-    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::UnconnectedState, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == gy::net::SocketState::UnconnectedState, 5000);
     socket->deleteLater();
 }
 
@@ -388,16 +391,16 @@ void TestRelayChain::testSessionTimeouts()
     server.setSessionTimeouts(400, 500);  // 缩短超时便于测试
 
     // 握手超时：连接后不发送任何数据
-    auto *silent = new QTcpSocket;
-    silent->connectToHost(QHostAddress::LocalHost, server.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(silent->state() == QAbstractSocket::ConnectedState, 3000);
-    QTRY_VERIFY_WITH_TIMEOUT(silent->state() == QAbstractSocket::UnconnectedState, 3000);
+    auto *silent = new gy::net::PosixTcpSocket;
+    silent->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(silent->state() == gy::net::SocketState::ConnectedState, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(silent->state() == gy::net::SocketState::UnconnectedState, 3000);
     silent->deleteLater();
 
     // 空闲超时：注册成功后不再发送任何行
-    auto *idle = new QTcpSocket;
-    idle->connectToHost(QHostAddress::LocalHost, server.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(idle->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *idle = new gy::net::PosixTcpSocket;
+    idle->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(idle->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject request;
     request[QStringLiteral("type")] = QStringLiteral("register");
     request[QStringLiteral("room")] = QStringLiteral("default");
@@ -405,7 +408,7 @@ void TestRelayChain::testSessionTimeouts()
     writeJsonLine(idle, request);
     QCOMPARE(readJsonLine(idle)[QStringLiteral("type")].toString(), QStringLiteral("register_ack"));
 
-    QTRY_VERIFY_WITH_TIMEOUT(idle->state() == QAbstractSocket::UnconnectedState, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(idle->state() == gy::net::SocketState::UnconnectedState, 5000);
     idle->deleteLater();
 }
 
@@ -415,11 +418,11 @@ void TestRelayChain::testSessionCap()
     RendezvousServer server{0, QString(), 2};
     QVERIFY(server.start());
 
-    QList<QTcpSocket *> sockets;
+    QList<gy::net::PosixTcpSocket *> sockets;
     const auto connectClient = [&server, &sockets](const QString &deviceId) {
-        auto *socket = new QTcpSocket;
-        socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
-        QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+        auto *socket = new gy::net::PosixTcpSocket;
+        socket->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(socket->state() == gy::net::SocketState::ConnectedState, 3000);
         QJsonObject request;
         request[QStringLiteral("type")] = QStringLiteral("register");
         request[QStringLiteral("room")] = QStringLiteral("default");
@@ -434,10 +437,10 @@ void TestRelayChain::testSessionCap()
     connectClient(QStringLiteral("cap-b"));
 
     // 第三个连接被服务端拒绝（连接被关闭，无法收到注册确认）
-    auto *rejected = new QTcpSocket;
-    rejected->connectToHost(QHostAddress::LocalHost, server.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == QAbstractSocket::ConnectedState, 3000);
-    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == QAbstractSocket::UnconnectedState, 3000);
+    auto *rejected = new gy::net::PosixTcpSocket;
+    rejected->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == gy::net::SocketState::ConnectedState, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == gy::net::SocketState::UnconnectedState, 3000);
     rejected->deleteLater();
 
     qDeleteAll(sockets);
@@ -474,9 +477,9 @@ void TestRelayChain::testRegisterRejectsWhenRoomFull()
 
     // 注册并断言响应类型；void lambda 内可安全使用 QTest 断言宏
     const auto registerAndExpect = [&server](const QString &deviceId, const QString &expectedType) {
-        auto *socket = new QTcpSocket;
-        socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
-        QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+        auto *socket = new gy::net::PosixTcpSocket;
+        socket->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(socket->state() == gy::net::SocketState::ConnectedState, 3000);
         QJsonObject request;
         request[QStringLiteral("type")] = QStringLiteral("register");
         request[QStringLiteral("room")] = QStringLiteral("default");
@@ -498,9 +501,9 @@ void TestRelayChain::testRegisterAckClampsTtl()
     RendezvousServer server{0, QString()};
     QVERIFY(server.start());
 
-    auto *socket = new QTcpSocket;
-    socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *socket = new gy::net::PosixTcpSocket;
+    socket->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == gy::net::SocketState::ConnectedState, 3000);
 
     QJsonObject request;
     request[QStringLiteral("type")] = QStringLiteral("register");
@@ -522,9 +525,9 @@ void TestRelayChain::testRelaySessionWaitTimeout()
     QVERIFY(relay.start());
     relay.setSessionWaitMs(200);
 
-    auto *sender = new QTcpSocket;
-    sender->connectToHost(QHostAddress::LocalHost, relay.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *sender = new gy::net::PosixTcpSocket;
+    sender->connectToHost(gy::net::IpAddress::localHost(), relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject createHello;
     createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
     createHello[QStringLiteral("relay_id")] = QStringLiteral("wait-timeout");
@@ -533,7 +536,7 @@ void TestRelayChain::testRelaySessionWaitTimeout()
 
     // 对端迟迟不来，超时后会话被回收并主动断开发送端
     QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::UnconnectedState, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == gy::net::SocketState::UnconnectedState, 3000);
     sender->deleteLater();
 }
 
@@ -544,19 +547,19 @@ void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
     QVERIFY(relay.start());
 
     // 本地馈送服务器造可控 socket 对：client 端交给中继，peer 端握在测试手里
-    QTcpServer feeder;
-    QVERIFY(feeder.listen(QHostAddress::LocalHost, 0));
-    const auto makePair = [&feeder](QTcpSocket **client, QTcpSocket **peer) {
-        auto *local = new QTcpSocket;
-        local->connectToHost(QHostAddress::LocalHost, feeder.serverPort());
-        QTRY_VERIFY_WITH_TIMEOUT(local->state() == QAbstractSocket::ConnectedState, 3000);
+    gy::net::PosixTcpServer feeder;
+    QVERIFY(feeder.listen(gy::net::IpAddress::localHost(), 0));
+    const auto makePair = [&feeder](gy::net::PosixTcpSocket **client, gy::net::PosixTcpSocket **peer) {
+        auto *local = new gy::net::PosixTcpSocket;
+        local->connectToHost(gy::net::IpAddress::localHost(), feeder.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(local->state() == gy::net::SocketState::ConnectedState, 3000);
         QTRY_VERIFY_WITH_TIMEOUT(feeder.hasPendingConnections(), 3000);
         *client = local;
         *peer = feeder.nextPendingConnection();
     };
 
-    QTcpSocket *sockS = nullptr;
-    QTcpSocket *peerS = nullptr;
+    gy::net::PosixTcpSocket *sockS = nullptr;
+    gy::net::PosixTcpSocket *peerS = nullptr;
     makePair(&sockS, &peerS);
     QJsonObject createHello;
     createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
@@ -565,10 +568,10 @@ void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
     QCOMPARE(relay.sessionCount(), 1);
 
     // 后续复用所需的 socket 对提前建好，避免在关闭处理器里泵事件打乱时序
-    QTcpSocket *sockS2 = nullptr;
-    QTcpSocket *peerS2 = nullptr;
-    QTcpSocket *sockR2 = nullptr;
-    QTcpSocket *peerR2 = nullptr;
+    gy::net::PosixTcpSocket *sockS2 = nullptr;
+    gy::net::PosixTcpSocket *peerS2 = nullptr;
+    gy::net::PosixTcpSocket *sockR2 = nullptr;
+    gy::net::PosixTcpSocket *peerR2 = nullptr;
     makePair(&sockS2, &peerS2);
     makePair(&sockR2, &peerR2);
 
@@ -610,6 +613,66 @@ void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
     QCOMPARE(relay.sessionCount(), 1);
 }
 
+// 握手行后同包携带的残字节先于后续新数据转发
+void TestRelayChain::testRelayResidualBytesOrder()
+{
+    RelayServer relay{0, QString()};
+    QVERIFY(relay.start());
+
+    gy::net::PosixTcpServer feeder;
+    QVERIFY(feeder.listen(gy::net::IpAddress::localHost(), 0));
+    const auto makePair = [&feeder](gy::net::PosixTcpSocket **client,
+                                    gy::net::PosixTcpSocket **peer) {
+        auto *local = new gy::net::PosixTcpSocket;
+        local->connectToHost(gy::net::IpAddress::localHost(), feeder.serverPort());
+        QTRY_VERIFY_WITH_TIMEOUT(local->state() == gy::net::SocketState::ConnectedState, 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(feeder.hasPendingConnections(), 3000);
+        *client = local;
+        *peer = feeder.nextPendingConnection();
+    };
+
+    gy::net::PosixTcpSocket *sender = nullptr;
+    gy::net::PosixTcpSocket *senderPeer = nullptr;
+    gy::net::PosixTcpSocket *receiver = nullptr;
+    gy::net::PosixTcpSocket *receiverPeer = nullptr;
+    makePair(&sender, &senderPeer);
+    makePair(&receiver, &receiverPeer);
+
+    QJsonObject createHello;
+    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    createHello[QStringLiteral("relay_id")] = QStringLiteral("residual-order");
+    relay.adoptConnection(sender, createHello, "S-RESIDUAL");
+    QCOMPARE(relay.sessionCount(), 1);
+
+    QJsonObject joinHello;
+    joinHello[QStringLiteral("type")] = QStringLiteral("relay_join");
+    joinHello[QStringLiteral("relay_id")] = QStringLiteral("residual-order");
+    relay.adoptConnection(receiver, joinHello, "R-RESIDUAL");
+
+    QJsonObject readyJson;
+    readyJson[QStringLiteral("type")] = QStringLiteral("relay_ready");
+    const QByteArray readyLine = QJsonDocument(readyJson).toJson(QJsonDocument::Compact) + '\n';
+
+    // 发送端先收到门控行，再收到接收端握手后的残字节
+    const QByteArray senderSide = waitBytes(senderPeer, static_cast<int>(readyLine.size() + 10));
+    QCOMPARE(senderSide, readyLine + QByteArrayLiteral("R-RESIDUAL"));
+
+    // 接收端握手残字节与后续新数据保持原顺序
+    QCOMPARE(waitBytes(receiverPeer, 10), QByteArrayLiteral("S-RESIDUAL"));
+    receiverPeer->write("R-NEW");
+    receiverPeer->flush();
+    QCOMPARE(waitBytes(senderPeer, 5), QByteArrayLiteral("R-NEW"));
+    senderPeer->write("S-NEW");
+    senderPeer->flush();
+    QCOMPARE(waitBytes(receiverPeer, 5), QByteArrayLiteral("S-NEW"));
+
+    senderPeer->abort();
+    receiverPeer->abort();
+    senderPeer->deleteLater();
+    receiverPeer->deleteLater();
+    QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 3000);
+}
+
 // 响应写积压超限：消费过慢的客户端被服务端主动断开
 void TestRelayChain::testResponseBackpressureDisconnects()
 {
@@ -618,21 +681,21 @@ void TestRelayChain::testResponseBackpressureDisconnects()
     server.setMaxResponseQueueBytes(16 * 1024);
 
     // 客户端读缓冲封顶后停止消费，服务端写队列才会持续积压
-    auto *socket = new QTcpSocket;
+    auto *socket = new gy::net::PosixTcpSocket;
     socket->setReadBufferSize(1024);
-    socket->connectToHost(QHostAddress::LocalHost, server.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::ConnectedState, 3000);
+    socket->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == gy::net::SocketState::ConnectedState, 3000);
 
     QJsonObject bogus;
     bogus[QStringLiteral("type")] = QStringLiteral("bogus");
     QElapsedTimer elapsed;
     elapsed.start();
-    while (socket->state() == QAbstractSocket::ConnectedState && elapsed.elapsed() < 20000) {
+    while (socket->state() == gy::net::SocketState::ConnectedState && elapsed.elapsed() < 20000) {
         writeJsonLine(socket, bogus);
         QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
     }
     QVERIFY2(elapsed.elapsed() < 20000, "服务端应在超时前因写积压断开慢客户端");
-    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == QAbstractSocket::UnconnectedState, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(socket->state() == gy::net::SocketState::UnconnectedState, 5000);
     socket->deleteLater();
 }
 
@@ -648,9 +711,9 @@ void TestRelayChain::testRelayPipeWithToken()
                      &relay, &RelayServer::adoptConnection);
 
     // 错令牌在协调会话的分流之前就被控制面拒绝，收到通用 error 响应
-    auto *bad = new QTcpSocket;
-    bad->connectToHost(QHostAddress::LocalHost, port);
-    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *bad = new gy::net::PosixTcpSocket;
+    bad->connectToHost(gy::net::IpAddress::localHost(), port);
+    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject badHello;
     badHello[QStringLiteral("type")] = QStringLiteral("relay_create");
     badHello[QStringLiteral("relay_id")] = QStringLiteral("relay-token-bad");
@@ -661,18 +724,18 @@ void TestRelayChain::testRelayPipeWithToken()
     bad->deleteLater();
 
     // 带正确令牌的握手正常建会话并转发
-    auto *sender = new QTcpSocket;
-    sender->connectToHost(QHostAddress::LocalHost, port);
-    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *sender = new gy::net::PosixTcpSocket;
+    sender->connectToHost(gy::net::IpAddress::localHost(), port);
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject createHello;
     createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
     createHello[QStringLiteral("relay_id")] = QStringLiteral("relay-token-ok");
     createHello[QStringLiteral("token")] = QStringLiteral("secret");
     writeJsonLine(sender, createHello);
 
-    auto *receiver = new QTcpSocket;
-    receiver->connectToHost(QHostAddress::LocalHost, port);
-    QTRY_VERIFY_WITH_TIMEOUT(receiver->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *receiver = new gy::net::PosixTcpSocket;
+    receiver->connectToHost(gy::net::IpAddress::localHost(), port);
+    QTRY_VERIFY_WITH_TIMEOUT(receiver->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject joinHello;
     joinHello[QStringLiteral("type")] = QStringLiteral("relay_join");
     joinHello[QStringLiteral("relay_id")] = QStringLiteral("relay-token-ok");
@@ -696,22 +759,22 @@ void TestRelayChain::testStandaloneRelayWithToken()
     QVERIFY(relay.start());
 
     // 错令牌被拒
-    auto *bad = new QTcpSocket;
-    bad->connectToHost(QHostAddress::LocalHost, relay.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *bad = new gy::net::PosixTcpSocket;
+    bad->connectToHost(gy::net::IpAddress::localHost(), relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject badHello;
     badHello[QStringLiteral("type")] = QStringLiteral("relay_create");
     badHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-bad");
     writeJsonLine(bad, badHello);
     const QJsonObject badReply = readJsonLine(bad);
     QCOMPARE(badReply[QStringLiteral("type")].toString(), QStringLiteral("relay_error"));
-    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == QAbstractSocket::UnconnectedState, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(bad->state() == gy::net::SocketState::UnconnectedState, 3000);
     bad->deleteLater();
 
     // 正确令牌建会话
-    auto *sender = new QTcpSocket;
-    sender->connectToHost(QHostAddress::LocalHost, relay.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *sender = new gy::net::PosixTcpSocket;
+    sender->connectToHost(gy::net::IpAddress::localHost(), relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject createHello;
     createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
     createHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-ok");
@@ -728,8 +791,8 @@ void TestRelayChain::testStandaloneRelayWithToken()
 void TestRelayChain::testCancelDuringRelayWait()
 {
     // 只监听不受理：内核完成握手后连接进入积压队列，发送端永远等不到 relay_ready
-    QTcpServer fakeRelay;
-    QVERIFY(fakeRelay.listen(QHostAddress::LocalHost, 0));
+    gy::net::PosixTcpServer fakeRelay;
+    QVERIFY(fakeRelay.listen(gy::net::IpAddress::localHost(), 0));
 
     const QString sourcePath = _tempDir->path() + "/cancel-source.bin";
     QFile source{sourcePath};
@@ -772,17 +835,17 @@ void TestRelayChain::testStandaloneRelayForwarding()
     RelayServer relay{0, QString()};
     QVERIFY(relay.start());
 
-    auto *sender = new QTcpSocket;
-    sender->connectToHost(QHostAddress::LocalHost, relay.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *sender = new gy::net::PosixTcpSocket;
+    sender->connectToHost(gy::net::IpAddress::localHost(), relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(sender->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject createHello;
     createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
     createHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-forward");
     writeJsonLine(sender, createHello);
 
-    auto *receiver = new QTcpSocket;
-    receiver->connectToHost(QHostAddress::LocalHost, relay.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(receiver->state() == QAbstractSocket::ConnectedState, 3000);
+    auto *receiver = new gy::net::PosixTcpSocket;
+    receiver->connectToHost(gy::net::IpAddress::localHost(), relay.serverPort());
+    QTRY_VERIFY_WITH_TIMEOUT(receiver->state() == gy::net::SocketState::ConnectedState, 3000);
     QJsonObject joinHello;
     joinHello[QStringLiteral("type")] = QStringLiteral("relay_join");
     joinHello[QStringLiteral("relay_id")] = QStringLiteral("standalone-forward");

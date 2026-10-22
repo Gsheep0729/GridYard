@@ -1,7 +1,7 @@
 /**
 * @file    test_rendezvous_client.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   协调节点客户端测试
 *
@@ -11,10 +11,11 @@
 */
 
 #include <QtTest/QtTest>
-#include <QHostAddress>
 #include <QSignalSpy>
-#include <QTcpServer>
 
+#include "ip_address.h"
+#include "posix_tcp_server.h"
+#include "posix_tcp_socket.h"
 #include "rendezvous_client.h"
 #include "rendezvous_server.h"
 
@@ -31,6 +32,7 @@ private slots:
     void testRegisterWithTokenSucceeds();
     void testRegisterWithWrongTokenRejected();
     void testReconnectAfterServerRestart();
+    void testDualStackAddressNormalized();
 
 private:
     // 连接协调服务器并完成注册（阻塞等待两个信号）
@@ -51,6 +53,21 @@ void TestRendezvousClient::connectAndRegister(RendezvousClient &client, Rendezvo
                           QStringLiteral("设备-") + deviceId,
                           {QStringLiteral("127.0.0.1")}, 35100, 45678);
     QVERIFY2(ackSpy.wait(3000), "注册后应收到 register_ack");
+}
+
+// 双栈监听下 IPv4 客户端地址按点分十进制上报，不带映射前缀
+void TestRendezvousClient::testDualStackAddressNormalized()
+{
+    RendezvousServer server{0, QString()};
+    QVERIFY(server.start());
+
+    QSignalSpy connectedSpy(&server, &RendezvousServer::clientConnected);
+    gy::net::PosixTcpSocket client;
+    client.connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
+    QVERIFY(client.waitForConnected(3000));
+    QTRY_COMPARE_WITH_TIMEOUT(connectedSpy.count(), 1, 3000);
+    QCOMPARE(connectedSpy.first().at(0).toString(), QStringLiteral("127.0.0.1"));
+    client.disconnectFromHost();
 }
 
 // 注册后应收到带 TTL 的注册确认
@@ -135,8 +152,8 @@ void TestRendezvousClient::testConnectRefusedReportsError()
     // 借用一个只监听不 accept 的端口已断开的场景：直接连未监听端口
     quint16 closedPort = 0;
     {
-        QTcpServer probe;
-        QVERIFY(probe.listen(QHostAddress::LocalHost));
+        gy::net::PosixTcpServer probe;
+        QVERIFY(probe.listen(gy::net::IpAddress::localHost(), 0));
         closedPort = probe.serverPort();
         probe.close();  // 关闭后该端口在短时间内表现为拒绝连接
     }

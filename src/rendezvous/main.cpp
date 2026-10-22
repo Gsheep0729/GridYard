@@ -1,7 +1,7 @@
 /**
 * @file    main.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GridYard Team
 * @brief   协调节点和中继服务入口
 *
@@ -19,13 +19,17 @@
 #include <QDebug>
 #include <QTimer>
 
+#include <csignal>
 #include <memory>
 
 int main(int argc, char *argv[])
 {
+    // 对端关闭后继续写入时忽略 SIGPIPE，套接字层另有 MSG_NOSIGNAL 逐次兜底
+    std::signal(SIGPIPE, SIG_IGN);
+
     QCoreApplication app{argc, argv};
     app.setApplicationName(QStringLiteral("gridyard-rendezvous"));
-    app.setApplicationVersion(QStringLiteral("7.14.0"));
+    app.setApplicationVersion(QStringLiteral("7.26.0"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("GridYard 协调节点/中继服务"));

@@ -1,7 +1,7 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.0
+* @date 2026-10-22
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
 *
@@ -13,15 +13,16 @@
 #include <QCoreApplication>
 #include <QJsonObject>
 #include <QTemporaryDir>
-#include <QTcpSocket>
 
 #include "config_manager.h"
 #include "data_types.h"
 #include "discovery_service.h"
+#include "ip_address.h"
 #include "p2p_server.h"
 #include "rendezvous_client.h"
 #include "rendezvous_coordinator.h"
 #include "rendezvous_server.h"
+#include "posix_tcp_socket.h"
 
 #include "test_utils/json_line.h"
 #include "test_utils/wait.h"
@@ -43,7 +44,7 @@ private slots:
 
 private:
     // 在指定协调服务器上注册一台辅助设备
-    QTcpSocket *registerHelperDevice(RendezvousServer *server, const QString &deviceId);
+    gy::net::PosixTcpSocket *registerHelperDevice(RendezvousServer *server, const QString &deviceId);
     // 判断发现服务是否已收录指定设备
     bool discoveryContains(const QString &deviceId) const;
 
@@ -89,11 +90,11 @@ void TestRendezvousCoordinator::cleanupTestCase()
 }
 
 // 在指定协调服务器上注册一台辅助设备
-QTcpSocket *TestRendezvousCoordinator::registerHelperDevice(RendezvousServer *server,
+gy::net::PosixTcpSocket *TestRendezvousCoordinator::registerHelperDevice(RendezvousServer *server,
                                                             const QString &deviceId)
 {
-    auto *socket = new QTcpSocket(this);
-    socket->connectToHost(QHostAddress::LocalHost, server->serverPort());
+    auto *socket = new gy::net::PosixTcpSocket(this);
+    socket->connectToHost(gy::net::IpAddress::localHost(), server->serverPort());
 
     // 辅助函数返回指针，不能使用会展开成 return 的 QVERIFY 宏
     if (!gy::test::waitConnected(socket)) {
@@ -147,7 +148,7 @@ void TestRendezvousCoordinator::testEnableConnectsAndFetchesPeers()
     QVERIFY(server.start());
     _config->setRendezvousPort(static_cast<int>(server.serverPort()));
 
-    QTcpSocket *helper = registerHelperDevice(&server, QStringLiteral("device-b"));
+    gy::net::PosixTcpSocket *helper = registerHelperDevice(&server, QStringLiteral("device-b"));
     QVERIFY(helper);
 
     _config->setRendezvousEnabled(true);
@@ -184,7 +185,7 @@ void TestRendezvousCoordinator::testPortChangeReconnects()
     _config->setRendezvousEnabled(true);
     QTRY_VERIFY_WITH_TIMEOUT(_client->isConnected(), 3000);
 
-    QTcpSocket *helper = registerHelperDevice(&secondServer, QStringLiteral("device-c"));
+    gy::net::PosixTcpSocket *helper = registerHelperDevice(&secondServer, QStringLiteral("device-c"));
     QVERIFY(helper);
     _config->setRendezvousPort(static_cast<int>(secondServer.serverPort()));
 
