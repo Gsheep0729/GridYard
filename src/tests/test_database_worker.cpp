@@ -1,7 +1,7 @@
 /**
 * @file    test_database_worker.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.1
+* @date 2026-10-24
 * @author  GY
 * @brief   DatabaseWorker 语义测试
 *
@@ -12,6 +12,7 @@
 #include <QtTest/QtTest>
 #include <QList>
 #include <QSignalSpy>
+#include <QThread>
 
 #include "database_worker.h"
 #include "sqlite_database_broker.h"
@@ -23,6 +24,7 @@ private slots:
     void testTasksExecuteInFifoOrder();
     void testSubmitRejectedAfterBeginShutdown();
     void testDrainedAfterAllAcceptedTasks();
+    void testTasksRunOffCallerThread();
 };
 
 // 任务按提交顺序在单一队列上串行执行
@@ -90,6 +92,26 @@ void TestDatabaseWorker::testDrainedAfterAllAcceptedTasks()
 
     QTRY_COMPARE_WITH_TIMEOUT(drainedSpy.count(), 1, 5000);
     QCOMPARE(executionOrder, QList<int>({1, 2}));
+}
+
+// 任务在 Worker 自有线程执行，不占用调用方线程（std::thread 队列的线程归属契约）
+void TestDatabaseWorker::testTasksRunOffCallerThread()
+{
+    SqliteDatabaseBroker broker;
+    DatabaseWorker worker{&broker};
+
+    const Qt::HANDLE callerThread = QThread::currentThreadId();
+    Qt::HANDLE workerThread = nullptr;
+    QSignalSpy finishedSpy(&worker, &DatabaseWorker::taskFinished);
+
+    worker.submitTask([&workerThread](SqliteDatabaseBroker &, QString *) {
+        workerThread = QThread::currentThreadId();
+        return true;
+    });
+
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 5000);
+    QVERIFY(workerThread != nullptr);
+    QVERIFY(workerThread != callerThread);  // 必须在独立任务线程上执行
 }
 
 QTEST_MAIN(TestDatabaseWorker)

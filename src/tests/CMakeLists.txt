@@ -15,7 +15,7 @@ target_link_libraries(gy_test_utils INTERFACE gy_net)
 qt_add_executable(test_storage_database test_storage_database.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
-target_link_libraries(test_storage_database PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_link_libraries(test_storage_database PRIVATE gy_storage gy_storage_core Qt6::Test Qt6::Sql)
 target_include_directories(test_storage_database PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
@@ -28,7 +28,7 @@ qt_add_executable(test_storage_device test_storage_device.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
 target_link_libraries(test_storage_device PRIVATE
-    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
+    gy_test_utils gy_storage gy_storage_core Qt6::Test Qt6::Sql)
 target_include_directories(test_storage_device PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
@@ -41,7 +41,7 @@ qt_add_executable(test_storage_message test_storage_message.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
 target_link_libraries(test_storage_message PRIVATE
-    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
+    gy_test_utils gy_storage gy_storage_core Qt6::Test Qt6::Sql)
 target_include_directories(test_storage_message PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
@@ -54,7 +54,7 @@ qt_add_executable(test_storage_transfer_history test_storage_transfer_history.cp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
 target_link_libraries(test_storage_transfer_history PRIVATE
-    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
+    gy_test_utils gy_storage gy_storage_core Qt6::Test Qt6::Sql)
 target_include_directories(test_storage_transfer_history PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage

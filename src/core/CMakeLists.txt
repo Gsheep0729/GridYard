@@ -31,3 +31,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "core" FILES
     utils/dir_hasher.h
     utils/dir_hasher.cpp
 )
+
+# 纯 C++23 存储核心（Phase 3 影子层）：vendored SQLite3 C API 封装，
+# 与本目录同样零 Qt；独立于 gy_core，避免把 sqlite 链接传染给全部核心消费者
+add_subdirectory(storage)

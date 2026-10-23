@@ -1,0 +1,167 @@
+/**
+* @file    migration_core.cpp
+* @version 7.26.1
+* @date    2026-10-24
+* @author  GridYard Team
+* @brief   纯 C++23 SQLite Schema 版本迁移执行器实现
+*
+* 每个版本的全部 DDL 与版本登记在单个事务内执行，任一步失败整体
+* 回滚，防止留下半成品 Schema。DDL 字面量与 Qt 版逐字相同。
+*/
+
+#include "core/storage/migration_core.h"
+
+#include "core/storage/iso_time.h"
+#include "core/storage/sqlite_stmt.h"
+#include "core/storage/sqlite_tx.h"
+
+#include <vector>
+
+namespace gy::storage {
+namespace {
+// 当前程序支持的 Schema 最高版本，随新迁移发布递增
+constexpr int kCurrentSchemaVersion = 3;
+
+// 执行一条 DDL 语句，并将底层错误返回给调用方
+bool execute(SqliteConn &conn, const std::string &statement, std::string *errorMessage)
+{
+    if (conn.exec(statement).has_value()) {
+        return true;
+    }
+    if (errorMessage) {
+        *errorMessage = conn.lastError("迁移执行失败").message;
+    }
+    return false;
+}
+
+// 在单个事务内执行一个版本的全部 DDL 并登记版本号，任一步失败整体回滚
+bool applyMigrationStep(SqliteConn &conn, const std::vector<std::string> &statements,
+                        int version, std::string *errorMessage)
+{
+    SqliteTx tx{conn};
+    if (!tx.isActive()) {
+        if (errorMessage) {
+            *errorMessage = "迁移事务开启失败";
+        }
+        return false;
+    }
+
+    for (const std::string &statement : statements) {
+        if (!execute(conn, statement, errorMessage)) {
+            tx.rollback();  // DDL 失败时撤销本版本已做的变更，防止留下半成品 Schema
+            return false;
+        }
+    }
+
+    SqliteStmt insert{conn, "INSERT INTO schema_version(version, applied_at) VALUES(?, ?)"};
+    insert.bind(1, static_cast<int64_t>(version));
+    insert.bind(2, toIso8601Ms(nowUnixMillis()));
+    const auto insertStep = insert.step();
+    if (!insertStep.has_value()) {
+        if (errorMessage) {
+            *errorMessage = insertStep.error().message;
+        }
+        tx.rollback();
+        return false;
+    }
+
+    if (auto commit = tx.commit(); !commit.has_value()) {
+        if (errorMessage) {
+            *errorMessage = commit.error().message;
+        }
+        return false;
+    }
+    return true;
+}
+}  // namespace
+
+// 查询 schema_version 表获取最高版本号
+int MigrationCore::schemaVersion(SqliteConn &conn, std::string *errorMessage)
+{
+    // 表不存在时 COALESCE 返回 0，兼容首次启动场景
+    SqliteStmt query{conn, "SELECT COALESCE(MAX(version), 0) FROM schema_version"};
+    const auto row = query.step();
+    if (row.has_value() && row.value()) {
+        return static_cast<int>(query.columnInt64(0));
+    }
+    if (errorMessage) {
+        *errorMessage = row.has_value() ? "版本查询无结果" : row.error().message;
+    }
+    return -1;
+}
+
+// 执行尚未应用的 Schema 迁移
+bool MigrationCore::migrate(SqliteConn &conn, std::string *errorMessage)
+{
+    // 版本表必须最先创建，后续所有迁移通过它判断是否需要执行
+    if (!execute(conn, "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)", errorMessage)) {
+        return false;
+    }
+
+    const int version = schemaVersion(conn, errorMessage);
+    if (version < 0) {
+        return false;  // 版本查询失败，错误信息已写入
+    }
+
+    // 库版本高于当前支持上限说明由更新版本的程序创建，
+    // 旧程序继续读写会误判表结构甚至写坏数据，必须拒绝打开
+    if (version > kCurrentSchemaVersion) {
+        if (errorMessage) {
+            *errorMessage = "本地历史数据库由更新版本的程序创建，当前程序无法打开";
+        }
+        return false;
+    }
+
+    // 各版本迁移在各自事务内按序执行，新库从版本 0 连续升级，旧库只补缺失的版本
+
+    // 版本一：4 张业务表 + 3 个查询索引，仅全新建库执行
+    if (version < 1) {
+        const std::vector<std::string> statements = {
+            // 设备目录：存储局域网内发现的对端设备快照
+            "CREATE TABLE peer_devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, last_ip_address TEXT, last_tcp_port INTEGER, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, last_chat_at TEXT, last_transfer_at TEXT)",
+            // 聊天会话：每台对端设备一行，外键级联删除消息
+            "CREATE TABLE chat_conversations (peer_device_id TEXT PRIMARY KEY NOT NULL, created_at TEXT NOT NULL, last_message_at TEXT NOT NULL, FOREIGN KEY (peer_device_id) REFERENCES peer_devices(device_id) ON DELETE CASCADE)",
+            // 聊天消息：按会话分区，消息 UUID 为幂等写入键
+            "CREATE TABLE chat_messages (message_id TEXT PRIMARY KEY NOT NULL, peer_device_id TEXT NOT NULL, direction INTEGER NOT NULL CHECK (direction IN (0, 1)), sender_device_id TEXT NOT NULL, sender_name TEXT NOT NULL, content TEXT NOT NULL, sent_at TEXT NOT NULL, local_status INTEGER NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY (peer_device_id) REFERENCES chat_conversations(peer_device_id) ON DELETE CASCADE)",
+            // 聊天消息索引：支持按会话分页（时间倒序 + 消息 ID 稳定排序）
+            "CREATE INDEX idx_chat_messages_peer_time ON chat_messages(peer_device_id, sent_at DESC, message_id DESC)",
+            // 传输历史：只保存结束态快照，不保存发送源路径或文件内容
+            "CREATE TABLE transfer_history (record_id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL UNIQUE, peer_device_id TEXT NOT NULL, peer_name TEXT NOT NULL, direction INTEGER NOT NULL CHECK (direction IN (0, 1)), display_name TEXT NOT NULL, is_directory INTEGER NOT NULL CHECK (is_directory IN (0, 1)), file_count INTEGER NOT NULL, total_bytes INTEGER NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, error_code INTEGER, error_message TEXT, FOREIGN KEY (peer_device_id) REFERENCES peer_devices(device_id) ON DELETE RESTRICT)",
+            // 传输历史索引：按设备+时间分页
+            "CREATE INDEX idx_transfer_history_peer_time ON transfer_history(peer_device_id, started_at DESC, record_id DESC)",
+            // 传输历史索引：按状态筛选
+            "CREATE INDEX idx_transfer_history_status_time ON transfer_history(status, started_at DESC)"
+        };
+        if (!applyMigrationStep(conn, statements, 1, errorMessage)) {
+            return false;
+        }
+    }
+
+    // 版本二：设备目录补齐用户管理三列（备注/置顶/隐藏），
+    // SQLite 允许带常量 DEFAULT 的 NOT NULL 加列，存量行自动取默认值
+    if (version < 2) {
+        const std::vector<std::string> statements = {
+            "ALTER TABLE peer_devices ADD COLUMN alias TEXT",
+            "ALTER TABLE peer_devices ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE peer_devices ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"
+        };
+        if (!applyMigrationStep(conn, statements, 2, errorMessage)) {
+            return false;
+        }
+    }
+
+    // 版本三：设备目录增加收藏标记（关系语义，与置顶的位置语义分层叠加），
+    // 加列方式与版本二的管理列相同
+    if (version < 3) {
+        const std::vector<std::string> statements = {
+            "ALTER TABLE peer_devices ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"
+        };
+        if (!applyMigrationStep(conn, statements, 3, errorMessage)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+}  // namespace gy::storage
