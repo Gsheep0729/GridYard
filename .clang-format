@@ -1,0 +1,75 @@
+---
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++23
+
+# 基础排版基线（严格贴合 GridYard 既有实测特征）
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+AccessModifierOffset: -4
+NamespaceIndentation: None
+PointerAlignment: Right
+ReferenceAlignment: Right
+
+# 大括号风格：函数实现换行，类/控制语句/枚举同行 Attach
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+
+# 构造函数初始化列表：换行前置逗号对齐
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+
+# 头文件管理：Preserve 严格保护既有空行逻辑分块，杜绝跨块重排扩散
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+IncludeCategories:
+  - Regex: '^"(posix_tcp_socket|frame_codec|app_controller|p2p_server|sqlite_database_broker|rendezvous_server)\.h"'
+    Priority: 1
+  - Regex: '^".*"'
+    Priority: 2
+  - Regex: '^<Q'
+    Priority: 3
+  - Regex: '^<(algorithm|cerrno|chrono|climits|cstring|functional|memory|string|utility|vector)'
+    Priority: 4
+  - Regex: '^<'
+    Priority: 5
+
+# Qt6 / QML 宏语义防护（防止被误识别为函数调用导致缩进错乱）
+StatementMacros:
+  - Q_OBJECT
+  - Q_GADGET
+  - Q_CLASSINFO
+  - Q_ENUM
+  - Q_ENUM_NS
+  - Q_FLAG
+  - Q_INTERFACES
+  - Q_SIGNAL
+  - Q_SLOT
+  - QML_ELEMENT
+  - QML_SINGLETON
+  - QML_NAMED_ELEMENT
+  - QML_UNCREATABLE
+  - QML_ANONYMOUS
+WhitespaceSensitiveMacros:
+  - Q_PROPERTY
+
+# 语法习惯与内联保护
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+FixNamespaceComments: true
+SpacesInAngles: false

@@ -1,0 +1,30 @@
+# EditorConfig 跨编辑器排版配置
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C++ / C / Qt / QML / JS 源码排版标准
+[*.{c,cpp,cxx,cc,h,hpp,hxx,qml,js}]
+indent_size = 4
+
+# CMake 构建脚本保持 4 空格
+[{CMakeLists.txt,*.cmake}]
+indent_size = 4
+
+# 数据交换与配置文件使用 2 空格
+[*.{json,yaml,yml}]
+indent_size = 2
+
+# Python 辅助脚本遵循 PEP 8
+[*.py]
+indent_size = 4
+
+# Markdown 文档允许行尾换行空格
+[*.md]
+trim_trailing_whitespace = false
