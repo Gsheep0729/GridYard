@@ -1,15 +1,15 @@
 /**
-* @file    p2p_server.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   P2P 文件传输服务器
-*
-* 监听 TCP 端口（默认 35100），先按首个完整 TLV 帧分流连接。
-* 文件传输交给后台 FileReceiverWorker，聊天连接交接给后续 ChatManager，
-* 两种业务共用端口但不共享状态机。
-* 直连不可达时，接收端可经中继服务器加入会话，socket 交给同一条首帧路由。
-*/
+ * @file    p2p_server.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   P2P 文件传输服务器
+ *
+ * 监听 TCP 端口（默认 35100），先按首个完整 TLV 帧分流连接。
+ * 文件传输交给后台 FileReceiverWorker，聊天连接交接给后续 ChatManager，
+ * 两种业务共用端口但不共享状态机。
+ * 直连不可达时，接收端可经中继服务器加入会话，socket 交给同一条首帧路由。
+ */
 
 #pragma once
 
@@ -50,7 +50,7 @@ public:
 signals:
     // 新的传输请求到达（需要弹窗确认）
     void transferRequestReceived(FileReceiverWorker *worker, const QVariantMap &request);
-    // 聊天连接到达，接收方须在当前线程同步接管 socket 的对象归属
+    // 聊天连接到达契约：向 ChatManager 投递新建立的原生套接字，接收方必须在当前事件循环同步接管 socket 所有权与生命周期
     void chatConnectionReceived(gy::net::PosixTcpSocket *socket);
     // 中继加入失败（连接不上、握手超时等）
     void relayJoinFailed(const QString &relayId, const QString &reason);

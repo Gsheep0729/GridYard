@@ -1,14 +1,14 @@
 /**
-* @file    transfer_session_manager.h
-* @version 7.25.0
-* @date 2026-10-08
-* @author  GridYard Team
-* @brief   传输会话管理器
-*
-* 编排传输会话的建立、确认、取消与终结，并将运行期会话行委托给
-* TransferSessionModel 存储与增量通知，记录映射委托给 TransferSessionMapper。
-* 发送与接收 worker 分别以独立映射管理生命周期。
-*/
+ * @file    transfer_session_manager.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   传输会话管理器
+ *
+ * 编排传输会话的建立、确认、取消与终结，并将运行期会话行委托给
+ * TransferSessionModel 存储与增量通知，记录映射委托给 TransferSessionMapper。
+ * 发送与接收 worker 分别以独立映射管理生命周期。
+ */
 
 #pragma once
 
@@ -66,12 +66,17 @@ public:
     Q_INVOKABLE QString lastMultiPath() const;
     // 记录本次群发的内容路径
     Q_INVOKABLE void saveMultiPath(const QString &filePath);
+    // 接受接收会话契约：前置状态须为 waiting_confirm，触发后迁移至 transferring 并向发送方回送确认帧，后台 Worker 开始分块落盘
     void acceptReceiveSession(const QString &sessionId);
+    // 拒绝接收会话契约：向发送方回送拒绝协议帧，会话置为 rejected 终态并回收接收 Worker 资源
     void rejectReceiveSession(const QString &sessionId);
+    // 取消传输会话契约：置位原子取消标志中断当前读写循环，向对端发送取消帧并迁移至 cancelled 终态，优雅回收 Worker 线程
     void cancelSession(const QString &sessionId);
+    // 移除已结束会话行契约：前置条件必须为终态（isFinishedStatus 为 true），从内存模型中剔除
     void removeSession(const QString &sessionId);
     // 删除本地文件只允许接收成功记录，避免误删发送源文件
     void removeSessionAndDeleteFile(const QString &sessionId);
+    // 清理已结束会话契约：批量移除所有已进入终态的会话记录，可选联动删除已接收成功的本地文件
     void clearFinishedSessions(bool deleteReceivedFiles = false,
                                const QString &deviceId = {});
     // 启动阶段恢复已结束的历史记录

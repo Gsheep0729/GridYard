@@ -1,14 +1,13 @@
 /**
-* @file    rendezvous_protocol_keys.h
-* @version 7.19.0
-* @date 2026-10-05
-* @author  GridYard Team
-* @brief   协调/中继行协议字段名与类型常量
-*
-* 行协议的 JSON 字段名与 type 串此前在服务端与客户端各维护一份字符串，
-* 双端加字段时漏改一端只能靠运行时发现。本头文件是双端共用的单一来源，
-* 服务端与客户端共同链接 gy_protocol_contracts 接口目标获得编译期锚点。
-*/
+ * @file    rendezvous_protocol_keys.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   协调/中继行协议字段名与类型常量
+ *
+ * 行协议 JSON 字段名与 type 类型的双端唯一定义源。
+ * 服务端与客户端共同链接 gy_protocol_contracts 接口目标获得编译期强类型锚点。
+ */
 
 #pragma once
 

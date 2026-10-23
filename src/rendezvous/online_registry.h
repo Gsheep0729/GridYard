@@ -1,14 +1,14 @@
 /**
-* @file    online_registry.h
-* @version 7.19.0
-* @date 2026-10-05
-* @author  GridYard Team
-* @brief   协调节点在线设备注册表
-*
-* 内存中的在线设备表，以 room -> deviceId 两级哈希存储，
-* 房间名可以包含任意字符。维护设备的候选端点、TTL 过期清理，
-* 同时保管待领取的中继邀请。
-*/
+ * @file    online_registry.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   协调节点在线设备注册表
+ *
+ * 内存中的在线设备表，以 room -> deviceId 两级哈希存储，
+ * 房间名可以包含任意字符。维护设备的候选端点、TTL 过期清理，
+ * 同时保管待领取的中继邀请。
+ */
 
 #pragma once
 
@@ -81,7 +81,7 @@ public:
 private:
     bool isExpired(const PeerInfo &peer) const;
 
-    int _defaultTtlSeconds = 30;
+    int _defaultTtlSeconds = 30;    // 在线注册表默认心跳租约过期时长（秒）
     int _maxRooms = 0;              // 房间数上限，0 表示未初始化（构造时取常量默认）
     int _maxDevicesPerRoom = 0;     // 每房设备数上限
     int _relayInviteTtlSeconds = 0; // 中继邀请有效期，0 表示未初始化

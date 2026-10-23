@@ -1,15 +1,13 @@
 /**
-* @file    database_worker.h
-* @version 7.19.0
-* @date 2026-10-05
-* @author  GridYard Team
-* @brief   SQLite 异步任务执行线程
-*
-* Worker 持有专用线程中的任务队列，任务只访问该线程自己的数据库连接，
-* 不会阻塞网络收发或 QML 主线程。
-* 投递入口只有 submitTask 一个；原先按保存/加载/删除分设的三个同义入口
-* 已收敛，若未来需要按类别限流或统计，可在此入口加类别参数。
-*/
+ * @file    database_worker.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   SQLite 异步任务执行线程
+ *
+ * Worker 持有专用线程中的任务队列，任务只访问该线程专属的数据库连接，
+ * 避免阻塞网络收发与 QML 主线程。对外暴露单入口 submitTask 异步调度契约。
+ */
 #pragma once
 
 #include <functional>

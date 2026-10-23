@@ -1,15 +1,15 @@
 /**
-* @file    file_receiver_worker.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   文件接收 Worker（Worker-Object 模式）
-*
-* 由 P2pServer 为每个入站连接创建，运行在独立后台线程中。
-* 负责接收传输请求、通知 UI 弹窗确认、接收文件数据并写入磁盘、
-* SHA-256 校验、发送确认帧等完整接收流程。
-* 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
-*/
+ * @file    file_receiver_worker.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   文件接收 Worker（Worker-Object 模式）
+ *
+ * 由 P2pServer 为每个入站连接创建，运行在独立后台线程中。
+ * 负责接收传输请求、通知 UI 弹窗确认、接收文件数据并写入磁盘、
+ * SHA-256 校验、发送确认帧等完整接收流程。
+ * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
+ */
 
 #pragma once
 
@@ -136,7 +136,7 @@ private:
     // 取消请求标志：UI 线程经 requestCancel() 置位，工作线程在分块处理边界检查。
     // 跨线程仅约定"置位即请求取消"这一单向语义，依赖原子默认顺序一致性，
     // 不与其他状态构成复合同步
-    std::atomic_bool _cancelRequested{false};
+    std::atomic_bool _cancelRequested{false};  // 接收任务取消原子标志，供外层异步安全中断写入循环
 
     // 接收路径
     QString _receivePath;                // 配置的接收文件根目录

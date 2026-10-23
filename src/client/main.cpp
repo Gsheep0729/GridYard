@@ -1,9 +1,9 @@
 /**
-* @file    main.cpp
-* @version   7.26.0
-* @date 2026-10-22
-* @author  GY
-* @brief   GridYard 客户端程序入口
+ * @file    main.cpp
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   GridYard 客户端程序入口
 *
 * main.cpp 只负责启动准备并显式创建 AppController。
 * AppController 作为组合根初始化应用层对象和 UI 层。
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     std::signal(SIGPIPE, SIG_IGN);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("7.26.0");
+    QGuiApplication::setApplicationVersion("7.26.1");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数须在 QApplication 构造前解析：X11 平台层会按 X 工具惯例

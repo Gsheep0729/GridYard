@@ -1,10 +1,13 @@
 /**
-* @file    transfer_controller.h
-* @version 7.25.0
-* @date 2026-10-08
-* @author  GridYard Team
-* @brief   面向 QML 的文件传输控制器
-*/
+ * @file    transfer_controller.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   面向 QML 的文件传输控制器
+ *
+ * 封装 TransferSessionManager 并向表现层提供 QML 调用的会话控制方法与模型绑定。
+ * 承载传输生命周期信号分发、背压与进度节流调度以及直连向中继降级的确认流程。
+ */
 
 #pragma once
 
@@ -73,11 +76,13 @@ public:
     Q_INVOKABLE void retryViaRelay(const QString &sessionId);
 
 signals:
+    // 会话列表整体变化信号，高频进度变更已通过 sessionModel 行级通知节流隔离
     void sessionsChanged();
-    // 活动会话数量变化（会话创建或迁移到终态）
+    // 活动会话数量变化（会话创建或迁移到终态），主线程用于驱动关闭确认弹窗警示
     void activeSessionCountChanged();
     // 中继确认请求（AskBeforeRelay 档直连失败后触发，QML 只弹窗回传用户选择）
     void relayConfirmRequested(const QString &sessionId, const QString &deviceId);
+    // 新的传输请求到达信号，携带清单数据驱动主线程接收确认弹窗弹出
     void receiveRequestReceived(const QString &sessionId,
                                 const QString &senderDeviceId,
                                 const QString &senderName,
@@ -87,12 +92,15 @@ signals:
                                 qint64 totalBytes,
                                 bool isDirectory,
                                 const QVariantList &fileList);
+    // 传输完成通知信号，触发主线程完成横幅或通知卡渲染
     void transferCompleted(const QString &sessionId,
                            const QString &fileName,
                            const QString &filePath);
     // 等待确认的接收会话被后端终结（对方取消/超时/断连），弹窗应关闭
     void sessionStale(const QString &sessionId);
+    // 传输错误发生通知信号
     void errorOccurred(const QString &message);
+    // 一般业务提示消息通知信号
     void messageOccurred(const QString &message);
 
 private:

@@ -1,15 +1,15 @@
 /**
-* @file    file_sender_worker.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   文件发送 Worker（Worker-Object 模式）
-*
-* 运行在独立后台线程中，负责建立 TCP 连接、发送传输握手请求、
-* 等待响应、以 8MB 分块发送文件数据、处理确认帧等完整发送流程。
-* 支持多文件/目录传输、SHA-256 校验、候选端点轮询、中继握手、
-* 取消操作和超时检测。
-*/
+ * @file    file_sender_worker.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   文件发送 Worker（Worker-Object 模式）
+ *
+ * 运行在独立后台线程中，负责建立 TCP 连接、发送传输握手请求、
+ * 等待响应、以 8MB 分块发送文件数据、处理确认帧等完整发送流程。
+ * 支持多文件/目录传输、SHA-256 校验、候选端点轮询、中继握手、
+ * 取消操作和超时检测。
+ */
 
 #pragma once
 
@@ -136,7 +136,7 @@ private:
     // 取消请求标志：UI 线程经 requestCancel() 置位，工作线程在阻塞等待间隙轮询。
     // 跨线程仅约定"置位即请求取消"这一单向语义，依赖原子默认顺序一致性，
     // 不与其他状态构成复合同步
-    std::atomic_bool _cancelRequested{false};
+    std::atomic_bool _cancelRequested{false};  // 传输任务取消原子标志，供外层异步安全中断发送循环
     int _timeoutMs = 30000;           // 传输无进展超时（默认 30 秒），可注入短值供测试
     bool         _relayReady = false;      // 中继两端是否已齐备（收到 relay_ready）
     QByteArray   _relayLineBuffer;         // 中继控制行的半行缓冲

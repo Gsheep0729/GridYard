@@ -1,14 +1,13 @@
 /**
-* @file    posix_tcp_socket.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   基于原生描述符的 TCP 套接字
-*
-* 对外接口覆盖业务层当前使用的 Qt 套接字子集，读写缓冲与信号语义保持一致。
-* 写入先尝试系统调用，余量进入用户态队列，返回值恒等于入参长度，避免短写
-* 被调用方误判为发送失败。
-*/
+ * @file    posix_tcp_socket.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   基于原生描述符的 TCP 套接字
+ *
+ * 基于 Linux 原生文件描述符与 QSocketNotifier 非阻塞事件泵封装。
+ * 写入先尝试系统调用，余量进入用户态写缓冲队列，提供背压控制与可靠流式传输。
+ */
 
 #pragma once
 

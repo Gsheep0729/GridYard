@@ -1,18 +1,18 @@
 /**
-* @file    rendezvous_client.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   协调节点客户端
-*
-* 封装与协调服务器的 TCP 连接和 JSON 协议通信。
-* 负责向协调节点注册本机端点、拉取候选设备列表，
-* 并收发中继邀请信令（relay_invite / relay_poll）。
-*
-* 客户端开机后若启用了协调服务器（rendezvousEnabled=true），
-* 自动连接并注册本机 deviceId、IP 列表、TCP 端口等信息，
-* 每 5 秒心跳刷新 TTL 并顺带轮询中继邀请，断线后自动重连。
-*/
+ * @file    rendezvous_client.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   协调节点客户端
+ *
+ * 封装与协调服务器的 TCP 连接和 JSON 协议通信。
+ * 负责向协调节点注册本机端点、拉取候选设备列表，
+ * 并收发中继邀请信令（relay_invite / relay_poll）。
+ *
+ * 客户端开机后若启用了协调服务器（rendezvousEnabled=true），
+ * 自动连接并注册本机 deviceId、IP 列表、TCP 端口等信息，
+ * 每 5 秒心跳刷新 TTL 并顺带轮询中继邀请，断线后自动重连。
+ */
 
 #pragma once
 
@@ -114,22 +114,22 @@ private:
     // 按本机 deviceId 轮询待领取的中继邀请
     void sendRelayPoll();
 
-    gy::net::PosixTcpSocket *_socket = nullptr;
-    QByteArray _buffer;
-    bool _isConnected = false;
-    bool _wantConnected = false;
-    bool _reconnectScheduled = false;
-    QString _serverHost;
-    int _serverPort = 0;
-    QString _token;              // 访问令牌，空表示服务器未启用认证
-    QString _room;               // 房间名，用于心跳重注册
-    QString _deviceId;           // 本机设备 ID
-    QString _deviceName;         // 本机设备名
-    QStringList _addresses;     // 本机地址列表
-    quint16 _tcpPort = 0;       // TCP 端口
-    quint16 _discoveryPort = 0; // 发现端口
-    int _heartbeatTimerId = 0;
-    int _ttlSeconds = 30;
+    gy::net::PosixTcpSocket *_socket = nullptr;  // 与协调节点通信的原生 TCP 套接字
+    QByteArray _buffer;                          // 行协议数据接收缓冲累积队列
+    bool _isConnected = false;                   // 当前与协调节点的物理连接就绪标志
+    bool _wantConnected = false;                 // 业务期望维持长连接目标状态
+    bool _reconnectScheduled = false;            // 自动重连定时任务排队标志
+    QString _serverHost;                         // 协调服务器主机名或 IP
+    int _serverPort = 0;                         // 协调服务器 TCP 端口
+    QString _token;                              // 访问令牌，空表示服务器未启用认证
+    QString _room;                               // 房间名，用于心跳重注册
+    QString _deviceId;                           // 本机设备 ID
+    QString _deviceName;                         // 本机设备名
+    QStringList _addresses;                      // 本机地址列表
+    quint16 _tcpPort = 0;                        // TCP 端口
+    quint16 _discoveryPort = 0;                  // 发现端口
+    int _heartbeatTimerId = 0;                   // 周期性心跳与邀请轮询定时器 ID
+    int _ttlSeconds = 30;                        // 注册表端点租约有效时长（秒）
 
     static constexpr int kHeartbeatIntervalMs = 5000;  // 5 秒心跳
     static constexpr int kReconnectDelayMs = 3000;     // 3 秒后重连

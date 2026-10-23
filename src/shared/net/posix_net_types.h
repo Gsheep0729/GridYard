@@ -1,13 +1,13 @@
 /**
-* @file    posix_net_types.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   原生套接字状态与错误类型
-*
-* 枚举成员沿用 Qt 套接字类型的命名，业务层迁移时只需替换类型限定名。
-* 错误类型不携带平台细节，调用方无需直接接触 errno。
-*/
+ * @file    posix_net_types.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   原生套接字状态与错误类型
+ *
+ * 定义 Linux 原生套接字抽象状态机状态与标准化抽象错误码。
+ * 错误类型统一屏蔽底层平台细节，调用方无需直接接触系统 errno。
+ */
 
 #pragma once
 

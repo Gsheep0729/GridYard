@@ -1,14 +1,14 @@
 /**
-* @file    reachability_controller.h
-* @version 7.25.0
-* @date 2026-10-08
-* @author  GridYard Team
-* @brief   网络可达性控制器（QML 单例）
-*
-* 聚合 EndpointProbe 和 DiscoveryService，向 QML 提供统一的网络诊断入口。
-* 支持本机 IP 地址查询、TCP 探测、定向 Hello 发送和邀请文本处理。
-* 协调服务器启用时，支持向协调节点查询候选设备列表。
-*/
+ * @file    reachability_controller.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   网络可达性控制器（QML 单例）
+ *
+ * 聚合 EndpointProbe 和 DiscoveryService，向 QML 提供统一的网络诊断入口。
+ * 支持本机 IP 地址查询、TCP 探测、定向 Hello 发送和邀请文本处理。
+ * 协调服务器启用时，支持向协调节点查询候选设备列表。
+ */
 
 #pragma once
 
@@ -71,8 +71,11 @@ public:
     // 测试手动端点
     Q_INVOKABLE void testManualEndpoint(const QString &ip, quint16 tcpPort);
 
+    // 异步探测目标端点 TCP 连通性与时延，探测结果更新至 lastProbeResult 并触发 NOTIFY
     Q_INVOKABLE void probeEndpoint(const QString &ip, quint16 tcpPort, int timeoutMs = 5000);
+    // 向指定 IP 和发现端口发送定向 UDP Hello 广播，用于跨网段或单播兜底发现对端设备
     Q_INVOKABLE void sendDirectedHello(const QString &ip, quint16 discoveryPort = 45678);
+    // 刷新本地可用网卡 IPv4 地址列表并触发 localAddressesChanged 通知
     Q_INVOKABLE void refreshLocalAddresses();
     // 向协调服务器查询在线设备列表
     Q_INVOKABLE void queryRendezvousPeers();

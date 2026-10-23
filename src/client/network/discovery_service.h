@@ -1,10 +1,13 @@
 /**
-* @file    discovery_service.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   局域网设备发现服务
-*/
+ * @file    discovery_service.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   局域网设备发现服务
+ *
+ * 基于原生 UDP 套接字实现局域网广播与单播定向端点探测。
+ * 周期性广播心跳报文维持邻居在线状态，维护内存设备快照并通知表现层更新。
+ */
 
 #pragma once
 

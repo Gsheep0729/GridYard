@@ -1,13 +1,13 @@
 /**
-* @file    sqlite_device_repository.h
-* @version 7.23.0
-* @date 2026-10-07
-* @author  GridYard Team
-* @brief   SQLite 设备目录 Repository 实现
-*
-* 负责设备快照、最近业务活动时间和最近设备查询；纯发现心跳在代理内部
-* 节流，避免 UDP 广播导致频繁磁盘写入。
-*/
+ * @file    sqlite_device_repository.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   SQLite 设备目录 Repository 实现
+ *
+ * 负责设备快照、最近业务活动时间和最近设备查询；心跳更新依赖
+ * SQLite Broker 批量节流机制，避免 UDP 广播导致频繁磁盘写入。
+ */
 
 #pragma once
 

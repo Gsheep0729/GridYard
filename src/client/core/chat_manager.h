@@ -1,13 +1,13 @@
 /**
-* @file    chat_manager.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   在线聊天连接与内存会话管理器
-*
-* 以设备标识维护可复用聊天连接和运行期消息会话。管理器只允许向
-* 已发现在线的设备发起连接，不创建离线待投递队列。
-*/
+ * @file    chat_manager.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   在线聊天连接与内存会话管理器
+ *
+ * 以设备标识维护可复用聊天连接和运行期消息会话。管理器只允许向
+ * 已发现在线的设备发起连接，不创建离线待投递队列。
+ */
 
 #pragma once
 
@@ -56,9 +56,12 @@ public:
     void prependHistoryMessages(const QString &deviceId, const QList<MessageRecord> &records);
 
 signals:
+    // 会话消息变动信号，指定设备的消息模型行发生增删或状态变更时发射
     void messagesChanged(const QString &deviceId);
+    // 文本消息发送失败契约：通知表现层发送失败原因与错误码，界面保留输入或标记气泡失败态
     void sendFailed(const QString &deviceId, gy::ChatMessageError error,
                     const QString &errorMessage);
+    // 聊天连接异常契约：报告与指定设备的物理连接断开或建连超时，底层自动清理失效连接
     void connectionError(const QString &deviceId, gy::ChatMessageError error,
                          const QString &errorMessage);
     // 收到有效远端消息后通知表现层，预览内容已截断避免通知泄露全文。

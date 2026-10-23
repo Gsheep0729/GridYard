@@ -1,14 +1,14 @@
 /**
-* @file    sqlite_database_broker.cpp
-* @version 7.19.0
-* @date 2026-10-05
-* @author  GridYard Team
-* @brief   SQLite 连接、参数与迁移管理实现
-*
-* 管理每个线程独立的命名连接、PRAGMA 参数配置、WAL 模式和
-* migration 版本序列。连接由 DatabaseWorker 在专用线程中持有，
-* 应用退出时自动关闭并移除连接名。
-*/
+ * @file    sqlite_database_broker.cpp
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   SQLite 连接、参数与迁移管理实现
+ *
+ * 管理每个线程独立的命名连接、PRAGMA 参数配置、WAL 模式和
+ * migration 版本序列。连接由 DatabaseWorker 在专用线程中持有，
+ * 应用退出时自动关闭并移除连接名。
+ */
 #include "sqlite_database_broker.h"
 
 #include "migration_runner.h"
@@ -225,6 +225,7 @@ bool SqliteDatabaseBroker::runInTransaction(const TransactionTask &task, QString
     return true;
 }
 
+// 执行多步原子数据库事务，按顺序执行各 step 回调，任意一步失败或提交失败自动回滚
 bool SqliteDatabaseBroker::runSteps(const std::vector<TransactionTask> &steps,
                                    QString *errorMessage) const
 {

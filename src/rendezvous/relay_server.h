@@ -1,17 +1,17 @@
 /**
-* @file    relay_server.h
-* @version 7.26.0
-* @date 2026-10-22
-* @author  GridYard Team
-* @brief   流式中继服务器
-*
-* 处理最严格的校园网隔离场景，两个客户端可都无法直连时通过中继转发。
-* 中继只转发在线字节流，不落盘文件内容。
-* 两端齐备后向发送端回一行 relay_ready 门控传输开始，任一端离开立即
-* 通知并关闭对端，未完成会话超时回收。
-* 握手等待复用 LineSession（行上限 + 超时），转发带写队列背压，
-* 会话数与积压均有上限。
-*/
+ * @file    relay_server.h
+ * @version 7.26.1
+ * @date    2026-10-23
+ * @author  GridYard Team
+ * @brief   流式中继服务器
+ *
+ * 处理最严格的校园网隔离场景，两个客户端可都无法直连时通过中继转发。
+ * 中继只转发在线字节流，不落盘文件内容。
+ * 两端齐备后向发送端回一行 relay_ready 门控传输开始，任一端离开立即
+ * 通知并关闭对端，未完成会话超时回收。
+ * 握手等待复用 LineSession（行上限 + 超时），转发带写队列背压，
+ * 会话数与积压均有上限。
+ */
 
 #pragma once
 
@@ -68,9 +68,9 @@ private:
     // 摘除归属后排空写队列再删除连接，保证错误帧不被提前丢弃
     void closeSocketLater(gy::net::PosixTcpSocket *socket);
 
-    QString _relayId;
-    gy::net::PosixTcpSocket *_sender = nullptr;
-    gy::net::PosixTcpSocket *_receiver = nullptr;
+    QString _relayId;                            // 中继会话唯一标识符
+    gy::net::PosixTcpSocket *_sender = nullptr;    // 发送端原生 TCP 套接字指针
+    gy::net::PosixTcpSocket *_receiver = nullptr;  // 接收端原生 TCP 套接字指针
     QByteArray _senderBacklog;   // 会话未齐备前缓存的发送端字节
     QByteArray _receiverBacklog; // 会话未齐备前缓存的接收端字节
     QTimer *_idleTimer = nullptr; // 会话未齐备时的超时回收定时器
@@ -110,11 +110,11 @@ private:
     // 丢弃未完成握手的连接
     void dropConnection(gy::net::PosixTcpSocket *socket, const QString &reason);
 
-    gy::net::PosixTcpServer *_server = nullptr;
-    quint16 _port = 0;
-    QString _token;
-    QMap<QString, RelaySession *> _sessions;
-    QSet<LineSession *> _pendingHellos;  // 等待握手首行的连接
-    int _maxSessions = 0;
+    gy::net::PosixTcpServer *_server = nullptr;  // 原生 TCP 监听服务实例指针
+    quint16 _port = 0;                           // 监听端口号
+    QString _token;                              // 访问鉴权令牌
+    QMap<QString, RelaySession *> _sessions;     // 当前活跃的中继转发会话映射（relayId -> session）
+    QSet<LineSession *> _pendingHellos;          // 等待首行握手的连接集合
+    int _maxSessions = 0;                        // 最大允许的并发中继会话数量
     int _sessionWaitMs = gy::rendezvous::kRelaySessionWaitMs;  // 新建会话等待对端的超时
 };
