@@ -5,11 +5,13 @@
 * @author  GridYard Team
 * @brief   单线程 poll 事件反应器实现
 *
-* 主循环：poll(eventfd + 监听 fd 集，5 秒超时兜底) → 先应用命令队列
-* → 再派发就绪事件。命令优先于派发，配合代际校验，保证已注销的 fd
-* 即使本轮 poll 携带就绪位也不会触发回调。回调契约：不得抛异常、
-* 不得阻塞——异常被捕获吞掉以保住引擎线程存活。
-*/
+ * 主循环：poll(eventfd + 监听 fd 集，超时兜底) → 先应用命令队列
+ * → 再派发就绪事件。命令优先于派发，配合代际校验，保证已注销的 fd
+ * 即使本轮 poll 携带就绪位也不会触发回调。定时任务由 poll 超时驱动，
+ * 每执行一个到期任务前重放一次待处理命令，保证任务回调中排入的
+ * 取消请求立即生效。回调契约：不得抛异常、不得阻塞——异常被捕获
+ * 吞掉以保住引擎线程存活。
+ */
 
 #include "core/net_reactor.h"
 
@@ -17,6 +19,7 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <utility>
@@ -27,6 +30,13 @@ namespace {
 
 // poll 等待上限：保证循环永不永久卡死（周期性自检运行标志）
 constexpr int kPollTimeoutMs = 5000;
+
+// 线程标识折叠为 64 位整数（原子存取；碰撞概率可忽略，
+// 且碰撞后果仅是把外部调用误判为线程内调用，走直接执行路径）
+uint64_t threadIdValue(std::thread::id id)
+{
+    return static_cast<uint64_t>(std::hash<std::thread::id>{}(id));
+}
 
 // 把 poll 事件位归一化为 Event 掩码（错误与挂断分开归位）
 uint32_t mapPollEvents(int revents)
@@ -87,12 +97,15 @@ void NetReactor::stop()
         _thread.join();
     }
     _ownThread = false;
-    // 丢弃未处理的命令，清空等待方
+    // 丢弃未处理的命令与定时任务，清空等待方
     {
         std::lock_guard<std::mutex> lock(_cmdMutex);
         _pendingCmds.clear();
+        _pendingTimers.clear();
         _ackSerial++;
+        _taskAckSerial++;
     }
+    _timers.clear();
     _ackCond.notify_all();
 }
 
@@ -131,9 +144,8 @@ void NetReactor::unwatch(int fd, uint64_t generation)
 // 取消监听并等待 Reactor 确认（close 前的安全摘除）
 void NetReactor::unwatchSync(int fd, uint64_t generation)
 {
-    if (_running.load() && _ownThread && _thread.joinable()
-        && _thread.get_id() == std::this_thread::get_id()) {
-        return;  // Reactor 线程内调用：禁止自等待（防御，正常不应发生）
+    if (!_running.load() || onReactorThread()) {
+        return;  // 未运行无需等待；Reactor 线程内调用禁止自等待
     }
     uint64_t targetSerial = 0;
     {
@@ -144,6 +156,100 @@ void NetReactor::unwatchSync(int fd, uint64_t generation)
     wakeup();
     std::unique_lock<std::mutex> lock(_cmdMutex);
     _ackCond.wait(lock, [this, targetSerial] { return !_running.load() || _ackSerial >= targetSerial; });
+}
+
+// 取消监听的即时形态（Reactor 线程内直接摘除）
+void NetReactor::unwatchNow(int fd, uint64_t generation)
+{
+    if (onReactorThread()) {
+        const auto it = _watches.find(fd);
+        if (it != _watches.end() && it->second.generation == generation) {
+            _watches.erase(it);
+        }
+        return;
+    }
+    unwatchSync(fd, generation);
+}
+
+// 延迟执行回调（到期后在 Reactor 线程触发）
+NetReactor::TimerId NetReactor::scheduleAfter(int delayMs, std::function<void()> callback)
+{
+    if (!callback) {
+        return 0;
+    }
+    const TimerId id = _nextTimerId.fetch_add(1);
+    if (onReactorThread()) {
+        // 线程内调用：直接生效，无需唤醒
+        TimerEntry entry;
+        entry.deadline = std::chrono::steady_clock::now()
+                         + std::chrono::milliseconds(std::max(0, delayMs));
+        entry.callback = std::move(callback);
+        _timers[id] = std::move(entry);
+        return id;
+    }
+    {
+        std::lock_guard<std::mutex> lock(_cmdMutex);
+        TimerCmd cmd;
+        cmd.id = id;
+        cmd.delayMs = delayMs;
+        cmd.task = std::move(callback);
+        _pendingTimers.push_back(std::move(cmd));
+    }
+    wakeup();
+    return id;
+}
+
+// 取消定时任务（尽力语义）
+void NetReactor::cancelTimer(TimerId timerId)
+{
+    if (timerId == 0) {
+        return;
+    }
+    if (onReactorThread()) {
+        // 线程内调用：立即摘除，避免同批到期任务漏取消
+        _timers.erase(timerId);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(_cmdMutex);
+        TimerCmd cmd;
+        cmd.id = timerId;
+        cmd.isCancel = true;
+        _pendingTimers.push_back(std::move(cmd));
+    }
+    wakeup();
+}
+
+// 在 Reactor 线程同步执行任务
+void NetReactor::dispatchSync(std::function<void()> task)
+{
+    if (!task) {
+        return;
+    }
+    if (!_running.load() || onReactorThread()) {
+        task();  // 泵未运行或线程内调用：直接执行
+        return;
+    }
+    uint64_t targetSerial = 0;
+    {
+        std::lock_guard<std::mutex> lock(_cmdMutex);
+        targetSerial = _taskAckSerial + 1;
+        TimerCmd cmd;
+        cmd.delayMs = 0;
+        cmd.task = std::move(task);
+        cmd.needAck = true;
+        _pendingTimers.push_back(std::move(cmd));
+    }
+    wakeup();
+    std::unique_lock<std::mutex> lock(_cmdMutex);
+    _ackCond.wait(lock, [this, targetSerial] { return !_running.load() || _taskAckSerial >= targetSerial; });
+}
+
+// 当前调用是否发生在 Reactor 线程
+bool NetReactor::onReactorThread() const
+{
+    const uint64_t loopId = _loopThreadId.load(std::memory_order_acquire);
+    return loopId != 0 && loopId == threadIdValue(std::this_thread::get_id());
 }
 
 // 写 eventfd 唤醒 Reactor 线程
@@ -160,6 +266,7 @@ void NetReactor::wakeup()
 // 主循环
 void NetReactor::runLoop()
 {
+    _loopThreadId.store(threadIdValue(std::this_thread::get_id()), std::memory_order_release);
     std::vector<struct pollfd> fds;
     while (_running.load()) {
         fds.clear();
@@ -182,7 +289,7 @@ void NetReactor::runLoop()
             fds.push_back(item);
         }
 
-        const int ready = ::poll(fds.data(), static_cast<nfds_t>(fds.size()), kPollTimeoutMs);
+        const int ready = ::poll(fds.data(), static_cast<nfds_t>(fds.size()), pollTimeoutMs());
         if (ready < 0) {
             if (errno == EINTR) {
                 continue;
@@ -199,14 +306,39 @@ void NetReactor::runLoop()
 
         // 命令优先于派发：本轮注销的 fd 即便带就绪位也不会回调
         applyPendingCmds();
+        applyPendingTimers();
+        if (!_running.load()) {
+            break;
+        }
+        runDueTimers();
         if (!_running.load()) {
             break;
         }
         dispatchEvents(fds);
     }
 
-    // 退出前确认所有 pending 命令（含 unwatchSync 等待方）
+    // 退出前确认所有 pending 命令（含 unwatchSync/dispatchSync 等待方），
+    // 清空尚未到期的定时任务
     applyPendingCmds();
+    applyPendingTimers();
+    _timers.clear();
+    _loopThreadId.store(0, std::memory_order_release);
+}
+
+// 计算本轮 poll 等待上限
+int NetReactor::pollTimeoutMs() const
+{
+    if (_timers.empty()) {
+        return kPollTimeoutMs;
+    }
+    auto earliest = _timers.begin()->second.deadline;
+    for (const auto &entry : _timers) {
+        earliest = std::min(earliest, entry.second.deadline);
+    }
+    const auto delta = std::chrono::duration_cast<std::chrono::milliseconds>(
+        earliest - std::chrono::steady_clock::now());
+    const auto clamped = std::clamp<decltype(delta)::rep>(delta.count(), 0, kPollTimeoutMs);
+    return static_cast<int>(clamped);
 }
 
 // 应用命令队列到监听表
@@ -240,6 +372,80 @@ void NetReactor::applyPendingCmds()
         _ackSerial++;
     }
     _ackCond.notify_all();
+}
+
+// 把定时/任务命令应用到任务表
+void NetReactor::applyPendingTimers()
+{
+    std::vector<TimerCmd> cmds;
+    {
+        std::lock_guard<std::mutex> lock(_cmdMutex);
+        cmds.swap(_pendingTimers);
+    }
+    if (cmds.empty()) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    for (TimerCmd &cmd : cmds) {
+        if (cmd.isCancel) {
+            // 句柄已不存在（已执行或已取消）时静默忽略
+            _timers.erase(cmd.id);
+        } else if (cmd.delayMs <= 0 && cmd.needAck) {
+            // 同步任务：立即执行，批处理完成后统一应答等待方
+            try {
+                cmd.task();
+            } catch (...) {
+                // 静默吞掉任务异常，保持 Reactor 存活
+            }
+        } else {
+            TimerEntry entry;
+            entry.deadline = now + std::chrono::milliseconds(std::max(0, cmd.delayMs));
+            entry.callback = std::move(cmd.task);
+            _timers[cmd.id] = std::move(entry);
+        }
+    }
+
+    // 应答同步等待方（任务已在本批内执行完毕）
+    {
+        std::lock_guard<std::mutex> lock(_cmdMutex);
+        _taskAckSerial++;
+    }
+    _ackCond.notify_all();
+}
+
+// 逐个执行已到期的定时任务
+void NetReactor::runDueTimers()
+{
+    while (_running.load()) {
+        // 重放待处理命令：前一个任务回调排入的取消/新增立即生效
+        applyPendingTimers();
+        const auto now = std::chrono::steady_clock::now();
+
+        // 挑选到期且最早的一个任务
+        bool found = false;
+        TimerId dueId = 0;
+        std::chrono::steady_clock::time_point earliest{};
+        for (const auto &entry : _timers) {
+            if (entry.second.deadline <= now && (!found || entry.second.deadline < earliest)) {
+                found = true;
+                earliest = entry.second.deadline;
+                dueId = entry.first;
+            }
+        }
+        if (!found) {
+            return;
+        }
+
+        // 先摘除再执行：回调内的自取消与重复触发均不可能
+        auto node = _timers.extract(dueId);
+        std::function<void()> callback = std::move(node.mapped().callback);
+        try {
+            callback();
+        } catch (...) {
+            // 静默吞掉回调异常，保持 Reactor 存活
+        }
+    }
 }
 
 // 派发一轮就绪事件

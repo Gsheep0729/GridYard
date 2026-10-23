@@ -1,149 +1,195 @@
 /**
 * @file    line_session.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   带上限的按行分帧会话基类实现
 */
 
 #include "line_session.h"
 
-#include "posix_tcp_socket.h"
+#include "rendezvous_log.h"
 
-#include <QDebug>
+#include <algorithm>
 
 // 构造函数：接管 socket 并启动分帧读取
-LineSession::LineSession(gy::net::PosixTcpSocket *socket, qsizetype maxLineBytes, QObject *parent)
-    : QObject{parent}
+LineSession::LineSession(gy::net::NetReactor &reactor, gy::net::TcpSocketCore *socket,
+                         std::ptrdiff_t maxLineBytes)
+    : _reactor{reactor}
     , _socket{socket}
     , _maxLineBytes{maxLineBytes}
 {
-    _socket->setParent(this);
     // 内部读缓冲随行上限封顶，慢连接在内核层形成背压，内存不会无界增长
-    _socket->setReadBufferSize(maxLineBytes * 2);
+    _socket->setReadBufferLimit(maxLineBytes * 2);
 
-    _timeoutTimer = new QTimer{this};
-    _timeoutTimer->setSingleShot(true);
-    connect(_timeoutTimer, &QTimer::timeout, this, [this]() {
-        finishWithError(_timeoutReason);
-    });
-
-    connect(_socket, &gy::net::PosixTcpSocket::readyRead, this, &LineSession::onReadyRead);
-    connect(_socket, &gy::net::PosixTcpSocket::disconnected, this, &LineSession::onDisconnected);
-    connect(_socket, &gy::net::PosixTcpSocket::errorOccurred, this, [this](gy::net::SocketError error) {
-        // 远端正常关闭不算错误，由 disconnected 路径终结
-        if (error != gy::net::SocketError::RemoteHostClosedError && !_finished && !_detached) {
-            finishWithError(_socket->errorString());
-        }
-    });
+    _socket->setReadCallback([this]() { onSocketRead(); });
+    _socket->setCloseCallback([this](gy::net::SocketCloseReason) { onSocketClosed(); });
+    _socket->setErrorCallback([this](const std::string &message) { onSocketError(message); });
 }
 
-// 析构函数：socket 作为子对象随之回收
-LineSession::~LineSession() = default;
+// 析构函数：注销超时任务并回收仍持有的 socket
+LineSession::~LineSession()
+{
+    _reactor.cancelTimer(_timeoutTimer);
+    if (_socket) {
+        _socket->setReadCallback(nullptr);
+        _socket->setWrittenCallback(nullptr);
+        _socket->setCloseCallback(nullptr);
+        _socket->setErrorCallback(nullptr);
+        delete _socket;
+        _socket = nullptr;
+    }
+}
 
 // 启动首行握手超时
 void LineSession::startHandshakeTimeout(int ms)
 {
     _handshakePhase = true;
-    _timeoutReason = QStringLiteral("握手超时");
-    _timeoutTimer->start(ms);
+    armTimeout(ms, "握手超时");
 }
 
-// 启动空闲超时：每收到一行自动刷新
+// 启动空闲超时
 void LineSession::startIdleTimeout(int ms)
 {
     _handshakePhase = false;
-    _timeoutReason = QStringLiteral("空闲超时");
-    _timeoutTimer->start(ms);
+    armTimeout(ms, "空闲超时");
 }
 
 // 服务端主动以协议错误终结会话
-void LineSession::finishWithError(const QString &reason)
+void LineSession::finishWithError(const std::string &reason)
 {
     if (_finished || _detached || _errorSignaled) {
         return;
     }
     _errorSignaled = true;
-    qWarning() << "[LineSession] 终结会话:" << reason;
-    emit protocolError(reason);
-    _socket->disconnectFromHost();
+    gy::rendezvous::logWarn("[LineSession] 终结会话: " + reason);
+    if (_onError) {
+        _onError(reason);
+    }
+    if (_socket) {
+        _socket->disconnectFromHost();
+    }
 }
 
 // 握手行之后已到达的剩余字节
-QByteArray LineSession::pendingBytes() const
+std::vector<uint8_t> LineSession::pendingBytes() const
 {
     return _buffer;
 }
 
 // 剥离 socket 归属并返回（连接移交场景）
-gy::net::PosixTcpSocket *LineSession::takeSocket()
+gy::net::TcpSocketCore *LineSession::takeSocket()
 {
     if (!_socket) {
         return nullptr;
     }
-    disconnect(_socket, nullptr, this, nullptr);
-    _socket->setParent(nullptr);
-    gy::net::PosixTcpSocket *socket = _socket;
+    gy::net::TcpSocketCore *socket = _socket;
+    socket->setReadCallback(nullptr);
+    socket->setWrittenCallback(nullptr);
+    socket->setCloseCallback(nullptr);
+    socket->setErrorCallback(nullptr);
     _socket = nullptr;
     _detached = true;
     return socket;
 }
 
-// 处理可读数据，按 \n 切分控制行并施加长度上限
-void LineSession::onReadyRead()
+// socket 可读：按 \n 切分控制行并施加长度上限
+void LineSession::onSocketRead()
 {
-    if (_finished || _detached) {
+    if (_finished || _detached || !_socket) {
         return;
     }
 
-    _buffer += _socket->readAll();
+    const std::vector<uint8_t> chunk = _socket->readAll();
+    _buffer.insert(_buffer.end(), chunk.begin(), chunk.end());
 
-    int newlineIndex;
-    while ((newlineIndex = _buffer.indexOf('\n')) >= 0) {
-        const QByteArray line = _buffer.left(newlineIndex);
-        _buffer.remove(0, newlineIndex + 1);
+    auto newline = std::find(_buffer.begin(), _buffer.end(), uint8_t('\n'));
+    while (newline != _buffer.end()) {
+        const std::string line{_buffer.begin(), newline};
+        _buffer.erase(_buffer.begin(), newline + 1);
 
-        if (line.size() > _maxLineBytes) {
-            finishWithError(QStringLiteral("控制行超长"));
+        if (static_cast<std::ptrdiff_t>(line.size()) > _maxLineBytes) {
+            finishWithError("控制行超长");
             return;
         }
 
         // 首行到达即退出握手阶段；空闲超时随每行刷新
         if (_handshakePhase) {
             _handshakePhase = false;
-            _timeoutTimer->stop();
-        } else if (_timeoutTimer->isActive()) {
-            _timeoutTimer->start();
+            _reactor.cancelTimer(_timeoutTimer);
+            _timeoutTimer = 0;
+        } else if (_timeoutTimer != 0) {
+            armTimeout(_timeoutIntervalMs, _timeoutReason);
         }
 
-        emit lineReady(line);
+        if (_onLine) {
+            _onLine(line);
+        }
         if (_finished || _detached) {
             return;  // 行处理中可能移交或终结了会话
         }
+
+        newline = std::find(_buffer.begin(), _buffer.end(), uint8_t('\n'));
     }
 
     // 尚未凑齐一行的数据同样不得超过行上限
-    if (_buffer.size() > _maxLineBytes) {
-        finishWithError(QStringLiteral("控制行超长"));
+    if (static_cast<std::ptrdiff_t>(_buffer.size()) > _maxLineBytes) {
+        finishWithError("控制行超长");
     }
 }
 
-// 处理连接断开，统一终结出口
-void LineSession::onDisconnected()
+// socket 错误说明（对端正常关闭由 close 回调收尾，不视为错误）
+void LineSession::onSocketError(const std::string &message)
+{
+    if (!_finished && !_detached) {
+        finishWithError(message);
+    }
+}
+
+// socket 断开，统一终结出口
+void LineSession::onSocketClosed()
 {
     finish();
 }
 
-// 统一终结出口：断开 socket 并只发射一次 closed
+// 统一终结出口：断开 socket 并只通知一次 closed
 void LineSession::finish()
 {
     if (_finished) {
         return;
     }
     _finished = true;
-    _timeoutTimer->stop();
+    _reactor.cancelTimer(_timeoutTimer);
+    _timeoutTimer = 0;
     if (_socket) {
-        disconnect(_socket, nullptr, this, nullptr);
+        _socket->setReadCallback(nullptr);
+        _socket->setWrittenCallback(nullptr);
+        _socket->setCloseCallback(nullptr);
+        _socket->setErrorCallback(nullptr);
     }
-    emit closed();
+    if (_onClosed) {
+        _onClosed();
+    }
+}
+
+// 重置当前超时任务
+void LineSession::armTimeout(int ms, std::string reason)
+{
+    _reactor.cancelTimer(_timeoutTimer);
+    _timeoutIntervalMs = ms;
+    _timeoutReason = std::move(reason);
+    const std::string &fireReason = _timeoutReason;
+    _timeoutTimer = _reactor.scheduleAfter(ms, [this, fireReason]() {
+        _timeoutTimer = 0;
+        finishWithError(fireReason);
+    });
+}
+
+// 移交后无接收方的兜底回收
+void LineSession::deferDeleteSocket(gy::net::TcpSocketCore *socket)
+{
+    if (!socket) {
+        return;
+    }
+    _reactor.scheduleAfter(0, [socket]() { delete socket; });
 }

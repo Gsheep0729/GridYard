@@ -240,23 +240,25 @@ void TestGoldenBaseline::testGoldenJson()
 
     // —— 协调协议 peers 响应：固定 registeredAt 后输出完全确定 ——
     OnlineRegistry::PeerInfo peer1;
-    peer1.deviceId = QStringLiteral("d1e2f3a4-0b1c-4d2e-9f3a-4b5c6d7e8f90");
-    peer1.deviceName = QStringLiteral("鸽邮测试端");
-    peer1.addresses = {QStringLiteral("192.168.1.10"), QStringLiteral("10.0.0.8")};
+    peer1.deviceId = "d1e2f3a4-0b1c-4d2e-9f3a-4b5c6d7e8f90";
+    peer1.deviceName = "鸽邮测试端";
+    peer1.addresses = {"192.168.1.10", "10.0.0.8"};
     peer1.tcpPort = 35100;
     peer1.discoveryPort = 45678;
-    peer1.registeredAt = QDateTime::fromString(QStringLiteral("2026-10-24T08:00:00Z"), Qt::ISODate);
+    peer1.registeredAtMs = QDateTime::fromString(QStringLiteral("2026-10-24T08:00:00Z"), Qt::ISODate)
+                               .toMSecsSinceEpoch();
     OnlineRegistry::PeerInfo peer2;
-    peer2.deviceId = QStringLiteral("99a8b7c6-d5e4-4f3a-2b1c-0d9e8f7a6b5c");
-    peer2.deviceName = QStringLiteral("Lab PC");
-    peer2.addresses = {QStringLiteral("172.16.0.3")};
+    peer2.deviceId = "99a8b7c6-d5e4-4f3a-2b1c-0d9e8f7a6b5c";
+    peer2.deviceName = "Lab PC";
+    peer2.addresses = {"172.16.0.3"};
     peer2.tcpPort = 35110;
     peer2.discoveryPort = 45698;
-    peer2.registeredAt = QDateTime::fromString(QStringLiteral("2026-10-24T08:05:30Z"), Qt::ISODate);
+    peer2.registeredAtMs = QDateTime::fromString(QStringLiteral("2026-10-24T08:05:30Z"), Qt::ISODate)
+                               .toMSecsSinceEpoch();
 
-    const QJsonObject peersObject = RendezvousProtocol::buildPeersResponse({peer1, peer2});
-    const QByteArray peersJson = QJsonDocument(peersObject).toJson(QJsonDocument::Compact);
-    // Phase 1 纯 C++ 实现必须复现以下字面量（Qt 参考实现输出，已冻结）
+    const nlohmann::json peersObject = RendezvousProtocol::buildPeersResponse({peer1, peer2});
+    const QByteArray peersJson = QByteArray(peersObject.dump().c_str());
+    // 纯 C++ 实现必须复现以下字面量（Qt 参考实现输出，已冻结）
     const QByteArray expectedPeersJson = QByteArray(R"({"items":[{"addresses":["192.168.1.10","10.0.0.8"],"device_id":"d1e2f3a4-0b1c-4d2e-9f3a-4b5c6d7e8f90","device_name":"鸽邮测试端","discovery_port":45678,"tcp_port":35100,"updated_at":"2026-10-24T08:00:00Z"},{"addresses":["172.16.0.3"],"device_id":"99a8b7c6-d5e4-4f3a-2b1c-0d9e8f7a6b5c","device_name":"Lab PC","discovery_port":45698,"tcp_port":35110,"updated_at":"2026-10-24T08:05:30Z"}],"type":"peers"})");
     QCOMPARE(peersJson, expectedPeersJson);
 
@@ -266,15 +268,16 @@ void TestGoldenBaseline::testGoldenJson()
         R"("d1e2f3a4-0b1c-4d2e-9f3a-4b5c6d7e8f90","device_name":"鸽邮测试端",)"
         R"("addresses":["192.168.1.10","10.0.0.8"],"tcp_port":35100,)"
         R"("discovery_port":45678,"ttl_seconds":30})");
-    const QJsonObject registerObject = QJsonDocument::fromJson(registerRequest).object();
-    QString parseError;
+    const nlohmann::json registerObject = nlohmann::json::parse(
+        registerRequest.constData(), registerRequest.constData() + registerRequest.size(), nullptr, false);
+    std::string parseError;
     QCOMPARE(RendezvousProtocol::parseRequest(registerObject, &parseError),
              RendezvousProtocol::MessageType::Register);
-    QCOMPARE(RendezvousProtocol::extractRoom(registerObject), QStringLiteral("default"));
-    QCOMPARE(RendezvousProtocol::extractToken(registerObject), QStringLiteral("测试-令牌"));
+    QCOMPARE(RendezvousProtocol::extractRoom(registerObject), std::string("default"));
+    QCOMPARE(RendezvousProtocol::extractToken(registerObject), std::string("测试-令牌"));
     const OnlineRegistry::PeerInfo extracted = RendezvousProtocol::extractPeerInfo(registerObject);
     QCOMPARE(extracted.deviceId, peer1.deviceId);
-    QCOMPARE(extracted.deviceName, QStringLiteral("鸽邮测试端"));
+    QCOMPARE(extracted.deviceName, std::string("鸽邮测试端"));
     QCOMPARE(extracted.addresses, peer1.addresses);
     QCOMPARE(extracted.tcpPort, quint16(35100));
     QCOMPARE(extracted.discoveryPort, quint16(45678));
@@ -284,7 +287,8 @@ void TestGoldenBaseline::testGoldenJson()
     const QByteArray looseRegister = QByteArrayLiteral(
         R"({"type":"register","room":"r2","device_id":"x","device_name":"y",)"
         R"("addresses":["1.2.3.4"],"tcp_port":40000,"ttl_seconds":99999})");
-    const QJsonObject looseObject = QJsonDocument::fromJson(looseRegister).object();
+    const nlohmann::json looseObject = nlohmann::json::parse(
+        looseRegister.constData(), looseRegister.constData() + looseRegister.size(), nullptr, false);
     const OnlineRegistry::PeerInfo loose = RendezvousProtocol::extractPeerInfo(looseObject);
     QCOMPARE(loose.discoveryPort, quint16(45678));
     QCOMPARE(loose.ttlSeconds, gy::rendezvous::kMaxPeerTtlSeconds);
@@ -292,7 +296,9 @@ void TestGoldenBaseline::testGoldenJson()
     // —— list_peers 请求样本：类型识别固化 ——
     const QByteArray listRequest = QByteArrayLiteral(
         R"({"type":"list_peers","room":"default","device_id":"d1e2f3a4-0b1c-4d2e-9f3a-4b5c6d7e8f90"})");
-    QCOMPARE(RendezvousProtocol::parseRequest(QJsonDocument::fromJson(listRequest).object(), &parseError),
+    const nlohmann::json listObject = nlohmann::json::parse(
+        listRequest.constData(), listRequest.constData() + listRequest.size(), nullptr, false);
+    QCOMPARE(RendezvousProtocol::parseRequest(listObject, &parseError),
              RendezvousProtocol::MessageType::ListPeers);
 }
 

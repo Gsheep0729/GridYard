@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.25.0
-* @date 2026-10-08
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -29,6 +29,10 @@
 #include "relay_server.h"
 #include "transfer_session_model.h"
 #include "rendezvous_client.h"
+
+#include <nlohmann/json.hpp>
+
+#include "core/tcp_socket_core.h"
 #include "rendezvous_server.h"
 
 #include "test_utils/wait.h"
@@ -284,7 +288,7 @@ void TestSessionManager::testRelayDegradationNever()
 {
     // 连接真实协调服务器，使"策略放行"与"协调在线"两个条件同时成立，
     // 只有 NeverRelay 策略能阻止降级
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));
@@ -309,7 +313,7 @@ void TestSessionManager::testRelayDegradationNever()
 // 询问后中继：直连失败进入 awaiting_relay 并发射 relayConfirmRequested，用户取消后收敛
 void TestSessionManager::testRelayDegradationAsk()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));
@@ -339,7 +343,7 @@ void TestSessionManager::testRelayDegradationAsk()
 // 协调服务器离线时确认中继：会话以 failed 收敛并给出错误提示
 void TestSessionManager::testRetryViaRelayWithoutServer()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));
@@ -370,14 +374,16 @@ void TestSessionManager::testRetryViaRelayWithoutServer()
 // 全程无需 QML 参与，也不发射确认请求
 void TestSessionManager::testRelayDegradationAuto()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
     // 协调节点模式同端口内置中继（与 test_relay_chain 的装配一致）
-    RelayServer relay{port, QString(), &server};
-    QObject::connect(&server, &RendezvousServer::relayPipeRequested,
-                     &relay, &RelayServer::adoptConnection);
+    RelayServer relay{port, {}, server.reactor()};
+    server.setRelayPipeHandler([&relay](gy::net::TcpSocketCore *socket, const nlohmann::json &hello,
+                                        const std::vector<uint8_t> &pendingData) {
+        relay.adoptConnection(socket, hello, pendingData);
+    });
 
     // 本 fixture 的 P2pServer 兼任接收端入口：中继 socket 交给首帧路由
     _config->setTcpPort(0);
@@ -451,7 +457,7 @@ void TestSessionManager::testRelayDegradationAuto()
 // 活动会话重复取消：首次取消收敛为 cancelled，重复取消被终态守卫忽略
 void TestSessionManager::testRepeatedCancelOnLiveSession()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     RendezvousClient client;
     client.connectToServer(QStringLiteral("127.0.0.1"), static_cast<int>(server.serverPort()));

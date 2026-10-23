@@ -1,7 +1,7 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GY
 * @brief   Relay 降级链路测试
 *
@@ -19,6 +19,12 @@
 #include <QTemporaryDir>
 #include <QThread>
 
+#include <nlohmann/json.hpp>
+
+#include <sys/socket.h>
+
+#include <cstring>
+
 #include "config_manager.h"
 #include "file_receiver_worker.h"
 #include "file_sender_worker.h"
@@ -26,6 +32,7 @@
 #include "protocol.h"
 #include "online_registry.h"
 #include "p2p_server.h"
+#include "core/tcp_socket_core.h"
 #include "posix_tcp_server.h"
 #include "posix_tcp_socket.h"
 #include "relay_server.h"
@@ -94,7 +101,7 @@ void TestRelayChain::cleanupTestCase()
 // 邀请登记后由目标设备一次性领取，重复轮询为空，目标离线直接报错
 void TestRelayChain::testInvitePollFlow()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
@@ -158,14 +165,16 @@ void TestRelayChain::testInvitePollFlow()
 // relay_create / relay_join 走协调端口：发送端收到 relay_ready 后字节双向转发
 void TestRelayChain::testRelayPipeOnRendezvousPort()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
     // 协调节点模式同端口内置中继（与 rendezvous/main.cpp 的装配一致）
-    RelayServer relay{port, QString(), &server};
-    QObject::connect(&server, &RendezvousServer::relayPipeRequested,
-                     &relay, &RelayServer::adoptConnection);
+    RelayServer relay{port, {}, server.reactor()};
+    server.setRelayPipeHandler([&relay](gy::net::TcpSocketCore *socket, const nlohmann::json &hello,
+                                        const std::vector<uint8_t> &pendingData) {
+        relay.adoptConnection(socket, hello, pendingData);
+    });
 
     // 发送端握手建会话；中继会话会接管 socket 的归属，必须堆分配
     auto *sender = new gy::net::PosixTcpSocket;
@@ -207,14 +216,16 @@ void TestRelayChain::testRelayPipeOnRendezvousPort()
 // 端到端：邀请信令 + 中继管道 + 真 TLV 传输，文件经中继完整落地
 void TestRelayChain::testEndToEndFileTransferThroughRelay()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
     // 协调节点模式同端口内置中继（与 rendezvous/main.cpp 的装配一致）
-    RelayServer relay{port, QString(), &server};
-    QObject::connect(&server, &RendezvousServer::relayPipeRequested,
-                     &relay, &RelayServer::adoptConnection);
+    RelayServer relay{port, {}, server.reactor()};
+    server.setRelayPipeHandler([&relay](gy::net::TcpSocketCore *socket, const nlohmann::json &hello,
+                                        const std::vector<uint8_t> &pendingData) {
+        relay.adoptConnection(socket, hello, pendingData);
+    });
 
     // 接收端：P2pServer 监听随机端口，中继邀请到达后加入会话
     _config->setTcpPort(0);
@@ -310,7 +321,7 @@ void TestRelayChain::testEndToEndFileTransferThroughRelay()
 // 房间隔离：room 含 ":" 时不与其他房间互通（二级哈希存储，无前缀扫描绕过）
 void TestRelayChain::testRoomIsolation()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
@@ -368,7 +379,7 @@ void TestRelayChain::testRoomIsolation()
 // 超长控制行：服务端主动断开，不做无界缓冲
 void TestRelayChain::testOversizeLineDrops()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
 
     auto *socket = new gy::net::PosixTcpSocket;
@@ -386,7 +397,7 @@ void TestRelayChain::testOversizeLineDrops()
 // 握手与空闲超时：不发首行或注册后长期沉默的连接被回收
 void TestRelayChain::testSessionTimeouts()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     server.setSessionTimeouts(400, 500);  // 缩短超时便于测试
 
@@ -415,7 +426,7 @@ void TestRelayChain::testSessionTimeouts()
 // 会话数上限：超出上限的新连接被直接拒绝
 void TestRelayChain::testSessionCap()
 {
-    RendezvousServer server{0, QString(), 2};
+    RendezvousServer server{0, {}, 2};
     QVERIFY(server.start());
 
     QList<gy::net::PosixTcpSocket *> sockets;
@@ -459,25 +470,25 @@ void TestRelayChain::testRegistryLimits()
 
     registry.setRegistryLimits(1, 1);
     OnlineRegistry::PeerInfo first;
-    first.deviceId = QStringLiteral("dev-1");
-    QVERIFY(registry.upsertPeer(QStringLiteral("room-a"), first));
+    first.deviceId = "dev-1";
+    QVERIFY(registry.upsertPeer("room-a", first));
 
     OnlineRegistry::PeerInfo second;
-    second.deviceId = QStringLiteral("dev-2");
-    QVERIFY(!registry.upsertPeer(QStringLiteral("room-a"), second));
+    second.deviceId = "dev-2";
+    QVERIFY(!registry.upsertPeer("room-a", second));
 
     // 已注册设备重复注册（心跳刷新）不拒绝
-    QVERIFY(registry.upsertPeer(QStringLiteral("room-a"), first));
+    QVERIFY(registry.upsertPeer("room-a", first));
 
     // 房间数已满，新房间整体拒绝
-    QVERIFY(!registry.upsertPeer(QStringLiteral("room-b"), second));
-    QCOMPARE(registry.roomCount(QStringLiteral("room-a")), 1);
+    QVERIFY(!registry.upsertPeer("room-b", second));
+    QCOMPARE(registry.roomCount("room-a"), 1);
 }
 
 // 服务端注册超限：第二台设备收到 error 响应而不是注册确认
 void TestRelayChain::testRegisterRejectsWhenRoomFull()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     server.setRegistryLimits(1, 1);
 
@@ -504,7 +515,7 @@ void TestRelayChain::testRegisterRejectsWhenRoomFull()
 // 自报超大 TTL 经线路被夹紧，注册确认回写的是夹紧后的值
 void TestRelayChain::testRegisterAckClampsTtl()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
 
     auto *socket = new gy::net::PosixTcpSocket;
@@ -527,7 +538,7 @@ void TestRelayChain::testRegisterAckClampsTtl()
 // 会话等待超时：只有一端加入的会话在超时后被回收
 void TestRelayChain::testRelaySessionWaitTimeout()
 {
-    RelayServer relay{0, QString()};
+    RelayServer relay{0, {}};
     QVERIFY(relay.start());
     relay.setSessionWaitMs(200);
 
@@ -549,56 +560,56 @@ void TestRelayChain::testRelaySessionWaitTimeout()
 // relay_id 复用竞态：旧会话的迟到二次关闭不得误删同 id 新会话的注册表项
 void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
 {
-    RelayServer relay{0, QString()};
+    RelayServer relay{0, {}};
     QVERIFY(relay.start());
 
-    // 本地馈送服务器造可控 socket 对：client 端交给中继，peer 端握在测试手里
-    gy::net::PosixTcpServer feeder;
-    QVERIFY(feeder.listen(gy::net::IpAddress::localHost(), 0));
-    const auto makePair = [&feeder](gy::net::PosixTcpSocket **client, gy::net::PosixTcpSocket **peer) {
-        auto *local = new gy::net::PosixTcpSocket;
-        local->connectToHost(gy::net::IpAddress::localHost(), feeder.serverPort());
-        QTRY_VERIFY_WITH_TIMEOUT(local->state() == gy::net::SocketState::ConnectedState, 3000);
-        QTRY_VERIFY_WITH_TIMEOUT(feeder.hasPendingConnections(), 3000);
-        *client = local;
-        *peer = feeder.nextPendingConnection();
+    // 本地馈送服务器造可控 socket 对：socketpair 一端包装为核心套接字交给中继，
+    // 另一端经描述符接管留在测试手里（等价于旧 feeder 的 accepted 侧）
+    const auto makePair = [&relay](gy::net::TcpSocketCore **relayEnd, gy::net::PosixTcpSocket **peerEnd) {
+        int pairFd[2] = {-1, -1};
+        QVERIFY(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pairFd) == 0);
+        auto *core = new gy::net::TcpSocketCore{*relay.reactor()};
+        QVERIFY(core->adopt(pairFd[0]));
+        auto *peer = new gy::net::PosixTcpSocket;
+        QVERIFY(peer->adoptDescriptor(pairFd[1]));
+        *relayEnd = core;
+        *peerEnd = peer;
     };
 
-    gy::net::PosixTcpSocket *sockS = nullptr;
+    // 创建顺序回调捕获会话对象指针（替代旧 findChildren 的创建序列）
+    std::vector<RelaySession *> createdSessions;
+    relay.setSessionCreatedHandler([&createdSessions](RelaySession *session) {
+        createdSessions.push_back(session);
+    });
+
+    gy::net::TcpSocketCore *sockS = nullptr;
     gy::net::PosixTcpSocket *peerS = nullptr;
     makePair(&sockS, &peerS);
-    QJsonObject createHello;
-    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
-    createHello[QStringLiteral("relay_id")] = QStringLiteral("reuse-id");
-    relay.adoptConnection(sockS, createHello, {});
+    relay.adoptConnection(sockS, nlohmann::json{{"type", "relay_create"}, {"relay_id", "reuse-id"}}, {});
     QCOMPARE(relay.sessionCount(), 1);
 
-    // 后续复用所需的 socket 对提前建好，避免在关闭处理器里泵事件打乱时序
-    gy::net::PosixTcpSocket *sockS2 = nullptr;
+    // 后续复用所需的 socket 对提前建好，避免在关闭处理器里建连打乱时序
+    gy::net::TcpSocketCore *sockS2 = nullptr;
     gy::net::PosixTcpSocket *peerS2 = nullptr;
-    gy::net::PosixTcpSocket *sockR2 = nullptr;
+    gy::net::TcpSocketCore *sockR2 = nullptr;
     gy::net::PosixTcpSocket *peerR2 = nullptr;
     makePair(&sockS2, &peerS2);
     makePair(&sockR2, &peerR2);
 
-    QJsonObject create2;
-    create2[QStringLiteral("type")] = QStringLiteral("relay_create");
-    create2[QStringLiteral("relay_id")] = QStringLiteral("reuse-id");
-
     // 复用窗口模拟：第一次关闭的处理器里旧会话尚未析构，此刻同 id 新会话入表，
     // 并让旧会话对象再发一次迟到的 sessionClosed
-    QSignalSpy closedSpy(&relay, &RelayServer::sessionClosed);
+    int closedCount = 0;
     bool adopted = false;
-    QObject::connect(&relay, &RelayServer::sessionClosed, &relay, [&](const QString &) {
+    relay.setSessionClosedHandler([&](RelaySession *) {
+        closedCount++;
         if (adopted) {
             return;
         }
         adopted = true;
-        relay.adoptConnection(sockS2, create2, {});
-        // relay 的子会话按创建顺序排列：first 是旧会话 S1，second 是刚入表的 S2
-        const auto sessions = relay.findChildren<RelaySession *>();
-        QCOMPARE(sessions.size(), 2);
-        emit sessions.first()->sessionClosed();
+        relay.adoptConnection(sockS2, nlohmann::json{{"type", "relay_create"}, {"relay_id", "reuse-id"}}, {});
+        // 创建序列：first 是旧会话 S1，second 是刚入表的 S2
+        QCOMPARE(createdSessions.size(), size_t(2));
+        createdSessions.front()->notifyClosed();
     });
 
     // S1 的发送端断开触发第一次关闭；窗口内的迟到关闭应被指针判等挡下
@@ -606,15 +617,12 @@ void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
     QTRY_VERIFY_WITH_TIMEOUT(adopted, 3000);
     QTest::qWait(50);
 
-    // 只有真正的第一次关闭对外发信号；迟到的关闭被挡下，S2 保持在表
-    QCOMPARE(closedSpy.count(), 1);
+    // 只有真正的第一次关闭对外通知；迟到的关闭被挡下，S2 保持在表
+    QCOMPARE(closedCount, 1);
     QCOMPARE(relay.sessionCount(), 1);
 
     // S2 仍然可用：接收端加入后其发送端收到 relay_ready
-    QJsonObject join2;
-    join2[QStringLiteral("type")] = QStringLiteral("relay_join");
-    join2[QStringLiteral("relay_id")] = QStringLiteral("reuse-id");
-    relay.adoptConnection(sockR2, join2, {});
+    relay.adoptConnection(sockR2, nlohmann::json{{"type", "relay_join"}, {"relay_id", "reuse-id"}}, {});
     QVERIFY(waitBytes(peerS2, 10).contains("relay_ready"));
     QCOMPARE(relay.sessionCount(), 1);
 }
@@ -622,38 +630,36 @@ void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
 // 握手行后同包携带的残字节先于后续新数据转发
 void TestRelayChain::testRelayResidualBytesOrder()
 {
-    RelayServer relay{0, QString()};
+    RelayServer relay{0, {}};
     QVERIFY(relay.start());
 
-    gy::net::PosixTcpServer feeder;
-    QVERIFY(feeder.listen(gy::net::IpAddress::localHost(), 0));
-    const auto makePair = [&feeder](gy::net::PosixTcpSocket **client,
-                                    gy::net::PosixTcpSocket **peer) {
-        auto *local = new gy::net::PosixTcpSocket;
-        local->connectToHost(gy::net::IpAddress::localHost(), feeder.serverPort());
-        QTRY_VERIFY_WITH_TIMEOUT(local->state() == gy::net::SocketState::ConnectedState, 3000);
-        QTRY_VERIFY_WITH_TIMEOUT(feeder.hasPendingConnections(), 3000);
-        *client = local;
-        *peer = feeder.nextPendingConnection();
+    const auto makePair = [&relay](gy::net::TcpSocketCore **coreEnd, gy::net::PosixTcpSocket **peerEnd) {
+        int pairFd[2] = {-1, -1};
+        QVERIFY(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pairFd) == 0);
+        auto *core = new gy::net::TcpSocketCore{*relay.reactor()};
+        QVERIFY(core->adopt(pairFd[0]));
+        auto *peer = new gy::net::PosixTcpSocket;
+        QVERIFY(peer->adoptDescriptor(pairFd[1]));
+        *coreEnd = core;
+        *peerEnd = peer;
     };
 
-    gy::net::PosixTcpSocket *sender = nullptr;
+    gy::net::TcpSocketCore *sender = nullptr;
     gy::net::PosixTcpSocket *senderPeer = nullptr;
-    gy::net::PosixTcpSocket *receiver = nullptr;
+    gy::net::TcpSocketCore *receiver = nullptr;
     gy::net::PosixTcpSocket *receiverPeer = nullptr;
     makePair(&sender, &senderPeer);
     makePair(&receiver, &receiverPeer);
 
-    QJsonObject createHello;
-    createHello[QStringLiteral("type")] = QStringLiteral("relay_create");
-    createHello[QStringLiteral("relay_id")] = QStringLiteral("residual-order");
-    relay.adoptConnection(sender, createHello, "S-RESIDUAL");
+    const auto residual = [](const char *text) {
+        return std::vector<uint8_t>(text, text + std::strlen(text));
+    };
+    relay.adoptConnection(sender, nlohmann::json{{"type", "relay_create"}, {"relay_id", "residual-order"}},
+                          residual("S-RESIDUAL"));
     QCOMPARE(relay.sessionCount(), 1);
 
-    QJsonObject joinHello;
-    joinHello[QStringLiteral("type")] = QStringLiteral("relay_join");
-    joinHello[QStringLiteral("relay_id")] = QStringLiteral("residual-order");
-    relay.adoptConnection(receiver, joinHello, "R-RESIDUAL");
+    relay.adoptConnection(receiver, nlohmann::json{{"type", "relay_join"}, {"relay_id", "residual-order"}},
+                          residual("R-RESIDUAL"));
 
     QJsonObject readyJson;
     readyJson[QStringLiteral("type")] = QStringLiteral("relay_ready");
@@ -682,7 +688,7 @@ void TestRelayChain::testRelayResidualBytesOrder()
 // 响应写积压超限：消费过慢的客户端被服务端主动断开
 void TestRelayChain::testResponseBackpressureDisconnects()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     server.setMaxResponseQueueBytes(16 * 1024);
 
@@ -708,13 +714,15 @@ void TestRelayChain::testResponseBackpressureDisconnects()
 // 协调节点配 token：带令牌的中继握手放行，错令牌回 relay_error
 void TestRelayChain::testRelayPipeWithToken()
 {
-    RendezvousServer server{0, QStringLiteral("secret")};
+    RendezvousServer server{0, "secret"};
     QVERIFY(server.start());
     const quint16 port = server.serverPort();
 
-    RelayServer relay{port, QStringLiteral("secret"), &server};
-    QObject::connect(&server, &RendezvousServer::relayPipeRequested,
-                     &relay, &RelayServer::adoptConnection);
+    RelayServer relay{port, "secret", server.reactor()};
+    server.setRelayPipeHandler([&relay](gy::net::TcpSocketCore *socket, const nlohmann::json &hello,
+                                        const std::vector<uint8_t> &pendingData) {
+        relay.adoptConnection(socket, hello, pendingData);
+    });
 
     // 错令牌在协调会话的分流之前就被控制面拒绝，收到通用 error 响应
     auto *bad = new gy::net::PosixTcpSocket;
@@ -761,7 +769,7 @@ void TestRelayChain::testRelayPipeWithToken()
 // 独立监听模式配 token：握手行走 LineSession 路径同样校验
 void TestRelayChain::testStandaloneRelayWithToken()
 {
-    RelayServer relay{0, QStringLiteral("secret")};
+    RelayServer relay{0, "secret"};
     QVERIFY(relay.start());
 
     // 错令牌被拒
@@ -838,7 +846,7 @@ void TestRelayChain::testCancelDuringRelayWait()
 // 独立监听模式基本转发：不经协调节点，直连中继端口完成握手与双向字节转发
 void TestRelayChain::testStandaloneRelayForwarding()
 {
-    RelayServer relay{0, QString()};
+    RelayServer relay{0, {}};
     QVERIFY(relay.start());
 
     auto *sender = new gy::net::PosixTcpSocket;

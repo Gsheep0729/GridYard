@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -11,7 +11,7 @@
 */
 
 #include "file_sender_worker.h"
-#include "rendezvous_protocol_keys.h"
+#include "rendezvous_protocol_keys_qt.h"
 #include "frame_codec.h"
 #include "posix_tcp_socket.h"
 #include "protocol.h"
@@ -221,10 +221,10 @@ void FileSenderWorker::setTimeoutMs(int timeoutMs)
 bool FileSenderWorker::waitForRelayReady()
 {
     QJsonObject hello;
-    hello[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayCreate;
-    hello[gy::rendezvous::kKeyRelayId] = _relayId;
+    hello[gy::rendezvous::key(gy::rendezvous::kKeyType)] = gy::rendezvous::key(gy::rendezvous::kTypeRelayCreate);
+    hello[gy::rendezvous::key(gy::rendezvous::kKeyRelayId)] = _relayId;
     if (!_relayToken.isEmpty()) {
-        hello[gy::rendezvous::kKeyToken] = _relayToken;
+        hello[gy::rendezvous::key(gy::rendezvous::kKeyToken)] = _relayToken;
     }
     QByteArray helloLine = QJsonDocument(hello).toJson(QJsonDocument::Compact) + '\n';
     if (_socket->write(helloLine) != helloLine.size()) {
@@ -280,9 +280,9 @@ bool FileSenderWorker::processRelayControlData(const QByteArray &data)
         }
 
         const QString type = doc.object()[QStringLiteral("type")].toString();
-        if (type == gy::rendezvous::kTypeRelayReady) {
+        if (type == gy::rendezvous::key(gy::rendezvous::kTypeRelayReady)) {
             _relayReady = true;
-        } else if (type == gy::rendezvous::kTypeRelayError) {
+        } else if (type == gy::rendezvous::key(gy::rendezvous::kTypeRelayError)) {
             finish(false, gy::protocol::ErrorCode::ConnectionLost,
                    tr("中继传输失败: %1").arg(doc.object()[QStringLiteral("message")].toString()));
             return false;

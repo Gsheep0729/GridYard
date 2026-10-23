@@ -1,7 +1,7 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
 *
@@ -144,7 +144,7 @@ void TestRendezvousCoordinator::testDisabledByDefault()
 // 启用后连接注册并拉取候选：协调服务器上的辅助设备进入发现列表
 void TestRendezvousCoordinator::testEnableConnectsAndFetchesPeers()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     _config->setRendezvousPort(static_cast<int>(server.serverPort()));
 
@@ -176,9 +176,9 @@ void TestRendezvousCoordinator::testDisableStaysDisconnected()
 // 修改端口后即时切换到新服务器并完成注册与拉取
 void TestRendezvousCoordinator::testPortChangeReconnects()
 {
-    RendezvousServer firstServer{0, QString()};
+    RendezvousServer firstServer{0, {}};
     QVERIFY(firstServer.start());
-    RendezvousServer secondServer{0, QString()};
+    RendezvousServer secondServer{0, {}};
     QVERIFY(secondServer.start());
 
     _config->setRendezvousPort(static_cast<int>(firstServer.serverPort()));

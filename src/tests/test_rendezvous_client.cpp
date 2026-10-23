@@ -1,7 +1,7 @@
 /**
 * @file    test_rendezvous_client.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GY
 * @brief   协调节点客户端测试
 *
@@ -58,22 +58,27 @@ void TestRendezvousClient::connectAndRegister(RendezvousClient &client, Rendezvo
 // 双栈监听下 IPv4 客户端地址按点分十进制上报，不带映射前缀
 void TestRendezvousClient::testDualStackAddressNormalized()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
 
-    QSignalSpy connectedSpy(&server, &RendezvousServer::clientConnected);
+    QString connectedAddress;
+    int connectedCount = 0;
+    server.setClientConnectedHandler([&connectedAddress, &connectedCount](const std::string &address) {
+        connectedAddress = QString::fromStdString(address);
+        connectedCount++;
+    });
     gy::net::PosixTcpSocket client;
     client.connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
     QVERIFY(client.waitForConnected(3000));
-    QTRY_COMPARE_WITH_TIMEOUT(connectedSpy.count(), 1, 3000);
-    QCOMPARE(connectedSpy.first().at(0).toString(), QStringLiteral("127.0.0.1"));
+    QTRY_COMPARE_WITH_TIMEOUT(connectedCount, 1, 3000);
+    QCOMPARE(connectedAddress, QStringLiteral("127.0.0.1"));
     client.disconnectFromHost();
 }
 
 // 注册后应收到带 TTL 的注册确认
 void TestRendezvousClient::testRegisterReceivesAck()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
     QVERIFY(server.serverPort() > 0);
 
@@ -90,7 +95,7 @@ void TestRendezvousClient::testRegisterReceivesAck()
 // list_peers 携带 device_id 后服务端会过滤请求者自身，候选列表不再包含本机
 void TestRendezvousClient::testListPeersContainsOtherDevice()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
 
     RendezvousClient clientA;
@@ -115,7 +120,7 @@ void TestRendezvousClient::testListPeersContainsOtherDevice()
 // 目标设备在线时，中继邀请应被协调服务器受理并回 ack
 void TestRendezvousClient::testRelayInviteAckForOnlineTarget()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
 
     RendezvousClient clientA;
@@ -133,7 +138,7 @@ void TestRendezvousClient::testRelayInviteAckForOnlineTarget()
 // 主动断开后连接状态复位
 void TestRendezvousClient::testDisconnectStopsSession()
 {
-    RendezvousServer server{0, QString()};
+    RendezvousServer server{0, {}};
     QVERIFY(server.start());
 
     RendezvousClient client;
@@ -189,7 +194,7 @@ void TestRendezvousClient::testPeerEndpointToVariantMap()
 // 服务器配 token、客户端携带相同 token 时注册应正常往返
 void TestRendezvousClient::testRegisterWithTokenSucceeds()
 {
-    RendezvousServer server{0, QStringLiteral("secret")};
+    RendezvousServer server{0, "secret"};
     QVERIFY(server.start());
 
     RendezvousClient client;
@@ -209,7 +214,7 @@ void TestRendezvousClient::testRegisterWithTokenSucceeds()
 // 客户端令牌与服务器不一致时所有控制消息被拒
 void TestRendezvousClient::testRegisterWithWrongTokenRejected()
 {
-    RendezvousServer server{0, QStringLiteral("secret")};
+    RendezvousServer server{0, "secret"};
     QVERIFY(server.start());
 
     RendezvousClient client;
@@ -233,7 +238,7 @@ void TestRendezvousClient::testReconnectAfterServerRestart()
     quint16 port = 0;
     RendezvousClient client;
     {
-        RendezvousServer server{0, QString()};
+        RendezvousServer server{0, {}};
         QVERIFY(server.start());
         port = server.serverPort();
 
@@ -245,7 +250,7 @@ void TestRendezvousClient::testReconnectAfterServerRestart()
     QTRY_VERIFY_WITH_TIMEOUT(!client.isConnected(), 5000);
 
     // 新服务器占用同一端口后，重连延迟（约 3 秒）内应自动恢复连接
-    RendezvousServer restarted{port, QString()};
+    RendezvousServer restarted{port, {}};
     QVERIFY(restarted.start());
     QTRY_VERIFY_WITH_TIMEOUT(client.isConnected(), 8000);
 }

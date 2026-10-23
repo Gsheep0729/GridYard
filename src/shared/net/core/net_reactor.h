@@ -5,17 +5,20 @@
 * @author  GridYard Team
 * @brief   单线程 poll 事件反应器——纯 C++23，不依赖任何 Qt 类型
 *
-* 仅用于 Linux/POSIX 平台（poll 与 eventfd 均为平台能力）。
-* 所有回调在 Reactor 线程中同步触发，禁止在回调内阻塞。
-* 代际计数（generation）由调用方维护：同一 fd 号被新连接复用时，
-* 旧监听的陈旧事件按代际不匹配被静默丢弃，杜绝误伤新连接。
-*/
+ * 仅用于 Linux/POSIX 平台（poll 与 eventfd 均为平台能力）。
+ * 所有回调在 Reactor 线程中同步触发，禁止在回调内阻塞。
+ * 代际计数（generation）由调用方维护：同一 fd 号被新连接复用时，
+ * 旧监听的陈旧事件按代际不匹配被静默丢弃，杜绝误伤新连接。
+ * 定时任务（scheduleAfter）由 poll 超时驱动：存在未到期任务时
+ * 等待上限自动收敛到最近到期时刻，任务到期后在 Reactor 线程执行。
+ */
 
 #pragma once
 
 #include <poll.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -61,6 +64,28 @@ public:
     // 取消监听并等待 Reactor 线程确认生效——用于 close(fd) 前的强制摘除，
     // 消除 fd 复用与对象析构窗口内的陈旧派发。禁止在 Reactor 线程内调用。
     void unwatchSync(int fd, uint64_t generation);
+    // 取消监听的即时形态：Reactor 线程内调用时直接从监听表摘除，
+    // 其余线程退化为 unwatchSync。同样用于 close(fd) 前的安全摘除。
+    void unwatchNow(int fd, uint64_t generation);
+
+    // 定时任务句柄（单调递增，0 表示无效）
+    using TimerId = uint64_t;
+
+    // 在 Reactor 线程延迟 delayMs 毫秒执行回调（任意线程可调用；
+    // 返回句柄用于取消）。回调内禁止阻塞，禁止再同步等待本泵。
+    TimerId scheduleAfter(int delayMs, std::function<void()> callback);
+    // 取消定时任务（尽力语义：已进入执行的回调无法打断）。
+    // Reactor 线程内调用立即生效；句柄为 0 时为空操作。
+    void cancelTimer(TimerId timerId);
+    // 在 Reactor 线程同步执行任务并返回：外部线程投递并等待完成，
+    // Reactor 线程内或泵未运行时直接执行。用于跨线程安全触碰
+    // 泵归属对象；禁止与 stop 并发调用，禁止任务内自等待。
+    void dispatchSync(std::function<void()> task);
+
+    // 事件泵是否在运行（start 后台线程或 run 前台循环）
+    bool isRunning() const { return _running.load(); }
+    // 当前调用是否发生在 Reactor 线程（start 的泵线程或 run 的调用线程）
+    bool onReactorThread() const;
 
     // 唤醒 Reactor 线程（watch/unwatch 内部已自动调用）
     void wakeup();
@@ -70,6 +95,12 @@ private:
     void runLoop();
     // 把命令队列应用到监听表（仅 Reactor 线程调用）
     void applyPendingCmds();
+    // 把定时/任务命令应用到任务表（仅 Reactor 线程调用）
+    void applyPendingTimers();
+    // 逐个执行已到期的定时任务（仅 Reactor 线程调用）
+    void runDueTimers();
+    // 计算本轮 poll 等待上限：有定时任务时收敛到最近到期时刻
+    int pollTimeoutMs() const;
     // 派发一轮就绪事件（仅 Reactor 线程调用）
     void dispatchEvents(const std::vector<struct pollfd> &fds);
 
@@ -90,17 +121,37 @@ private:
         EventCallback cb;          // 事件回调
     };
 
+    // 跨线程投递的定时/任务命令（与监听命令共用一把锁）
+    struct TimerCmd {
+        uint64_t              id = 0;      // 目标定时任务句柄
+        int                   delayMs = 0; // 延迟毫秒数（0 表示尽快）
+        std::function<void()> task;        // 到期回调
+        bool                  isCancel = false;  // true 表示取消
+        bool                  needAck = false;   // true 表示同步任务，立即执行并应答
+    };
+
+    // 定时任务条目（仅 Reactor 线程访问，无锁）
+    struct TimerEntry {
+        std::chrono::steady_clock::time_point deadline;  // 到期时刻
+        std::function<void()>                 callback;  // 到期回调
+    };
+
     int                        _eventfd = -1;   // eventfd 唤醒句柄
     std::thread                _thread;         // Reactor 线程（start 模式）
     std::atomic<bool>          _running{false};  // 主循环运行标志
     bool                       _ownThread = false;  // start 模式标志（stop 需 join）
+    std::atomic<uint64_t>      _loopThreadId{0};  // Reactor 线程标识（thread::id 哈希，0=未运行）
 
     std::mutex                 _cmdMutex;       // 保护命令队列
-    std::vector<WatchCmd>      _pendingCmds;    // 跨线程投递的命令
-    uint64_t                   _ackSerial = 0;  // 已确认完成的命令序号
-    std::condition_variable    _ackCond;        // unwatchSync 等待确认
+    std::vector<WatchCmd>      _pendingCmds;    // 跨线程投递的监听命令
+    std::vector<TimerCmd>      _pendingTimers;  // 跨线程投递的定时/任务命令
+    uint64_t                   _ackSerial = 0;  // 已确认完成的监听命令序号
+    uint64_t                   _taskAckSerial = 0;  // 已确认完成的任务批序号
+    std::condition_variable    _ackCond;        // unwatchSync/dispatchSync 等待确认
 
+    std::atomic<uint64_t>      _nextTimerId{1};  // 定时任务句柄发号器
     std::unordered_map<int, FdEntry> _watches;  // fd → 监听条目（仅 Reactor 线程）
+    std::unordered_map<TimerId, TimerEntry> _timers;  // 生效中的定时任务（仅 Reactor 线程）
 };
 
 // 客户端进程共享的默认 Reactor 单例：首次访问自动 start，进程退出随静态析构 stop

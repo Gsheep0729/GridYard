@@ -1,52 +1,54 @@
 /**
 * @file    relay_server.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 */
 
 #include "relay_server.h"
 #include "rendezvous_limits.h"
+#include "rendezvous_log.h"
 #include "rendezvous_protocol_keys.h"
 
-#include "ip_address.h"
-#include "posix_tcp_server.h"
-#include "posix_tcp_socket.h"
-
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QUuid>
+#include <utility>
 
 using namespace gy::rendezvous;
 
 // -------------------- RelaySession --------------------
 
 // 构造函数
-RelaySession::RelaySession(const QString &relayId, int waitMs, QObject *parent)
-    : QObject{parent}
-    , _relayId{relayId}
+RelaySession::RelaySession(const std::string &relayId, int waitMs, gy::net::NetReactor &reactor,
+                           ClosedNotify onClosed, CloseDelegator closeDelegator)
+    : _relayId{relayId}
+    , _reactor{reactor}
+    , _onClosed{std::move(onClosed)}
+    , _closeDelegator{std::move(closeDelegator)}
 {
-    // 只有一端连接的会话可能永远等不到对端，超时后回收，避免 socket 长期悬挂
-    _idleTimer = new QTimer{this};
-    _idleTimer->setSingleShot(true);
-    _idleTimer->setInterval(waitMs);
-    connect(_idleTimer, &QTimer::timeout, this, [this]() {
+    // 只有一端连接的会话可能永远等不到对端，超时后回收，避免连接长期悬挂
+    _idleTimer = _reactor.scheduleAfter(waitMs, [this]() {
+        _idleTimer = 0;
         if (!isComplete()) {
-            qWarning() << "[RelaySession]" << _relayId << "等待对端加入超时，回收会话";
-            abort(QStringLiteral("session_timeout"), QStringLiteral("等待对端加入超时"));
+            logWarn("[RelaySession] " + _relayId + " 等待对端加入超时，回收会话");
+            abort("session_timeout", "等待对端加入超时");
         }
     });
-    _idleTimer->start();
 }
 
-// 析构函数，清理 socket
+// 析构函数：持有中的连接委托服务端延迟回收，保证错误帧排空
 RelaySession::~RelaySession()
 {
-    closeSocketLater(_sender);
+    _reactor.cancelTimer(_idleTimer);
+    gy::net::TcpSocketCore *sockets[] = {_sender, _receiver};
     _sender = nullptr;
-    closeSocketLater(_receiver);
     _receiver = nullptr;
+    for (gy::net::TcpSocketCore *socket : sockets) {
+        if (socket && _closeDelegator) {
+            _closeDelegator(socket);
+        } else {
+            delete socket;
+        }
+    }
 }
 
 // 检查两端是否都连接完成
@@ -55,163 +57,164 @@ bool RelaySession::isComplete() const
     return _sender != nullptr && _receiver != nullptr;
 }
 
-bool RelaySession::addSender(gy::net::PosixTcpSocket *socket, const QByteArray &pendingData)
+// 添加发送端连接
+bool RelaySession::addSender(gy::net::TcpSocketCore *socket, const std::vector<uint8_t> &pendingData)
 {
     if (_sender != nullptr) {
         return false;
     }
 
     _sender = socket;
-    _sender->setParent(this);
     // 读缓冲封顶：转发暂停时形成 TCP 背压，内存有界
-    _sender->setReadBufferSize(kRelayPipeReadBufferBytes);
-
-    connect(_sender, &gy::net::PosixTcpSocket::readyRead, this, &RelaySession::onSenderReadyRead);
-    connect(_sender, &gy::net::PosixTcpSocket::bytesWritten, this, &RelaySession::onReceiverReadyRead);
-    connect(_sender, &gy::net::PosixTcpSocket::disconnected, this, &RelaySession::onSenderDisconnected);
+    _sender->setReadBufferLimit(kRelayPipeReadBufferBytes);
 
     // 同端口复用场景下握手行之后可能已捎带少量字节，缓存到齐备后转发
     if (!appendBacklog(_senderBacklog, pendingData)) {
-        // 拒绝接入前先断开已连的信号，否则 socket 后续事件仍会打进本会话
-        _sender->disconnect(this);
         _sender = nullptr;
         return false;
     }
 
-    qDebug() << "[RelaySession]" << _relayId << "发送端已连接";
+    wireSocket(_sender, true);
+    logInfo("[RelaySession] " + _relayId + " 发送端已连接");
     notifyReady();
     return true;
 }
 
 // 添加接收端连接
-bool RelaySession::addReceiver(gy::net::PosixTcpSocket *socket, const QByteArray &pendingData)
+bool RelaySession::addReceiver(gy::net::TcpSocketCore *socket, const std::vector<uint8_t> &pendingData)
 {
     if (_receiver != nullptr) {
         return false;
     }
 
     _receiver = socket;
-    _receiver->setParent(this);
-    _receiver->setReadBufferSize(kRelayPipeReadBufferBytes);
-
-    connect(_receiver, &gy::net::PosixTcpSocket::readyRead, this, &RelaySession::onReceiverReadyRead);
-    connect(_receiver, &gy::net::PosixTcpSocket::bytesWritten, this, &RelaySession::onSenderReadyRead);
-    connect(_receiver, &gy::net::PosixTcpSocket::disconnected, this, &RelaySession::onReceiverDisconnected);
+    _receiver->setReadBufferLimit(kRelayPipeReadBufferBytes);
 
     if (!appendBacklog(_receiverBacklog, pendingData)) {
-        // 拒绝接入前先断开已连的信号，否则 socket 后续事件仍会打进本会话
-        _receiver->disconnect(this);
         _receiver = nullptr;
         return false;
     }
 
-    qDebug() << "[RelaySession]" << _relayId << "接收端已连接";
+    wireSocket(_receiver, false);
+    logInfo("[RelaySession] " + _relayId + " 接收端已连接");
     notifyReady();
     return true;
 }
 
 // 会话未齐备时缓存积压字节，超限拒绝接入
-bool RelaySession::appendBacklog(QByteArray &backlog, const QByteArray &data)
+bool RelaySession::appendBacklog(std::vector<uint8_t> &backlog, const std::vector<uint8_t> &data)
 {
-    if (backlog.size() + data.size() > kMaxRelayBacklogBytes) {
-        qWarning() << "[RelaySession]" << _relayId << "积压超过上限，拒绝连接";
+    if (static_cast<std::ptrdiff_t>(backlog.size() + data.size()) > kMaxRelayBacklogBytes) {
+        logWarn("[RelaySession] " + _relayId + " 积压超过上限，拒绝连接");
         return false;
     }
-    if (!data.isEmpty()) {
-        backlog.append(data);
+    if (!data.empty()) {
+        backlog.insert(backlog.end(), data.begin(), data.end());
     }
     return true;
 }
 
-// 两端齐备后通知发送端可以开始传输，并转发齐备前缓存的字节
+// 装配一端连接的全部回调
+void RelaySession::wireSocket(gy::net::TcpSocketCore *socket, bool isSender)
+{
+    socket->setReadCallback([this, isSender]() { isSender ? onSenderRead() : onReceiverRead(); });
+    // 写队列排空（字节送入内核）即恢复对端方向的续传
+    socket->setWrittenCallback([this, isSender](int64_t) { isSender ? onReceiverRead() : onSenderRead(); });
+    socket->setCloseCallback([this, isSender](gy::net::SocketCloseReason) {
+        isSender ? onSenderClosed() : onReceiverClosed();
+    });
+    socket->setErrorCallback(nullptr);
+}
+
+// 两端齐备后通知发送端可以传输，并转发齐备前缓存的字节
 void RelaySession::notifyReady()
 {
     if (!isComplete()) {
         return;
     }
 
-    _idleTimer->stop();
+    _reactor.cancelTimer(_idleTimer);
+    _idleTimer = 0;
 
-    QJsonObject ready;
-    ready[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayReady;
-    _sender->write(QJsonDocument(ready).toJson(QJsonDocument::Compact) + '\n');
+    nlohmann::json ready;
+    ready[kKeyType] = kTypeRelayReady;
+    const std::string line = ready.dump() + '\n';
+    _sender->write(reinterpret_cast<const uint8_t *>(line.data()), line.size());
 
-    if (!_senderBacklog.isEmpty()) {
+    if (!_senderBacklog.empty()) {
         _receiver->write(_senderBacklog);
         _senderBacklog.clear();
     }
-    if (!_receiverBacklog.isEmpty()) {
+    if (!_receiverBacklog.empty()) {
         _sender->write(_receiverBacklog);
         _receiverBacklog.clear();
     }
 
-    qDebug() << "[RelaySession]" << _relayId << "两端齐备，已通知发送端";
+    logInfo("[RelaySession] " + _relayId + " 两端齐备，已通知发送端");
 }
 
 // 主动结束会话：向两端广播错误并关闭连接
-void RelaySession::abort(const QString &code, const QString &message)
+void RelaySession::abort(const std::string &code, const std::string &message)
 {
     broadcastError(code, message);
 
-    // 先摘除引用再关闭，避免 disconnected 槽重入
-    gy::net::PosixTcpSocket *sockets[] = {_sender, _receiver};
+    // 先摘除引用再关闭，避免关闭回调重入
+    gy::net::TcpSocketCore *sockets[] = {_sender, _receiver};
     _sender = nullptr;
     _receiver = nullptr;
-    _idleTimer->stop();
+    _reactor.cancelTimer(_idleTimer);
+    _idleTimer = 0;
 
-    for (gy::net::PosixTcpSocket *socket : sockets) {
-        closeSocketLater(socket);
+    for (gy::net::TcpSocketCore *socket : sockets) {
+        if (socket && _closeDelegator) {
+            _closeDelegator(socket);
+        }
     }
 
-    emit sessionClosed();
+    notifyClosed();
 }
 
-// 摘除归属后先排空写队列，断开完成或超时后再删除
-void RelaySession::closeSocketLater(gy::net::PosixTcpSocket *socket)
+// 发出会话关闭通知
+void RelaySession::notifyClosed()
 {
-    if (!socket) {
-        return;
+    if (_onClosed) {
+        _onClosed(this);
     }
-    socket->setParent(nullptr);
-    socket->disconnect(this);
-    QObject::connect(socket, &gy::net::PosixTcpSocket::disconnected,
-                     socket, &QObject::deleteLater);
-    QTimer::singleShot(1000, socket, &QObject::deleteLater);
-    socket->disconnectFromHost();
 }
 
 // 向两端广播错误消息
-void RelaySession::broadcastError(const QString &code, const QString &message)
+void RelaySession::broadcastError(const std::string &code, const std::string &message)
 {
-    QJsonObject error;
-    error[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayError;
-    error[gy::rendezvous::kKeyCode] = code;
-    error[gy::rendezvous::kKeyMessage] = message;
+    nlohmann::json error;
+    error[kKeyType] = kTypeRelayError;
+    error[kKeyCode] = code;
+    error[kKeyMessage] = message;
 
-    QByteArray data = QJsonDocument(error).toJson(QJsonDocument::Compact) + '\n';
+    const std::string data = error.dump() + '\n';
+    const auto bytes = reinterpret_cast<const uint8_t *>(data.data());
 
-    if (_sender && _sender->state() == gy::net::SocketState::ConnectedState) {
-        _sender->write(data);
+    if (_sender && _sender->isConnected()) {
+        _sender->write(bytes, data.size());
     }
-    if (_receiver && _receiver->state() == gy::net::SocketState::ConnectedState) {
-        _receiver->write(data);
+    if (_receiver && _receiver->isConnected()) {
+        _receiver->write(bytes, data.size());
     }
 }
 
 // 处理发送端可读事件，向接收端方向转发
-void RelaySession::onSenderReadyRead()
+void RelaySession::onSenderRead()
 {
     pump(_sender, _receiver);
 }
 
 // 处理接收端可读事件，向发送端方向转发
-void RelaySession::onReceiverReadyRead()
+void RelaySession::onReceiverRead()
 {
     pump(_receiver, _sender);
 }
 
-// 把 from 缓冲里的字节向 to 转发；对端写队列超限时暂停，其排空后由 bytesWritten 续传
-void RelaySession::pump(gy::net::PosixTcpSocket *from, gy::net::PosixTcpSocket *to)
+// 把 from 缓冲里的字节向 to 转发；对端写队列超限时暂停，其排空后由写完成回调续传
+void RelaySession::pump(gy::net::TcpSocketCore *from, gy::net::TcpSocketCore *to)
 {
     if (!from || !to || !isComplete()) {
         return;
@@ -220,96 +223,125 @@ void RelaySession::pump(gy::net::PosixTcpSocket *from, gy::net::PosixTcpSocket *
         return;
     }
     if (to->bytesToWrite() >= kMaxRelayPeerWriteQueue) {
-        return;  // 等待 to 的 bytesWritten 再次触发本方向
+        return;  // 等待 to 的写完成回调再次触发本方向
     }
 
-    const QByteArray data = from->readAll();
-    if (!data.isEmpty()) {
+    const std::vector<uint8_t> data = from->readAll();
+    if (!data.empty()) {
         to->write(data);
     }
 }
 
 // 处理发送端断开事件
-void RelaySession::onSenderDisconnected()
+void RelaySession::onSenderClosed()
 {
-    qDebug() << "[RelaySession]" << _relayId << "发送端断开";
+    logInfo("[RelaySession] " + _relayId + " 发送端断开");
     _sender = nullptr;
 
     // 关闭对端让传输方立刻感知断连，而不是等到超时
     if (_receiver) {
-        broadcastError(QStringLiteral("peer_left"), QStringLiteral("对端已断开"));
-        gy::net::PosixTcpSocket *receiver = _receiver;
+        broadcastError("peer_left", "对端已断开");
+        gy::net::TcpSocketCore *receiver = _receiver;
         _receiver = nullptr;
-        closeSocketLater(receiver);
+        if (_closeDelegator) {
+            _closeDelegator(receiver);
+        }
     }
 
-    emit sessionClosed();
+    notifyClosed();
 }
 
 // 处理接收端断开事件
-void RelaySession::onReceiverDisconnected()
+void RelaySession::onReceiverClosed()
 {
-    qDebug() << "[RelaySession]" << _relayId << "接收端断开";
+    logInfo("[RelaySession] " + _relayId + " 接收端断开");
     _receiver = nullptr;
 
     if (_sender) {
-        broadcastError(QStringLiteral("peer_left"), QStringLiteral("对端已断开"));
-        gy::net::PosixTcpSocket *sender = _sender;
+        broadcastError("peer_left", "对端已断开");
+        gy::net::TcpSocketCore *sender = _sender;
         _sender = nullptr;
-        closeSocketLater(sender);
+        if (_closeDelegator) {
+            _closeDelegator(sender);
+        }
     }
 
-    emit sessionClosed();
+    notifyClosed();
 }
 
 // -------------------- RelayServer --------------------
 
 // 构造函数
-RelayServer::RelayServer(quint16 port, const QString &token, QObject *parent)
-    : QObject{parent}
-    , _port{port}
+RelayServer::RelayServer(uint16_t port, const std::string &token, gy::net::NetReactor *reactor)
+    : _port{port}
     , _token{token}
     , _maxSessions{kMaxRelaySessions}
 {
-    _server = new gy::net::PosixTcpServer{this};
+    if (reactor) {
+        _reactor = reactor;
+    } else {
+        _ownReactor = std::make_unique<gy::net::NetReactor>();
+        _reactor = _ownReactor.get();
+        _ownReactor->start();
+    }
+    _server = std::make_unique<gy::net::TcpServerCore>(*_reactor);
 }
 
-// 析构函数，停止服务
+// 析构函数：停机清理并回收自建事件泵
 RelayServer::~RelayServer()
 {
-    stop();
+    if (_reactor->isRunning() && !_reactor->onReactorThread()) {
+        _reactor->dispatchSync([this]() { teardown(); });
+    } else {
+        teardown();
+    }
+    if (_ownReactor) {
+        _ownReactor->stop();
+    }
 }
 
 // 启动中继服务
 bool RelayServer::start()
 {
-    if (!_server->listen(gy::net::IpAddress::anyIpv6(), _port, gy::net::PosixTcpServer::DualStack)) {
-        emit serverStarted(false, _server->errorString());
+    if (!_server->listen(_port, true)) {
+        _listenError = _server->errorString();
+        logWarn("[RelayServer] 中继监听启动失败: " + _listenError);
         return false;
     }
+    _listenError.clear();
+    _port = _server->serverPort();
 
-    qInfo() << "[RelayServer] 中继服务监听端口" << _server->serverPort();
-    connect(_server, &gy::net::PosixTcpServer::newConnection, this, &RelayServer::onNewConnection);
-
-    emit serverStarted(true, QString());
+    logInfo("[RelayServer] 中继服务监听端口 " + std::to_string(_server->serverPort()));
+    _server->setConnectionCallback(
+        [this](int descriptor, const std::string &peerAddress) {
+            handleNewConnection(descriptor, peerAddress);
+        });
     return true;
 }
 
-// 停止中继服务并清理会话
+// 停止中继服务：注销监听，存量会话与握手等待转入延迟回收
 void RelayServer::stop()
 {
-    // 清理所有会话
-    for (RelaySession *session : std::as_const(_sessions)) {
-        session->deleteLater();
-    }
-    _sessions.clear();
+    runOnLoop([this]() {
+        _server->close();
 
-    _server->close();
-    qInfo() << "[RelayServer] 中继服务已停止";
+        for (LineSession *hello : _pendingHellos) {
+            retireLater(hello, [hello]() { delete hello; });
+        }
+        _pendingHellos.clear();
+
+        for (const auto &entry : _sessions) {
+            RelaySession *session = entry.second;
+            retireLater(session, [session]() { delete session; });
+        }
+        _sessions.clear();
+        _sessionCount.store(0);
+    });
+    logInfo("[RelayServer] 中继服务已停止");
 }
 
 // 获取服务监听端口
-quint16 RelayServer::serverPort() const
+uint16_t RelayServer::serverPort() const
 {
     return _server->serverPort();
 }
@@ -317,14 +349,14 @@ quint16 RelayServer::serverPort() const
 // 获取当前活跃会话数量
 int RelayServer::sessionCount() const
 {
-    return _sessions.size();
+    return _sessionCount.load();
 }
 
 // 调整并发中继会话上限
 void RelayServer::setMaxSessions(int maxSessions)
 {
     if (maxSessions > 0) {
-        _maxSessions = maxSessions;
+        runOnLoop([this, maxSessions]() { _maxSessions = maxSessions; });
     }
 }
 
@@ -332,150 +364,269 @@ void RelayServer::setMaxSessions(int maxSessions)
 void RelayServer::setSessionWaitMs(int waitMs)
 {
     if (waitMs > 0) {
-        _sessionWaitMs = waitMs;
+        runOnLoop([this, waitMs]() { _sessionWaitMs = waitMs; });
     }
 }
 
-// 接纳已由其他监听方完成首行握手的连接（协调节点同端口复用场景）
-void RelayServer::adoptConnection(gy::net::PosixTcpSocket *socket, const QJsonObject &hello,
-                                  const QByteArray &pendingData)
+// 接纳已由其他监听方完成首行握手的连接
+void RelayServer::adoptConnection(gy::net::TcpSocketCore *socket, const nlohmann::json &hello,
+                                  const std::vector<uint8_t> &pendingData)
 {
-    handleRelayHello(socket, hello, pendingData);
+    // 拷贝入队：跨线程调用时 hello/pendingData 的生命周期不归属本服务
+    runOnLoop([this, socket, hello, pendingData]() {
+        handleRelayHello(socket, hello, pendingData);
+    });
 }
 
-// 处理新的客户端连接：握手等待交给 LineSession（行上限 + 超时）
-void RelayServer::onNewConnection()
+// 装配会话创建通知
+void RelayServer::setSessionCreatedHandler(std::function<void(RelaySession *)> handler)
 {
-    while (_server->hasPendingConnections()) {
-        gy::net::PosixTcpSocket *socket = _server->nextPendingConnection();
-        if (!socket) {
-            continue;
-        }
+    _sessionCreatedHandler = std::move(handler);
+}
 
-        qDebug() << "[RelayServer] 新连接来自" << socket->peerAddress().toString();
+// 装配会话关闭通知
+void RelayServer::setSessionClosedHandler(std::function<void(RelaySession *)> handler)
+{
+    _sessionClosedHandler = std::move(handler);
+}
 
-        // 握手等待连接同样有上限，防止空连接堆积
-        if (_pendingHellos.size() >= _maxSessions) {
-            qWarning() << "[RelayServer] 握手等待达到上限，拒绝新连接";
-            dropConnection(socket, QStringLiteral("握手等待达到上限"));
-            continue;
-        }
-
-        auto *hello = new LineSession{socket, kMaxRelayHelloBytes, this};
-        _pendingHellos.insert(hello);
-
-        connect(hello, &LineSession::lineReady, this, [this, hello](const QByteArray &line) {
-            QJsonParseError error;
-            QJsonDocument doc = QJsonDocument::fromJson(line, &error);
-            if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-                hello->finishWithError(QStringLiteral("无效握手"));
-                return;
-            }
-
-            // 拿到合法握手：socket 移交中继会话，等待对象完成使命
-            _pendingHellos.remove(hello);
-            const QByteArray leftover = hello->pendingBytes();
-            gy::net::PosixTcpSocket *pipe = hello->takeSocket();
-            hello->deleteLater();
-            handleRelayHello(pipe, doc.object(), leftover);
-        });
-        connect(hello, &LineSession::closed, this, [this, hello]() {
-            _pendingHellos.remove(hello);
-            hello->deleteLater();
-        });
-
-        hello->startHandshakeTimeout(kRelayHelloTimeoutMs);
+// 会话关闭事件入口（按对象指针判等，迟到通知不误删新会话）
+void RelayServer::handleSessionClosed(RelaySession *session)
+{
+    if (!session) {
+        return;
     }
+    // 一端断开会二次触发关闭通知，relay_id 复用窗口内注册表里的同名键
+    // 可能已指向新会话，此时旧会话的迟到关闭不得误删新会话
+    const auto it = _sessions.find(session->relayId());
+    if (it == _sessions.end() || it->second != session) {
+        return;
+    }
+    const std::string relayId = session->relayId();
+    _sessions.erase(it);
+    _sessionCount.store(static_cast<int>(_sessions.size()));
+    logInfo("[RelayServer] 会话 " + relayId + " 已关闭");
+    if (_sessionClosedHandler) {
+        _sessionClosedHandler(session);
+    }
+    retireLater(session, [session]() { delete session; });
+}
+
+// 接入新连接：握手等待交给 LineSession（行上限 + 超时）
+void RelayServer::handleNewConnection(int descriptor, const std::string &peerAddress)
+{
+    logInfo("[RelayServer] 新连接来自 " + peerAddress);
+
+    // 握手等待连接同样有上限，防止空连接堆积
+    if (static_cast<int>(_pendingHellos.size()) >= _maxSessions) {
+        logWarn("[RelayServer] 握手等待达到上限，拒绝新连接");
+        gy::net::TcpSocketCore rejected{*_reactor};
+        rejected.adopt(descriptor);
+        rejected.abort();
+        return;
+    }
+
+    auto *socket = new gy::net::TcpSocketCore{*_reactor};
+    socket->adopt(descriptor);
+    auto *hello = new LineSession{*_reactor, socket, kMaxRelayHelloBytes};
+    _pendingHellos.insert(hello);
+
+    hello->setLineHandler([this, hello](const std::string &line) {
+        const nlohmann::json doc = nlohmann::json::parse(line, nullptr, false);
+        if (doc.is_discarded() || !doc.is_object()) {
+            hello->finishWithError("无效握手");
+            return;
+        }
+
+        // 拿到合法握手：socket 移交中继会话，等待对象完成使命
+        _pendingHellos.erase(hello);
+        const std::vector<uint8_t> leftover = hello->pendingBytes();
+        gy::net::TcpSocketCore *pipe = hello->takeSocket();
+        retireLater(hello, [hello]() { delete hello; });
+        handleRelayHello(pipe, doc, leftover);
+    });
+    hello->setClosedHandler([this, hello]() {
+        _pendingHellos.erase(hello);
+        retireLater(hello, [hello]() { delete hello; });
+    });
+
+    hello->startHandshakeTimeout(kRelayHelloTimeoutMs);
 }
 
 // 解析中继握手并按角色加入会话
-void RelayServer::handleRelayHello(gy::net::PosixTcpSocket *socket, const QJsonObject &json,
-                                   const QByteArray &pendingData)
+void RelayServer::handleRelayHello(gy::net::TcpSocketCore *socket, const nlohmann::json &json,
+                                   const std::vector<uint8_t> &pendingData)
 {
-    const QString type = json[gy::rendezvous::kKeyType].toString();
-    const QString relayId = json[gy::rendezvous::kKeyRelayId].toString();
+    std::string type;
+    std::string relayId;
+    std::string token;
+    const auto typeIt = json.find(kKeyType);
+    if (typeIt != json.end() && typeIt->is_string()) {
+        type = typeIt->get<std::string>();
+    }
+    const auto relayIt = json.find(kKeyRelayId);
+    if (relayIt != json.end() && relayIt->is_string()) {
+        relayId = relayIt->get<std::string>();
+    }
+    const auto tokenIt = json.find(kKeyToken);
+    if (tokenIt != json.end() && tokenIt->is_string()) {
+        token = tokenIt->get<std::string>();
+    }
 
     // 期望令牌非空时统一校验：协调分流与独立监听两条路径都经本入口，
     // 校验失败回 relay_error 后断开，消除独立模式无认证的死角
-    if (!_token.isEmpty() && json[gy::rendezvous::kKeyToken].toString() != _token) {
-        qWarning() << "[RelayServer] 中继握手令牌校验失败，拒绝连接";
-        QJsonObject error;
-        error[gy::rendezvous::kKeyType] = gy::rendezvous::kTypeRelayError;
-        error[gy::rendezvous::kKeyCode] = QStringLiteral("unauthorized");
-        error[gy::rendezvous::kKeyMessage] = QStringLiteral("访问令牌错误");
-        socket->write(QJsonDocument(error).toJson(QJsonDocument::Compact) + '\n');
-        socket->flush();
-        dropConnection(socket, QStringLiteral("访问令牌错误"));
+    if (!_token.empty() && token != _token) {
+        logWarn("[RelayServer] 中继握手令牌校验失败，拒绝连接");
+        nlohmann::json error;
+        error[kKeyType] = kTypeRelayError;
+        error[kKeyCode] = "unauthorized";
+        error[kKeyMessage] = "访问令牌错误";
+        const std::string data = error.dump() + '\n';
+        socket->write(reinterpret_cast<const uint8_t *>(data.data()), data.size());
+        dropConnection(socket, "访问令牌错误");
         return;
     }
 
-    if (relayId.isEmpty()) {
-        qWarning() << "[RelayServer] 缺少 relay_id";
-        dropConnection(socket, QStringLiteral("缺少 relay_id"));
+    if (relayId.empty()) {
+        logWarn("[RelayServer] 缺少 relay_id");
+        dropConnection(socket, "缺少 relay_id");
         return;
     }
-    if (type != gy::rendezvous::kTypeRelayCreate && type != gy::rendezvous::kTypeRelayJoin) {
-        qWarning() << "[RelayServer] 未知的中继握手类型" << type;
-        dropConnection(socket, QStringLiteral("未知握手类型"));
+    if (type != kTypeRelayCreate && type != kTypeRelayJoin) {
+        logWarn("[RelayServer] 未知的中继握手类型 " + type);
+        dropConnection(socket, "未知握手类型");
         return;
     }
 
     // 查找或创建会话；接收端先于发送端到达时同样允许先建会话
-    RelaySession *session = _sessions.value(relayId);
+    RelaySession *session = nullptr;
+    const auto sessionIt = _sessions.find(relayId);
+    if (sessionIt != _sessions.end()) {
+        session = sessionIt->second;
+    }
     if (!session) {
         // 并发会话达到上限时拒绝新建，已有会话不受影响
-        if (_sessions.size() >= _maxSessions) {
-            qWarning() << "[RelayServer] 会话数达到上限" << _maxSessions << "，拒绝新会话";
-            dropConnection(socket, QStringLiteral("会话数达到上限"));
+        if (static_cast<int>(_sessions.size()) >= _maxSessions) {
+            logWarn("[RelayServer] 会话数达到上限 " + std::to_string(_maxSessions) + "，拒绝新会话");
+            dropConnection(socket, "会话数达到上限");
             return;
         }
-        session = new RelaySession{relayId, _sessionWaitMs, this};
-        connect(session, &RelaySession::sessionClosed, this, &RelayServer::onSessionClosed);
-        _sessions.insert(relayId, session);
-        qDebug() << "[RelayServer] 创建新中继会话" << relayId;
-        emit sessionCreated(relayId);
+        session = new RelaySession{relayId, _sessionWaitMs, *_reactor,
+                                   [this](RelaySession *closed) { handleSessionClosed(closed); },
+                                   [this](gy::net::TcpSocketCore *sock) { closeSocketLater(sock); }};
+        _sessions.emplace(relayId, session);
+        _sessionCount.store(static_cast<int>(_sessions.size()));
+        logInfo("[RelayServer] 创建新中继会话 " + relayId);
+        if (_sessionCreatedHandler) {
+            _sessionCreatedHandler(session);
+        }
     }
 
-    const bool isSender = (type == gy::rendezvous::kTypeRelayCreate);
+    const bool isSender = (type == kTypeRelayCreate);
     const bool added = isSender ? session->addSender(socket, pendingData)
                                 : session->addReceiver(socket, pendingData);
 
     if (!added) {
-        qWarning() << "[RelayServer] 会话" << relayId << "无法添加连接（角色已满或已关闭）";
-        dropConnection(socket, QStringLiteral("会话角色已满"));
+        logWarn("[RelayServer] 会话 " + relayId + " 无法添加连接（角色已满或已关闭）");
+        dropConnection(socket, "会话角色已满");
     }
 }
 
 // 丢弃未完成握手的连接
-void RelayServer::dropConnection(gy::net::PosixTcpSocket *socket, const QString &reason)
+void RelayServer::dropConnection(gy::net::TcpSocketCore *socket, const std::string &reason)
 {
-    qWarning() << "[RelayServer] 关闭中继连接:" << reason;
+    logWarn("[RelayServer] 关闭中继连接: " + reason);
     if (!socket) {
         return;
     }
-    // 错误帧可能仍在写队列里，等断连后再删除，超时兜底回收
-    socket->setParent(nullptr);
-    QObject::connect(socket, &gy::net::PosixTcpSocket::disconnected,
-                     socket, &QObject::deleteLater);
-    QTimer::singleShot(1000, socket, &QObject::deleteLater);
+    // 错误帧可能仍在写队列里，等断连后再回收，超时兜底
+    closeSocketLater(socket);
+}
+
+// 摘除归属后先排空写队列，断开完成或 1 秒超时后再回收
+void RelayServer::closeSocketLater(gy::net::TcpSocketCore *socket)
+{
+    if (!socket) {
+        return;
+    }
+    if (_tearingDown) {
+        delete socket;  // 停机路径无并发回调，直接回收
+        return;
+    }
+    socket->setReadCallback(nullptr);
+    socket->setWrittenCallback(nullptr);
+    socket->setErrorCallback(nullptr);
+    _closingSockets[socket] = _reactor->scheduleAfter(1000, [this, socket]() {
+        reapClosingSocket(socket);
+    });
+    socket->setCloseCallback([this, socket](gy::net::SocketCloseReason) { reapClosingSocket(socket); });
     socket->disconnectFromHost();
 }
 
-// 处理会话关闭事件
-void RelayServer::onSessionClosed()
+// 回收排空完成的连接
+void RelayServer::reapClosingSocket(gy::net::TcpSocketCore *socket)
 {
-    RelaySession *session = qobject_cast<RelaySession *>(sender());
-    if (!session) {
-        return;
+    const auto it = _closingSockets.find(socket);
+    if (it == _closingSockets.end()) {
+        return;  // 已回收
     }
-    // 按对象指针判等：一端断开会二次触发 sessionClosed，relay_id 复用窗口内
-    // 注册表里的同名键可能已指向新会话，此时旧会话的迟到关闭不得误删新会话
-    if (_sessions.value(session->relayId()) != session) {
-        return;
+    _reactor->cancelTimer(it->second);
+    _closingSockets.erase(it);
+    // 延迟析构：可能正处在本连接的回调栈内，unwind 后再删除
+    retireLater(socket, [socket]() { delete socket; });
+}
+
+// 延迟析构登记
+void RelayServer::retireLater(void *object, std::function<void()> deleter)
+{
+    if (_retired.count(object)) {
+        return;  // 同一对象只登记一次
     }
-    QString relayId = session->relayId();
-    _sessions.remove(relayId);
-    qDebug() << "[RelayServer] 会话" << relayId << "已关闭";
-    emit sessionClosed(relayId);
-    session->deleteLater();
+    const gy::net::NetReactor::TimerId timer =
+        _reactor->scheduleAfter(0, [this, object]() {
+            const auto it = _retired.find(object);
+            if (it == _retired.end()) {
+                return;  // 已在停机清理中回收
+            }
+            std::function<void()> pending = std::move(it->second.second);
+            _retired.erase(it);
+            pending();
+        });
+    _retired.emplace(object, std::make_pair(timer, std::move(deleter)));
+}
+
+// 停机清理
+void RelayServer::teardown()
+{
+    _tearingDown = true;
+    _server->close();
+
+    for (const auto &entry : _retired) {
+        _reactor->cancelTimer(entry.second.first);
+        entry.second.second();
+    }
+    _retired.clear();
+
+    for (const auto &entry : _closingSockets) {
+        _reactor->cancelTimer(entry.second);
+        delete entry.first;
+    }
+    _closingSockets.clear();
+
+    for (LineSession *hello : _pendingHellos) {
+        delete hello;
+    }
+    _pendingHellos.clear();
+
+    for (const auto &entry : _sessions) {
+        delete entry.second;
+    }
+    _sessions.clear();
+    _sessionCount.store(0);
+}
+
+// 跨线程入口统一走事件泵同步执行
+void RelayServer::runOnLoop(std::function<void()> task)
+{
+    _reactor->dispatchSync(std::move(task));
 }
