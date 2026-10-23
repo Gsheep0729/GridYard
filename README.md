@@ -621,6 +621,7 @@ GridYard/
 | 需求规格 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——技术需求与系统设计规格说明书.md` |
 | 架构设计 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md` |
 | 业务逻辑 | `doc/dev-manual/规格与设计/GridYard业务逻辑说明.md` |
+| 工程代码规范 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——C++23与Qt6工程代码规范.md` |
 | 开发心得 | `doc/dev-manual/开发心得/开发心得_从架构设计到踩坑记录.md` |
 | Stage 6 数据层设计 | `doc/dev-manual/规格与设计/GridYard_Stage6_本地数据层设计.md` |
 | 模块 API 文档 | `doc/api-docs/` |
