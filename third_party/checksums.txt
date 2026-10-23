@@ -1,0 +1,2 @@
+9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6  nlohmann/json.hpp  v3.11.3
+b13c180161ffac8d0adc81e033e493c409457c4d1258ab9781ac80579ba3bdd8  picosha2/picosha2.h  master

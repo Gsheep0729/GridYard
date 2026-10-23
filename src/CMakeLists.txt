@@ -16,7 +16,11 @@ qt_standard_project_setup(REQUIRES 6.10)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # ---- 子模块引入 --------------------------------------------------------
+# 第三方纯 C/C++ 头文件库（vendored，零 Qt，见 third_party/checksums.txt）
+add_subdirectory(../third_party ${CMAKE_BINARY_DIR}/third_party)
 add_subdirectory(shared)
+# 纯 C++23 核心库（零 Qt，重构 Phase 1 建立，严禁链接任何 Qt target）
+add_subdirectory(core)
 add_subdirectory(client)
 add_subdirectory(rendezvous)
 

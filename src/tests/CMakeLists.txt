@@ -515,3 +515,22 @@ set_tests_properties(test_frame_codec test_chat_message test_chat_manager test_h
     test_discovery test_reachability_controller test_peer_discovery_view_model
     test_conversation_timeline_model test_posix_socket
     PROPERTIES TIMEOUT 300)
+
+# --- Golden 基线对拍套件：以当前 Qt 实现为参考实现固化行为，供纯 C++ 替代实现对拍 ---
+qt_add_executable(test_golden_baseline test_golden_baseline.cpp)
+target_link_libraries(test_golden_baseline PRIVATE
+    gy_shared
+    gy_rendezvous
+    gy_core
+    Qt6::Test
+    Qt6::Core
+)
+target_include_directories(test_golden_baseline PRIVATE
+    ${CMAKE_SOURCE_DIR}/rendezvous
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_golden_baseline PRIVATE cxx_std_23)
+add_test(NAME test_golden_baseline COMMAND test_golden_baseline
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_golden_baseline PROPERTIES TIMEOUT 30)
+
