@@ -1,7 +1,7 @@
 /**
 * @file    posix_udp_socket.h
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-24
 * @author  GridYard Team
 * @brief   基于原生描述符的 UDP 套接字
 *
@@ -19,8 +19,6 @@
 #include <QtGlobal>
 
 #include "ip_address.h"
-
-class QSocketNotifier;
 
 namespace gy::net {
 
@@ -85,7 +83,8 @@ private:
 
 private:
     int _fd = -1;                            // UDP 描述符
-    QSocketNotifier *_notifier = nullptr;    // 读事件通知器
+    uint64_t _watchGeneration = 0;         // Reactor 监听代际（每次 fd 生命周期递增）
+    bool _watchActive = false;             // Reactor 中是否存在本 fd 的监听条目
     QList<Datagram> _datagrams;              // 待读报文队列
     QString _errorText;                      // 最近一次错误说明
 };

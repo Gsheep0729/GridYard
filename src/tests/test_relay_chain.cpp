@@ -436,11 +436,17 @@ void TestRelayChain::testSessionCap()
     connectClient(QStringLiteral("cap-a"));
     connectClient(QStringLiteral("cap-b"));
 
-    // 第三个连接被服务端拒绝（连接被关闭，无法收到注册确认）
+    // 第三个连接被服务端拒绝（连接被关闭，无法收到注册确认）。
+    // connected 与 disconnected 信号锚定：连接确实建立过且随后被服务端
+    // 断开；旧实现依赖 state 短暂停留 Connected 的微观时序窗口，独立
+    // Reactor 线程的事件投递更紧凑，中间态不再保证可见。
     auto *rejected = new gy::net::PosixTcpSocket;
+    QSignalSpy connectedSpy(rejected, &gy::net::PosixTcpSocket::connected);
+    QSignalSpy rejectedDisconnectedSpy(rejected, &gy::net::PosixTcpSocket::disconnected);
     rejected->connectToHost(gy::net::IpAddress::localHost(), server.serverPort());
-    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == gy::net::SocketState::ConnectedState, 3000);
-    QTRY_VERIFY_WITH_TIMEOUT(rejected->state() == gy::net::SocketState::UnconnectedState, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(connectedSpy.count() == 1, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(rejectedDisconnectedSpy.count() == 1, 3000);
+    QCOMPARE(rejected->state(), gy::net::SocketState::UnconnectedState);
     rejected->deleteLater();
 
     qDeleteAll(sockets);

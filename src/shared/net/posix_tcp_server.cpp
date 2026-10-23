@@ -1,7 +1,7 @@
 /**
 * @file    posix_tcp_server.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-24
 * @author  GridYard Team
 * @brief   原生 TCP 监听器实现
 *
@@ -11,10 +11,12 @@
 
 #include "posix_tcp_server.h"
 
+#include "core/net_reactor.h"
+
 #include "posix_net_error.h"
 #include "posix_tcp_socket.h"
 
-#include <QSocketNotifier>
+#include <QMetaObject>
 
 #include <cerrno>
 #include <cstring>
@@ -69,10 +71,22 @@ bool PosixTcpServer::listen(const IpAddress &address, quint16 port, ListenMode m
         return false;
     }
 
-    _notifier = new QSocketNotifier(_fd, QSocketNotifier::Read, this);
-    connect(_notifier, &QSocketNotifier::activated, this, [this]() {
-        onAcceptActivated();
-    });
+    ++_watchGeneration;
+    _watchActive = true;
+    const int watchedFd = _fd;
+    const uint64_t generation = _watchGeneration;
+    // 回调在 Reactor 线程触发，投递回归属线程再执行接入泵（与旧通知器语义一致）
+    sharedReactor().watch(watchedFd, static_cast<uint32_t>(Event::kReadable), generation,
+                          [this, watchedFd, generation](int fd, uint32_t) {
+                              QMetaObject::invokeMethod(
+                                  this, [this, fd, generation]() {
+                                      if (_fd != fd || _watchGeneration != generation) {
+                                          return;  // 已注销或换代，丢弃陈旧事件
+                                      }
+                                      onAcceptActivated();
+                                  },
+                                  Qt::QueuedConnection);
+                          });
     _port = queryPort();
     _errorText.clear();
     return true;
@@ -81,11 +95,10 @@ bool PosixTcpServer::listen(const IpAddress &address, quint16 port, ListenMode m
 // 停止监听并关闭待取连接
 void PosixTcpServer::close()
 {
-    if (_notifier) {
-        _notifier->setEnabled(false);
-        delete _notifier;
-        _notifier = nullptr;
+    if (_watchActive && _fd >= 0) {
+        sharedReactor().unwatchSync(_fd, _watchGeneration);
     }
+    _watchActive = false;
 
     for (const PendingConnection &pending : _pending) {
         if (pending.descriptor >= 0) {

@@ -1,7 +1,7 @@
 /**
 * @file    posix_udp_socket.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-24
 * @author  GridYard Team
 * @brief   原生 UDP 套接字实现
 *
@@ -11,9 +11,11 @@
 
 #include "posix_udp_socket.h"
 
+#include "core/net_reactor.h"
+
 #include "posix_net_error.h"
 
-#include <QSocketNotifier>
+#include <QMetaObject>
 
 #include <algorithm>
 #include <cerrno>
@@ -86,10 +88,22 @@ bool PosixUdpSocket::bind(const IpAddress &address, quint16 port, BindFlags flag
         return false;
     }
 
-    _notifier = new QSocketNotifier(_fd, QSocketNotifier::Read, this);
-    connect(_notifier, &QSocketNotifier::activated, this, [this]() {
-        onReadActivated();
-    });
+    ++_watchGeneration;
+    _watchActive = true;
+    const int watchedFd = _fd;
+    const uint64_t generation = _watchGeneration;
+    // 回调在 Reactor 线程触发，投递回归属线程再执行报文泵（与旧通知器语义一致）
+    sharedReactor().watch(watchedFd, static_cast<uint32_t>(Event::kReadable), generation,
+                          [this, watchedFd, generation](int fd, uint32_t) {
+                              QMetaObject::invokeMethod(
+                                  this, [this, fd, generation]() {
+                                      if (_fd != fd || _watchGeneration != generation) {
+                                          return;  // 已注销或换代，丢弃陈旧事件
+                                      }
+                                      onReadActivated();
+                                  },
+                                  Qt::QueuedConnection);
+                          });
     _errorText.clear();
     return true;
 }
@@ -97,11 +111,10 @@ bool PosixUdpSocket::bind(const IpAddress &address, quint16 port, BindFlags flag
 // 停止接收并关闭描述符
 void PosixUdpSocket::close()
 {
-    if (_notifier) {
-        _notifier->setEnabled(false);
-        delete _notifier;
-        _notifier = nullptr;
+    if (_watchActive && _fd >= 0) {
+        sharedReactor().unwatchSync(_fd, _watchGeneration);
     }
+    _watchActive = false;
     _datagrams.clear();
     closeDescriptor();
 }

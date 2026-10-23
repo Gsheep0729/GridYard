@@ -1,20 +1,23 @@
 /**
 * @file    posix_tcp_socket.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   原生 TCP 套接字实现
 *
-* 所有系统调用均为非阻塞形式，可读可写事件由 QSocketNotifier 驱动。
+* 所有系统调用均为非阻塞形式，可读可写事件由 NetReactor 事件泵驱动：
+* Reactor 线程回调经 QMetaObject::invokeMethod(QueuedConnection) 投回
+* socket 归属线程再执行泵逻辑，线程语义与旧 QSocketNotifier 完全一致。
 * 发送统一带 MSG_NOSIGNAL，短写与 EAGAIN 留在用户态写队列，EINTR 原处重试。
 */
 
 #include "posix_tcp_socket.h"
 
+#include "core/net_reactor.h"
 #include "posix_net_error.h"
 
+#include <QMetaObject>
 #include <QMetaType>
-#include <QSocketNotifier>
 #include <QThread>
 
 #include <algorithm>
@@ -118,23 +121,23 @@ bool PosixTcpSocket::adoptDescriptor(int descriptor)
     return true;
 }
 
-// 移交前停用通知器
+// 移交前停用监听
 void PosixTcpSocket::prepareThreadMove()
 {
     _movedPending.store(true, std::memory_order_release);
-    if (_readNotifier) {
-        _readNotifier->setEnabled(false);
-    }
-    if (_writeNotifier) {
-        _writeNotifier->setEnabled(false);
+    if (_fd >= 0) {
+        // 只摘监听不关 fd：对象仍存活，Qt 清事件机制兜底排队中的投递
+        sharedReactor().unwatch(_fd, _watchGeneration);
+        _readWatchWanted = false;
+        _writeWatchWanted = false;
     }
 }
 
-// 在目标线程重新启用通知器
+// 在目标线程重新启用监听
 void PosixTcpSocket::finishThreadMove()
 {
     _movedPending.store(false, std::memory_order_release);
-    if (!_readNotifier && _fd >= 0) {
+    if (_fd >= 0) {
         ensureNotifiers();
     }
     syncReadNotifier();
@@ -804,40 +807,83 @@ void PosixTcpSocket::onWriteActivated()
     syncWriteNotifier();
 }
 
-// 创建事件通知器
+// 建立 Reactor 事件监听（每次 fd 生命周期开始时代际递增）
 void PosixTcpSocket::ensureNotifiers()
+{
+    if (_fd < 0 || _readWatchWanted) {
+        return;
+    }
+
+    ++_watchGeneration;
+    _readWatchWanted = true;
+    _writeWatchWanted = false;
+    applyWatch();
+}
+
+// 摘除 Reactor 事件监听：同步等待 Reactor 确认，保证返回后不再有
+// 该 fd 的派发在途，close(fd) 与对象析构窗口内无陈旧回调竞态
+void PosixTcpSocket::teardownNotifiers()
+{
+    if (_watchActive && _fd >= 0) {
+        sharedReactor().unwatchSync(_fd, _watchGeneration);
+    }
+    _watchActive = false;
+    _readWatchWanted = false;
+    _writeWatchWanted = false;
+}
+
+// 按当前读写监听意愿应用 Reactor watch/unwatch
+void PosixTcpSocket::applyWatch()
 {
     if (_fd < 0) {
         return;
     }
 
-    if (!_readNotifier) {
-        _readNotifier = new QSocketNotifier(_fd, QSocketNotifier::Read, this);
-        connect(_readNotifier, &QSocketNotifier::activated, this, [this]() {
-            onReadActivated();
-        });
+    uint32_t events = 0;
+    if (_readWatchWanted) {
+        events |= static_cast<uint32_t>(Event::kReadable);
     }
-    if (!_writeNotifier) {
-        _writeNotifier = new QSocketNotifier(_fd, QSocketNotifier::Write, this);
-        _writeNotifier->setEnabled(false);
-        connect(_writeNotifier, &QSocketNotifier::activated, this, [this]() {
-            onWriteActivated();
-        });
+    if (_writeWatchWanted) {
+        events |= static_cast<uint32_t>(Event::kWritable);
     }
-}
 
-// 销毁事件通知器
-void PosixTcpSocket::teardownNotifiers()
-{
-    if (_readNotifier) {
-        _readNotifier->setEnabled(false);
-        delete _readNotifier;
-        _readNotifier = nullptr;
-    }
-    if (_writeNotifier) {
-        _writeNotifier->setEnabled(false);
-        delete _writeNotifier;
-        _writeNotifier = nullptr;
+    if (events != 0) {
+        // 回调在 Reactor 线程触发：只做投递，经 QueuedConnection 回到 socket
+        // 归属线程执行泵逻辑（复刻 QSocketNotifier 在 owner 线程派发的语义）。
+        // 读与写投递为两个独立事件——旧实现是读写两个独立通知器，连接刚建立
+        // 即被对端关闭的场景下，state 必须先后经过 Connected 再 Unconnected。
+        const int watchedFd = _fd;
+        const uint64_t generation = _watchGeneration;
+        sharedReactor().watch(watchedFd, events, generation,
+                              [this, watchedFd, generation](int fd, uint32_t revents) {
+                                  if (revents & (static_cast<uint32_t>(Event::kWritable)
+                                                 | static_cast<uint32_t>(Event::kError))) {
+                                      QMetaObject::invokeMethod(
+                                          this, [this, fd, generation]() {
+                                              if (_fd != fd || _watchGeneration != generation) {
+                                                  return;  // 已注销或换代，丢弃陈旧事件
+                                              }
+                                              onWriteActivated();
+                                          },
+                                          Qt::QueuedConnection);
+                                  }
+                                  // 可读与挂断统一走读泵收尾（错误已归写回调，与旧通知器语义一致）
+                                  if (revents & (static_cast<uint32_t>(Event::kReadable)
+                                                 | static_cast<uint32_t>(Event::kHangup))) {
+                                      QMetaObject::invokeMethod(
+                                          this, [this, fd, generation]() {
+                                              if (_fd != fd || _watchGeneration != generation) {
+                                                  return;  // 已注销或换代，丢弃陈旧事件
+                                              }
+                                              onReadActivated();
+                                          },
+                                          Qt::QueuedConnection);
+                                  }
+                              });
+        _watchActive = true;
+    } else if (_watchActive) {
+        sharedReactor().unwatch(_fd, _watchGeneration);
+        _watchActive = false;
     }
 }
 
@@ -1062,38 +1108,45 @@ void PosixTcpSocket::finishConnect()
     syncWriteNotifier();
 }
 
-// 刷新读通知器开关
+// 刷新读监听开关
 void PosixTcpSocket::syncReadNotifier()
 {
-    if (!_readNotifier || _movedPending.load(std::memory_order_acquire)) {
-        return;
+    if (_movedPending.load(std::memory_order_acquire)) {
+        return;  // 线程移交窗口内不做开关同步，避免重新开启已停用的监听
     }
-    if (_readNotifier->thread() != QThread::currentThread()) {
-        return;
+    if (_fd < 0 && !_watchActive) {
+        return;  // 从未建立过监听（未连接）则无需同步
+    }
+    if (thread() != QThread::currentThread()) {
+        return;  // 监听开关涉及无锁状态字段，仅归属线程允许同步
     }
 
     const bool active = _fd >= 0 && (_state == SocketState::ConnectedState
         || _state == SocketState::ClosingState);
     const bool saturated = _readBufferLimit > 0 && bufferedBytes() >= _readBufferLimit;
-    _readNotifier->setEnabled(active && !saturated);
+    _readWatchWanted = active && !saturated;
+    applyWatch();
 }
 
-// 刷新写通知器开关
+// 刷新写监听开关
 void PosixTcpSocket::syncWriteNotifier()
 {
-    if (!_writeNotifier || _movedPending.load(std::memory_order_acquire)) {
-        return;
+    if (_movedPending.load(std::memory_order_acquire)) {
+        return;  // 线程移交窗口内不做开关同步，避免重新开启已停用的监听
     }
-    if (_writeNotifier->thread() != QThread::currentThread()) {
-        return;
+    if (_fd < 0 && !_watchActive) {
+        return;  // 从未建立过监听（未连接）则无需同步
+    }
+    if (thread() != QThread::currentThread()) {
+        return;  // 监听开关涉及无锁状态字段，仅归属线程允许同步
     }
 
     // 连接中的可写事件用于取得异步连接结果；连接建立后只在待写队列非空时开启
-    const bool active = _fd >= 0
+    _writeWatchWanted = _fd >= 0
         && (_state == SocketState::ConnectingState
             || (bytesToWrite() > 0 && (_state == SocketState::ConnectedState
                                        || _state == SocketState::ClosingState)));
-    _writeNotifier->setEnabled(active);
+    applyWatch();
 }
 
 // 完成优雅关闭

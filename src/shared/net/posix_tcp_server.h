@@ -1,11 +1,11 @@
 /**
 * @file    posix_tcp_server.h
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-24
 * @author  GridYard Team
 * @brief   基于原生描述符的 TCP 监听器
 *
-* 监听描述符由 QSocketNotifier 驱动，接入连接先进入待取队列，
+* 监听描述符由 NetReactor 事件泵驱动（Qt 信号桥接层），接入连接先进入待取队列，
 * 调用方通过两段式接口逐个接管，与既有服务端的接入节奏一致。
 * 双栈模式显式关闭 IPV6_V6ONLY，内核不支持时回退为 IPv4。
 */
@@ -18,8 +18,6 @@
 #include <QtGlobal>
 
 #include "ip_address.h"
-
-class QSocketNotifier;
 
 namespace gy::net {
 
@@ -82,7 +80,8 @@ private:
 
 private:
     int _fd = -1;                             // 监听描述符
-    QSocketNotifier *_notifier = nullptr;     // 接受事件通知器
+    uint64_t _watchGeneration = 0;         // Reactor 监听代际（每次 fd 生命周期递增）
+    bool _watchActive = false;             // Reactor 中是否存在本 fd 的监听条目
     QList<PendingConnection> _pending;        // 待取连接队列
     quint16 _port = 0;                        // 实际监听端口
     QString _errorText;                       // 最近一次错误说明

@@ -1,11 +1,11 @@
 /**
  * @file    posix_tcp_socket.h
  * @version 7.26.1
- * @date    2026-10-23
+ * @date    2026-10-24
  * @author  GridYard Team
  * @brief   基于原生描述符的 TCP 套接字
  *
- * 基于 Linux 原生文件描述符与 QSocketNotifier 非阻塞事件泵封装。
+ * 基于 Linux 原生文件描述符与 NetReactor 事件泵封装（Qt 信号桥接层）。
  * 写入先尝试系统调用，余量进入用户态写缓冲队列，提供背压控制与可靠流式传输。
  */
 
@@ -21,8 +21,6 @@
 
 #include "ip_address.h"
 #include "posix_net_types.h"
-
-class QSocketNotifier;
 
 namespace gy::net {
 
@@ -139,9 +137,9 @@ private:
     void onWriteActivated();
 
 private:
-    // 创建事件通知器
+    // 建立 Reactor 事件监听（替换旧通知器创建）
     void ensureNotifiers();
-    // 销毁事件通知器
+    // 摘除 Reactor 事件监听（同步等待生效，防 fd 复用与析构竞态）
     void teardownNotifiers();
     // 记录错误并通知
     void setError(SocketError error, const QString &message);
@@ -153,10 +151,12 @@ private:
     void pumpWriteBuffer();
     // 完成连接建立
     void finishConnect();
-    // 刷新读通知器开关
+    // 刷新读监听开关
     void syncReadNotifier();
-    // 刷新写通知器开关
+    // 刷新写监听开关
     void syncWriteNotifier();
+    // 按当前读写监听意愿应用 Reactor watch/unwatch
+    void applyWatch();
     // 完成优雅关闭
     void finishGracefulClose();
     // 用户态缓冲未读字节数
@@ -165,13 +165,15 @@ private:
     void compactReadBuffer();
 
     int _fd = -1;                              // 原生描述符
-    QSocketNotifier *_readNotifier = nullptr;  // 读事件通知器
-    QSocketNotifier *_writeNotifier = nullptr; // 写事件通知器
+    uint64_t _watchGeneration = 0;             // Reactor 监听代际（每次 fd 生命周期递增）
+    bool _watchActive = false;                 // Reactor 中是否存在本 fd 的监听条目
+    bool _readWatchWanted = false;             // 读监听意愿（受状态与缓冲饱和控制）
+    bool _writeWatchWanted = false;            // 写监听意愿（连接判定或写队列积压）
     QByteArray _rxBuf;                         // 用户态读缓冲
     qint64 _rxOffset = 0;                      // 读缓冲消费偏移
     QByteArray _txBuf;                         // 用户态写缓冲
     qint64 _txOffset = 0;                      // 写缓冲发送偏移
-    SocketState _state = SocketState::UnconnectedState;  // 当前状态
+    SocketState _state = SocketState::UnconnectedState;  // 当前连接状态
     SocketError _lastError = SocketError::NoError;        // 最近错误类型
     QString _errorText;                        // 最近错误说明
     qint64 _readBufferLimit = 0;               // 读缓冲上限，0 表示不限
