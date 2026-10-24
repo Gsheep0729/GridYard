@@ -1,7 +1,7 @@
 /**
 * @file    test_history_controller.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GY
 * @brief   HistoryController 本地历史视图与保留清理测试
  */
@@ -455,8 +455,9 @@ void TestHistoryController::testRetentionDaysCleansExpired()
     HistoryController controller(&chat, nullptr, config, dataBroker.get());
 
     controller.cleanupExpiredRecords();
+    // 消息与传输是两个独立事务，两侧都要各自等待收敛，不能用一侧当另一侧的完成信号
     QTRY_COMPARE(messageRowCount(*database), 1);
-    QCOMPARE(transferRowCount(*database), 1);
+    QTRY_COMPARE(transferRowCount(*database), 1);
     QCOMPARE(deviceRowCount(*database), 1);
 
     delete config;
