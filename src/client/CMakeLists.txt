@@ -5,7 +5,6 @@
 # 本文件只直接收纳客户端入口、core、network、QML、JS 和图标资源。
 # domain 与 storage 作为独立子模块进入构建，再通过 target_link_libraries 链接到客户端。
 
-add_subdirectory(domain)
 add_subdirectory(storage)
 
 qt_add_executable(appGridYard WIN32)
@@ -94,6 +93,12 @@ set(GRIDYARD_CLIENT_STORAGE_SOURCES
     storage/database_worker.cpp
 )
 
+# 领域记录与仓储端口两头文件（原 gy_domain 接口目标退役后归客户端直挂）
+set(GRIDYARD_CLIENT_DOMAIN_HEADERS
+    domain/history_records.h
+    domain/history_repositories.h
+)
+
 set(GRIDYARD_CLIENT_QML_ENTRY_FILES
     Main.qml
 )
@@ -161,6 +166,7 @@ qt_add_qml_module(appGridYard
         ${GRIDYARD_CLIENT_CORE_SOURCES}
         ${GRIDYARD_CLIENT_NETWORK_SOURCES}
         ${GRIDYARD_CLIENT_STORAGE_SOURCES}
+        ${GRIDYARD_CLIENT_DOMAIN_HEADERS}
 
     QML_FILES
         ${GRIDYARD_CLIENT_QML_ENTRY_FILES}
@@ -173,6 +179,7 @@ qt_add_qml_module(appGridYard
 
 source_group("client/entry" FILES main.cpp ${GRIDYARD_CLIENT_QML_ENTRY_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/core PREFIX "client/core" FILES ${GRIDYARD_CLIENT_CORE_SOURCES})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/domain PREFIX "client/domain" FILES ${GRIDYARD_CLIENT_DOMAIN_HEADERS})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/network PREFIX "client/network" FILES ${GRIDYARD_CLIENT_NETWORK_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/ui PREFIX "client/ui" FILES ${GRIDYARD_CLIENT_QML_UI_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/utils PREFIX "client/utils" FILES ${GRIDYARD_CLIENT_UTIL_FILES})
