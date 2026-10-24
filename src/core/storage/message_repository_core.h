@@ -1,12 +1,11 @@
 /**
 * @file    message_repository_core.h
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   纯 C++23 SQLite 聊天消息仓储——不依赖任何 Qt 类型
 *
-* 与 client/storage/SqliteMessageRepository 的 Qt 版一一对应，SQL 文本
-* 逐字复用；负责聊天消息的幂等写入、游标分页加载、删除和过期清理。
+* 负责聊天消息的幂等写入、游标分页加载、删除和过期清理，SQL 语义由存储测试锁定。
 */
 
 #pragma once

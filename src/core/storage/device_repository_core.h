@@ -1,12 +1,11 @@
 /**
 * @file    device_repository_core.h
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   纯 C++23 SQLite 设备目录仓储——不依赖任何 Qt 类型
 *
-* 与 client/storage/SqliteDeviceRepository 的 Qt 版一一对应，SQL 文本
-* 逐字复用；心跳与发现更新依赖发现节流缓存避免频繁磁盘写入。
+* SQL 语义由存储测试锁定；心跳与发现更新依赖发现节流缓存避免频繁磁盘写入。
 */
 
 #pragma once

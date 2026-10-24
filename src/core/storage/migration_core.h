@@ -1,12 +1,11 @@
 /**
 * @file    migration_core.h
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   纯 C++23 SQLite Schema 版本迁移执行器
 *
-* SQL 文本与 client/storage/migration_runner 的 Qt 版逐字一致：
-* 同一文件可被任一实现打开并继续升级，语义等价由存储测试锁定。
+* 同一库文件可跨版本继续升级，迁移语义由存储测试锁定。
 */
 
 #pragma once

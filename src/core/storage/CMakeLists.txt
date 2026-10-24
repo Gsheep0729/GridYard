@@ -1,8 +1,8 @@
-# storage/ —— 纯 C++23 存储核心（重构 Phase 3 影子层）
+# storage/ —— 纯 C++23 存储核心
 # 直接使用 vendored SQLite3 C API（sqlite3_vendor），严禁链接任何 Qt target：
 # 本目录在 check_core_isolation.py --strict 下必须零违规。
-# 影子化策略：现有 Qt Sql 实现（gy_storage）保持原样，本目录提供并行
-# 纯 C++ 接口，SQL 文本与 Qt 版逐字一致，Phase 4 桥接时统一切换调用点。
+# 原 Qt Sql 影子对照实现（gy_storage）已随 Phase 5b 退役，SQL 语义由本目录
+# 独立维护，调用方为客户端 broker 与存储测试。
 add_library(gy_storage_core STATIC
     sqlite_conn.h
     sqlite_conn.cpp

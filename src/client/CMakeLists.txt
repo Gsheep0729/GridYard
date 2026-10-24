@@ -2,10 +2,7 @@
 # 整个客户端注册为一个 QML 模块，URI cqnu.gridyard.client
 # 所有带 QML_ELEMENT / QML_SINGLETON 宏的 C++ 类型由 qt_add_qml_module
 # 自动注册；QML 文件统一打包到资源系统 /qt/qml/<URI> 标准路径
-# 本文件只直接收纳客户端入口、core、network、QML、JS 和图标资源。
-# domain 与 storage 作为独立子模块进入构建，再通过 target_link_libraries 链接到客户端。
-
-add_subdirectory(storage)
+# 本文件直接收纳客户端入口、core、network、storage、QML、JS 和图标资源。
 
 qt_add_executable(appGridYard WIN32)
 
@@ -180,6 +177,7 @@ qt_add_qml_module(appGridYard
 source_group("client/entry" FILES main.cpp ${GRIDYARD_CLIENT_QML_ENTRY_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/core PREFIX "client/core" FILES ${GRIDYARD_CLIENT_CORE_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/domain PREFIX "client/domain" FILES ${GRIDYARD_CLIENT_DOMAIN_HEADERS})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/storage PREFIX "client/storage" FILES ${GRIDYARD_CLIENT_STORAGE_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/network PREFIX "client/network" FILES ${GRIDYARD_CLIENT_NETWORK_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/ui PREFIX "client/ui" FILES ${GRIDYARD_CLIENT_QML_UI_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/utils PREFIX "client/utils" FILES ${GRIDYARD_CLIENT_UTIL_FILES})

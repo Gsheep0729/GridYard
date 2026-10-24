@@ -1,13 +1,12 @@
 /**
 * @file    transfer_repository_core.h
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   纯 C++23 SQLite 传输历史仓储——不依赖任何 Qt 类型
 *
-* 与 client/storage/SqliteTransferHistoryRepository 的 Qt 版一一对应，
-* SQL 文本逐字复用；只保存最终状态快照，不保存发送源绝对路径、
-* 文件内容或调试堆栈。
+* 只保存最终状态快照，不保存发送源绝对路径、文件内容或调试堆栈；
+* SQL 语义由存储测试锁定。
 */
 
 #pragma once
