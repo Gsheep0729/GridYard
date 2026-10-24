@@ -94,6 +94,7 @@ qt_add_executable(test_chat_manager test_chat_manager.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_chat_manager PRIVATE
     gy_shared
@@ -134,6 +135,7 @@ qt_add_executable(test_history_controller test_history_controller.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_history_controller PRIVATE
     gy_test_utils
@@ -216,6 +218,7 @@ qt_add_executable(test_discovery test_discovery.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_discovery PRIVATE gy_shared gy_core Qt6::Test Qt6::Core Qt6::Gui)
 target_include_directories(test_discovery PRIVATE ${CLIENT_CORE_DIR} ${CLIENT_NET_DIR})
@@ -236,6 +239,7 @@ qt_add_executable(test_file_transfer test_file_transfer.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_file_transfer PRIVATE
     gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Gui gy_core)
@@ -264,6 +268,7 @@ qt_add_executable(test_session_manager test_session_manager.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_session_manager PRIVATE
     gy_test_utils gy_shared gy_rendezvous Qt6::Test Qt6::Core Qt6::Gui gy_core)
@@ -290,6 +295,7 @@ qt_add_executable(test_integration test_integration.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_integration PRIVATE gy_shared gy_core Qt6::Test Qt6::Core Qt6::Gui)
 target_include_directories(test_integration PRIVATE
@@ -339,6 +345,7 @@ qt_add_executable(test_rendezvous_coordinator test_rendezvous_coordinator.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_rendezvous_coordinator PRIVATE
     gy_test_utils
@@ -402,6 +409,7 @@ qt_add_executable(test_reachability_controller test_reachability_controller.cpp
     ${CLIENT_NET_DIR}/endpoint_probe.cpp
     ${CLIENT_NET_DIR}/invite_codec.cpp
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_reachability_controller PRIVATE
     gy_shared
@@ -429,6 +437,7 @@ qt_add_executable(test_peer_discovery_view_model test_peer_discovery_view_model.
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_peer_discovery_view_model PRIVATE
     gy_shared
@@ -502,6 +511,7 @@ qt_add_executable(test_conversation_timeline_model test_conversation_timeline_mo
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
 )
 target_link_libraries(test_conversation_timeline_model PRIVATE
     gy_shared

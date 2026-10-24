@@ -30,6 +30,7 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/history_controller.cpp
     core/config_manager.h
     core/config_manager.cpp
+    core/data_types.h
     core/dir_serializer.h
     core/dir_serializer.cpp
     core/logger.h
