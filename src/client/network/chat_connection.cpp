@@ -11,7 +11,6 @@
 
 #include "chat_connection.h"
 #include "codec_bridge.h"
-#include "frame_codec.h"
 #include "ip_address.h"
 #include "posix_tcp_socket.h"
 #include "protocol.h"
@@ -19,12 +18,16 @@
 // 构造函数
 ChatConnection::ChatConnection(QObject *parent)
     : QObject{parent}
-    , _codec{new FrameCodec{this}}
 {
-    connect(_codec, &FrameCodec::frameReady,
-            this,   &ChatConnection::onFrameReady);
-    connect(_codec, &FrameCodec::errorOccurred,
-            this,   &ChatConnection::onCodecError);
+    // 帧就绪与协议错误回调（超限是解码状态机唯一会报告的协议错误）
+    _codec = std::make_unique<gy::core::FrameCodecCore>(
+        [this](uint32_t type, std::vector<uint8_t> payload) {
+            onFrameReady(type, gy::bridge::fromBytes(payload));
+        },
+        [this](std::string errorMsg) {
+            onCodecError(gy::protocol::ErrorCode::FrameTooLarge,
+                         gy::bridge::fromUtf8(errorMsg));
+        });
 }
 
 // 接管 P2pServer 已完成首帧路由的入站 socket
@@ -59,7 +62,7 @@ bool ChatConnection::sendMessage(const gy::ChatMessage &message, gy::ChatMessage
         return false;
     }
 
-    const QByteArray frame = FrameCodec::encode(gy::protocol::kTypeChatText, payload);
+    const QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeChatText, payload);
     if (frame.isEmpty()) {
         if (error) {
             *error = gy::ChatMessageError::WriteFailed;
@@ -101,7 +104,7 @@ void ChatConnection::close()
 void ChatConnection::onReadyRead()
 {
     if (_socket) {
-        _codec->feed(_socket->readAll());
+        gy::bridge::feedFrame(*_codec, _socket->readAll());
     }
 }
 

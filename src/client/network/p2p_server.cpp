@@ -19,7 +19,6 @@
 #include "codec_bridge.h"
 #include "config_manager.h"
 #include "file_receiver_worker.h"
-#include "frame_codec.h"
 #include "ip_address.h"
 #include "posix_tcp_server.h"
 #include "posix_tcp_socket.h"
@@ -303,23 +302,21 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
     // 只窥视校验首帧：聊天路径的接管者稍后自行读取缓冲区中的完整首帧；
     // 传输路径在校验通过后把首帧字节显式读出随 Worker 移交。
     const QByteArray firstFrame = socket->peek(frameBytes);
-    FrameCodec codec;
     quint32 decodedType = 0;
     QByteArray decodedPayload;
     bool frameReady = false;
     bool frameError = false;
-    connect(&codec, &FrameCodec::frameReady,
-            &codec, [&decodedType, &decodedPayload, &frameReady](quint32 frameType,
-                                                                  const QByteArray &payload) {
-        decodedType = frameType;
-        decodedPayload = payload;
-        frameReady = true;
-    });
-    connect(&codec, &FrameCodec::errorOccurred,
-            &codec, [&frameError](gy::protocol::ErrorCode, const QString &) {
-        frameError = true;
-    });
-    codec.feed(firstFrame);
+    gy::core::FrameCodecCore codec(
+        [&decodedType, &decodedPayload, &frameReady](uint32_t frameType,
+                                                     std::vector<uint8_t> payload) {
+            decodedType = frameType;
+            decodedPayload = gy::bridge::fromBytes(payload);
+            frameReady = true;
+        },
+        [&frameError](std::string) {
+            frameError = true;
+        });
+    gy::bridge::feedFrame(codec, firstFrame);
 
     if (frameError || !frameReady || decodedType != type) {
         closePendingConnection(socket, tr("首帧格式无效"));

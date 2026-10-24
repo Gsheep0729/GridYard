@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -12,7 +12,7 @@
 
 #include "file_sender_worker.h"
 #include "rendezvous_protocol_keys_qt.h"
-#include "frame_codec.h"
+#include "codec_bridge.h"
 #include "posix_tcp_socket.h"
 #include "protocol.h"
 
@@ -36,23 +36,26 @@ static constexpr int kRelayReadyTimeoutMs = 30000;
 FileSenderWorker::FileSenderWorker(QObject *parent)
     : QObject{parent}
     , _socket{new gy::net::PosixTcpSocket{this}}
-    , _codec{new FrameCodec{this}}
     , _timeoutTimer{new QTimer{this}}
 {
+    // 帧就绪与协议错误回调（超限是解码状态机唯一会报告的协议错误）
+    _codec = std::make_unique<gy::core::FrameCodecCore>(
+        [this](uint32_t type, std::vector<uint8_t> payload) {
+            onFrameReady(type, gy::bridge::fromBytes(payload));
+        },
+        [this](std::string errorMsg) {
+            const QString message = gy::bridge::fromUtf8(errorMsg);
+            qWarning() << "[FileSender] 协议错误:" << message;
+            _socket->disconnectFromHost();
+            finish(false, gy::protocol::ErrorCode::FrameTooLarge, message);
+        });
+
     connect(_socket, &gy::net::PosixTcpSocket::readyRead,
             this,    &FileSenderWorker::onReadyRead);
     connect(_socket, &gy::net::PosixTcpSocket::disconnected,
             this,    &FileSenderWorker::onDisconnected);
     connect(_socket, &gy::net::PosixTcpSocket::bytesWritten,
             this,    &FileSenderWorker::onBytesWritten);
-    connect(_codec,  &FrameCodec::frameReady,
-            this,    &FileSenderWorker::onFrameReady);
-    connect(_codec,  &FrameCodec::errorOccurred,
-            this,    [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
-        qWarning() << "[FileSender] 协议错误:" << errorMsg;
-        _socket->disconnectFromHost();
-        finish(false, errorCode, errorMsg);
-    });
 
     // 超时定时器
     _timeoutTimer->setSingleShot(true);
@@ -180,7 +183,7 @@ void FileSenderWorker::startTransfer(const QList<QPair<QString, quint16>> &endpo
     }
     // relay_ready 行后可能同批到达少量 TLV 字节，补喂给解码器
     if (!_relayLineBuffer.isEmpty()) {
-        _codec->feed(_relayLineBuffer);
+        gy::bridge::feedFrame(*_codec, _relayLineBuffer);
         _relayLineBuffer.clear();
     }
 
@@ -301,7 +304,7 @@ void FileSenderWorker::onReadyRead()
         return;
     }
 
-    _codec->feed(_socket->readAll());
+    gy::bridge::feedFrame(*_codec, _socket->readAll());
 
     if (_transferActive) {
         _timeoutTimer->start(_timeoutMs);
@@ -594,7 +597,7 @@ void FileSenderWorker::sendNextChunk()
     payload.append(metadata);
     payload.append(chunkData);
 
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeDataChunk, payload);
+    QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeDataChunk, payload);
     if (_socket->write(frame) < 0) {
         const QString errorMsg = _socket->errorString();
         finish(false, gy::protocol::ErrorCode::ConnectionLost, tr("发送数据失败: %1").arg(errorMsg));
@@ -676,7 +679,7 @@ bool FileSenderWorker::sendCancel(const QString &reason)
     json["reason"] = reason;
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeCancel, data);
+    QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeCancel, data);
     const qint64 written = _socket->write(frame);
     if (written != frame.size()) {
         qWarning() << "[FileSender] 取消帧写入失败:" << _socket->errorString();
@@ -698,7 +701,7 @@ bool FileSenderWorker::writeControlFrame(quint32 type, const QByteArray &payload
                                          const QString &description,
                                          gy::protocol::ErrorCode errorCode)
 {
-    const QByteArray frame = FrameCodec::encode(type, payload);
+    const QByteArray frame = gy::bridge::encodeFrame(type, payload);
     const qint64 written = _socket->write(frame);
     if (written == frame.size()) {
         return true;

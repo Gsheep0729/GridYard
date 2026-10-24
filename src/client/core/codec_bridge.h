@@ -164,4 +164,11 @@ inline QByteArray encodeFrame(uint32_t type, const QByteArray &payload)
     return fromBytes(gy::core::FrameCodecCore::build(type, toBytes(payload)));
 }
 
+// 把 QByteArray 以零拷贝视图喂入核心帧解码器（视图仅在本次调用内有效）
+inline void feedFrame(gy::core::FrameCodecCore &codec, const QByteArray &data)
+{
+    codec.feed(reinterpret_cast<const uint8_t *>(data.constData()),
+               static_cast<size_t>(data.size()));
+}
+
 }  // namespace gy::bridge

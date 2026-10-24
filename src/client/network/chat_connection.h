@@ -1,7 +1,7 @@
 /**
 * @file    chat_connection.h
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-25
 * @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接
 *
@@ -14,13 +14,15 @@
 #include "chat_message.h"
 #include "protocol.h"
 
+#include "core/codec/frame_codec_core.h"
+
 #include "posix_net_types.h"
 
 #include <QList>
 #include <QObject>
 #include <QString>
 
-class FrameCodec;
+#include <memory>
 
 namespace gy::net {
 class IpAddress;
@@ -85,6 +87,6 @@ private:
     void failPendingFrames(gy::ChatMessageError error, const QString &errorMessage);
 
     gy::net::PosixTcpSocket *_socket = nullptr;  // 当前聊天 TCP socket
-    FrameCodec *_codec = nullptr;     // 连续 TLV 解码器
+    std::unique_ptr<gy::core::FrameCodecCore> _codec;  // 连续 TLV 解码器
     QList<PendingFrame> _pendingFrames; // 已创建但尚未写入的消息
 };

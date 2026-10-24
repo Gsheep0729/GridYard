@@ -1,7 +1,7 @@
 /**
  * @file    file_receiver_worker.h
  * @version 7.26.1
- * @date    2026-10-24
+ * @date    2026-10-25
  * @author  GridYard Team
  * @brief   文件接收 Worker（Worker-Object 模式）
  *
@@ -20,6 +20,8 @@
 #include "dir_serializer.h"
 #include "protocol.h"
 
+#include "core/codec/frame_codec_core.h"
+
 #include <QCryptographicHash>
 #include <QFile>
 #include <QObject>
@@ -27,7 +29,7 @@
 #include <QTimer>
 #include <QVariantMap>
 
-class FrameCodec;
+#include <memory>
 
 namespace gy::net {
 class PosixTcpSocket;
@@ -110,7 +112,7 @@ private:
 
     gy::net::PosixTcpSocket *_socket = nullptr;  // 与发送端通信的 TCP 连接
     QByteArray _pendingFirstFrame;       // P2pServer 显式移交的首帧字节，初始化时优先喂入
-    FrameCodec  *_codec  = nullptr;       // 解析入站 TLV 帧的编解码器
+    std::unique_ptr<gy::core::FrameCodecCore> _codec;  // 解析入站 TLV 帧的编解码器
     QFile        _file;                    // 当前正在写入的接收文件
     QTimer      *_timeoutTimer = nullptr; // 等待确认和数据帧的超时计时器
 

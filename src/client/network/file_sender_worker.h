@@ -1,7 +1,7 @@
 /**
  * @file    file_sender_worker.h
  * @version 7.26.1
- * @date    2026-10-23
+ * @date    2026-10-25
  * @author  GridYard Team
  * @brief   文件发送 Worker（Worker-Object 模式）
  *
@@ -18,6 +18,8 @@
 #include "dir_serializer.h"
 #include "protocol.h"
 
+#include "core/codec/frame_codec_core.h"
+
 #include <QFile>
 #include <QList>
 #include <QObject>
@@ -25,7 +27,7 @@
 #include <QStringList>
 #include <QTimer>
 
-class FrameCodec;
+#include <memory>
 
 namespace gy::net {
 class PosixTcpSocket;
@@ -116,7 +118,7 @@ private:
     bool processRelayControlData(const QByteArray &data);
 
     gy::net::PosixTcpSocket *_socket = nullptr;  // 与接收端通信的 TCP 连接
-    FrameCodec  *_codec  = nullptr;       // 接收响应帧的 TLV 解码器
+    std::unique_ptr<gy::core::FrameCodecCore> _codec;  // 接收响应帧的 TLV 解码器
     QFile        _file;                    // 当前正在读取的源文件
     QTimer      *_timeoutTimer = nullptr; // 等待响应和传输进度的超时计时器
     QString      _rootPath;         // 传入的根路径

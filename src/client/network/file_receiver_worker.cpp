@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.cpp
 * @version 7.26.0
-* @date 2026-10-22
+* @date 2026-10-25
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
 *
@@ -12,7 +12,7 @@
 
 #include "file_receiver_worker.h"
 #include "config_manager.h"
-#include "frame_codec.h"
+#include "codec_bridge.h"
 #include "posix_tcp_socket.h"
 #include "protocol.h"
 
@@ -94,8 +94,17 @@ void FileReceiverWorker::initialize()
     // 通知器随 socket 迁到本线程，先在此线程重新启用再接入信号
     _socket->finishThreadMove();
 
-    // 在当前线程中创建 FrameCodec 和 QTimer
-    _codec = new FrameCodec{this};
+    // 在当前线程中创建解码器回调与 QTimer（超限是解码状态机唯一会报告的协议错误）
+    _codec = std::make_unique<gy::core::FrameCodecCore>(
+        [this](uint32_t type, std::vector<uint8_t> payload) {
+            onFrameReady(type, gy::bridge::fromBytes(payload));
+        },
+        [this](std::string errorMsg) {
+            const QString message = gy::bridge::fromUtf8(errorMsg);
+            qWarning() << "[FileReceiver] 协议错误:" << message;
+            _socket->disconnectFromHost();
+            finish(false, gy::protocol::ErrorCode::FrameTooLarge, message);
+        });
     _timeoutTimer = new QTimer{this};
 
     // 连接 socket 信号
@@ -103,16 +112,6 @@ void FileReceiverWorker::initialize()
             this,    &FileReceiverWorker::onReadyRead);
     connect(_socket, &gy::net::PosixTcpSocket::disconnected,
             this,    &FileReceiverWorker::onDisconnected);
-
-    // 连接 codec 信号
-    connect(_codec,  &FrameCodec::frameReady,
-            this,    &FileReceiverWorker::onFrameReady);
-    connect(_codec,  &FrameCodec::errorOccurred,
-            this,    [this](gy::protocol::ErrorCode errorCode, const QString &errorMsg) {
-        qWarning() << "[FileReceiver] 协议错误:" << errorMsg;
-        _socket->disconnectFromHost();
-        finish(false, errorCode, errorMsg);
-    });
 
     // 超时定时器
     _timeoutTimer->setSingleShot(true);
@@ -122,7 +121,7 @@ void FileReceiverWorker::initialize()
     // 首帧由 P2pServer 显式移交（已从 socket 缓冲区消费），先于缓冲区中
     // 后续到达的字节喂入解码器，保证帧序与线上到达顺序一致
     if (!_pendingFirstFrame.isEmpty()) {
-        _codec->feed(_pendingFirstFrame);
+        gy::bridge::feedFrame(*_codec, _pendingFirstFrame);
         _pendingFirstFrame.clear();
     }
     if (_socket->bytesAvailable() > 0) {
@@ -237,7 +236,7 @@ void FileReceiverWorker::rejectTransfer(const QString &reason)
 void FileReceiverWorker::onReadyRead()
 {
     // 将收到的数据喂入 codec
-    _codec->feed(_socket->readAll());
+    gy::bridge::feedFrame(*_codec, _socket->readAll());
 
     // 重置超时定时器
     if (_transferActive) {
@@ -752,7 +751,7 @@ bool FileReceiverWorker::writeControlFrame(quint32 type, const QByteArray &paylo
                                            const QString &description,
                                            gy::protocol::ErrorCode errorCode)
 {
-    const QByteArray frame = FrameCodec::encode(type, payload);
+    const QByteArray frame = gy::bridge::encodeFrame(type, payload);
     const qint64 written = _socket->write(frame);
     if (written == frame.size()) {
         return true;
