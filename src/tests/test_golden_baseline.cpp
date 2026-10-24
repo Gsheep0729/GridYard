@@ -482,7 +482,7 @@ void TestGoldenBaseline::testGoldenDirSerializerSha256()
         const QString path = tempDir.path() + "/" + name;
         QFile file(path);
         if (!file.open(QIODevice::WriteOnly) || file.write(data) != qint64(data.size())) {
-            return {};
+            return {};  // 写失败返回空串，由调用方断言捕获
         }
         return path;
     };
