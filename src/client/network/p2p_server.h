@@ -1,7 +1,7 @@
 /**
  * @file    p2p_server.h
  * @version 7.26.1
- * @date    2026-10-24
+ * @date    2026-10-25
  * @author  GridYard Team
  * @brief   P2P 文件传输服务器
  *
@@ -24,7 +24,6 @@
 #include <memory>
 
 class ConfigManager;
-class FrameCodec;
 class FileReceiverWorker;
 
 namespace gy::net {
