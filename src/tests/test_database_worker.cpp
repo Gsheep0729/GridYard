@@ -1,7 +1,7 @@
 /**
 * @file    test_database_worker.cpp
 * @version 7.26.1
-* @date 2026-10-24
+* @date    2026-10-25
 * @author  GY
 * @brief   DatabaseWorker 语义测试
 *
@@ -26,6 +26,7 @@ private slots:
     void testSubmitRejectedAfterBeginShutdown();
     void testDrainedAfterAllAcceptedTasks();
     void testTasksRunOffCallerThread();
+    void testWorkerDestroyedOnOwnThreadBeforeQuit();
 };
 
 // 任务按提交顺序在单一队列上串行执行
@@ -113,6 +114,29 @@ void TestDatabaseWorker::testTasksRunOffCallerThread()
     QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 5000);
     QVERIFY(workerThread != nullptr);
     QVERIFY(workerThread != callerThread);  // 必须在独立任务线程上执行
+}
+
+// 托管在存储专用线程上的 Worker 按 closeStorage 同构序列收尾：
+// quit 前经阻塞队列调用回到归属线程同步删除，析构必然执行
+void TestDatabaseWorker::testWorkerDestroyedOnOwnThreadBeforeQuit()
+{
+    gy::storage::DatabaseCore database;
+    QThread storageThread;
+    DatabaseWorker *worker = new DatabaseWorker{&database};
+    worker->moveToThread(&storageThread);
+    storageThread.start();
+
+    QSignalSpy finishedSpy(worker, &DatabaseWorker::taskFinished);
+    worker->submitTask([](gy::storage::DatabaseCore &, QString *) { return true; });
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 5000);
+
+    // 与 LocalDataBroker::closeStorage 相同的收尾序列
+    QSignalSpy destroyedSpy(worker, &QObject::destroyed);
+    QMetaObject::invokeMethod(worker, [worker] { delete worker; },
+                              Qt::BlockingQueuedConnection);
+    storageThread.quit();
+    storageThread.wait();
+    QCOMPARE(destroyedSpy.count(), 1);
 }
 
 QTEST_MAIN(TestDatabaseWorker)

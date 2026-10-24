@@ -1,7 +1,7 @@
 /**
 * @file    local_data_broker.cpp
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
 *
@@ -251,9 +251,9 @@ bool LocalDataBroker::initialize(const QString &databasePath, QString *errorMess
         emit rebuiltBackupPathChanged();
     }
 
-    // Worker 没有 parent，才能移动到存储线程并由 finished 安全回收。
+    // Worker 没有 parent，才能移动到存储线程；析构由 closeStorage 在 quit 前
+    // 于归属线程内同步完成，不依赖线程退出时 DeferredDelete 的冲刷时序。
     _storageWorker->moveToThread(_storageThread);
-    connect(_storageThread, &QThread::finished, _storageWorker, &QObject::deleteLater);
     connect(_storageThread, &QThread::finished, _storageThread, &QObject::deleteLater);
     connect(_storageWorker, &DatabaseWorker::taskFinished,
             this, [this](bool succeeded, const QString &) {
@@ -1478,7 +1478,12 @@ void LocalDataBroker::beginShutdown()
 void LocalDataBroker::closeStorage()
 {
     if (_storageThread && _storageThread->isRunning()) {
-        // 等待已入队任务结束，防止 Worker 继续访问即将销毁的 Repository。
+        // 先在归属线程内同步析构 Worker：析构函数会排空任务并回收内部线程，
+        // 确保不依赖线程退出时 DeferredDelete 事件的冲刷时序，删除必然执行。
+        QMetaObject::invokeMethod(
+            _storageWorker,
+            [worker = _storageWorker] { delete worker; },
+            Qt::BlockingQueuedConnection);
         _storageThread->quit();
         _storageThread->wait();
     }
