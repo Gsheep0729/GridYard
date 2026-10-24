@@ -48,13 +48,14 @@ QT_CLASS_PATTERNS = [
 ]
 
 # 核心目标的 Qt 链接基线矩阵：键为目标名，值为 {Qt target: Phase 目标说明}
+# Phase 5b 起 gy_net/gy_domain/gy_storage 目标退役，存续核心目标全部零 Qt：
+# 矩阵保留全部历史目标名兜底（任何目标以 Qt 链接重新出现即计新违规）
 BASELINE_LINK_MATRIX = {
-    'gy_net': {'Qt6::Core': 'Phase 2 目标:移除'},
-    'gy_shared': {'Qt6::Core': 'Phase 1 目标:移除'},
-    'gy_storage': {'Qt6::Core': 'Phase 3 目标:移除', 'Qt6::Sql': 'Phase 3 目标:移除'},
-    'gy_domain': {'Qt6::Core': 'Phase 3 目标:移除'},
-    'gy_rendezvous': {'Qt6::Core': 'Phase 2 目标:移除'},
-    # 纯 C++ 核心库（Phase 1 建立）：从建立之日起零 Qt，任何 Qt 链接都是新违规
+    'gy_net': {},
+    'gy_shared': {},
+    'gy_storage': {},
+    'gy_domain': {},
+    'gy_rendezvous': {},
     'gy_core': {},
 }
 
