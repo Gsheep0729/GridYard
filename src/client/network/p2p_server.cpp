@@ -31,6 +31,7 @@
 #include <QPointer>
 
 #include "core/net_reactor.h"
+#include "post_to_ui_thread.h"
 #include "core/tcp_server_core.h"
 
 namespace {
@@ -69,10 +70,10 @@ P2pServer::P2pServer(ConfigManager *config, QObject *parent)
     // Reactor 线程只投递描述符：包装 socket 与首帧路由都必须在本线程进行
     _server->setConnectionCallback(
         [this](int descriptor, const std::string &peerAddress) {
-            QMetaObject::invokeMethod(
+            gy::bridge::postToUiThread(
                 this, [this, descriptor, peerAddress] {
                     handleNewConnection(descriptor, QString::fromStdString(peerAddress));
-                }, Qt::QueuedConnection);
+                });
         });
 }
 
@@ -333,7 +334,7 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
         // 跨线程携带首帧；后续到达的字节仍留在缓冲区由 Worker 继续读取。
         const QByteArray consumedFirstFrame = socket->read(frameBytes);
         QPointer<gy::net::PosixTcpSocket> guardedSocket{socket};
-        QMetaObject::invokeMethod(this, [this, guardedSocket, consumedFirstFrame]() {
+        gy::bridge::postToUiThread(this, [this, guardedSocket, consumedFirstFrame]() {
             if (!guardedSocket) {
                 return;
             }
@@ -346,7 +347,7 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
                 return;
             }
             startFileReceiver(guardedSocket, consumedFirstFrame);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 

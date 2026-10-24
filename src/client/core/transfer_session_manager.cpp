@@ -7,6 +7,8 @@
 */
 
 #include "transfer_session_manager.h"
+
+#include "post_to_ui_thread.h"
 #include "config_manager.h"
 #include "dir_serializer.h"
 #include "discovery_service.h"
@@ -362,9 +364,9 @@ void TransferSessionManager::createMultiSendSessions(const QStringList &deviceId
         const QList<gy::FileItem> fileList = gy::DirSerializer::serialize(filePath);
         serializer->deleteLater();
         serializeThread->quit();  // 一次性线程：任务完成即退出，销毁走 finished 链
-        QMetaObject::invokeMethod(this, [this, fileList] {
+        gy::bridge::postToUiThread(this, [this, fileList] {
             finishMultiSendStart(fileList);
-        }, Qt::QueuedConnection);
+        });
     });
     // 暂存目标与元数据，序列化完成后取用
     _multiTargets = targets;

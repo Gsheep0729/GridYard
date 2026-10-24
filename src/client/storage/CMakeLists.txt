@@ -24,7 +24,7 @@ add_library(gy_storage STATIC
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "client/storage" FILES ${GRIDYARD_STORAGE_SOURCES})
 
-target_include_directories(gy_storage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(gy_storage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../core)
 target_link_libraries(gy_storage PUBLIC gy_domain gy_storage_core PRIVATE Qt6::Core Qt6::Sql)
 target_compile_features(gy_storage PUBLIC cxx_std_23)
 set_property(TARGET gy_storage PROPERTY FOLDER "client/storage")

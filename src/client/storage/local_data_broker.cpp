@@ -15,6 +15,7 @@
 
 #include "data_types.h"
 #include "database_worker.h"
+#include "post_to_ui_thread.h"
 
 #include "core/storage/database_core.h"
 #include "core/storage/device_repository_core.h"
@@ -439,9 +440,9 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
     }
     if (!_storage->isAvailable() || !_messageRepository || !_deviceRepository) {
         // 降级时也必须回调一次，否则调用方的等待状态无法复位
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -480,9 +481,9 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
                 }
             }
 
-            QMetaObject::invokeMethod(receiver, [callback, histories] {
+            gy::bridge::postToUiThread(receiver, [callback, histories] {
                 callback(histories, true);
-            }, Qt::QueuedConnection);
+            });
             return true;
         });
 }
@@ -496,9 +497,9 @@ void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
     }
     if (!_storage->isAvailable() || !_transferRepository) {
         // 降级时也必须回调一次，否则调用方的等待状态无法复位
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -517,9 +518,9 @@ void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
 
             const QList<TransferRecord> qtRecords =
                 fromCoreList<gy::storage::TransferRecord, TransferRecord>(records);
-            QMetaObject::invokeMethod(receiver, [callback, qtRecords] {
+            gy::bridge::postToUiThread(receiver, [callback, qtRecords] {
                 callback(qtRecords, true);
-            }, Qt::QueuedConnection);
+            });
             return true;
         });
 }
@@ -532,9 +533,9 @@ void LocalDataBroker::loadRecentPeers(QObject *receiver, int limit,
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -549,9 +550,9 @@ void LocalDataBroker::loadRecentPeers(QObject *receiver, int limit,
             }
             const QList<PeerRecord> qtRecords =
                 fromCoreList<gy::storage::PeerRecord, PeerRecord>(records);
-            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, qtRecords, succeeded] {
                 callback(qtRecords, succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -564,9 +565,9 @@ void LocalDataBroker::searchPeers(QObject *receiver, const QString &keyword, int
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -582,9 +583,9 @@ void LocalDataBroker::searchPeers(QObject *receiver, const QString &keyword, int
             }
             const QList<PeerRecord> qtRecords =
                 fromCoreList<gy::storage::PeerRecord, PeerRecord>(records);
-            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, qtRecords, succeeded] {
                 callback(qtRecords, succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -597,9 +598,9 @@ void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &curso
         return;
     }
     if (!_storage->isAvailable() || !_messageRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -616,9 +617,9 @@ void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &curso
             // 回投到 receiver 所在线程（通常是主线程），避免跨线程操作模型
             const QList<MessageRecord> qtRecords =
                 fromCoreList<gy::storage::MessageRecord, MessageRecord>(records);
-            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, qtRecords, succeeded] {
                 callback(qtRecords, succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -631,9 +632,9 @@ void LocalDataBroker::queryTransfers(QObject *receiver, const TransferQuery &que
         return;
     }
     if (!_storage->isAvailable() || !_transferRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -649,9 +650,9 @@ void LocalDataBroker::queryTransfers(QObject *receiver, const TransferQuery &que
             }
             const QList<TransferRecord> qtRecords =
                 fromCoreList<gy::storage::TransferRecord, TransferRecord>(records);
-            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, qtRecords, succeeded] {
                 callback(qtRecords, succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -664,9 +665,9 @@ void LocalDataBroker::deleteMessage(QObject *receiver, const QString &messageId,
         return;
     }
     if (!_storage->isAvailable() || !_messageRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -678,9 +679,9 @@ void LocalDataBroker::deleteMessage(QObject *receiver, const QString &messageId,
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -693,9 +694,9 @@ void LocalDataBroker::deleteConversation(QObject *receiver, const QString &devic
         return;
     }
     if (!_storage->isAvailable() || !_messageRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -707,9 +708,9 @@ void LocalDataBroker::deleteConversation(QObject *receiver, const QString &devic
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -722,9 +723,9 @@ void LocalDataBroker::deleteTransfer(QObject *receiver, const QString &recordId,
         return;
     }
     if (!_storage->isAvailable() || !_transferRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -736,9 +737,9 @@ void LocalDataBroker::deleteTransfer(QObject *receiver, const QString &recordId,
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -751,9 +752,9 @@ void LocalDataBroker::setDevicePinned(QObject *receiver, const QString &deviceId
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -765,9 +766,9 @@ void LocalDataBroker::setDevicePinned(QObject *receiver, const QString &deviceId
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -780,9 +781,9 @@ void LocalDataBroker::setDeviceFavorite(QObject *receiver, const QString &device
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -794,9 +795,9 @@ void LocalDataBroker::setDeviceFavorite(QObject *receiver, const QString &device
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -809,9 +810,9 @@ void LocalDataBroker::setDeviceHidden(QObject *receiver, const QString &deviceId
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -823,9 +824,9 @@ void LocalDataBroker::setDeviceHidden(QObject *receiver, const QString &deviceId
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -838,9 +839,9 @@ void LocalDataBroker::setDeviceAlias(QObject *receiver, const QString &deviceId,
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -852,9 +853,9 @@ void LocalDataBroker::setDeviceAlias(QObject *receiver, const QString &deviceId,
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -867,9 +868,9 @@ void LocalDataBroker::deleteDeviceWithHistory(QObject *receiver, const QString &
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository || !_transferRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -886,9 +887,9 @@ void LocalDataBroker::deleteDeviceWithHistory(QObject *receiver, const QString &
             } else if (errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -900,9 +901,9 @@ void LocalDataBroker::clearAllMessages(QObject *receiver, const OperationCallbac
         return;
     }
     if (!_storage->isAvailable() || !_messageRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -914,9 +915,9 @@ void LocalDataBroker::clearAllMessages(QObject *receiver, const OperationCallbac
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -928,9 +929,9 @@ void LocalDataBroker::clearAllTransfers(QObject *receiver, const OperationCallba
         return;
     }
     if (!_storage->isAvailable() || !_transferRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -941,9 +942,9 @@ void LocalDataBroker::clearAllTransfers(QObject *receiver, const OperationCallba
             if (!succeeded && errorMessage) {
                 *errorMessage = QString::fromStdString(error);
             }
-            QMetaObject::invokeMethod(receiver, [callback, succeeded] {
+            gy::bridge::postToUiThread(receiver, [callback, succeeded] {
                 callback(succeeded);
-            }, Qt::QueuedConnection);
+            });
             return succeeded;
         });
 }
@@ -956,9 +957,9 @@ void LocalDataBroker::loadBackupData(QObject *receiver, bool includeChat, bool i
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, {}, {}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -987,9 +988,9 @@ void LocalDataBroker::loadBackupData(QObject *receiver, bool includeChat, bool i
                 fromCoreList<gy::storage::MessageRecord, MessageRecord>(messages);
             const QList<TransferRecord> qtTransfers =
                 fromCoreList<gy::storage::TransferRecord, TransferRecord>(transfers);
-            QMetaObject::invokeMethod(receiver, [callback, qtDevices, qtMessages, qtTransfers, allDone] {
+            gy::bridge::postToUiThread(receiver, [callback, qtDevices, qtMessages, qtTransfers, allDone] {
                 callback(qtDevices, qtMessages, qtTransfers, allDone);
-            }, Qt::QueuedConnection);
+            });
             return allDone;
         });
 }
@@ -1004,9 +1005,9 @@ void LocalDataBroker::analyzeBackupRecords(QObject *receiver, const QList<PeerRe
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -1068,9 +1069,9 @@ void LocalDataBroker::analyzeBackupRecords(QObject *receiver, const QList<PeerRe
             stats.insert(QStringLiteral("deviceConflicts"), deviceConflicts);
             stats.insert(QStringLiteral("messageConflicts"), messageConflicts);
             stats.insert(QStringLiteral("transferConflicts"), transferConflicts);
-            QMetaObject::invokeMethod(receiver, [callback, stats] {
+            gy::bridge::postToUiThread(receiver, [callback, stats] {
                 callback(stats, true);
-            }, Qt::QueuedConnection);
+            });
             return true;
         });
 }
@@ -1087,9 +1088,9 @@ void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRec
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback({}, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -1243,9 +1244,9 @@ void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRec
                 if (errorMessage) {
                     *errorMessage = QString::fromStdString(error);
                 }
-                QMetaObject::invokeMethod(receiver, [callback] {
+                gy::bridge::postToUiThread(receiver, [callback] {
                     callback({}, false);
-                }, Qt::QueuedConnection);
+                });
                 return false;
             }
             for (const gy::storage::PeerRecord &record : coreDevices) {
@@ -1258,9 +1259,9 @@ void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRec
             stats.insert(QStringLiteral("messagesAdded"), messagesAdded);
             stats.insert(QStringLiteral("transfers"), int(coreTransfers.size()));
             stats.insert(QStringLiteral("transfersAdded"), transfersAdded);
-            QMetaObject::invokeMethod(receiver, [callback, stats] {
+            gy::bridge::postToUiThread(receiver, [callback, stats] {
                 callback(stats, true);
-            }, Qt::QueuedConnection);
+            });
             return true;
         });
 }
@@ -1273,9 +1274,9 @@ void LocalDataBroker::countDeviceRecords(QObject *receiver, const QString &devic
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(0, 0, false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -1309,9 +1310,9 @@ void LocalDataBroker::countDeviceRecords(QObject *receiver, const QString &devic
                 return false;
             }
             const int transfers = static_cast<int>(transferQuery.columnInt64(0));
-            QMetaObject::invokeMethod(receiver, [callback, messages, transfers] {
+            gy::bridge::postToUiThread(receiver, [callback, messages, transfers] {
                 callback(messages, transfers, true);
-            }, Qt::QueuedConnection);
+            });
             return true;
         });
 }
@@ -1327,9 +1328,9 @@ void LocalDataBroker::mergeDeviceRecords(QObject *receiver, const PeerRecord &ne
         return;
     }
     if (!_storage->isAvailable() || !_deviceRepository) {
-        QMetaObject::invokeMethod(receiver, [callback] {
+        gy::bridge::postToUiThread(receiver, [callback] {
             callback(false);
-        }, Qt::QueuedConnection);
+        });
         return;
     }
 
@@ -1420,16 +1421,16 @@ void LocalDataBroker::mergeDeviceRecords(QObject *receiver, const PeerRecord &ne
                 if (errorMessage) {
                     *errorMessage = QString::fromStdString(error);
                 }
-                QMetaObject::invokeMethod(receiver, [callback] {
+                gy::bridge::postToUiThread(receiver, [callback] {
                     callback(false);
-                }, Qt::QueuedConnection);
+                });
                 return false;
             }
             _deviceRepository->noteWritten(coreNewDevice);
             _deviceRepository->noteDeviceDeleted(coreOldDeviceId);
-            QMetaObject::invokeMethod(receiver, [callback] {
+            gy::bridge::postToUiThread(receiver, [callback] {
                 callback(true);
-            }, Qt::QueuedConnection);
+            });
             return true;
         });
 }
