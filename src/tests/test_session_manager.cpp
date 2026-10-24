@@ -501,16 +501,17 @@ void TestSessionManager::testGuardsAfterCompletion()
     source.close();
 
     // 真实发送端向本 fixture 的接收服务器传输
-    FileSenderWorker sender;
+    auto *sender = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread senderThread;
-    sender.moveToThread(&senderThread);
-    QObject::connect(&senderThread, &QThread::started, &sender, [&sender, port, &sourcePath]() {
-        sender.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+    sender->moveToThread(&senderThread);
+    QObject::connect(&senderThread, &QThread::finished, sender, &QObject::deleteLater);
+    QObject::connect(&senderThread, &QThread::started, sender, [sender, port, &sourcePath]() {
+        sender->startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
                              QStringLiteral("guard-sender"), QStringLiteral("GuardSender"));
     });
 
     QSignalSpy requestSpy(_manager, &TransferSessionManager::receiveRequestReceived);
-    QSignalSpy sendSpy(&sender, &FileSenderWorker::transferFinished);
+    QSignalSpy sendSpy(sender, &FileSenderWorker::transferFinished);
     senderThread.start();
 
     QVERIFY2(requestSpy.wait(5000), "接收请求应在 5 秒内到达");
@@ -549,11 +550,12 @@ void TestSessionManager::testSessionStaleSignal()
     QCOMPARE(source.write(QByteArray("stale-payload")), qint64(13));
     source.close();
 
-    FileSenderWorker sender;
+    auto *sender = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread senderThread;
-    sender.moveToThread(&senderThread);
-    QObject::connect(&senderThread, &QThread::started, &sender, [&sender, port, &sourcePath]() {
-        sender.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+    sender->moveToThread(&senderThread);
+    QObject::connect(&senderThread, &QThread::finished, sender, &QObject::deleteLater);
+    QObject::connect(&senderThread, &QThread::started, sender, [sender, port, &sourcePath]() {
+        sender->startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
                              QStringLiteral("stale-sender"), QStringLiteral("StaleSender"));
     });
 
@@ -567,8 +569,8 @@ void TestSessionManager::testSessionStaleSignal()
     QCOMPARE(staleSpy.count(), 0);
 
     // 发送端在确认前取消（与 Manager 同款双步取消）：接收会话仍处 waiting_confirm 时被后端终结
-    sender.requestCancel();
-    QMetaObject::invokeMethod(&sender, "cancel");
+    sender->requestCancel();
+    QMetaObject::invokeMethod(sender, "cancel");
     QVERIFY2(staleSpy.wait(5000), "会话过期信号应在 5 秒内到达");
     QCOMPARE(staleSpy.count(), 1);
     QCOMPARE(staleSpy.first().first().toString(), sessionId);
@@ -584,11 +586,12 @@ void TestSessionManager::testSessionStaleSignal()
     QCOMPARE(okSource.write(QByteArray("ok-payload")), qint64(10));
     okSource.close();
 
-    FileSenderWorker okSender;
+    auto *okSender = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread okThread;
-    okSender.moveToThread(&okThread);
-    QObject::connect(&okThread, &QThread::started, &okSender, [&okSender, port, &okPath]() {
-        okSender.startTransfer(QStringLiteral("127.0.0.1"), port, okPath,
+    okSender->moveToThread(&okThread);
+    QObject::connect(&okThread, &QThread::finished, okSender, &QObject::deleteLater);
+    QObject::connect(&okThread, &QThread::started, okSender, [okSender, port, &okPath]() {
+        okSender->startTransfer(QStringLiteral("127.0.0.1"), port, okPath,
                                QStringLiteral("ok-sender"), QStringLiteral("OkSender"));
     });
     okThread.start();
@@ -610,11 +613,12 @@ void TestSessionManager::testSessionStaleSignal()
     QCOMPARE(rejectSource.write(QByteArray("reject-payload")), qint64(14));
     rejectSource.close();
 
-    FileSenderWorker rejectSender;
+    auto *rejectSender = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread rejectThread;
-    rejectSender.moveToThread(&rejectThread);
-    QObject::connect(&rejectThread, &QThread::started, &rejectSender, [&rejectSender, port, &rejectPath]() {
-        rejectSender.startTransfer(QStringLiteral("127.0.0.1"), port, rejectPath,
+    rejectSender->moveToThread(&rejectThread);
+    QObject::connect(&rejectThread, &QThread::finished, rejectSender, &QObject::deleteLater);
+    QObject::connect(&rejectThread, &QThread::started, rejectSender, [rejectSender, port, &rejectPath]() {
+        rejectSender->startTransfer(QStringLiteral("127.0.0.1"), port, rejectPath,
                                    QStringLiteral("reject-sender"), QStringLiteral("RejectSender"));
     });
     rejectThread.start();
@@ -662,25 +666,28 @@ void TestSessionManager::testWaitingConfirmSnapshotQueueing()
     const QString pathC = makeSource("queue-c.txt", "payload-c");
     QVERIFY2(!pathA.isEmpty() && !pathB.isEmpty() && !pathC.isEmpty(), "测试源文件应创建成功");
 
-    FileSenderWorker senderA;
+    auto *senderA = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread threadA;
-    senderA.moveToThread(&threadA);
-    QObject::connect(&threadA, &QThread::started, &senderA, [&senderA, port, &pathA]() {
-        senderA.startTransfer(QStringLiteral("127.0.0.1"), port, pathA,
+    senderA->moveToThread(&threadA);
+    QObject::connect(&threadA, &QThread::finished, senderA, &QObject::deleteLater);
+    QObject::connect(&threadA, &QThread::started, senderA, [senderA, port, &pathA]() {
+        senderA->startTransfer(QStringLiteral("127.0.0.1"), port, pathA,
                               QStringLiteral("queue-sender-a"), QStringLiteral("QueueA"));
     });
-    FileSenderWorker senderB;
+    auto *senderB = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread threadB;
-    senderB.moveToThread(&threadB);
-    QObject::connect(&threadB, &QThread::started, &senderB, [&senderB, port, &pathB]() {
-        senderB.startTransfer(QStringLiteral("127.0.0.1"), port, pathB,
+    senderB->moveToThread(&threadB);
+    QObject::connect(&threadB, &QThread::finished, senderB, &QObject::deleteLater);
+    QObject::connect(&threadB, &QThread::started, senderB, [senderB, port, &pathB]() {
+        senderB->startTransfer(QStringLiteral("127.0.0.1"), port, pathB,
                               QStringLiteral("queue-sender-b"), QStringLiteral("QueueB"));
     });
-    FileSenderWorker senderC;
+    auto *senderC = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread threadC;
-    senderC.moveToThread(&threadC);
-    QObject::connect(&threadC, &QThread::started, &senderC, [&senderC, port, &pathC]() {
-        senderC.startTransfer(QStringLiteral("127.0.0.1"), port, pathC,
+    senderC->moveToThread(&threadC);
+    QObject::connect(&threadC, &QThread::finished, senderC, &QObject::deleteLater);
+    QObject::connect(&threadC, &QThread::started, senderC, [senderC, port, &pathC]() {
+        senderC->startTransfer(QStringLiteral("127.0.0.1"), port, pathC,
                               QStringLiteral("queue-sender-c"), QStringLiteral("QueueC"));
     });
 
@@ -724,8 +731,8 @@ void TestSessionManager::testWaitingConfirmSnapshotQueueing()
     QCOMPARE(snapshot.at(1).toMap().value("sessionId").toString(), thirdId);
 
     // 第三个会话被后端终态（超时同路径）：快照收敛回第二个，其余等待会话不受影响
-    senderC.requestCancel();
-    QMetaObject::invokeMethod(&senderC, "cancel");
+    senderC->requestCancel();
+    QMetaObject::invokeMethod(senderC, "cancel");
     QVERIFY(waitForStatus(thirdId, "cancelled"));
     QVERIFY(gy::test::waitFor([&controller, &secondId]() {
         const QVariantList waiting = controller.waitingConfirmReceiveSessions();
@@ -782,11 +789,12 @@ void TestSessionManager::testActiveSessionCountLifecycle()
     QCOMPARE(source.write(QByteArray("count-payload")), qint64(13));
     source.close();
 
-    FileSenderWorker sender;
+    auto *sender = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread senderThread;
-    sender.moveToThread(&senderThread);
-    QObject::connect(&senderThread, &QThread::started, &sender, [&sender, port, &sourcePath]() {
-        sender.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+    sender->moveToThread(&senderThread);
+    QObject::connect(&senderThread, &QThread::finished, sender, &QObject::deleteLater);
+    QObject::connect(&senderThread, &QThread::started, sender, [sender, port, &sourcePath]() {
+        sender->startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
                              QStringLiteral("count-sender"), QStringLiteral("CountSender"));
     });
     QSignalSpy requestSpy(_manager, &TransferSessionManager::receiveRequestReceived);
@@ -829,11 +837,12 @@ void TestSessionManager::testIncomingRequestEntrySignal()
     QSignalSpy entrySpy(_manager, &TransferSessionManager::incomingTransferRequested);
 
     // 路径一：需要弹窗确认的正常请求
-    FileSenderWorker senderA;
+    auto *senderA = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread threadA;
-    senderA.moveToThread(&threadA);
-    QObject::connect(&threadA, &QThread::started, &senderA, [&senderA, port, &sourcePath]() {
-        senderA.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+    senderA->moveToThread(&threadA);
+    QObject::connect(&threadA, &QThread::finished, senderA, &QObject::deleteLater);
+    QObject::connect(&threadA, &QThread::started, senderA, [senderA, port, &sourcePath]() {
+        senderA->startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
                               QStringLiteral("entry-sender-a"), QStringLiteral("EntrySenderA"));
     });
     threadA.start();
@@ -850,11 +859,12 @@ void TestSessionManager::testIncomingRequestEntrySignal()
     _config->setAutoAcceptFiles(true);
     const int confirmRequestsBefore = entrySpy.count();
 
-    FileSenderWorker senderB;
+    auto *senderB = new FileSenderWorker;  // 堆对象：随线程 finished 链在归属线程 deleteLater，避免栈析构跨线程触碰
     QThread threadB;
-    senderB.moveToThread(&threadB);
-    QObject::connect(&threadB, &QThread::started, &senderB, [&senderB, port, &sourcePath]() {
-        senderB.startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
+    senderB->moveToThread(&threadB);
+    QObject::connect(&threadB, &QThread::finished, senderB, &QObject::deleteLater);
+    QObject::connect(&threadB, &QThread::started, senderB, [senderB, port, &sourcePath]() {
+        senderB->startTransfer(QStringLiteral("127.0.0.1"), port, sourcePath,
                               QStringLiteral("entry-sender-b"), QStringLiteral("EntrySenderB"));
     });
     QSignalSpy confirmSpy(_manager, &TransferSessionManager::receiveRequestReceived);
@@ -868,8 +878,8 @@ void TestSessionManager::testIncomingRequestEntrySignal()
     QCOMPARE(entrySpy.last().at(0).toString(), QStringLiteral("entry-sender-b"));
     QVERIFY(waitForStatus(_manager->sessions().last().toMap()["sessionId"].toString(), "transferring"));
 
-    senderB.requestCancel();
-    senderA.requestCancel();
+    senderB->requestCancel();
+    senderA->requestCancel();
     threadA.quit();
     threadB.quit();
     QVERIFY(threadA.wait(3000));
