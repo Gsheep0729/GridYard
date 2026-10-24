@@ -1,7 +1,7 @@
 /**
 * @file    test_integration.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.1
+* @date 2026-10-25
 * @author  GY
 * @brief   集成测试 - 单机多实例模拟
 *
@@ -10,6 +10,9 @@
 */
 
 #include <QtTest/QtTest>
+
+#include <utility>
+#include <vector>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
@@ -28,7 +31,7 @@
 #include "file_receiver_worker.h"
 #include "transfer_session_manager.h"
 #include "dir_serializer.h"
-#include "frame_codec.h"
+#include "codec_bridge.h"
 #include "protocol.h"
 
 using gy::DirSerializer;
@@ -190,32 +193,36 @@ void TestIntegration::testDirSerializerComprehensive()
 void TestIntegration::testFrameCodecEdgeCases()
 {
     // 测试 FrameCodec 各种边界情况
-    FrameCodec codec;
-    QSignalSpy spy(&codec, &FrameCodec::frameReady);
+    std::vector<std::pair<quint32, QByteArray>> frames;
+    gy::core::FrameCodecCore codec(
+        [&frames](uint32_t type, std::vector<uint8_t> payload) {
+            frames.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [](std::string) {});
 
     // 测试 1: 连续多个小帧
     QByteArray multiFrame;
     for (int i = 0; i < 10; ++i) {
         QByteArray payload = QString("frame_%1").arg(i).toUtf8();
-        multiFrame.append(FrameCodec::encode(0x0001, payload));
+        multiFrame.append(gy::bridge::encodeFrame(0x0001, payload));
     }
-    codec.feed(multiFrame);
-    QCOMPARE(spy.count(), 10);
+    gy::bridge::feedFrame(codec, multiFrame);
+    QCOMPARE(frames.size(), size_t(10));
 
     // 测试 2: 大帧（1MB）
-    spy.clear();
+    frames.clear();
     QByteArray largePayload(1024 * 1024, 'X');
-    QByteArray largeFrame = FrameCodec::encode(0x0201, largePayload);
-    codec.feed(largeFrame);
-    QCOMPARE(spy.count(), 1);
-    QCOMPARE(spy.takeFirst()[1].toByteArray(), largePayload);
+    QByteArray largeFrame = gy::bridge::encodeFrame(0x0201, largePayload);
+    gy::bridge::feedFrame(codec, largeFrame);
+    QCOMPARE(frames.size(), size_t(1));
+    QCOMPARE(frames[0].second, largePayload);
 
     // 测试 3: 空 payload
-    spy.clear();
-    QByteArray emptyFrame = FrameCodec::encode(0x0302, QByteArray());
-    codec.feed(emptyFrame);
-    QCOMPARE(spy.count(), 1);
-    QVERIFY(spy.takeFirst()[1].toByteArray().isEmpty());
+    frames.clear();
+    QByteArray emptyFrame = gy::bridge::encodeFrame(0x0302, QByteArray());
+    gy::bridge::feedFrame(codec, emptyFrame);
+    QCOMPARE(frames.size(), size_t(1));
+    QVERIFY(frames[0].second.isEmpty());
 }
 
 void TestIntegration::testProtocolConstants()

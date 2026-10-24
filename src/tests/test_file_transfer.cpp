@@ -1,7 +1,7 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-25
 * @author  GY
 * @brief   文件传输完整流程测试
 *
@@ -20,7 +20,7 @@
 #include "file_sender_worker.h"
 #include "file_receiver_worker.h"
 #include "chat_message.h"
-#include "frame_codec.h"
+#include "codec_bridge.h"
 #include "p2p_server.h"
 #include "config_manager.h"
 #include "discovery_service.h"
@@ -32,6 +32,9 @@
 #include "transfer_session_manager.h"
 
 #include "test_utils/port.h"
+
+#include <utility>
+#include <vector>
 
 using gy::DirSerializer;
 
@@ -1113,7 +1116,7 @@ void TestFileTransfer::testProtocolVersionMismatch()
     json["files"] = QJsonArray();
 
     QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-    QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+    QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, data);
     socket.write(frame);
     socket.flush();
 
@@ -1149,7 +1152,7 @@ void TestFileTransfer::testMalformedTransferRequest()
         QVERIFY(socket.waitForConnected(5000));
 
         QByteArray badJson = "{invalid json!!!";
-        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, badJson);
+        QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, badJson);
         socket.write(frame);
         socket.flush();
 
@@ -1170,7 +1173,7 @@ void TestFileTransfer::testMalformedTransferRequest()
         json["session_id"] = "test-missing";
         // 缺少 sender_device_id, sender_name, total_files, files 等
         QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, data);
         socket.write(frame);
         socket.flush();
 
@@ -1200,7 +1203,7 @@ void TestFileTransfer::testMalformedTransferRequest()
         json["empty_directories"] = QJsonArray();
 
         QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, data);
         socket.write(frame);
         socket.flush();
 
@@ -1254,7 +1257,7 @@ void TestFileTransfer::testInvalidFilePath()
         json["empty_directories"] = QJsonArray();
 
         QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, data);
         socket.write(frame);
         socket.flush();
 
@@ -1290,7 +1293,7 @@ void TestFileTransfer::testInvalidFilePath()
         json["empty_directories"] = QJsonArray();
 
         QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, data);
         socket.write(frame);
         socket.flush();
 
@@ -1326,7 +1329,7 @@ void TestFileTransfer::testInvalidFilePath()
         json["empty_directories"] = QJsonArray();
 
         QByteArray data = QJsonDocument(json).toJson(QJsonDocument::Compact);
-        QByteArray frame = FrameCodec::encode(gy::protocol::kTypeTransferReq, data);
+        QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, data);
         socket.write(frame);
         socket.flush();
 
@@ -1370,8 +1373,8 @@ void TestFileTransfer::testChatConnectionRouting()
     message.sentAt = QDateTime::currentDateTimeUtc();
 
     QByteArray payload;
-    QVERIFY(gy::ChatMessageCodec::encode(message, &payload));
-    const QByteArray frame = FrameCodec::encode(gy::protocol::kTypeChatText, payload);
+    QVERIFY(gy::bridge::encodeChatMessage(message, &payload));
+    const QByteArray frame = gy::bridge::encodeFrame(gy::protocol::kTypeChatText, payload);
     QVERIFY(!frame.isEmpty());
 
     gy::net::PosixTcpSocket client;
@@ -1389,12 +1392,16 @@ void TestFileTransfer::testChatConnectionRouting()
     QCOMPARE(routedData, frame);
     QVERIFY(!transferRequestReceived);
 
-    FrameCodec codec;
-    QSignalSpy frameSpy(&codec, &FrameCodec::frameReady);
-    codec.feed(routedData);
-    QCOMPARE(frameSpy.count(), 1);
-    QCOMPARE(frameSpy.first().at(0).toUInt(), gy::protocol::kTypeChatText);
-    QCOMPARE(frameSpy.first().at(1).toByteArray(), payload);
+    std::vector<std::pair<quint32, QByteArray>> frames;
+    gy::core::FrameCodecCore codec(
+        [&frames](uint32_t type, std::vector<uint8_t> payload) {
+            frames.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [](std::string) {});
+    gy::bridge::feedFrame(codec, routedData);
+    QCOMPARE(frames.size(), size_t(1));
+    QCOMPARE(frames[0].first, gy::protocol::kTypeChatText);
+    QCOMPARE(frames[0].second, payload);
 
     client.disconnectFromHost();
     client.waitForDisconnected(1000);
@@ -1425,7 +1432,7 @@ void TestFileTransfer::testUnsupportedFirstFrameRejected()
     client.connectToHost(gy::net::IpAddress::localHost(), _testPort);
     QVERIFY(client.waitForConnected(5000));
 
-    const QByteArray frame = FrameCodec::encode(0x0503, "{}");
+    const QByteArray frame = gy::bridge::encodeFrame(0x0503, "{}");
     QVERIFY(client.write(frame) > 0);
     QVERIFY(client.waitForBytesWritten(1000));
     QVERIFY(disconnectedSpy.wait(3000));
@@ -1437,7 +1444,7 @@ void TestFileTransfer::testUnsupportedFirstFrameRejected()
     invalidChatClient.connectToHost(gy::net::IpAddress::localHost(), _testPort);
     QVERIFY(invalidChatClient.waitForConnected(5000));
 
-    const QByteArray invalidChatFrame = FrameCodec::encode(gy::protocol::kTypeChatText, "{}");
+    const QByteArray invalidChatFrame = gy::bridge::encodeFrame(gy::protocol::kTypeChatText, "{}");
     QVERIFY(invalidChatClient.write(invalidChatFrame) > 0);
     QVERIFY(invalidChatClient.waitForBytesWritten(1000));
     QVERIFY(invalidChatDisconnectedSpy.wait(3000));

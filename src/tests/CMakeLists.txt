@@ -64,7 +64,8 @@ add_test(NAME test_storage_transfer_history COMMAND test_storage_transfer_histor
 
 # --- FrameCodec 单测 ---
 qt_add_executable(test_frame_codec test_frame_codec.cpp)
-target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)
+target_link_libraries(test_frame_codec PRIVATE gy_shared gy_core Qt6::Test)
+target_include_directories(test_frame_codec PRIVATE ${CLIENT_CORE_DIR})
 target_compile_features(test_frame_codec PRIVATE cxx_std_23)
 add_test(NAME test_frame_codec COMMAND test_frame_codec)
 
@@ -76,7 +77,8 @@ add_test(NAME test_posix_socket COMMAND test_posix_socket)
 
 # --- 在线聊天消息测试 ---
 qt_add_executable(test_chat_message test_chat_message.cpp)
-target_link_libraries(test_chat_message PRIVATE gy_shared Qt6::Test)
+target_link_libraries(test_chat_message PRIVATE gy_shared gy_core Qt6::Test)
+target_include_directories(test_chat_message PRIVATE ${CLIENT_CORE_DIR})
 target_compile_features(test_chat_message PRIVATE cxx_std_23)
 add_test(NAME test_chat_message COMMAND test_chat_message)
 

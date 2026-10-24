@@ -132,6 +132,8 @@ inline bool encodeChatMessage(const gy::ChatMessage &message, QByteArray *payloa
     }
 
     *payload = QByteArray::fromStdString(result.json);
+    // 成功时同样归位错误出参（与旧 Qt 编解码器的出口契约一致）
+    setChatError(gy::ChatMessageError::None, {}, error, errorMessage);
     return true;
 }
 
@@ -155,6 +157,8 @@ inline bool decodeChatMessage(const QByteArray &payload, gy::ChatMessage *messag
     }
 
     *message = fromCoreChat(result.msg);
+    // 成功时同样归位错误出参（与旧 Qt 编解码器的出口契约一致）
+    setChatError(gy::ChatMessageError::None, {}, error, errorMessage);
     return true;
 }
 

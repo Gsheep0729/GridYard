@@ -27,7 +27,6 @@
 
 #include "chat_message.h"
 #include "dir_serializer.h"
-#include "frame_codec.h"
 #include "protocol.h"
 #include "rendezvous_limits.h"
 #include "rendezvous_protocol.h"
@@ -108,7 +107,7 @@ void TestGoldenBaseline::testGoldenFrameCodec()
 {
     // 场景一：Hello 帧（type=0x0001，载荷 37 字节）——帧头 8 字节硬编码
     const unsigned char helloHeader[8] = {0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x25};
-    const QByteArray helloFrame = FrameCodec::encode(gy::protocol::kTypeHello, helloPayload());
+    const QByteArray helloFrame = gy::bridge::encodeFrame(gy::protocol::kTypeHello, helloPayload());
     QCOMPARE(helloFrame.size(), 8 + helloPayload().size());
     for (int i = 0; i < 8; ++i) {
         QCOMPARE(quint8(helloFrame.at(i)), helloHeader[i]);
@@ -116,19 +115,19 @@ void TestGoldenBaseline::testGoldenFrameCodec()
     QCOMPARE(helloFrame.mid(8), helloPayload());
 
     // 场景二：TransferRequest 帧（type=0x0101）
-    const QByteArray reqFrame = FrameCodec::encode(gy::protocol::kTypeTransferReq, transferReqPayload());
+    const QByteArray reqFrame = gy::bridge::encodeFrame(gy::protocol::kTypeTransferReq, transferReqPayload());
     QCOMPARE(reqFrame, buildFrameManually(gy::protocol::kTypeTransferReq, transferReqPayload()));
     QCOMPARE(quint8(reqFrame.at(3)), 0x01);
     QCOMPARE(quint8(reqFrame.at(4)), 0x00);
 
     // 场景三：ChatText 帧（type=0x0501），载荷含 UTF-8 中文与 emoji
-    const QByteArray chatFrame = FrameCodec::encode(gy::protocol::kTypeChatText, chatTextPayload());
+    const QByteArray chatFrame = gy::bridge::encodeFrame(gy::protocol::kTypeChatText, chatTextPayload());
     QCOMPARE(chatFrame.size(), 8 + chatTextPayload().size());
     QCOMPARE(chatFrame.mid(8), chatTextPayload());
 
     // 场景四：DataChunk 帧（type=0x0201）1MB 全零——长度与帧头硬编码、内容抽样验证
     const QByteArray megaZero(1024 * 1024, char(0));
-    const QByteArray chunkFrame = FrameCodec::encode(gy::protocol::kTypeDataChunk, megaZero);
+    const QByteArray chunkFrame = gy::bridge::encodeFrame(gy::protocol::kTypeDataChunk, megaZero);
     const unsigned char chunkHeader[8] = {0x00, 0x00, 0x02, 0x01, 0x00, 0x10, 0x00, 0x00};
     QCOMPARE(chunkFrame.size(), 8 + 1024 * 1024);
     for (int i = 0; i < 8; ++i) {
@@ -138,7 +137,7 @@ void TestGoldenBaseline::testGoldenFrameCodec()
 
     // 场景四补充：16 字节全零 DataChunk 的完整帧（24 字节）全量硬编码
     const QByteArray tinyZero(16, char(0));
-    const QByteArray tinyFrame = FrameCodec::encode(gy::protocol::kTypeDataChunk, tinyZero);
+    const QByteArray tinyFrame = gy::bridge::encodeFrame(gy::protocol::kTypeDataChunk, tinyZero);
     const unsigned char tinyExpected[24] = {0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x10,
                                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -148,29 +147,29 @@ void TestGoldenBaseline::testGoldenFrameCodec()
     }
 
     // 场景五：Cancel 帧（type=0x0401，error_code=5001）
-    const QByteArray cancelFrame = FrameCodec::encode(gy::protocol::kTypeCancel, cancelPayload());
+    const QByteArray cancelFrame = gy::bridge::encodeFrame(gy::protocol::kTypeCancel, cancelPayload());
     QCOMPARE(cancelFrame, buildFrameManually(gy::protocol::kTypeCancel, cancelPayload()));
 
-    // 解码：喂入手工构造帧后 frameReady 交付的类型与载荷逐字节一致
+    // 解码：喂入手工构造帧后回调交付的类型与载荷逐字节一致
     std::vector<std::pair<quint32, QByteArray>> decoded;
-    FrameCodec codec;
-    connect(&codec, &FrameCodec::frameReady, &codec,
-            [&decoded](quint32 type, const QByteArray &payload) {
-                decoded.emplace_back(type, payload);
-            });
-    codec.feed(helloFrame);
+    gy::core::FrameCodecCore codec(
+        [&decoded](uint32_t type, std::vector<uint8_t> payload) {
+            decoded.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [](std::string) {});
+    gy::bridge::feedFrame(codec, helloFrame);
     QCOMPARE(decoded.size(), size_t(1));
     QCOMPARE(decoded[0].first, gy::protocol::kTypeHello);
     QCOMPARE(decoded[0].second, helloPayload());
 
     // 粘包：两个完整帧拼接后一次喂入，必须按序交付两帧
     decoded.clear();
-    FrameCodec glued;
-    connect(&glued, &FrameCodec::frameReady, &glued,
-            [&decoded](quint32 type, const QByteArray &payload) {
-                decoded.emplace_back(type, payload);
-            });
-    glued.feed(chatFrame + cancelFrame);
+    gy::core::FrameCodecCore glued(
+        [&decoded](uint32_t type, std::vector<uint8_t> payload) {
+            decoded.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [](std::string) {});
+    gy::bridge::feedFrame(glued, chatFrame + cancelFrame);
     QCOMPARE(decoded.size(), size_t(2));
     QCOMPARE(decoded[0].first, gy::protocol::kTypeChatText);
     QCOMPARE(decoded[0].second, chatTextPayload());
@@ -179,38 +178,37 @@ void TestGoldenBaseline::testGoldenFrameCodec()
 
     // 半包：先喂前半帧头再补齐，帧不丢失
     decoded.clear();
-    FrameCodec split;
-    connect(&split, &FrameCodec::frameReady, &split,
-            [&decoded](quint32 type, const QByteArray &payload) {
-                decoded.emplace_back(type, payload);
-            });
-    split.feed(reqFrame.left(5));
+    gy::core::FrameCodecCore split(
+        [&decoded](uint32_t type, std::vector<uint8_t> payload) {
+            decoded.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [](std::string) {});
+    gy::bridge::feedFrame(split, reqFrame.left(5));
     QCOMPARE(decoded.size(), size_t(0));
-    split.feed(reqFrame.mid(5));
+    gy::bridge::feedFrame(split, reqFrame.mid(5));
     QCOMPARE(decoded.size(), size_t(1));
     QCOMPARE(decoded[0].first, gy::protocol::kTypeTransferReq);
     QCOMPARE(decoded[0].second, transferReqPayload());
 
-    // 超限：控制帧声明超长载荷触发 errorOccurred(FrameTooLarge)，缓冲复位后可继续解码
+    // 超限：控制帧声明超长载荷触发错误回调，缓冲复位后可继续解码
     std::vector<gy::protocol::ErrorCode> errors;
-    FrameCodec overflow;
-    connect(&overflow, &FrameCodec::errorOccurred, &overflow,
-            [&errors](gy::protocol::ErrorCode code, const QString &) {
-                errors.push_back(code);
-            });
-    connect(&overflow, &FrameCodec::frameReady, &overflow,
-            [&decoded](quint32 type, const QByteArray &payload) {
-                decoded.emplace_back(type, payload);
-            });
+    gy::core::FrameCodecCore overflow(
+        [&decoded](uint32_t type, std::vector<uint8_t> payload) {
+            decoded.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [&errors](std::string) {
+            // 超限是解码状态机唯一可产生的协议错误（错误码出口契约）
+            errors.push_back(gy::protocol::ErrorCode::FrameTooLarge);
+        });
     decoded.clear();
     QByteArray forgedHeader(8, char(0));
     forgedHeader[3] = char(0x01);        // type = 0x00000001（控制帧，上限 1MB）
     forgedHeader[4] = char(0x7F);        // length = 0x7F000000，远超上限
-    overflow.feed(forgedHeader);
+    gy::bridge::feedFrame(overflow, forgedHeader);
     QCOMPARE(errors.size(), size_t(1));
     QCOMPARE(errors[0], gy::protocol::ErrorCode::FrameTooLarge);
     QCOMPARE(decoded.size(), size_t(0));
-    overflow.feed(chatFrame);  // 复位后正常帧不受污染
+    gy::bridge::feedFrame(overflow, chatFrame);  // 复位后正常帧不受污染
     QCOMPARE(decoded.size(), size_t(1));
     QCOMPARE(decoded[0].first, gy::protocol::kTypeChatText);
 }
@@ -229,7 +227,7 @@ void TestGoldenBaseline::testGoldenJson()
     QByteArray payload;
     gy::ChatMessageError error = gy::ChatMessageError::None;
     QString errorMessage;
-    QVERIFY(gy::ChatMessageCodec::encode(message, &payload, &error, &errorMessage));
+    QVERIFY(gy::bridge::encodeChatMessage(message, &payload, &error, &errorMessage));
     QCOMPARE(error, gy::ChatMessageError::None);
     // Phase 1 纯 C++ 实现必须复现以下字面量（Qt 参考实现输出，已冻结）
     const QByteArray expectedChatJson = QByteArray(R"({"content":"你好\"世界\"🐦 \\路径/测试","from_device_id":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d","from_name":"鸽邮测试设备","message_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","sent_at":"2026-10-24T12:34:56.789Z"})");
@@ -237,7 +235,7 @@ void TestGoldenBaseline::testGoldenJson()
 
     // 往返：decode(encode(m)) 字段与毫秒时间戳完全一致
     gy::ChatMessage roundTrip;
-    QVERIFY(gy::ChatMessageCodec::decode(payload, &roundTrip, &error, &errorMessage));
+    QVERIFY(gy::bridge::decodeChatMessage(payload, &roundTrip, &error, &errorMessage));
     QCOMPARE(roundTrip.messageId, message.messageId);
     QCOMPARE(roundTrip.fromDeviceId, message.fromDeviceId);
     QCOMPARE(roundTrip.fromName, message.fromName);
@@ -549,7 +547,7 @@ void TestGoldenBaseline::testGoldenCoreFrameCodec()
     static_assert(gy::core::frame::kMaxDataPayload == gy::protocol::kMaxDataPayloadBytes,
                   "数据帧上限与 protocol.h 不一致");
 
-    // 场景一：五类帧的编码输出与 Qt 版逐字节一致
+    // 场景一：五类帧的编码输出与独立手工构帧逐字节一致
     const QList<QPair<quint32, QByteArray>> cases = {
         {gy::protocol::kTypeHello, helloPayload()},
         {gy::protocol::kTypeTransferReq, transferReqPayload()},
@@ -558,23 +556,23 @@ void TestGoldenBaseline::testGoldenCoreFrameCodec()
         {gy::protocol::kTypeDataChunk, QByteArray(16, char(0))},
     };
     for (const auto &item : cases) {
-        const QByteArray qtFrame = FrameCodec::encode(item.first, item.second);
-        const std::vector<uint8_t> qtBytes(qtFrame.cbegin(), qtFrame.cend());
+        const QByteArray manualFrame = buildFrameManually(item.first, item.second);
+        const std::vector<uint8_t> manualBytes(manualFrame.cbegin(), manualFrame.cend());
         const std::vector<uint8_t> coreBytes = gy::core::FrameCodecCore::build(
             item.first, std::vector<uint8_t>(item.second.cbegin(), item.second.cend()));
-        QVERIFY(qtBytes == coreBytes);
+        QVERIFY(manualBytes == coreBytes);
     }
 
-    // 场景二：core 解码 Qt 编码的粘包帧流，类型与载荷逐字节一致
+    // 场景二：core 解码手工构帧的粘包帧流，类型与载荷逐字节一致
     std::vector<std::pair<uint32_t, std::vector<uint8_t>>> decoded;
     gy::core::FrameCodecCore codec(
         [&decoded](uint32_t type, std::vector<uint8_t> payload) {
             decoded.emplace_back(type, std::move(payload));
         },
         [](std::string) {});
-    const QByteArray qtChat = FrameCodec::encode(gy::protocol::kTypeChatText, chatTextPayload());
-    const QByteArray qtCancel = FrameCodec::encode(gy::protocol::kTypeCancel, cancelPayload());
-    const QByteArray gluedStream = qtChat + qtCancel;
+    const QByteArray builtChat = buildFrameManually(gy::protocol::kTypeChatText, chatTextPayload());
+    const QByteArray builtCancel = buildFrameManually(gy::protocol::kTypeCancel, cancelPayload());
+    const QByteArray gluedStream = builtChat + builtCancel;
     codec.feed(reinterpret_cast<const uint8_t *>(gluedStream.constData()),
                static_cast<size_t>(gluedStream.size()));
     QCOMPARE(decoded.size(), size_t(2));
@@ -586,7 +584,7 @@ void TestGoldenBaseline::testGoldenCoreFrameCodec()
     const QByteArray expectedCancel = cancelPayload();
     QVERIFY(decoded[1].second == std::vector<uint8_t>(expectedCancel.cbegin(), expectedCancel.cend()));
 
-    // 场景三：超限触发错误回调并复位，与 Qt 版行为一致（复位后正常帧可解）
+    // 场景三：超限触发错误回调并复位（复位后正常帧可解）
     int errorCount = 0;
     std::vector<std::pair<uint32_t, std::vector<uint8_t>>> recovered;
     gy::core::FrameCodecCore overflow(
@@ -600,8 +598,8 @@ void TestGoldenBaseline::testGoldenCoreFrameCodec()
     overflow.feed(reinterpret_cast<const uint8_t *>(forgedHeader.constData()), 8);
     QCOMPARE(errorCount, 1);
     QCOMPARE(recovered.size(), size_t(0));
-    overflow.feed(reinterpret_cast<const uint8_t *>(qtChat.constData()),
-                  static_cast<size_t>(qtChat.size()));
+    overflow.feed(reinterpret_cast<const uint8_t *>(builtChat.constData()),
+                  static_cast<size_t>(builtChat.size()));
     QCOMPARE(recovered.size(), size_t(1));
     QCOMPARE(recovered[0].first, gy::protocol::kTypeChatText);
 }

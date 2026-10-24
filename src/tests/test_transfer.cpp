@@ -1,7 +1,7 @@
 /**
 * @file    test_transfer.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.1
+* @date 2026-10-25
 * @author  GY
 * @brief   文件传输功能测试
 *
@@ -16,7 +16,6 @@
 #include <QJsonDocument>
 
 #include "data_types.h"
-#include "frame_codec.h"
 #include "protocol.h"
 #include "dir_serializer.h"
 

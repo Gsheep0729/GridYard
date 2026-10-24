@@ -1,7 +1,7 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-25
 * @author  GY
 * @brief   在线聊天连接与内存会话测试
 *
@@ -19,9 +19,9 @@
 #include "chat_manager.h"
 #include "chat_message.h"
 #include "chat_message_model.h"
+#include "codec_bridge.h"
 #include "config_manager.h"
 #include "discovery_service.h"
-#include "frame_codec.h"
 #include "history_records.h"
 #include "ip_address.h"
 #include "local_data_broker.h"
@@ -35,6 +35,9 @@
 #include "sqlite_message_repository.h"
 
 #include <QSharedPointer>
+
+#include <utility>
+#include <vector>
 
 class TestChatManager : public QObject {
 private:
@@ -152,11 +155,15 @@ void TestChatManager::testOnlineSendAndReconnect()
     QVERIFY(firstSocket != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(firstSocket->bytesAvailable() > 0, 3000);
 
-    FrameCodec codec;
-    QSignalSpy firstFrameSpy(&codec, &FrameCodec::frameReady);
-    codec.feed(firstSocket->readAll());
-    QCOMPARE(firstFrameSpy.count(), 1);
-    QCOMPARE(firstFrameSpy.first().at(0).toUInt(), gy::protocol::kTypeChatText);
+    std::vector<std::pair<quint32, QByteArray>> firstFrames;
+    gy::core::FrameCodecCore codec(
+        [&firstFrames](uint32_t type, std::vector<uint8_t> payload) {
+            firstFrames.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [](std::string) {});
+    gy::bridge::feedFrame(codec, firstSocket->readAll());
+    QCOMPARE(firstFrames.size(), size_t(1));
+    QCOMPARE(firstFrames[0].first, gy::protocol::kTypeChatText);
 
     QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 1, 3000);
     QCOMPARE(_manager->messagesForDevice(deviceId).first().toMap().value("status").toInt(), 1);
@@ -183,11 +190,15 @@ void TestChatManager::testOnlineSendAndReconnect()
     QVERIFY(secondSocket != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(secondSocket->bytesAvailable() > 0, 3000);
 
-    FrameCodec secondCodec;
-    QSignalSpy secondFrameSpy(&secondCodec, &FrameCodec::frameReady);
-    secondCodec.feed(secondSocket->readAll());
-    QCOMPARE(secondFrameSpy.count(), 1);
-    QCOMPARE(secondFrameSpy.first().at(1).toByteArray().contains("第二条消息"), true);
+    std::vector<std::pair<quint32, QByteArray>> secondFrames;
+    gy::core::FrameCodecCore secondCodec(
+        [&secondFrames](uint32_t type, std::vector<uint8_t> payload) {
+            secondFrames.emplace_back(type, gy::bridge::fromBytes(payload));
+        },
+        [](std::string) {});
+    gy::bridge::feedFrame(secondCodec, secondSocket->readAll());
+    QCOMPARE(secondFrames.size(), size_t(1));
+    QCOMPARE(secondFrames[0].second.contains("第二条消息"), true);
     QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 3, 3000);
     QCOMPARE(_manager->messagesForDevice(deviceId).last().toMap().value("status").toInt(), 1);
 
@@ -283,7 +294,7 @@ void TestChatManager::testInvalidFollowUpFrameRejected()
         "cd0f6d2c-9f2a-4146-8fc9-ef211aa5f841", "非法后续帧测试");
     _manager->clearMessages(message.fromDeviceId);
     const QByteArray validFrame = encodeMessageFrame(message);
-    const QByteArray invalidFrame = FrameCodec::encode(gy::protocol::kTypeChatText, "{}");
+    const QByteArray invalidFrame = gy::bridge::encodeFrame(gy::protocol::kTypeChatText, "{}");
 
     gy::net::PosixTcpSocket peer;
     QSignalSpy disconnectedSpy(&peer, &gy::net::PosixTcpSocket::disconnected);
@@ -473,10 +484,10 @@ gy::ChatMessage TestChatManager::createPeerMessage(const QString &messageId,
 QByteArray TestChatManager::encodeMessageFrame(const gy::ChatMessage &message) const
 {
     QByteArray payload;
-    if (!gy::ChatMessageCodec::encode(message, &payload)) {
+    if (!gy::bridge::encodeChatMessage(message, &payload)) {
         return {};
     }
-    return FrameCodec::encode(gy::protocol::kTypeChatText, payload);
+    return gy::bridge::encodeFrame(gy::protocol::kTypeChatText, payload);
 }
 
 // 请求系统分配一个可用 TCP 端口

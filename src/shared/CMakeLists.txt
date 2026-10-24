@@ -1,18 +1,10 @@
-# shared/ —— 客户端与未来 V2.0 服务端共用的静态库 gy_shared
-# 内含 TLV 协议常量、共用数据类型、帧编解码
-# 该 target 不依赖客户端界面或数据库，供 appGridYard、storage 和测试目标复用。
-
-set(GRIDYARD_SHARED_SOURCES
+# shared/ —— 客户端与未来 V2.0 服务端共用的协议常量与数据类型头文件集
+# 编解码实现已由 src/core 的纯 C++ 双生版承担（客户端经 codec_bridge 桥接），
+# 本目录只剩头文件：TLV 协议常量与共用数据类型， INTERFACE 目标供
+# appGridYard、storage 和测试目标复用，不再直接链接 Qt6::Core。
+set(GRIDYARD_SHARED_HEADERS
     protocol.h
     data_types.h
-    chat_message.h
-    chat_message.cpp
-    frame_codec.h
-    frame_codec.cpp
-)
-
-add_library(gy_shared STATIC
-    ${GRIDYARD_SHARED_SOURCES}
 )
 
 # 原生套接字原语层，客户端、协调节点与测试共用
@@ -23,9 +15,10 @@ add_subdirectory(net)
 add_library(gy_protocol_contracts INTERFACE)
 target_include_directories(gy_protocol_contracts INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "shared" FILES ${GRIDYARD_SHARED_SOURCES})
-
-target_include_directories(gy_shared PUBLIC .)
-target_compile_features(gy_shared    PUBLIC cxx_std_23)
-target_link_libraries(gy_shared      PUBLIC Qt6::Core gy_net gy_protocol_contracts)
+add_library(gy_shared STATIC ${GRIDYARD_SHARED_HEADERS})
+# 纯头目标：AUTOMOC 仍会为头文件中的 Q_GADGET 生成并编译 moc 载体
+set_property(TARGET gy_shared PROPERTY LINKER_LANGUAGE CXX)
+target_include_directories(gy_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(gy_shared PUBLIC cxx_std_23)
+target_link_libraries(gy_shared PUBLIC gy_net gy_protocol_contracts)
 set_property(TARGET gy_shared PROPERTY FOLDER "shared")
