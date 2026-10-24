@@ -56,6 +56,19 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
 )
 
 set(GRIDYARD_CLIENT_NETWORK_SOURCES
+    network/ip_address.h
+    network/ip_address.cpp
+    network/net_interfaces.h
+    network/net_interfaces.cpp
+    network/posix_net_error.h
+    network/posix_net_error.cpp
+    network/posix_net_types.h
+    network/posix_tcp_server.h
+    network/posix_tcp_server.cpp
+    network/posix_tcp_socket.h
+    network/posix_tcp_socket.cpp
+    network/posix_udp_socket.h
+    network/posix_udp_socket.cpp
     network/discovery_service.h
     network/discovery_service.cpp
     network/chat_connection.h
@@ -173,6 +186,7 @@ target_link_libraries(appGridYard PRIVATE
     Qt6::QuickDialogs2  # 原生文件/文件夹选择对话框
     Qt6::Widgets        # SystemTrayIcon / Menu 等需要 Widgets
     gy_shared
+    gy_net_core         # 网络适配器引用的事件泵核心（core/ 前缀头与符号）
     gy_storage_core
     gy_core
 )
