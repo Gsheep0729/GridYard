@@ -17,6 +17,7 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/application_paths.cpp
     core/chat_manager.h
     core/chat_manager.cpp
+    core/codec_bridge.h
     core/chat_controller.h
     core/chat_controller.cpp
     core/chat_message_model.h

@@ -1,7 +1,7 @@
 /**
 * @file    test_golden_baseline.cpp
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   纯 C++ 重构基线行为固化测试（golden 对拍）
 *
@@ -36,6 +36,7 @@
 #include "core/codec/frame_codec_core.h"
 #include "core/config/config_store.h"
 #include "core/utils/dir_hasher.h"
+#include "codec_bridge.h"
 
 namespace {
 
@@ -99,6 +100,7 @@ private slots:
     void testGoldenCoreFrameCodec();
     void testGoldenCoreSha256();
     void testGoldenCoreChatMessage();
+    void testGoldenCodecBridge();
 };
 
 // TLV 帧编码与解码的基线行为固化
@@ -457,7 +459,9 @@ name=鸽邮 设备 名
 
     const auto readAll = [](const QString &path) {
         QFile file(path);
-        file.open(QIODevice::ReadOnly);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return QByteArray();
+        }
         return file.readAll();
     };
     QCOMPARE(readAll(corePath), readAll(qtPath));
@@ -706,6 +710,97 @@ void TestGoldenBaseline::testGoldenCoreChatMessage()
     QVERIFY(!gy::core::ChatMessageCore::isValidMessageId("00000000-0000-0000-0000-000000000000"));
     QVERIFY(!gy::core::ChatMessageCore::isValidMessageId("not-a-uuid"));
     QVERIFY(gy::core::ChatMessageCore::isValidMessageId("3F2504E0-4F89-11D3-9A0C-0305E82C3301"));
+}
+
+// 编解码桥接件的黄金对拍（Phase 5-a 调用点切换验收）
+void TestGoldenBaseline::testGoldenCodecBridge()
+{
+    // 已知值向量：UTF-8 编码字节逐字节钉死
+    QCOMPARE(QByteArray::fromStdString(gy::bridge::toUtf8(QStringLiteral("鸽邮"))),
+             QByteArray::fromHex("e9b8bde982ae"));
+    QCOMPARE(QByteArray::fromStdString(gy::bridge::toUtf8(QStringLiteral("GridYard"))),
+             QByteArray("GridYard"));
+
+    // 代表性载荷双向 roundtrip：ASCII / 中文 / emoji / 空串 / 含引号反斜杠
+    const QStringList samples = {
+        QString(),
+        QStringLiteral("GridYard"),
+        QStringLiteral("鸽邮 设备"),
+        QStringLiteral("你好🐦 她说:\"鸽邮\" \\路径/测试"),
+    };
+    for (const QString &sample : samples) {
+        QCOMPARE(gy::bridge::fromUtf8(gy::bridge::toUtf8(sample)), sample);
+    }
+
+    // QDateTime 与 Unix 毫秒互转：固定时刻的已知毫秒值 + 往返还原
+    const QDateTime known = QDateTime::fromString(QStringLiteral("2026-10-24T12:34:56.789Z"),
+                                                  Qt::ISODateWithMs);
+    QCOMPARE(gy::bridge::toUtcMillis(known), qint64(1792845296789));
+    QCOMPARE(gy::bridge::fromUtcMillis(1792845296789).toUTC().toString(Qt::ISODateWithMs),
+             QStringLiteral("2026-10-24T12:34:56.789Z"));
+    QCOMPARE(gy::bridge::toUtcMillis(gy::bridge::fromUtcMillis(1792845296789)),
+             qint64(1792845296789));
+
+    // 帧构建：桥接 encodeFrame 与手工构帧逐字节一致
+    QCOMPARE(gy::bridge::encodeFrame(gy::protocol::kTypeHello, helloPayload()),
+             buildFrameManually(gy::protocol::kTypeHello, helloPayload()));
+    QCOMPARE(gy::bridge::encodeFrame(gy::protocol::kTypeChatText, chatTextPayload()),
+             buildFrameManually(gy::protocol::kTypeChatText, chatTextPayload()));
+    QCOMPARE(gy::bridge::encodeFrame(gy::protocol::kTypeCancel, cancelPayload()),
+             buildFrameManually(gy::protocol::kTypeCancel, cancelPayload()));
+    QVERIFY(gy::bridge::encodeFrame(gy::protocol::kTypeChatText,
+                                    QByteArray(gy::protocol::kMaxControlPayloadBytes + 1, 'C')).isEmpty());
+
+    // 聊天编解码经桥接输出冻结 JSON 字面量（与 testGoldenJson 同一裁判）
+    gy::ChatMessage message;
+    message.messageId = QStringLiteral("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
+    message.fromDeviceId = QStringLiteral("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+    message.fromName = QStringLiteral("鸽邮测试设备");
+    message.content = QStringLiteral("你好\"世界\"🐦 \\路径/测试");
+    message.sentAt = known;
+
+    QByteArray payload;
+    gy::ChatMessageError error = gy::ChatMessageError::None;
+    QString errorMessage;
+    QVERIFY(gy::bridge::encodeChatMessage(message, &payload, &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::None);
+    const QByteArray expectedChatJson = QByteArray(R"({"content":"你好\"世界\"🐦 \\路径/测试","from_device_id":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d","from_name":"鸽邮测试设备","message_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","sent_at":"2026-10-24T12:34:56.789Z"})");
+    QCOMPARE(payload, expectedChatJson);
+
+    gy::ChatMessage roundTrip;
+    QVERIFY(gy::bridge::decodeChatMessage(payload, &roundTrip, &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::None);
+    QCOMPARE(roundTrip.messageId, message.messageId);
+    QCOMPARE(roundTrip.fromDeviceId, message.fromDeviceId);
+    QCOMPARE(roundTrip.fromName, message.fromName);
+    QCOMPARE(roundTrip.content, message.content);
+    QCOMPARE(gy::bridge::toUtcMillis(roundTrip.sentAt), gy::bridge::toUtcMillis(message.sentAt));
+
+    // 错误分类还原 Qt 版契约：encode 校验失败统一 InvalidInput
+    gy::ChatMessage invalid = message;
+    invalid.messageId = QStringLiteral("not-a-uuid");
+    QVERIFY(!gy::bridge::encodeChatMessage(invalid, &payload, &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::InvalidInput);
+
+    invalid = message;
+    invalid.content = QStringLiteral("   ");
+    QVERIFY(!gy::bridge::encodeChatMessage(invalid, &payload, &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::InvalidInput);
+
+    invalid = message;
+    invalid.sentAt = QDateTime();
+    QVERIFY(!gy::bridge::encodeChatMessage(invalid, &payload, &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::InvalidInput);
+
+    // decode 失败统一 InvalidPayload：非法 JSON、缺字段、载荷超限
+    QVERIFY(!gy::bridge::decodeChatMessage(QByteArray("{not json"), &roundTrip, &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::InvalidPayload);
+    QVERIFY(!gy::bridge::decodeChatMessage(QByteArray("{\"message_id\":\"x\"}"), &roundTrip,
+                                           &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::InvalidPayload);
+    QVERIFY(!gy::bridge::decodeChatMessage(QByteArray(gy::protocol::kMaxChatPayloadBytes + 1, 'X'),
+                                           &roundTrip, &error, &errorMessage));
+    QCOMPARE(error, gy::ChatMessageError::InvalidPayload);
 }
 
 QTEST_GUILESS_MAIN(TestGoldenBaseline)

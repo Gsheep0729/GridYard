@@ -1,7 +1,7 @@
 /**
 * @file    chat_connection.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date 2026-10-25
 * @author  GridYard Team
 * @brief   单条在线聊天 TCP 连接实现
 *
@@ -10,6 +10,7 @@
 */
 
 #include "chat_connection.h"
+#include "codec_bridge.h"
 #include "frame_codec.h"
 #include "ip_address.h"
 #include "posix_tcp_socket.h"
@@ -54,7 +55,7 @@ bool ChatConnection::sendMessage(const gy::ChatMessage &message, gy::ChatMessage
                                  QString *errorMessage)
 {
     QByteArray payload;
-    if (!gy::ChatMessageCodec::encode(message, &payload, error, errorMessage)) {
+    if (!gy::bridge::encodeChatMessage(message, &payload, error, errorMessage)) {
         return false;
     }
 
@@ -142,7 +143,7 @@ void ChatConnection::onFrameReady(quint32 type, const QByteArray &payload)
     gy::ChatMessage message;
     gy::ChatMessageError error = gy::ChatMessageError::None;
     QString errorMessage;
-    if (!gy::ChatMessageCodec::decode(payload, &message, &error, &errorMessage)) {
+    if (!gy::bridge::decodeChatMessage(payload, &message, &error, &errorMessage)) {
         emit protocolError(error, errorMessage);
         close();
         return;

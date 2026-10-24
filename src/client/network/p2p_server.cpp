@@ -1,7 +1,7 @@
 /**
 * @file    p2p_server.cpp
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
 *
@@ -16,6 +16,7 @@
 #include "p2p_server.h"
 #include "rendezvous_protocol_keys_qt.h"
 #include "chat_message.h"
+#include "codec_bridge.h"
 #include "config_manager.h"
 #include "file_receiver_worker.h"
 #include "frame_codec.h"
@@ -353,7 +354,7 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
 
     if (type == gy::protocol::kTypeChatText) {
         gy::ChatMessage message;
-        if (!gy::ChatMessageCodec::decode(decodedPayload, &message)) {
+        if (!gy::bridge::decodeChatMessage(decodedPayload, &message)) {
             closePendingConnection(socket, tr("聊天首帧消息无效"));
             return;
         }
