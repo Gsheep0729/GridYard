@@ -1,11 +1,13 @@
 /**
  * @file    file_receiver_worker.h
  * @version 7.26.1
- * @date    2026-10-23
+ * @date    2026-10-24
  * @author  GridYard Team
  * @brief   文件接收 Worker（Worker-Object 模式）
  *
  * 由 P2pServer 为每个入站连接创建，运行在独立后台线程中。
+ * 首帧（TransferReq）由 P2pServer 校验并显式移交，Worker 初始化时优先
+ * 喂入该帧；后续到达的字节仍从 socket 缓冲区读取。
  * 负责接收传输请求、通知 UI 弹窗确认、接收文件数据并写入磁盘、
  * SHA-256 校验、发送确认帧等完整接收流程。
  * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
@@ -35,7 +37,10 @@ class FileReceiverWorker : public QObject {
     Q_OBJECT
 
 public:
-    explicit FileReceiverWorker(gy::net::PosixTcpSocket *socket, QObject *parent = nullptr);
+    // firstFrame 为 P2pServer 已消费的入站首帧字节（可为空，测试直连场景）
+    explicit FileReceiverWorker(gy::net::PosixTcpSocket *socket,
+                                const QByteArray &firstFrame = QByteArray(),
+                                QObject *parent = nullptr);
     virtual ~FileReceiverWorker() override;
 
     FileReceiverWorker(const FileReceiverWorker &)            = delete;
@@ -104,6 +109,7 @@ private:
     QVariantMap receiveRequestSnapshot() const;
 
     gy::net::PosixTcpSocket *_socket = nullptr;  // 与发送端通信的 TCP 连接
+    QByteArray _pendingFirstFrame;       // P2pServer 显式移交的首帧字节，初始化时优先喂入
     FrameCodec  *_codec  = nullptr;       // 解析入站 TLV 帧的编解码器
     QFile        _file;                    // 当前正在写入的接收文件
     QTimer      *_timeoutTimer = nullptr; // 等待确认和数据帧的超时计时器

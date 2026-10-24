@@ -71,10 +71,13 @@ QString uniqueTargetPath(const QString &path, bool directory)
 
 }
 
-// 构造函数，绑定 socket 并创建 SHA-256 哈希计算器
-FileReceiverWorker::FileReceiverWorker(gy::net::PosixTcpSocket *socket, QObject *parent)
+// 构造函数，绑定 socket、接收显式移交的首帧并创建 SHA-256 哈希计算器
+FileReceiverWorker::FileReceiverWorker(gy::net::PosixTcpSocket *socket,
+                                       const QByteArray &firstFrame,
+                                       QObject *parent)
     : QObject{parent}
     , _socket{socket}
+    , _pendingFirstFrame{firstFrame}
     , _hash{new QCryptographicHash{QCryptographicHash::Sha256}}
 {
     // socket 父对象设为 this，当 worker 被 moveToThread 时 socket 也会被移动
@@ -116,6 +119,12 @@ void FileReceiverWorker::initialize()
     connect(_timeoutTimer, &QTimer::timeout,
             this,          &FileReceiverWorker::onTimeout);
 
+    // 首帧由 P2pServer 显式移交（已从 socket 缓冲区消费），先于缓冲区中
+    // 后续到达的字节喂入解码器，保证帧序与线上到达顺序一致
+    if (!_pendingFirstFrame.isEmpty()) {
+        _codec->feed(_pendingFirstFrame);
+        _pendingFirstFrame.clear();
+    }
     if (_socket->bytesAvailable() > 0) {
         onReadyRead();
     }

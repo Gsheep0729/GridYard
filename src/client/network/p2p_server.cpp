@@ -5,9 +5,11 @@
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
 *
-* 首帧路由阶段只窥视 socket 中的完整 TLV 帧，不读取其字节。
-* 确认 Type 后再把原始 socket 交给文件接收 Worker 或聊天连接处理者，
-* 保证目标处理者能自行解析完整首帧。
+* 监听与接入由纯 C++ 的 TcpServerCore 在 NetReactor 事件泵上完成，接入
+* 回调只把描述符投递回 P2pServer 所在线程，包装与路由都在本线程进行。
+* 首帧路由阶段窥视 socket 中的完整 TLV 帧确认类型：聊天连接在同一线程
+* 同步交接，字节仍留在缓冲区由接管者读取；文件传输路径则把首帧字节
+* 显式读出、随接收 Worker 移交，不再依赖缓冲区跨线程携带首帧。
 * 中继降级的连接在完成 relay_join 握手后也进入同一条首帧路由。
 */
 
@@ -27,6 +29,9 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QPointer>
+
+#include "core/net_reactor.h"
+#include "core/tcp_server_core.h"
 
 namespace {
 
@@ -55,21 +60,26 @@ bool readFrameHeader(const QByteArray &header, quint32 *type, quint32 *payloadLe
 
 }
 
-// 构造函数，创建 TCP 服务器并连接新连接信号
+// 构造函数，创建纯 C++ 监听服务器并挂接 Reactor 接入回调
 P2pServer::P2pServer(ConfigManager *config, QObject *parent)
     : QObject{parent}
     , _config{config}
-    , _server{new gy::net::PosixTcpServer{this}}
+    , _server{std::make_unique<gy::net::TcpServerCore>(gy::net::sharedReactor())}
 {
-    // 新连接信号
-    connect(_server, &gy::net::PosixTcpServer::newConnection,
-            this,    &P2pServer::onNewConnection);
+    // Reactor 线程只投递描述符：包装 socket 与首帧路由都必须在本线程进行
+    _server->setConnectionCallback(
+        [this](int descriptor, const std::string &peerAddress) {
+            QMetaObject::invokeMethod(
+                this, [this, descriptor, peerAddress] {
+                    handleNewConnection(descriptor, QString::fromStdString(peerAddress));
+                }, Qt::QueuedConnection);
+        });
 }
 
 // 析构函数，停止监听并等待所有后台线程退出
 P2pServer::~P2pServer()
 {
-    // 停止服务器监听
+    // 停止服务器监听（监听描述符随核心服务器对象一并关闭）
     if (_server->isListening()) {
         _server->close();
     }
@@ -96,12 +106,13 @@ bool P2pServer::start()
 {
     const quint16 port = _config->tcpPort();
 
-    if (_server->listen(gy::net::IpAddress::any(), port)) {
+    // 双栈监听（IPv6 通配，内核不支持时核心层自动回退 IPv4）
+    if (_server->listen(port, true)) {
         qDebug() << "P2pServer: 监听端口" << port << "成功";
         return true;
     } else {
         qWarning() << "P2pServer: 监听端口" << port << "失败:"
-                    << _server->errorString();
+                    << QString::fromStdString(_server->errorString());
         return false;
     }
 }
@@ -197,30 +208,23 @@ void P2pServer::failRelayJoin(gy::net::PosixTcpSocket *socket, const QString &re
     socket->deleteLater();
 }
 
-// 处理新入站连接，先等待完整首帧再分流
-void P2pServer::onNewConnection()
+// 接入描述符在本线程包装为 socket 对象，随后等待完整首帧再分流
+void P2pServer::handleNewConnection(int descriptor, const QString &peerAddress)
 {
-    qDebug() << "[P2pServer] 检测到新连接";
+    qDebug() << "[P2pServer] 新连接来自" << peerAddress;
 
-    while (_server->hasPendingConnections()) {
-        gy::net::PosixTcpSocket *socket = _server->nextPendingConnection();
-        if (!socket) {
-            qWarning() << "[P2pServer] 获取 socket 失败";
-            continue;
-        }
-
-        qDebug() << "[P2pServer] 新连接来自"
-                 << socket->peerAddress().toString()
-                 << ":" << socket->peerPort();
-
-        socket->setParent(this);
-
-        // 扩大收发缓冲到 4MB，减少大文件传输时系统调用和窗口抖动。
-        socket->setSocketOption(gy::net::PosixTcpSocket::SendBufferSizeOption, 4 * 1024 * 1024);
-        socket->setSocketOption(gy::net::PosixTcpSocket::ReceiveBufferSizeOption, 4 * 1024 * 1024);
-
-        monitorFirstFrame(socket, kDefaultFirstFrameTimeoutMs);
+    auto *socket = new gy::net::PosixTcpSocket{this};
+    if (!socket->adoptDescriptor(descriptor)) {
+        qWarning() << "[P2pServer] 接入描述符包装失败，来自" << peerAddress;
+        delete socket;
+        return;
     }
+
+    // 扩大收发缓冲到 4MB，减少大文件传输时系统调用和窗口抖动。
+    socket->setSocketOption(gy::net::PosixTcpSocket::SendBufferSizeOption, 4 * 1024 * 1024);
+    socket->setSocketOption(gy::net::PosixTcpSocket::ReceiveBufferSizeOption, 4 * 1024 * 1024);
+
+    monitorFirstFrame(socket, kDefaultFirstFrameTimeoutMs);
 }
 
 // 监听 socket，等待首个完整 TLV 帧
@@ -294,7 +298,8 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
         return;
     }
 
-    // 这里只 peek 校验首帧，不能 read；后续接管者还要从 socket 读取完整首帧。
+    // 只窥视校验首帧：聊天路径的接管者稍后自行读取缓冲区中的完整首帧；
+    // 传输路径在校验通过后把首帧字节显式读出随 Worker 移交。
     const QByteArray firstFrame = socket->peek(frameBytes);
     FrameCodec codec;
     quint32 decodedType = 0;
@@ -324,10 +329,11 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
     disconnect(socket, &gy::net::PosixTcpSocket::disconnected, this, nullptr);
 
     if (type == gy::protocol::kTypeTransferReq) {
-        // 当前仍在 socket 的 readyRead 回调栈内，等读泵退出后再移交通知器与描述符；
-        // 文件接收 Worker 会在新线程启动后重新读取保留在 socket 缓冲区里的首帧。
+        // 首帧字节在此显式读出，随 Worker 构造移交——不依赖 socket 缓冲区
+        // 跨线程携带首帧；后续到达的字节仍留在缓冲区由 Worker 继续读取。
+        const QByteArray consumedFirstFrame = socket->read(frameBytes);
         QPointer<gy::net::PosixTcpSocket> guardedSocket{socket};
-        QMetaObject::invokeMethod(this, [this, guardedSocket]() {
+        QMetaObject::invokeMethod(this, [this, guardedSocket, consumedFirstFrame]() {
             if (!guardedSocket) {
                 return;
             }
@@ -339,7 +345,7 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
                 }
                 return;
             }
-            startFileReceiver(guardedSocket);
+            startFileReceiver(guardedSocket, consumedFirstFrame);
         }, Qt::QueuedConnection);
         return;
     }
@@ -362,15 +368,15 @@ void P2pServer::routeFirstFrame(gy::net::PosixTcpSocket *socket)
     closePendingConnection(socket, tr("不支持的首帧类型"));
 }
 
-// 创建后台文件接收 Worker
-void P2pServer::startFileReceiver(gy::net::PosixTcpSocket *socket)
+// 创建后台文件接收 Worker，携带 P2pServer 已消费的首帧字节
+void P2pServer::startFileReceiver(gy::net::PosixTcpSocket *socket, const QByteArray &firstFrame)
 {
     if (!socket || socket->parent() != this) {
         return;
     }
 
     auto *thread = new QThread{this};
-    auto *worker = new FileReceiverWorker{socket};
+    auto *worker = new FileReceiverWorker{socket, firstFrame};
 
     // 移交通知器：先在当前线程停用，再把 socket 的父对象交给 worker 一并迁移
     socket->prepareThreadMove();
