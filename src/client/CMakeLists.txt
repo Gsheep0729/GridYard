@@ -71,6 +71,13 @@ set(GRIDYARD_CLIENT_NETWORK_SOURCES
     network/rendezvous_client.cpp
 )
 
+set(GRIDYARD_CLIENT_STORAGE_SOURCES
+    storage/local_data_broker.h
+    storage/local_data_broker.cpp
+    storage/database_worker.h
+    storage/database_worker.cpp
+)
+
 set(GRIDYARD_CLIENT_QML_ENTRY_FILES
     Main.qml
 )
@@ -137,6 +144,7 @@ qt_add_qml_module(appGridYard
         main.cpp
         ${GRIDYARD_CLIENT_CORE_SOURCES}
         ${GRIDYARD_CLIENT_NETWORK_SOURCES}
+        ${GRIDYARD_CLIENT_STORAGE_SOURCES}
 
     QML_FILES
         ${GRIDYARD_CLIENT_QML_ENTRY_FILES}
@@ -162,11 +170,11 @@ target_link_libraries(appGridYard PRIVATE
     Qt6::QuickDialogs2  # 原生文件/文件夹选择对话框
     Qt6::Widgets        # SystemTrayIcon / Menu 等需要 Widgets
     gy_shared
-    gy_storage
+    gy_storage_core
     gy_core
 )
 
-target_include_directories(appGridYard PRIVATE core network domain)
+target_include_directories(appGridYard PRIVATE core network domain storage)
 set_property(TARGET appGridYard PROPERTY FOLDER "client")
 
 # ---- 安装规则 ---------------------------------------------------------

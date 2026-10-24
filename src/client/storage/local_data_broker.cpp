@@ -1,39 +1,227 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.24.0
-* @date 2026-10-08
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
 *
 * 集中管理 SQLite 初始化、Repository 实现、数据库任务线程和历史数据编排，
-* 避免 AppController 直接持有数据管理层细节。
+* 避免 AppController 直接持有数据管理层细节。内部经纯 C++ 存储核心
+*（DatabaseCore 与三个 *_core 仓储）落库，Qt 领域记录在任务边界做机械
+* 互转；直接 SQL 的组合事务沿用与旧版逐字相同的 SQL 文本。
 */
 
 #include "local_data_broker.h"
 
 #include "data_types.h"
 #include "database_worker.h"
-#include "sqlite_database_broker.h"
-#include "sqlite_device_repository.h"
-#include "sqlite_message_repository.h"
-#include "sqlite_transfer_history_repository.h"
+
+#include "core/storage/database_core.h"
+#include "core/storage/device_repository_core.h"
+#include "core/storage/iso_time.h"
+#include "core/storage/message_repository_core.h"
+#include "core/storage/sqlite_stmt.h"
+#include "core/storage/transfer_repository_core.h"
 
 #include <QDateTime>
 #include <QMetaObject>
-#include <QSqlDatabase>
-#include <QSqlError>
-#include <QSet>
-#include <QSqlQuery>
 #include <QThread>
+#include <QTimeZone>
+
+#include <unordered_set>
 #include <vector>
+
+namespace {
+
+// 有效时间转毫秒时间戳，无效时间返回空（对应 SQL NULL 列）
+std::optional<int64_t> toOptionalMillis(const QDateTime &time)
+{
+    return time.isValid() ? std::optional<int64_t>{time.toMSecsSinceEpoch()} : std::nullopt;
+}
+
+// 毫秒时间戳还原为 UTC 时间的 QDateTime（与旧版 ISO 解析的时区口径一致）
+QDateTime fromOptionalMillis(const std::optional<int64_t> &millis)
+{
+    return millis ? QDateTime::fromMSecsSinceEpoch(*millis, QTimeZone::UTC) : QDateTime();
+}
+
+// Qt 收发方向枚举转核心枚举（数值与数据库列取值绑定）
+gy::storage::RecordDirection toCoreDirection(RecordDirection direction)
+{
+    return static_cast<gy::storage::RecordDirection>(static_cast<int>(direction));
+}
+
+// 核心收发方向枚举转 Qt 枚举
+RecordDirection fromCoreDirection(gy::storage::RecordDirection direction)
+{
+    return static_cast<RecordDirection>(static_cast<int>(direction));
+}
+
+// 设备目录记录转核心记录（QString 转 UTF-8 std::string，QDateTime 转毫秒）
+gy::storage::PeerRecord toCore(const PeerRecord &record)
+{
+    gy::storage::PeerRecord core;
+    core.deviceId = record.deviceId.toStdString();
+    core.deviceName = record.deviceName.toStdString();
+    core.lastIpAddress = record.lastIpAddress.toStdString();
+    core.lastTcpPort = record.lastTcpPort;
+    core.firstSeenAtMs = record.firstSeenAt.toMSecsSinceEpoch();
+    core.lastSeenAtMs = record.lastSeenAt.toMSecsSinceEpoch();
+    core.lastChatAtMs = toOptionalMillis(record.lastChatAt);
+    core.lastTransferAtMs = toOptionalMillis(record.lastTransferAt);
+    core.alias = record.alias.toStdString();
+    core.pinned = record.pinned;
+    core.hidden = record.hidden;
+    core.favorite = record.favorite;
+    return core;
+}
+
+// 核心设备目录记录转 Qt 记录
+PeerRecord fromCore(const gy::storage::PeerRecord &record)
+{
+    PeerRecord qt;
+    qt.deviceId = QString::fromStdString(record.deviceId);
+    qt.deviceName = QString::fromStdString(record.deviceName);
+    qt.lastIpAddress = QString::fromStdString(record.lastIpAddress);
+    qt.lastTcpPort = record.lastTcpPort;
+    qt.firstSeenAt = QDateTime::fromMSecsSinceEpoch(record.firstSeenAtMs, QTimeZone::UTC);
+    qt.lastSeenAt = QDateTime::fromMSecsSinceEpoch(record.lastSeenAtMs, QTimeZone::UTC);
+    qt.lastChatAt = fromOptionalMillis(record.lastChatAtMs);
+    qt.lastTransferAt = fromOptionalMillis(record.lastTransferAtMs);
+    qt.alias = QString::fromStdString(record.alias);
+    qt.pinned = record.pinned;
+    qt.hidden = record.hidden;
+    qt.favorite = record.favorite;
+    return qt;
+}
+
+// 聊天消息记录转核心记录
+gy::storage::MessageRecord toCore(const MessageRecord &record)
+{
+    gy::storage::MessageRecord core;
+    core.messageId = record.messageId.toStdString();
+    core.peerDeviceId = record.peerDeviceId.toStdString();
+    core.direction = toCoreDirection(record.direction);
+    core.senderDeviceId = record.senderDeviceId.toStdString();
+    core.senderName = record.senderName.toStdString();
+    core.content = record.content.toStdString();
+    core.sentAtMs = record.sentAt.toMSecsSinceEpoch();
+    core.localStatus = record.localStatus;
+    core.createdAtMs = record.createdAt.toMSecsSinceEpoch();
+    return core;
+}
+
+// 核心聊天消息记录转 Qt 记录
+MessageRecord fromCore(const gy::storage::MessageRecord &record)
+{
+    MessageRecord qt;
+    qt.messageId = QString::fromStdString(record.messageId);
+    qt.peerDeviceId = QString::fromStdString(record.peerDeviceId);
+    qt.direction = fromCoreDirection(record.direction);
+    qt.senderDeviceId = QString::fromStdString(record.senderDeviceId);
+    qt.senderName = QString::fromStdString(record.senderName);
+    qt.content = QString::fromStdString(record.content);
+    qt.sentAt = QDateTime::fromMSecsSinceEpoch(record.sentAtMs, QTimeZone::UTC);
+    qt.localStatus = record.localStatus;
+    qt.createdAt = QDateTime::fromMSecsSinceEpoch(record.createdAtMs, QTimeZone::UTC);
+    return qt;
+}
+
+// 传输历史记录转核心记录（未结束时间以空值表达）
+gy::storage::TransferRecord toCore(const TransferRecord &record)
+{
+    gy::storage::TransferRecord core;
+    core.recordId = record.recordId.toStdString();
+    core.sessionId = record.sessionId.toStdString();
+    core.peerDeviceId = record.peerDeviceId.toStdString();
+    core.peerName = record.peerName.toStdString();
+    core.direction = toCoreDirection(record.direction);
+    core.displayName = record.displayName.toStdString();
+    core.isDirectory = record.isDirectory;
+    core.fileCount = record.fileCount;
+    core.totalBytes = record.totalBytes;
+    core.status = record.status.toStdString();
+    core.startedAtMs = record.startedAt.toMSecsSinceEpoch();
+    core.finishedAtMs = toOptionalMillis(record.finishedAt);
+    core.errorCode = record.errorCode;
+    core.errorMessage = record.errorMessage.toStdString();
+    return core;
+}
+
+// 核心传输历史记录转 Qt 记录
+TransferRecord fromCore(const gy::storage::TransferRecord &record)
+{
+    TransferRecord qt;
+    qt.recordId = QString::fromStdString(record.recordId);
+    qt.sessionId = QString::fromStdString(record.sessionId);
+    qt.peerDeviceId = QString::fromStdString(record.peerDeviceId);
+    qt.peerName = QString::fromStdString(record.peerName);
+    qt.direction = fromCoreDirection(record.direction);
+    qt.displayName = QString::fromStdString(record.displayName);
+    qt.isDirectory = record.isDirectory;
+    qt.fileCount = record.fileCount;
+    qt.totalBytes = record.totalBytes;
+    qt.status = QString::fromStdString(record.status);
+    qt.startedAt = QDateTime::fromMSecsSinceEpoch(record.startedAtMs, QTimeZone::UTC);
+    qt.finishedAt = fromOptionalMillis(record.finishedAtMs);
+    qt.errorCode = record.errorCode;
+    qt.errorMessage = QString::fromStdString(record.errorMessage);
+    return qt;
+}
+
+// 聊天分页游标转核心游标
+gy::storage::MessageCursor toCore(const MessageCursor &cursor)
+{
+    gy::storage::MessageCursor core;
+    core.peerDeviceId = cursor.peerDeviceId.toStdString();
+    core.beforeSentAtMs = toOptionalMillis(cursor.beforeSentAt);
+    core.beforeMessageId = cursor.beforeMessageId.toStdString();
+    return core;
+}
+
+// 传输历史筛选条件转核心筛选
+gy::storage::TransferQuery toCore(const TransferQuery &query)
+{
+    gy::storage::TransferQuery core;
+    core.peerDeviceId = query.peerDeviceId.toStdString();
+    core.status = query.status.toStdString();
+    core.beforeStartedAtMs = toOptionalMillis(query.beforeStartedAt);
+    core.beforeRecordId = query.beforeRecordId.toStdString();
+    return core;
+}
+
+// 核心记录列表转 Qt 列表
+template <typename Core, typename Qt>
+QList<Qt> fromCoreList(const std::vector<Core> &records)
+{
+    QList<Qt> result;
+    result.reserve(static_cast<int>(records.size()));
+    for (const Core &record : records) {
+        result.append(fromCore(record));
+    }
+    return result;
+}
+
+// SQL 语句的统一执行出口：执行到完成返回真，出错时回填任务错误
+bool runStatement(gy::storage::SqliteStmt &statement, std::string *taskError)
+{
+    if (auto row = statement.step(); row.has_value()) {
+        return true;
+    } else if (taskError) {
+        *taskError = row.error().message;
+    }
+    return false;
+}
+
+}  // namespace
 
 // 构造函数
 LocalDataBroker::LocalDataBroker(QObject *parent)
     : QObject{parent}
-    , _storage{std::make_unique<SqliteDatabaseBroker>()}
-    , _deviceRepository{std::make_unique<SqliteDeviceRepository>(_storage.get())}
-    , _messageRepository{std::make_unique<SqliteMessageRepository>(_storage.get())}
-    , _transferRepository{std::make_unique<SqliteTransferHistoryRepository>(_storage.get())}
+    , _storage{std::make_unique<gy::storage::DatabaseCore>()}
+    , _deviceRepository{std::make_unique<gy::storage::DeviceRepositoryCore>(_storage.get())}
+    , _messageRepository{std::make_unique<gy::storage::MessageRepositoryCore>(_storage.get())}
+    , _transferRepository{std::make_unique<gy::storage::TransferRepositoryCore>(_storage.get())}
     , _storageThread{new QThread{this}}
     , _storageWorker{new DatabaseWorker{_storage.get()}}
 {
@@ -48,12 +236,16 @@ LocalDataBroker::~LocalDataBroker()
 // 初始化数据库和存储任务线程
 bool LocalDataBroker::initialize(const QString &databasePath, QString *errorMessage)
 {
-    const bool initialized = _storage->initialize(databasePath, errorMessage);
+    std::string coreError;
+    const bool initialized = _storage->initialize(databasePath.toStdString(), &coreError);
+    if (errorMessage) {
+        *errorMessage = QString::fromStdString(coreError);
+    }
 
     // 库损坏被备份重建时置位只读属性，界面据此提示历史已清零重置
     if (_storage->lastInitializeRebuilt()) {
         _historyDatabaseRebuilt = true;
-        _rebuiltBackupPath = _storage->rebuiltBackupPath();
+        _rebuiltBackupPath = QString::fromStdString(_storage->rebuiltBackupPath());
         emit historyDatabaseRebuiltChanged();
         emit rebuiltBackupPathChanged();
     }
@@ -106,20 +298,34 @@ void LocalDataBroker::persistDiscoveredPeer(const PeerInfo &peer)
     record.firstSeenAt = peer.lastSeen;
     record.lastSeenAt = peer.lastSeen;
 
+    const gy::storage::PeerRecord coreRecord = toCore(record);
+    const bool isPseudoId = gy::domain::isManualPseudoDeviceId(record.deviceId);
     _storageWorker->submitTask(
-        [this, record](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, coreRecord, isPseudoId](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
             // 设备目录存在节流，短时间内重复心跳不会实际写磁盘
-            if (!_deviceRepository->upsertPeer(record, errorMessage)) {
+            if (!_deviceRepository->upsertPeer(coreRecord, &error)) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
                 return false;
             }
             // 真身心跳到达时并入同 IP 手动伪条目的管理标记（独立小事务，
             // 幂等：伪行删除后为空操作；伪 ID 自身的心跳不做迁移）
-            if (gy::domain::isManualPseudoDeviceId(record.deviceId)) {
+            if (isPseudoId) {
                 return true;
             }
-            return _deviceRepository->mergeManualPeerMarkers(
-                record.deviceId, gy::domain::manualPseudoDeviceId(record.lastIpAddress),
-                errorMessage);
+            if (!_deviceRepository->mergeManualPeerMarkers(
+                    coreRecord.deviceId,
+                    gy::domain::manualPseudoDeviceId(
+                        QString::fromStdString(coreRecord.lastIpAddress)).toStdString(),
+                    &error)) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
+                return false;
+            }
+            return true;
         });
 }
 
@@ -135,18 +341,26 @@ void LocalDataBroker::persistChatMessage(const MessageRecord &record, const QVar
     peer.firstSeenAt = QDateTime::currentDateTimeUtc();
     peer.lastSeenAt = peer.firstSeenAt;
 
+    const gy::storage::PeerRecord corePeer = toCore(peer);
+    const gy::storage::MessageRecord coreRecord = toCore(record);
+    const int64_t sentAtMs = record.sentAt.toMSecsSinceEpoch();
     _storageWorker->submitTask(
-        [this, peer, record](SqliteDatabaseBroker &db, QString *errorMessage) {
+        [this, corePeer, coreRecord, sentAtMs](gy::storage::DatabaseCore &db, QString *errorMessage) {
+            std::string error;
             // 组合三个步骤在同一事务内执行，任何一步失败全部回滚
-            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
-            steps.push_back(SqliteDeviceRepository::upsertPeerStep(peer));
-            steps.push_back(SqliteDeviceRepository::markChatActivityStep(peer.deviceId, record.sentAt));
-            steps.push_back(SqliteMessageRepository::saveMessageStep(record));
-            if (!db.runSteps(steps, errorMessage)) {
+            std::vector<gy::storage::DatabaseCore::TransactionTask> steps;
+            steps.push_back(gy::storage::DeviceRepositoryCore::upsertPeerStep(corePeer));
+            steps.push_back(gy::storage::DeviceRepositoryCore::markChatActivityStep(
+                corePeer.deviceId, sentAtMs));
+            steps.push_back(gy::storage::MessageRepositoryCore::saveMessageStep(coreRecord));
+            if (!db.runSteps(steps, &error)) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
                 return false;
             }
             // 事务成功后刷新设备目录节流缓存
-            _deviceRepository->noteWritten(peer);
+            _deviceRepository->noteWritten(corePeer);
             return true;
         });
 }
@@ -169,18 +383,26 @@ void LocalDataBroker::persistTransferRecord(const TransferRecord &record,
     peer.firstSeenAt = activityAt;
     peer.lastSeenAt = activityAt;
 
+    const gy::storage::PeerRecord corePeer = toCore(peer);
+    const gy::storage::TransferRecord coreRecord = toCore(record);
+    const int64_t activityAtMs = activityAt.toMSecsSinceEpoch();
     _storageWorker->submitTask(
-        [this, peer, record, activityAt](SqliteDatabaseBroker &db, QString *errorMessage) {
+        [this, corePeer, coreRecord, activityAtMs](gy::storage::DatabaseCore &db, QString *errorMessage) {
+            std::string error;
             // 组合三个步骤在同一事务内执行，任何一步失败全部回滚
-            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
-            steps.push_back(SqliteDeviceRepository::upsertPeerStep(peer));
-            steps.push_back(SqliteDeviceRepository::markTransferActivityStep(peer.deviceId, activityAt));
-            steps.push_back(SqliteTransferHistoryRepository::upsertFinishedTransferStep(record));
-            if (!db.runSteps(steps, errorMessage)) {
+            std::vector<gy::storage::DatabaseCore::TransactionTask> steps;
+            steps.push_back(gy::storage::DeviceRepositoryCore::upsertPeerStep(corePeer));
+            steps.push_back(gy::storage::DeviceRepositoryCore::markTransferActivityStep(
+                corePeer.deviceId, activityAtMs));
+            steps.push_back(gy::storage::TransferRepositoryCore::upsertFinishedTransferStep(coreRecord));
+            if (!db.runSteps(steps, &error)) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
                 return false;
             }
             // 事务成功后刷新设备目录节流缓存
-            _deviceRepository->noteWritten(peer);
+            _deviceRepository->noteWritten(corePeer);
             return true;
         });
 }
@@ -193,10 +415,14 @@ void LocalDataBroker::deleteTransfers(const QStringList &recordIds)
     }
 
     _storageWorker->submitTask(
-        [this, recordIds](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, recordIds](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 批量删除保持在同一存储任务中，避免界面侧频繁触发数据库队列。
             for (const QString &recordId : recordIds) {
-                if (!_transferRepository->deleteTransfer(recordId, errorMessage)) {
+                std::string error;
+                if (!_transferRepository->deleteTransfer(recordId.toStdString(), &error)) {
+                    if (errorMessage) {
+                        *errorMessage = QString::fromStdString(error);
+                    }
                     return false;
                 }
             }
@@ -220,25 +446,37 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
     }
 
     _storageWorker->submitTask(
-        [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
             // 启动只恢复最近设备，避免历史量随使用时长线性拖慢首屏。
-            const QList<PeerRecord> recentDevices = _deviceRepository->recentPeers(10, errorMessage);
-            if (recentDevices.isEmpty() && errorMessage->isEmpty()) {
+            const std::vector<gy::storage::PeerRecord> recentDevices =
+                _deviceRepository->recentPeers(10, &error);
+            if (recentDevices.empty() && error.empty()) {
                 return true;
+            }
+            if (!error.empty()) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
+                return false;
             }
 
             QHash<QString, QList<MessageRecord>> histories;
-            for (const PeerRecord &peer : recentDevices) {
-                MessageCursor cursor;
+            for (const gy::storage::PeerRecord &peer : recentDevices) {
+                gy::storage::MessageCursor cursor;
                 cursor.peerDeviceId = peer.deviceId;
                 // 每个会话限制一页，向上翻页由后续历史界面负责。
-                const QList<MessageRecord> messages = _messageRepository->loadMessages(
-                    cursor, 50, errorMessage);
-                if (!errorMessage->isEmpty()) {
+                const std::vector<gy::storage::MessageRecord> messages =
+                    _messageRepository->loadMessages(cursor, 50, &error);
+                if (!error.empty()) {
+                    if (errorMessage) {
+                        *errorMessage = QString::fromStdString(error);
+                    }
                     return false;
                 }
-                if (!messages.isEmpty()) {
-                    histories.insert(peer.deviceId, messages);
+                if (!messages.empty()) {
+                    histories.insert(QString::fromStdString(peer.deviceId),
+                                     fromCoreList<gy::storage::MessageRecord, MessageRecord>(messages));
                 }
             }
 
@@ -265,16 +503,22 @@ void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
     }
 
     _storageWorker->submitTask(
-        [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            TransferQuery query;
-            const QList<TransferRecord> records = _transferRepository->queryTransfers(
-                query, 100, errorMessage);
-            if (!errorMessage->isEmpty()) {
+        [this, receiver, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
+            gy::storage::TransferQuery query;
+            const std::vector<gy::storage::TransferRecord> records =
+                _transferRepository->queryTransfers(query, 100, &error);
+            if (!error.empty()) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
                 return false;
             }
 
-            QMetaObject::invokeMethod(receiver, [callback, records] {
-                callback(records, true);
+            const QList<TransferRecord> qtRecords =
+                fromCoreList<gy::storage::TransferRecord, TransferRecord>(records);
+            QMetaObject::invokeMethod(receiver, [callback, qtRecords] {
+                callback(qtRecords, true);
             }, Qt::QueuedConnection);
             return true;
         });
@@ -295,11 +539,18 @@ void LocalDataBroker::loadRecentPeers(QObject *receiver, int limit,
     }
 
     _storageWorker->submitTask(
-        [this, receiver, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            const QList<PeerRecord> records = _deviceRepository->recentPeers(limit, errorMessage);
-            const bool succeeded = errorMessage->isEmpty();
-            QMetaObject::invokeMethod(receiver, [callback, records, succeeded] {
-                callback(records, succeeded);
+        [this, receiver, limit, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
+            const std::vector<gy::storage::PeerRecord> records =
+                _deviceRepository->recentPeers(limit, &error);
+            const bool succeeded = error.empty();
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
+            const QList<PeerRecord> qtRecords =
+                fromCoreList<gy::storage::PeerRecord, PeerRecord>(records);
+            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+                callback(qtRecords, succeeded);
             }, Qt::QueuedConnection);
             return succeeded;
         });
@@ -320,13 +571,19 @@ void LocalDataBroker::searchPeers(QObject *receiver, const QString &keyword, int
     }
 
     _storageWorker->submitTask(
-        [this, receiver, keyword, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, keyword, limit, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 筛选与排序都在存储层完成，应用层只拿领域记录
-            const QList<PeerRecord> records = _deviceRepository->searchPeers(keyword, limit,
-                                                                             errorMessage);
-            const bool succeeded = errorMessage->isEmpty();
-            QMetaObject::invokeMethod(receiver, [callback, records, succeeded] {
-                callback(records, succeeded);
+            std::string error;
+            const std::vector<gy::storage::PeerRecord> records =
+                _deviceRepository->searchPeers(keyword.toStdString(), limit, &error);
+            const bool succeeded = error.empty();
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
+            const QList<PeerRecord> qtRecords =
+                fromCoreList<gy::storage::PeerRecord, PeerRecord>(records);
+            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+                callback(qtRecords, succeeded);
             }, Qt::QueuedConnection);
             return succeeded;
         });
@@ -347,14 +604,20 @@ void LocalDataBroker::loadMessages(QObject *receiver, const MessageCursor &curso
     }
 
     _storageWorker->submitTask(
-        [this, receiver, cursor, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, cursor, limit, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 游标分页按时间倒序取消息，cursor.beforeSentAt 为空时取首页
-            const QList<MessageRecord> records = _messageRepository->loadMessages(
-                cursor, limit, errorMessage);
-            const bool succeeded = errorMessage->isEmpty();
+            std::string error;
+            const std::vector<gy::storage::MessageRecord> records =
+                _messageRepository->loadMessages(toCore(cursor), limit, &error);
+            const bool succeeded = error.empty();
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             // 回投到 receiver 所在线程（通常是主线程），避免跨线程操作模型
-            QMetaObject::invokeMethod(receiver, [callback, records, succeeded] {
-                callback(records, succeeded);
+            const QList<MessageRecord> qtRecords =
+                fromCoreList<gy::storage::MessageRecord, MessageRecord>(records);
+            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+                callback(qtRecords, succeeded);
             }, Qt::QueuedConnection);
             return succeeded;
         });
@@ -375,13 +638,19 @@ void LocalDataBroker::queryTransfers(QObject *receiver, const TransferQuery &que
     }
 
     _storageWorker->submitTask(
-        [this, receiver, query, limit, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, query, limit, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 筛选条件由调用方组合，空条件等价于全量查询
-            const QList<TransferRecord> records = _transferRepository->queryTransfers(
-                query, limit, errorMessage);
-            const bool succeeded = errorMessage->isEmpty();
-            QMetaObject::invokeMethod(receiver, [callback, records, succeeded] {
-                callback(records, succeeded);
+            std::string error;
+            const std::vector<gy::storage::TransferRecord> records =
+                _transferRepository->queryTransfers(toCore(query), limit, &error);
+            const bool succeeded = error.empty();
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
+            const QList<TransferRecord> qtRecords =
+                fromCoreList<gy::storage::TransferRecord, TransferRecord>(records);
+            QMetaObject::invokeMethod(receiver, [callback, qtRecords, succeeded] {
+                callback(qtRecords, succeeded);
             }, Qt::QueuedConnection);
             return succeeded;
         });
@@ -402,9 +671,13 @@ void LocalDataBroker::deleteMessage(QObject *receiver, const QString &messageId,
     }
 
     _storageWorker->submitTask(
-        [this, receiver, messageId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, messageId, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // messageId 是网络层 UUID，不存在时视为已成功删除
-            const bool succeeded = _messageRepository->deleteMessage(messageId, errorMessage);
+            std::string error;
+            const bool succeeded = _messageRepository->deleteMessage(messageId.toStdString(), &error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -427,9 +700,13 @@ void LocalDataBroker::deleteConversation(QObject *receiver, const QString &devic
     }
 
     _storageWorker->submitTask(
-        [this, receiver, deviceId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, deviceId, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 删除父会话行时 SQLite CASCADE 自动清理关联消息，无需手动删消息
-            const bool succeeded = _messageRepository->deleteConversation(deviceId, errorMessage);
+            std::string error;
+            const bool succeeded = _messageRepository->deleteConversation(deviceId.toStdString(), &error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -452,9 +729,13 @@ void LocalDataBroker::deleteTransfer(QObject *receiver, const QString &recordId,
     }
 
     _storageWorker->submitTask(
-        [this, receiver, recordId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, recordId, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 只删除数据库记录，已接收的本地文件由调用方决定是否清理
-            const bool succeeded = _transferRepository->deleteTransfer(recordId, errorMessage);
+            std::string error;
+            const bool succeeded = _transferRepository->deleteTransfer(recordId.toStdString(), &error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -477,9 +758,13 @@ void LocalDataBroker::setDevicePinned(QObject *receiver, const QString &deviceId
     }
 
     _storageWorker->submitTask(
-        [this, receiver, deviceId, pinned, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            const bool succeeded = _deviceRepository->setDevicePinned(deviceId, pinned,
-                                                                      errorMessage);
+        [this, receiver, deviceId, pinned, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
+            const bool succeeded =
+                _deviceRepository->setDevicePinned(deviceId.toStdString(), pinned, &error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -502,9 +787,13 @@ void LocalDataBroker::setDeviceFavorite(QObject *receiver, const QString &device
     }
 
     _storageWorker->submitTask(
-        [this, receiver, deviceId, favorite, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            const bool succeeded = _deviceRepository->setDeviceFavorite(deviceId, favorite,
-                                                                        errorMessage);
+        [this, receiver, deviceId, favorite, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
+            const bool succeeded =
+                _deviceRepository->setDeviceFavorite(deviceId.toStdString(), favorite, &error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -527,9 +816,13 @@ void LocalDataBroker::setDeviceHidden(QObject *receiver, const QString &deviceId
     }
 
     _storageWorker->submitTask(
-        [this, receiver, deviceId, hidden, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            const bool succeeded = _deviceRepository->setDeviceHidden(deviceId, hidden,
-                                                                      errorMessage);
+        [this, receiver, deviceId, hidden, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
+            const bool succeeded =
+                _deviceRepository->setDeviceHidden(deviceId.toStdString(), hidden, &error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -552,9 +845,13 @@ void LocalDataBroker::setDeviceAlias(QObject *receiver, const QString &deviceId,
     }
 
     _storageWorker->submitTask(
-        [this, receiver, deviceId, alias, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            const bool succeeded = _deviceRepository->setDeviceAlias(deviceId, alias,
-                                                                     errorMessage);
+        [this, receiver, deviceId, alias, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
+            const bool succeeded =
+                _deviceRepository->setDeviceAlias(deviceId.toStdString(), alias.toStdString(), &error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -577,14 +874,17 @@ void LocalDataBroker::deleteDeviceWithHistory(QObject *receiver, const QString &
     }
 
     _storageWorker->submitTask(
-        [this, receiver, deviceId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, deviceId, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 先删该设备传输历史再删设备行（RESTRICT 外键次序），聊天记录走 CASCADE，
             // 已接收的本地文件不在此清理范围内
-            const bool succeeded = _deviceRepository->deleteDeviceWithHistory(deviceId,
-                                                                              errorMessage);
+            std::string error;
+            const bool succeeded =
+                _deviceRepository->deleteDeviceWithHistory(deviceId.toStdString(), &error);
             if (succeeded) {
                 // 清除发现节流缓存，该设备再次被发现时按全新设备重新入目录
-                _deviceRepository->noteDeviceDeleted(deviceId);
+                _deviceRepository->noteDeviceDeleted(deviceId.toStdString());
+            } else if (errorMessage) {
+                *errorMessage = QString::fromStdString(error);
             }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
@@ -607,9 +907,13 @@ void LocalDataBroker::clearAllMessages(QObject *receiver, const OperationCallbac
     }
 
     _storageWorker->submitTask(
-        [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, receiver, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
             // CASCADE 清理会话和消息行，设备目录表不受影响
-            const bool succeeded = _messageRepository->clearAllMessages(errorMessage);
+            std::string error;
+            const bool succeeded = _messageRepository->clearAllMessages(&error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -631,8 +935,12 @@ void LocalDataBroker::clearAllTransfers(QObject *receiver, const OperationCallba
     }
 
     _storageWorker->submitTask(
-        [this, receiver, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            const bool succeeded = _transferRepository->clearAllTransfers(errorMessage);
+        [this, receiver, callback](gy::storage::DatabaseCore &, QString *errorMessage) {
+            std::string error;
+            const bool succeeded = _transferRepository->clearAllTransfers(&error);
+            if (!succeeded && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
             QMetaObject::invokeMethod(receiver, [callback, succeeded] {
                 callback(succeeded);
             }, Qt::QueuedConnection);
@@ -655,21 +963,32 @@ void LocalDataBroker::loadBackupData(QObject *receiver, bool includeChat, bool i
     }
 
     _storageWorker->submitTask(
-        [this, receiver, includeChat, includeTransfers, callback](SqliteDatabaseBroker &,
+        [this, receiver, includeChat, includeTransfers, callback](gy::storage::DatabaseCore &,
                                                                   QString *errorMessage) {
-            const QList<PeerRecord> devices = _deviceRepository->allPeers(errorMessage);
-            const bool succeeded = errorMessage->isEmpty();
-            QList<MessageRecord> messages;
-            QList<TransferRecord> transfers;
+            std::string error;
+            const std::vector<gy::storage::PeerRecord> devices =
+                _deviceRepository->allPeers(&error);
+            const bool succeeded = error.empty();
+            std::vector<gy::storage::MessageRecord> messages;
+            std::vector<gy::storage::TransferRecord> transfers;
             if (succeeded && includeChat) {
-                messages = _messageRepository->allMessages(errorMessage);
+                messages = _messageRepository->allMessages(&error);
             }
-            if (succeeded && includeTransfers) {
-                transfers = _transferRepository->allTransfers(errorMessage);
+            if (error.empty() && includeTransfers) {
+                transfers = _transferRepository->allTransfers(&error);
             }
-            const bool allDone = errorMessage->isEmpty();
-            QMetaObject::invokeMethod(receiver, [callback, devices, messages, transfers, allDone] {
-                callback(devices, messages, transfers, allDone);
+            const bool allDone = error.empty();
+            if (!allDone && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
+            const QList<PeerRecord> qtDevices =
+                fromCoreList<gy::storage::PeerRecord, PeerRecord>(devices);
+            const QList<MessageRecord> qtMessages =
+                fromCoreList<gy::storage::MessageRecord, MessageRecord>(messages);
+            const QList<TransferRecord> qtTransfers =
+                fromCoreList<gy::storage::TransferRecord, TransferRecord>(transfers);
+            QMetaObject::invokeMethod(receiver, [callback, qtDevices, qtMessages, qtTransfers, allDone] {
+                callback(qtDevices, qtMessages, qtTransfers, allDone);
             }, Qt::QueuedConnection);
             return allDone;
         });
@@ -692,61 +1011,60 @@ void LocalDataBroker::analyzeBackupRecords(QObject *receiver, const QList<PeerRe
     }
 
     _storageWorker->submitTask(
-        [this, receiver, devices, messages, transfers, callback](SqliteDatabaseBroker &,
+        [this, receiver, devices, messages, transfers, callback](gy::storage::DatabaseCore &db,
                                                                  QString *errorMessage) {
-            QSqlDatabase database = _storage->connectionForWorkerThread(errorMessage);
-            if (!database.isValid()) {
-                return false;
-            }
+            std::string error;
+            gy::storage::SqliteConn &database = db.connection();
             // 全量主键集合：库内条目数与冲突数一次扫描得出
-            const auto loadIdSet = [&database, errorMessage](const QString &column,
-                                                             const QString &table) {
-                QSet<QString> ids;
-                QSqlQuery query(database);
-                query.prepare(QStringLiteral("SELECT %1 FROM %2").arg(column, table));
-                if (!query.exec()) {
-                    *errorMessage = query.lastError().text();
-                    return ids;
+            const auto loadIdSet = [&database, &error](const char *sql) {
+                std::unordered_set<std::string> ids;
+                gy::storage::SqliteStmt query{database, sql};
+                for (;;) {
+                    const auto row = query.step();
+                    if (!row.has_value()) {
+                        error = row.error().message;
+                        return ids;
+                    }
+                    if (!*row) {
+                        return ids;
+                    }
+                    ids.insert(query.columnText(0));
                 }
-                while (query.next()) {
-                    ids.insert(query.value(0).toString());
-                }
-                return ids;
             };
 
-            const QSet<QString> deviceIds = loadIdSet(QStringLiteral("device_id"),
-                                                      QStringLiteral("peer_devices"));
-            const QSet<QString> messageIds = loadIdSet(QStringLiteral("message_id"),
-                                                       QStringLiteral("chat_messages"));
-            const QSet<QString> sessionIds = loadIdSet(QStringLiteral("session_id"),
-                                                       QStringLiteral("transfer_history"));
-            if (!errorMessage->isEmpty()) {
+            const auto deviceIds = loadIdSet("SELECT device_id FROM peer_devices");
+            const auto messageIds = loadIdSet("SELECT message_id FROM chat_messages");
+            const auto sessionIds = loadIdSet("SELECT session_id FROM transfer_history");
+            if (!error.empty()) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
                 return false;
             }
 
             int deviceConflicts = 0;
             for (const PeerRecord &record : devices) {
-                if (deviceIds.contains(record.deviceId)) {
+                if (deviceIds.count(record.deviceId.toStdString()) > 0) {
                     ++deviceConflicts;
                 }
             }
             int messageConflicts = 0;
             for (const MessageRecord &record : messages) {
-                if (messageIds.contains(record.messageId)) {
+                if (messageIds.count(record.messageId.toStdString()) > 0) {
                     ++messageConflicts;
                 }
             }
             int transferConflicts = 0;
             for (const TransferRecord &record : transfers) {
-                if (sessionIds.contains(record.sessionId)) {
+                if (sessionIds.count(record.sessionId.toStdString()) > 0) {
                     ++transferConflicts;
                 }
             }
 
             QVariantMap stats;
-            stats.insert(QStringLiteral("libraryDevices"), deviceIds.size());
-            stats.insert(QStringLiteral("libraryMessages"), messageIds.size());
-            stats.insert(QStringLiteral("libraryTransfers"), sessionIds.size());
+            stats.insert(QStringLiteral("libraryDevices"), int(deviceIds.size()));
+            stats.insert(QStringLiteral("libraryMessages"), int(messageIds.size()));
+            stats.insert(QStringLiteral("libraryTransfers"), int(sessionIds.size()));
             stats.insert(QStringLiteral("deviceConflicts"), deviceConflicts);
             stats.insert(QStringLiteral("messageConflicts"), messageConflicts);
             stats.insert(QStringLiteral("transferConflicts"), transferConflicts);
@@ -757,7 +1075,7 @@ void LocalDataBroker::analyzeBackupRecords(QObject *receiver, const QList<PeerRe
         });
 }
 
-// 单事务导入备份数据：设备行按字段级规则合并（备注取非空一方、// 单事务导入备份数据：设备行按字段级规则合并（备注取非空一方、
+// 单事务导入备份数据：设备行按字段级合并（备注取非空一方、
 // 置顶/隐藏/收藏取或、last_seen 取新），聊天按 message_id、传输按
 // session_id 幂等跳过已有条目，任何一步失败整体回滚
 void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRecord> &devices,
@@ -775,24 +1093,37 @@ void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRec
         return;
     }
 
+    // Qt 记录在任务边界先转核心记录，任务内只做 SQL 组合
+    std::vector<gy::storage::PeerRecord> coreDevices;
+    coreDevices.reserve(devices.size());
+    for (const PeerRecord &record : devices) {
+        coreDevices.push_back(toCore(record));
+    }
+    std::vector<gy::storage::MessageRecord> coreMessages;
+    coreMessages.reserve(messages.size());
+    for (const MessageRecord &record : messages) {
+        coreMessages.push_back(toCore(record));
+    }
+    std::vector<gy::storage::TransferRecord> coreTransfers;
+    coreTransfers.reserve(transfers.size());
+    for (const TransferRecord &record : transfers) {
+        coreTransfers.push_back(toCore(record));
+    }
+
     _storageWorker->submitTask(
-        [this, receiver, devices, messages, transfers, callback](SqliteDatabaseBroker &db,
-                                                                 QString *errorMessage) {
-            // UTC 时间转 ISO 文本，与各仓库的落库口径一致
-            const auto isoTime = [](const QDateTime &time) {
-                return time.toUTC().toString(Qt::ISODateWithMs);
-            };
+        [this, receiver, coreDevices, coreMessages, coreTransfers, callback](gy::storage::DatabaseCore &db,
+                                                                            QString *errorMessage) {
             int messagesAdded = 0;
             int transfersAdded = 0;
 
-            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
-            steps.reserve(devices.size() + messages.size() + transfers.size());
+            std::vector<gy::storage::DatabaseCore::TransactionTask> steps;
+            steps.reserve(coreDevices.size() + coreMessages.size() + coreTransfers.size());
 
             // 设备行字段级合并：不存在则插入为离线条目，已存在按下述规则合并
-            for (const PeerRecord &record : devices) {
-                steps.push_back([record, isoTime](QSqlDatabase &database, QString *taskError) {
-                    QSqlQuery query(database);
-                    query.prepare(
+            for (const gy::storage::PeerRecord &record : coreDevices) {
+                steps.push_back([record](gy::storage::SqliteConn &database, std::string *taskError) {
+                    gy::storage::SqliteStmt query{
+                        database,
                         "INSERT INTO peer_devices(device_id, device_name, last_ip_address, "
                         "last_tcp_port, first_seen_at, last_seen_at, alias, pinned, hidden, "
                         "favorite) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
@@ -802,79 +1133,65 @@ void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRec
                         "hidden=MAX(hidden, excluded.hidden), "
                         "favorite=MAX(favorite, excluded.favorite), "
                         "alias=CASE WHEN alias IS NULL OR alias='' THEN excluded.alias "
-                        "ELSE alias END");
-                    query.addBindValue(record.deviceId);
-                    query.addBindValue(record.deviceName);
-                    query.addBindValue(record.lastIpAddress);
-                    query.addBindValue(record.lastTcpPort);
-                    query.addBindValue(isoTime(record.firstSeenAt));
-                    query.addBindValue(isoTime(record.lastSeenAt));
-                    query.addBindValue(record.alias);
-                    query.addBindValue(record.pinned ? 1 : 0);
-                    query.addBindValue(record.hidden ? 1 : 0);
-                    query.addBindValue(record.favorite ? 1 : 0);
-                    if (!query.exec()) {
-                        if (taskError) {
-                            *taskError = query.lastError().text();
-                        }
-                        return false;
-                    }
-                    return true;
+                        "ELSE alias END"};
+                    query.bind(1, record.deviceId);
+                    query.bind(2, record.deviceName);
+                    query.bind(3, record.lastIpAddress);
+                    query.bind(4, static_cast<int64_t>(record.lastTcpPort));
+                    query.bind(5, gy::storage::toIso8601Ms(record.firstSeenAtMs));
+                    query.bind(6, gy::storage::toIso8601Ms(record.lastSeenAtMs));
+                    query.bind(7, record.alias);
+                    query.bind(8, record.pinned ? 1 : 0);
+                    query.bind(9, record.hidden ? 1 : 0);
+                    query.bind(10, record.favorite ? 1 : 0);
+                    return runStatement(query, taskError);
                 });
             }
 
             // 聊天消息：先占会话行再写消息，message_id 冲突即视为已存在跳过
-            for (const MessageRecord &record : messages) {
-                steps.push_back([record, isoTime, &messagesAdded](QSqlDatabase &database,
-                                                                  QString *taskError) {
-                    QSqlQuery conv(database);
-                    conv.prepare("INSERT INTO chat_conversations(peer_device_id, created_at, "
-                                 "last_message_at) VALUES(?, ?, ?) "
-                                 "ON CONFLICT(peer_device_id) DO NOTHING");
-                    conv.addBindValue(record.peerDeviceId);
-                    conv.addBindValue(isoTime(record.createdAt));
-                    conv.addBindValue(isoTime(record.sentAt));
-                    if (!conv.exec()) {
-                        if (taskError) {
-                            *taskError = conv.lastError().text();
-                        }
+            for (const gy::storage::MessageRecord &record : coreMessages) {
+                steps.push_back([&record, &messagesAdded](gy::storage::SqliteConn &database,
+                                                          std::string *taskError) {
+                    gy::storage::SqliteStmt conv{
+                        database,
+                        "INSERT INTO chat_conversations(peer_device_id, created_at, "
+                        "last_message_at) VALUES(?, ?, ?) "
+                        "ON CONFLICT(peer_device_id) DO NOTHING"};
+                    conv.bind(1, record.peerDeviceId);
+                    conv.bind(2, gy::storage::toIso8601Ms(record.createdAtMs));
+                    conv.bind(3, gy::storage::toIso8601Ms(record.sentAtMs));
+                    if (!runStatement(conv, taskError)) {
                         return false;
                     }
-                    QSqlQuery msg(database);
-                    msg.prepare("INSERT INTO chat_messages(message_id, peer_device_id, "
-                                "direction, sender_device_id, sender_name, content, sent_at, "
-                                "local_status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                                "ON CONFLICT(message_id) DO NOTHING");
-                    msg.addBindValue(record.messageId);
-                    msg.addBindValue(record.peerDeviceId);
-                    msg.addBindValue(static_cast<int>(record.direction));
-                    msg.addBindValue(record.senderDeviceId);
-                    msg.addBindValue(record.senderName);
-                    msg.addBindValue(record.content);
-                    msg.addBindValue(isoTime(record.sentAt));
-                    msg.addBindValue(record.localStatus);
-                    msg.addBindValue(isoTime(record.createdAt));
-                    if (!msg.exec()) {
-                        if (taskError) {
-                            *taskError = msg.lastError().text();
-                        }
+                    gy::storage::SqliteStmt msg{
+                        database,
+                        "INSERT INTO chat_messages(message_id, peer_device_id, "
+                        "direction, sender_device_id, sender_name, content, sent_at, "
+                        "local_status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT(message_id) DO NOTHING"};
+                    msg.bind(1, record.messageId);
+                    msg.bind(2, record.peerDeviceId);
+                    msg.bind(3, static_cast<int>(record.direction));
+                    msg.bind(4, record.senderDeviceId);
+                    msg.bind(5, record.senderName);
+                    msg.bind(6, record.content);
+                    msg.bind(7, gy::storage::toIso8601Ms(record.sentAtMs));
+                    msg.bind(8, record.localStatus);
+                    msg.bind(9, gy::storage::toIso8601Ms(record.createdAtMs));
+                    if (!runStatement(msg, taskError)) {
                         return false;
                     }
-                    if (msg.numRowsAffected() > 0) {
+                    if (database.changesCount() > 0) {
                         ++messagesAdded;
                         // 新消息推动会话最近消息时间，重复条目不影响既有排序
-                        QSqlQuery act(database);
-                        act.prepare("UPDATE chat_conversations SET "
-                                    "last_message_at=MAX(last_message_at, ?) "
-                                    "WHERE peer_device_id=?");
-                        act.addBindValue(isoTime(record.sentAt));
-                        act.addBindValue(record.peerDeviceId);
-                        if (!act.exec()) {
-                            if (taskError) {
-                                *taskError = act.lastError().text();
-                            }
-                            return false;
-                        }
+                        gy::storage::SqliteStmt act{
+                            database,
+                            "UPDATE chat_conversations SET "
+                            "last_message_at=MAX(last_message_at, ?) "
+                            "WHERE peer_device_id=?"};
+                        act.bind(1, gy::storage::toIso8601Ms(record.sentAtMs));
+                        act.bind(2, record.peerDeviceId);
+                        return runStatement(act, taskError);
                     }
                     return true;
                 });
@@ -882,60 +1199,64 @@ void LocalDataBroker::importBackupRecords(QObject *receiver, const QList<PeerRec
 
             // 传输历史：record_id 是主键、session_id 唯一，重导入命中
             // session_id 冲突按幂等跳过，不覆盖本地已有行
-            for (const TransferRecord &record : transfers) {
-                steps.push_back([record, isoTime, &transfersAdded](QSqlDatabase &database,
-                                                                   QString *taskError) {
-                    QSqlQuery query(database);
-                    query.prepare(
+            for (const gy::storage::TransferRecord &record : coreTransfers) {
+                steps.push_back([&record, &transfersAdded](gy::storage::SqliteConn &database,
+                                                           std::string *taskError) {
+                    gy::storage::SqliteStmt query{
+                        database,
                         "INSERT INTO transfer_history(record_id, session_id, peer_device_id, "
                         "peer_name, direction, display_name, is_directory, file_count, "
                         "total_bytes, status, started_at, finished_at, error_code, "
                         "error_message) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                        "ON CONFLICT(session_id) DO NOTHING");
-                    query.addBindValue(record.recordId);
-                    query.addBindValue(record.sessionId);
-                    query.addBindValue(record.peerDeviceId);
-                    query.addBindValue(record.peerName);
-                    query.addBindValue(static_cast<int>(record.direction));
-                    query.addBindValue(record.displayName);
-                    query.addBindValue(record.isDirectory ? 1 : 0);
-                    query.addBindValue(record.fileCount);
-                    query.addBindValue(record.totalBytes);
-                    query.addBindValue(record.status);
-                    query.addBindValue(isoTime(record.startedAt));
-                    query.addBindValue(record.finishedAt.isValid() ? isoTime(record.finishedAt)
-                                                                   : QString());
-                    query.addBindValue(record.errorCode);
-                    query.addBindValue(record.errorMessage);
-                    if (!query.exec()) {
-                        if (taskError) {
-                            *taskError = query.lastError().text();
-                        }
+                        "ON CONFLICT(session_id) DO NOTHING"};
+                    query.bind(1, record.recordId);
+                    query.bind(2, record.sessionId);
+                    query.bind(3, record.peerDeviceId);
+                    query.bind(4, record.peerName);
+                    query.bind(5, static_cast<int>(record.direction));
+                    query.bind(6, record.displayName);
+                    query.bind(7, record.isDirectory ? 1 : 0);
+                    query.bind(8, record.fileCount);
+                    query.bind(9, record.totalBytes);
+                    query.bind(10, record.status);
+                    query.bind(11, gy::storage::toIso8601Ms(record.startedAtMs));
+                    if (record.finishedAtMs.has_value()) {
+                        query.bind(12, gy::storage::toIso8601Ms(*record.finishedAtMs));
+                    } else {
+                        query.bindNull(12);
+                    }
+                    query.bind(13, record.errorCode);
+                    query.bind(14, record.errorMessage);
+                    if (!runStatement(query, taskError)) {
                         return false;
                     }
-                    if (query.numRowsAffected() > 0) {
+                    if (database.changesCount() > 0) {
                         ++transfersAdded;
                     }
                     return true;
                 });
             }
 
-            if (!db.runSteps(steps, errorMessage)) {
+            std::string error;
+            if (!db.runSteps(steps, &error)) {
                 // 单事务内任一步失败整体回滚；按代管者契约仍需恰好回调一次
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
                 QMetaObject::invokeMethod(receiver, [callback] {
                     callback({}, false);
                 }, Qt::QueuedConnection);
                 return false;
             }
-            for (const PeerRecord &record : devices) {
+            for (const gy::storage::PeerRecord &record : coreDevices) {
                 _deviceRepository->noteWritten(record);
             }
 
             QVariantMap stats;
-            stats.insert(QStringLiteral("devices"), devices.size());
-            stats.insert(QStringLiteral("messages"), messages.size());
+            stats.insert(QStringLiteral("devices"), int(coreDevices.size()));
+            stats.insert(QStringLiteral("messages"), int(coreMessages.size()));
             stats.insert(QStringLiteral("messagesAdded"), messagesAdded);
-            stats.insert(QStringLiteral("transfers"), transfers.size());
+            stats.insert(QStringLiteral("transfers"), int(coreTransfers.size()));
             stats.insert(QStringLiteral("transfersAdded"), transfersAdded);
             QMetaObject::invokeMethod(receiver, [callback, stats] {
                 callback(stats, true);
@@ -959,32 +1280,35 @@ void LocalDataBroker::countDeviceRecords(QObject *receiver, const QString &devic
     }
 
     _storageWorker->submitTask(
-        [this, receiver, deviceId, callback](SqliteDatabaseBroker &, QString *errorMessage) {
-            QSqlDatabase database = _storage->connectionForWorkerThread(errorMessage);
-            if (!database.isValid()) {
-                return false;
-            }
-            int messages = 0;
-            int transfers = 0;
-            QSqlQuery query(database);
-            query.prepare("SELECT COUNT(*) FROM chat_messages WHERE peer_device_id = ?");
-            query.addBindValue(deviceId);
-            if (!query.exec() || !query.next()) {
+        [this, receiver, deviceId, callback](gy::storage::DatabaseCore &db, QString *errorMessage) {
+            gy::storage::SqliteConn &database = db.connection();
+            // 两条 COUNT 各用独立语句，绑定与执行口径与旧版逐字一致
+            gy::storage::SqliteStmt query{database,
+                                          "SELECT COUNT(*) FROM chat_messages WHERE peer_device_id = ?"};
+            query.bind(1, deviceId.toStdString());
+            const auto row = query.step();
+            if (!row.has_value() || !*row) {
                 if (errorMessage) {
-                    *errorMessage = query.lastError().text();
+                    *errorMessage = QString::fromStdString(
+                        row.has_value() ? std::string("统计聊天条数失败") : row.error().message);
                 }
                 return false;
             }
-            messages = query.value(0).toInt();
-            query.prepare("SELECT COUNT(*) FROM transfer_history WHERE peer_device_id = ?");
-            query.addBindValue(deviceId);
-            if (!query.exec() || !query.next()) {
+            const int messages = static_cast<int>(query.columnInt64(0));
+
+            gy::storage::SqliteStmt transferQuery{database,
+                                                  "SELECT COUNT(*) FROM transfer_history WHERE peer_device_id = ?"};
+            transferQuery.bind(1, deviceId.toStdString());
+            const auto transfersRow = transferQuery.step();
+            if (!transfersRow.has_value() || !*transfersRow) {
                 if (errorMessage) {
-                    *errorMessage = query.lastError().text();
+                    *errorMessage = QString::fromStdString(
+                        transfersRow.has_value() ? std::string("统计传输条数失败")
+                                                 : transfersRow.error().message);
                 }
                 return false;
             }
-            transfers = query.value(0).toInt();
+            const int transfers = static_cast<int>(transferQuery.columnInt64(0));
             QMetaObject::invokeMethod(receiver, [callback, messages, transfers] {
                 callback(messages, transfers, true);
             }, Qt::QueuedConnection);
@@ -1009,109 +1333,100 @@ void LocalDataBroker::mergeDeviceRecords(QObject *receiver, const PeerRecord &ne
         return;
     }
 
+    const gy::storage::PeerRecord coreNewDevice = toCore(newDevice);
+    const std::string coreOldDeviceId = oldDeviceId.toStdString();
     _storageWorker->submitTask(
-        [this, receiver, newDevice, oldDeviceId, includeHistory, callback](SqliteDatabaseBroker &db,
-                                                                           QString *errorMessage) {
-            const auto isoTime = [](const QDateTime &time) {
-                return time.toUTC().toString(Qt::ISODateWithMs);
-            };
-            std::vector<std::function<bool(QSqlDatabase &, QString *)>> steps;
-            steps.push_back(SqliteDeviceRepository::upsertPeerStep(newDevice));
+        [this, receiver, coreNewDevice, coreOldDeviceId, includeHistory, callback](gy::storage::DatabaseCore &db,
+                                                                                   QString *errorMessage) {
+            std::vector<gy::storage::DatabaseCore::TransactionTask> steps;
+            steps.push_back(gy::storage::DeviceRepositoryCore::upsertPeerStep(coreNewDevice));
             // 历史迁移须先于标记合并：标记步骤尾部会移除旧行，历史必须先行搬走
             if (includeHistory) {
-                steps.push_back([newDevice, oldDeviceId](QSqlDatabase &database,
-                                                         QString *taskError) {
+                steps.push_back([newDevice = coreNewDevice, oldDeviceId = coreOldDeviceId](
+                                    gy::storage::SqliteConn &database, std::string *taskError) {
                     // 聊天迁移：会话行是子表消息的外键父行，直接 UPDATE 父键会被
                     // 拒绝（schema 无 ON UPDATE 动作），统一走"新行 + 搬消息 + 删旧行"
-                    QSqlQuery probe(database);
-                    probe.prepare("SELECT created_at, last_message_at FROM chat_conversations "
-                                  "WHERE peer_device_id = ?");
-                    probe.addBindValue(oldDeviceId);
-                    if (!probe.exec()) {
+                    gy::storage::SqliteStmt probe{
+                        database,
+                        "SELECT created_at, last_message_at FROM chat_conversations "
+                        "WHERE peer_device_id = ?"};
+                    probe.bind(1, oldDeviceId);
+                    const auto probeRow = probe.step();
+                    if (!probeRow.has_value()) {
                         if (taskError) {
-                            *taskError = probe.lastError().text();
+                            *taskError = probeRow.error().message;
                         }
                         return false;
                     }
-                    if (!probe.next()) {
+                    if (!*probeRow) {
                         return true;  // 旧设备没有会话行，无历史可迁
                     }
-                    const QString createdAt = probe.value(0).toString();
-                    const QString lastMessageAt = probe.value(1).toString();
+                    const std::string createdAt = probe.columnText(0);
+                    const std::string lastMessageAt = probe.columnText(1);
 
                     // 新会话行不存在则按旧行时间戳建行（存在则沿用，时间取较新）
-                    QSqlQuery ensure(database);
-                    ensure.prepare("INSERT INTO chat_conversations(peer_device_id, created_at, "
-                                   "last_message_at) VALUES(?, ?, ?) "
-                                   "ON CONFLICT(peer_device_id) DO UPDATE SET "
-                                   "last_message_at=MAX(last_message_at, excluded.last_message_at)");
-                    ensure.addBindValue(newDevice.deviceId);
-                    ensure.addBindValue(createdAt);
-                    ensure.addBindValue(lastMessageAt);
-                    if (!ensure.exec()) {
-                        if (taskError) {
-                            *taskError = ensure.lastError().text();
-                        }
+                    gy::storage::SqliteStmt ensure{
+                        database,
+                        "INSERT INTO chat_conversations(peer_device_id, created_at, "
+                        "last_message_at) VALUES(?, ?, ?) "
+                        "ON CONFLICT(peer_device_id) DO UPDATE SET "
+                        "last_message_at=MAX(last_message_at, excluded.last_message_at)"};
+                    ensure.bind(1, newDevice.deviceId);
+                    ensure.bind(2, createdAt);
+                    ensure.bind(3, lastMessageAt);
+                    if (!runStatement(ensure, taskError)) {
                         return false;
                     }
 
                     // 消息改挂新会话（同 message_id 的重复消息跳过并随旧行清理）
-                    QSqlQuery move(database);
-                    move.prepare("UPDATE chat_messages SET peer_device_id = ? "
-                                 "WHERE peer_device_id = ? AND message_id NOT IN "
-                                 "(SELECT message_id FROM chat_messages WHERE peer_device_id = ?)");
-                    move.addBindValue(newDevice.deviceId);
-                    move.addBindValue(oldDeviceId);
-                    move.addBindValue(newDevice.deviceId);
-                    if (!move.exec()) {
-                        if (taskError) {
-                            *taskError = move.lastError().text();
-                        }
+                    gy::storage::SqliteStmt move{
+                        database,
+                        "UPDATE chat_messages SET peer_device_id = ? "
+                        "WHERE peer_device_id = ? AND message_id NOT IN "
+                        "(SELECT message_id FROM chat_messages WHERE peer_device_id = ?)"};
+                    move.bind(1, newDevice.deviceId);
+                    move.bind(2, oldDeviceId);
+                    move.bind(3, newDevice.deviceId);
+                    if (!runStatement(move, taskError)) {
                         return false;
                     }
 
                     // 传输历史整体改挂新行（record_id/session_id 不变，无唯一冲突）
-                    QSqlQuery transfers(database);
-                    transfers.prepare("UPDATE transfer_history SET peer_device_id = ? "
-                                      "WHERE peer_device_id = ?");
-                    transfers.addBindValue(newDevice.deviceId);
-                    transfers.addBindValue(oldDeviceId);
-                    if (!transfers.exec()) {
-                        if (taskError) {
-                            *taskError = transfers.lastError().text();
-                        }
-                        return false;
-                    }
-                    return true;
+                    gy::storage::SqliteStmt transfers{
+                        database,
+                        "UPDATE transfer_history SET peer_device_id = ? "
+                        "WHERE peer_device_id = ?"};
+                    transfers.bind(1, newDevice.deviceId);
+                    transfers.bind(2, oldDeviceId);
+                    return runStatement(transfers, taskError);
                 });
             } else {
                 // 不迁移历史：旧传输记录显式删除（RESTRICT 外键要求先清），
                 // 旧聊天随旧行级联清理，语义为"放弃旧记录"
-                steps.push_back([oldDeviceId](QSqlDatabase &database, QString *taskError) {
-                    QSqlQuery query(database);
-                    query.prepare("DELETE FROM transfer_history WHERE peer_device_id = ?");
-                    query.addBindValue(oldDeviceId);
-                    if (!query.exec()) {
-                        if (taskError) {
-                            *taskError = query.lastError().text();
-                        }
-                        return false;
-                    }
-                    return true;
+                steps.push_back([oldDeviceId = coreOldDeviceId](gy::storage::SqliteConn &database,
+                                                                std::string *taskError) {
+                    gy::storage::SqliteStmt query{
+                        database, "DELETE FROM transfer_history WHERE peer_device_id = ?"};
+                    query.bind(1, oldDeviceId);
+                    return runStatement(query, taskError);
                 });
             }
             // 标记合并收尾（含移除旧行），旧历史此时已搬空
-            steps.push_back(SqliteDeviceRepository::mergeManualPeerMarkersStep(newDevice.deviceId,
-                                                                               oldDeviceId));
+            steps.push_back(gy::storage::DeviceRepositoryCore::mergeManualPeerMarkersStep(
+                coreNewDevice.deviceId, coreOldDeviceId));
 
-            if (!db.runSteps(steps, errorMessage)) {
+            std::string error;
+            if (!db.runSteps(steps, &error)) {
+                if (errorMessage) {
+                    *errorMessage = QString::fromStdString(error);
+                }
                 QMetaObject::invokeMethod(receiver, [callback] {
                     callback(false);
                 }, Qt::QueuedConnection);
                 return false;
             }
-            _deviceRepository->noteWritten(newDevice);
-            _deviceRepository->noteDeviceDeleted(oldDeviceId);
+            _deviceRepository->noteWritten(coreNewDevice);
+            _deviceRepository->noteDeviceDeleted(coreOldDeviceId);
             QMetaObject::invokeMethod(receiver, [callback] {
                 callback(true);
             }, Qt::QueuedConnection);
@@ -1119,18 +1434,27 @@ void LocalDataBroker::mergeDeviceRecords(QObject *receiver, const PeerRecord &ne
         });
 }
 
-// 异步删除指定时间前的聊天和传输历史// 异步删除指定时间前的聊天和传输历史// 异步删除指定时间前的聊天和传输历史（由保留期限定时器触发）
+// 异步删除指定时间前的聊天和传输历史（由保留期限定时器触发）
 void LocalDataBroker::deleteExpiredRecords(const QDateTime &before)
 {
     if (!_storage->isAvailable() || !_messageRepository || !_transferRepository) {
         return;
     }
 
+    const int64_t beforeMs = before.toMSecsSinceEpoch();
     _storageWorker->submitTask(
-        [this, before](SqliteDatabaseBroker &, QString *errorMessage) {
+        [this, beforeMs](gy::storage::DatabaseCore &, QString *errorMessage) {
             // 两张表独立清理，任一失败则整体报告失败
-            return _messageRepository->deleteExpiredMessages(before, errorMessage)
-                   && _transferRepository->deleteExpiredTransfers(before, errorMessage);
+            std::string error;
+            const bool messagesOk =
+                _messageRepository->deleteExpiredMessages(beforeMs, &error);
+            const bool transfersOk = messagesOk
+                ? _transferRepository->deleteExpiredTransfers(beforeMs, &error)
+                : false;
+            if (!transfersOk && errorMessage) {
+                *errorMessage = QString::fromStdString(error);
+            }
+            return transfersOk;
         });
 }
 

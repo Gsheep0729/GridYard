@@ -1,12 +1,14 @@
 /**
 * @file    local_data_broker.h
-* @version 7.24.0
-* @date 2026-10-08
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   本地数据层代管者
 *
 * LocalDataBroker 负责初始化 SQLite 存储、Repository、数据库任务线程，
 * 并向应用层提供本地历史持久化、查询、删除和启动恢复入口。
+* 内部实现已切换到纯 C++ 存储核心（gy_storage_core 的 DatabaseCore 与
+* 三个 *_core 仓储），Qt 领域记录在任务边界做机械互转；对外接口不变。
 * 所有带回调的接口承诺任何路径下恰好回调一次，存储不可用时回调失败。
 */
 
@@ -26,10 +28,13 @@
 class DatabaseWorker;
 struct PeerInfo;
 class QThread;
-class SqliteDatabaseBroker;
-class SqliteDeviceRepository;
-class SqliteMessageRepository;
-class SqliteTransferHistoryRepository;
+
+namespace gy::storage {
+class DatabaseCore;
+class DeviceRepositoryCore;
+class MessageRepositoryCore;
+class TransferRepositoryCore;
+}
 
 class LocalDataBroker : public QObject {
 private:
@@ -156,10 +161,10 @@ signals:
     void rebuiltBackupPathChanged();
 
 private:
-    std::unique_ptr<SqliteDatabaseBroker> _storage;  // SQLite 连接、事务与迁移入口
-    std::unique_ptr<SqliteDeviceRepository> _deviceRepository;  // 设备目录持久化实现
-    std::unique_ptr<SqliteMessageRepository> _messageRepository;  // 聊天消息持久化实现
-    std::unique_ptr<SqliteTransferHistoryRepository> _transferRepository;  // 传输历史持久化实现
+    std::unique_ptr<gy::storage::DatabaseCore> _storage;  // SQLite 连接、事务与迁移入口
+    std::unique_ptr<gy::storage::DeviceRepositoryCore> _deviceRepository;  // 设备目录持久化实现
+    std::unique_ptr<gy::storage::MessageRepositoryCore> _messageRepository;  // 聊天消息持久化实现
+    std::unique_ptr<gy::storage::TransferRepositoryCore> _transferRepository;  // 传输历史持久化实现
     QThread *_storageThread = nullptr;  // 存储任务专用线程
     DatabaseWorker *_storageWorker = nullptr;  // 串行执行存储任务的 Worker
     bool _historyDatabaseRebuilt = false;  // 启动时是否因库损坏重建了本地历史库

@@ -15,7 +15,8 @@
 #include <QThread>
 
 #include "database_worker.h"
-#include "sqlite_database_broker.h"
+
+#include "core/storage/database_core.h"
 
 class TestDatabaseWorker : public QObject {
     Q_OBJECT
@@ -30,14 +31,14 @@ private slots:
 // 任务按提交顺序在单一队列上串行执行
 void TestDatabaseWorker::testTasksExecuteInFifoOrder()
 {
-    SqliteDatabaseBroker broker;  // 未初始化：任务执行但返回失败，不影响顺序语义
-    DatabaseWorker worker{&broker};
+    gy::storage::DatabaseCore database;  // 未初始化：任务照常执行，不影响顺序语义
+    DatabaseWorker worker{&database};
 
     QList<int> executionOrder;
     QSignalSpy finishedSpy(&worker, &DatabaseWorker::taskFinished);
 
     for (int i = 0; i < 10; ++i) {
-        worker.submitTask([&executionOrder, i](SqliteDatabaseBroker &, QString *) {
+        worker.submitTask([&executionOrder, i](gy::storage::DatabaseCore &, QString *) {
             executionOrder.append(i);
             return true;
         });
@@ -50,18 +51,18 @@ void TestDatabaseWorker::testTasksExecuteInFifoOrder()
 // beginShutdown 之后提交的任务被静默拒绝，不执行也不崩溃
 void TestDatabaseWorker::testSubmitRejectedAfterBeginShutdown()
 {
-    SqliteDatabaseBroker broker;
-    DatabaseWorker worker{&broker};
+    gy::storage::DatabaseCore database;
+    DatabaseWorker worker{&database};
 
     worker.beginShutdown();
 
     int executed = 0;
     QSignalSpy finishedSpy(&worker, &DatabaseWorker::taskFinished);
-    worker.submitTask([&executed](SqliteDatabaseBroker &, QString *) {
+    worker.submitTask([&executed](gy::storage::DatabaseCore &, QString *) {
         ++executed;
         return true;
     });
-    worker.submitTask([&executed](SqliteDatabaseBroker &, QString *) {
+    worker.submitTask([&executed](gy::storage::DatabaseCore &, QString *) {
         ++executed;
         return true;
     });
@@ -75,11 +76,11 @@ void TestDatabaseWorker::testSubmitRejectedAfterBeginShutdown()
 // drained 在所有已受理任务完成后到达，与 LocalDataBroker 的排空调用方式一致
 void TestDatabaseWorker::testDrainedAfterAllAcceptedTasks()
 {
-    SqliteDatabaseBroker broker;
-    DatabaseWorker worker{&broker};
+    gy::storage::DatabaseCore database;
+    DatabaseWorker worker{&database};
 
     QList<int> executionOrder;
-    worker.submitTask([&executionOrder](SqliteDatabaseBroker &, QString *) {
+    worker.submitTask([&executionOrder](gy::storage::DatabaseCore &, QString *) {
         executionOrder.append(1);
         QTest::qWait(50);  // 拉长任务耗时，验证 drained 不会提前到达
         executionOrder.append(2);
@@ -97,14 +98,14 @@ void TestDatabaseWorker::testDrainedAfterAllAcceptedTasks()
 // 任务在 Worker 自有线程执行，不占用调用方线程（std::thread 队列的线程归属契约）
 void TestDatabaseWorker::testTasksRunOffCallerThread()
 {
-    SqliteDatabaseBroker broker;
-    DatabaseWorker worker{&broker};
+    gy::storage::DatabaseCore database;
+    DatabaseWorker worker{&database};
 
     const Qt::HANDLE callerThread = QThread::currentThreadId();
     Qt::HANDLE workerThread = nullptr;
     QSignalSpy finishedSpy(&worker, &DatabaseWorker::taskFinished);
 
-    worker.submitTask([&workerThread](SqliteDatabaseBroker &, QString *) {
+    worker.submitTask([&workerThread](gy::storage::DatabaseCore &, QString *) {
         workerThread = QThread::currentThreadId();
         return true;
     });

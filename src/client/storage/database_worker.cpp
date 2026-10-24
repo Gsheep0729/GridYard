@@ -8,17 +8,16 @@
 * Worker 在构造时启动内部 std::thread，submitTask 把任务压入互斥锁
 * 保护的 FIFO 队列并由条件变量唤醒；beginShutdown 关闭受理开关并
 * 请求排空，队列清空且此前受理的任务全部执行完毕后发射 drained。
-* 数据库连接只在任务线程内创建与关闭，析构前先排空队列再回收线程。
+* 数据库连接由 DatabaseCore 持有并在其析构时关闭，Worker 线程只做
+* 任务调度，析构前排空队列再回收线程。
 */
 
 #include "database_worker.h"
 
-#include "sqlite_database_broker.h"
-
 #include <utility>
 
 // 构造函数，启动内部任务线程
-DatabaseWorker::DatabaseWorker(SqliteDatabaseBroker *database)
+DatabaseWorker::DatabaseWorker(gy::storage::DatabaseCore *database)
     : _database(database)
 {
     _workerThread = std::thread{&DatabaseWorker::runLoop, this};
@@ -92,11 +91,6 @@ void DatabaseWorker::runLoop()
         }
         executeTask(task);
     }
-
-    // 任务线程退出前清理本线程专属连接，避免全局连接表泄漏
-    if (_database) {
-        _database->closeConnectionForCurrentThread();
-    }
 }
 
 // 执行单个数据库任务并发出结果
@@ -107,7 +101,7 @@ void DatabaseWorker::executeTask(const DatabaseTask &task)
         return;
     }
 
-    // 数据库入口按当前线程创建独立连接，任务全程不跨线程传递句柄
+    // 数据库代管者由持有方在初始化后交付本线程顺序访问，任务全程不跨线程传递句柄
     QString errorMessage;
     const bool succeeded = task(*_database, &errorMessage);
     emit taskFinished(succeeded, errorMessage);
