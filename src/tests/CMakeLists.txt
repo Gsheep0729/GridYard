@@ -158,7 +158,7 @@ add_test(NAME test_history_controller COMMAND test_history_controller)
 qt_add_executable(test_edge_cases test_edge_cases.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
 )
-target_link_libraries(test_edge_cases PRIVATE gy_shared Qt6::Test Qt6::Core)
+target_link_libraries(test_edge_cases PRIVATE gy_shared Qt6::Test Qt6::Core gy_core)
 target_include_directories(test_edge_cases PRIVATE ${CLIENT_CORE_DIR})
 target_compile_features(test_edge_cases PRIVATE cxx_std_23)
 add_test(NAME test_edge_cases COMMAND test_edge_cases)
@@ -167,7 +167,7 @@ add_test(NAME test_edge_cases COMMAND test_edge_cases)
 qt_add_executable(test_transfer test_transfer.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
 )
-target_link_libraries(test_transfer PRIVATE gy_shared Qt6::Test Qt6::Core)
+target_link_libraries(test_transfer PRIVATE gy_shared Qt6::Test Qt6::Core gy_core)
 target_include_directories(test_transfer PRIVATE ${CLIENT_CORE_DIR})
 target_compile_features(test_transfer PRIVATE cxx_std_23)
 add_test(NAME test_transfer COMMAND test_transfer)
@@ -535,7 +535,9 @@ set_tests_properties(test_frame_codec test_chat_message test_chat_manager test_h
     PROPERTIES TIMEOUT 300)
 
 # --- Golden 基线对拍套件：以当前 Qt 实现为参考实现固化行为，供纯 C++ 替代实现对拍 ---
-qt_add_executable(test_golden_baseline test_golden_baseline.cpp)
+qt_add_executable(test_golden_baseline test_golden_baseline.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+)
 target_link_libraries(test_golden_baseline PRIVATE
     gy_shared
     gy_rendezvous
@@ -546,6 +548,7 @@ target_link_libraries(test_golden_baseline PRIVATE
 target_include_directories(test_golden_baseline PRIVATE
     ${CMAKE_SOURCE_DIR}/rendezvous
     ${CMAKE_SOURCE_DIR}/shared
+    ${CMAKE_SOURCE_DIR}/client/core
 )
 target_compile_features(test_golden_baseline PRIVATE cxx_std_23)
 add_test(NAME test_golden_baseline COMMAND test_golden_baseline

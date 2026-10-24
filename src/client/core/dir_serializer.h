@@ -1,7 +1,7 @@
 /**
 * @file    dir_serializer.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   目录序列化工具（递归遍历 + SHA-256 计算）
 *

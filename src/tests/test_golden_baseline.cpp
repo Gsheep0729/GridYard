@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "chat_message.h"
+#include "dir_serializer.h"
 #include "frame_codec.h"
 #include "protocol.h"
 #include "rendezvous_limits.h"
@@ -93,6 +94,7 @@ private slots:
     void testGoldenSha256();
     void testGoldenQSettings();
     void testGoldenConfigStoreMigration();
+    void testGoldenDirSerializerSha256();
     void testGoldenUuid();
     void testGoldenCoreFrameCodec();
     void testGoldenCoreSha256();
@@ -469,6 +471,42 @@ name=鸽邮 设备 名
     QCOMPARE(reload.value("special").toString(), QStringLiteral("a=b\\c;d"));
     QCOMPARE(reload.value("targets").toString(), QStringLiteral("uuid-a111, uuid-b222"));
     QCOMPARE(reload.value("emptyValue").toString(), QString());
+}
+
+// DirSerializer 计算路径的 SHA-256 golden 对拍（Phase 4-b 验收）
+// 期望值与 testGoldenSha256 固化的 NIST 向量逐字符一致
+void TestGoldenBaseline::testGoldenDirSerializerSha256()
+{
+    const auto writeTempFile = [](const QString &name, const QByteArray &data) -> QString {
+        static QTemporaryDir tempDir;
+        const QString path = tempDir.path() + "/" + name;
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly) || file.write(data) != qint64(data.size())) {
+            return {};
+        }
+        return path;
+    };
+
+    // 空字节串、"GridYard" ASCII、4096×0xFF 三个固化场景经写盘后按文件哈希
+    QCOMPARE(gy::DirSerializer::computeSha256(
+                 writeTempFile(QStringLiteral("ds-empty.bin"), QByteArray())),
+             QStringLiteral("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+    QCOMPARE(gy::DirSerializer::computeSha256(
+                 writeTempFile(QStringLiteral("ds-ascii.bin"), QByteArray("GridYard"))),
+             QStringLiteral("853ab8d2d4e3d824e096f4bce27a3da812dbc46ccdf072770a48e74870227666"));
+    QCOMPARE(gy::DirSerializer::computeSha256(
+                 writeTempFile(QStringLiteral("ds-ff.bin"), QByteArray(4096, char(0xFF)))),
+             QStringLiteral("f47a8ec3e9aff2318d896942282ad4fe37d6391c82914f54a5da8a37de1300c6"));
+
+    // 打不开的路径返回空串（与旧实现失败语义一致）
+    QVERIFY(gy::DirSerializer::computeSha256(QStringLiteral("/nonexistent/ds/path.bin")).isEmpty());
+
+    // 序列化单文件条目携带同一哈希值，清单口径与单文件计算一致
+    const QString filePath = writeTempFile(QStringLiteral("ds-item.bin"), QByteArray("GridYard"));
+    const QList<gy::FileItem> items = gy::DirSerializer::serialize(filePath);
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items[0].sha256,
+             QStringLiteral("853ab8d2d4e3d824e096f4bce27a3da812dbc46ccdf072770a48e74870227666"));
 }
 
 // UUID 生成与校验格式基线固化
