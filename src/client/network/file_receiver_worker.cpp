@@ -1,6 +1,6 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 7.26.0
+* @version 7.26.1
 * @date 2026-10-25
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
