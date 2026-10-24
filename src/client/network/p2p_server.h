@@ -22,6 +22,8 @@
 #include <QVariantMap>
 
 #include <memory>
+#include <mutex>
+#include <set>
 
 class ConfigManager;
 class FileReceiverWorker;
@@ -76,6 +78,8 @@ private:
 
     ConfigManager *_config = nullptr; // TCP 监听端口配置来源
     std::unique_ptr<gy::net::TcpServerCore> _server;  // 接受入站传输连接的纯 C++ 监听服务器
+    std::set<int> _pendingConnectionDescriptors;  // 已投递未消费的接入描述符，析构时兜底关闭
+    std::mutex _pendingConnectionMutex;  // 接入回调在 Reactor 线程，登记与消费跨线程互斥
     QHash<gy::net::PosixTcpSocket *, QTimer *> _firstFrameTimers;  // 待路由连接的首帧计时器
     QHash<gy::net::PosixTcpSocket *, QString> _relayJoins;  // 待就绪的中继连接 -> relayId
 };

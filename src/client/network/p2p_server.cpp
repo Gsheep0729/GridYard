@@ -34,6 +34,8 @@
 #include "post_to_ui_thread.h"
 #include "core/tcp_server_core.h"
 
+#include <unistd.h>
+
 namespace {
 
 // 直连首帧路由超时
@@ -67,9 +69,14 @@ P2pServer::P2pServer(ConfigManager *config, QObject *parent)
     , _config{config}
     , _server{std::make_unique<gy::net::TcpServerCore>(gy::net::sharedReactor())}
 {
-    // Reactor 线程只投递描述符：包装 socket 与首帧路由都必须在本线程进行
+    // Reactor 线程只投递描述符：包装 socket 与首帧路由都必须在本线程进行；
+    // 投递即登记，消费点核销，析构时未消费的描述符由服务器兜底关闭
     _server->setConnectionCallback(
         [this](int descriptor, const std::string &peerAddress) {
+            {
+                const std::lock_guard<std::mutex> lock{_pendingConnectionMutex};
+                _pendingConnectionDescriptors.insert(descriptor);
+            }
             gy::bridge::postToUiThread(
                 this, [this, descriptor, peerAddress] {
                     handleNewConnection(descriptor, QString::fromStdString(peerAddress));
@@ -83,6 +90,16 @@ P2pServer::~P2pServer()
     // 停止服务器监听（监听描述符随核心服务器对象一并关闭）
     if (_server->isListening()) {
         _server->close();
+    }
+
+    // 已投递未消费的接入描述符随投递事件被丢弃，这里显式关闭防退出路径泄漏
+    std::set<int> unconsumed;
+    {
+        const std::lock_guard<std::mutex> lock{_pendingConnectionMutex};
+        unconsumed.swap(_pendingConnectionDescriptors);
+    }
+    for (const int descriptor : unconsumed) {
+        ::close(descriptor);
     }
 
     // 遍历子对象，停止仍在运行的 QThread，避免析构时警告
@@ -213,6 +230,12 @@ void P2pServer::failRelayJoin(gy::net::PosixTcpSocket *socket, const QString &re
 void P2pServer::handleNewConnection(int descriptor, const QString &peerAddress)
 {
     qDebug() << "[P2pServer] 新连接来自" << peerAddress;
+
+    // 描述符已被本线程接管：登记核销，此后成败都由包装对象负责生命周期
+    {
+        const std::lock_guard<std::mutex> lock{_pendingConnectionMutex};
+        _pendingConnectionDescriptors.erase(descriptor);
+    }
 
     auto *socket = new gy::net::PosixTcpSocket{this};
     if (!socket->adoptDescriptor(descriptor)) {
