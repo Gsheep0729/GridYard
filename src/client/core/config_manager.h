@@ -1,13 +1,13 @@
 /**
 * @file    config_manager.h
-* @version 7.23.0
-* @date 2026-10-07
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
-* 使用 QSettings 管理设备名、接收路径、TCP 端口、自动接收等配置。
-* 首次启动生成 UUID 并持久化，确保设备标识跨会话稳定。
-* 提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
+* 内部经纯 C++ 的 ConfigStore 持久化设备名、接收路径、TCP 端口、自动接收
+* 等配置，对外保持 Qt 属性接口。首次启动生成 UUID 并持久化，确保设备标识
+* 跨会话稳定。提供语义化方法（isMyDevice、fillHelloPayload 等）供其他模块调用。
 */
 
 #pragma once

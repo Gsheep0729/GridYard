@@ -418,6 +418,8 @@ void TestConfigManager::testDeveloperLaunchEntry()
     _config->setDeveloperLaunchEntryEnabled(false);
     QVERIFY(!_config->developerLaunchEntryEnabled());
     QCOMPARE(spy.count(), 2);
+    // 配置改经纯 C++ 存取器落盘，QSettings 实例须先 sync 才能看到外部改写
+    settings.sync();
     QCOMPARE(settings.value("developer/launchEntryEnabled").toBool(), false);
 }
 

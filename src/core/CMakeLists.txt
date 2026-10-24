@@ -8,6 +8,8 @@ add_library(gy_core STATIC
     codec/frame_codec_core.cpp
     codec/chat_message_core.h
     codec/chat_message_core.cpp
+    config/config_store.h
+    config/config_store.cpp
     utils/dir_hasher.h
     utils/dir_hasher.cpp
 )
@@ -28,6 +30,8 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "core" FILES
     codec/frame_codec_core.cpp
     codec/chat_message_core.h
     codec/chat_message_core.cpp
+    config/config_store.h
+    config/config_store.cpp
     utils/dir_hasher.h
     utils/dir_hasher.cpp
 )

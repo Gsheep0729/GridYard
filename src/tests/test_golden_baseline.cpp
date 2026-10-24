@@ -33,6 +33,7 @@
 
 #include "core/codec/chat_message_core.h"
 #include "core/codec/frame_codec_core.h"
+#include "core/config/config_store.h"
 #include "core/utils/dir_hasher.h"
 
 namespace {
@@ -91,6 +92,7 @@ private slots:
     void testGoldenJson();
     void testGoldenSha256();
     void testGoldenQSettings();
+    void testGoldenConfigStoreMigration();
     void testGoldenUuid();
     void testGoldenCoreFrameCodec();
     void testGoldenCoreSha256();
@@ -382,6 +384,91 @@ name=鸽邮 设备 名
     QCOMPARE(reload.value("special").toString(), QStringLiteral("a=b\\c;d"));
     const QStringList expectedTargets = QStringList{QStringLiteral("uuid-a111"), QStringLiteral("uuid-b222")};
     QCOMPARE(reload.value("targets").toStringList(), expectedTargets);
+}
+
+// 纯 C++ ConfigStore 与 QSettings INI 的双向对拍（Phase 4-a 迁移验收）
+void TestGoldenBaseline::testGoldenConfigStoreMigration()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    // 输入侧：解析 testGoldenQSettings 固化的 INI 文本，读取结果逐字段一致
+    const QString goldenIniPath = tempDir.path() + "/golden-input.ini";
+    {
+        QFile file(goldenIniPath);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write(QStringLiteral(R"([General]
+count=42
+emptyValue=
+flag=true
+ratio=3.14
+special="a=b\\c;d"
+targets=uuid-a111, uuid-b222
+
+[device]
+name=鸽邮 设备 名
+)").toUtf8());
+    }
+
+    const gy::config::ConfigStore store{goldenIniPath.toStdString()};
+    QCOMPARE(QByteArray::fromStdString(*store.get("General", "count")), QByteArray("42"));
+    QCOMPARE(*store.getInt("General", "count"), int64_t(42));
+    QCOMPARE(QByteArray::fromStdString(*store.get("General", "emptyValue")), QByteArray(""));
+    QCOMPARE(*store.getBool("General", "flag"), true);
+    QCOMPARE(QByteArray::fromStdString(*store.get("General", "ratio")), QByteArray("3.14"));
+    // 双引号包裹值去掉包裹，\\ 还原为单反斜杠
+    QCOMPARE(QByteArray::fromStdString(*store.get("General", "special")), QByteArray("a=b\\c;d"));
+    QCOMPARE(QByteArray::fromStdString(*store.get("General", "targets")),
+             QByteArray("uuid-a111, uuid-b222"));
+    QCOMPARE(QString::fromStdString(*store.get("device", "name")), QStringLiteral("鸽邮 设备 名"));
+    // 缺失键返回空 optional，调用方回落默认值
+    QVERIFY(!store.get("device", "absent").has_value());
+    QVERIFY(!store.getInt("General", "ratio").has_value());
+
+    // 写出侧：同一份字符串/整数/布尔内容经 ConfigStore 与 QSettings 写盘，字节一致
+    const auto writeContent = [](const QString &path, bool useConfigStore) {
+        if (useConfigStore) {
+            gy::config::ConfigStore writer{path.toStdString()};
+            writer.set("device", "name", QStringLiteral("鸽邮 设备 名").toStdString());
+            writer.setBool("General", "flag", true);
+            writer.setInt("General", "count", 42);
+            writer.set("General", "ratio", "3.14");
+            writer.set("General", "special", "a=b\\c;d");
+            writer.set("General", "targets", "uuid-a111, uuid-b222");
+            writer.set("General", "emptyValue", "");
+            return;
+        }
+        QSettings settings(path, QSettings::IniFormat);
+        settings.setValue("device/name", QStringLiteral("鸽邮 设备 名"));
+        settings.setValue("flag", true);
+        settings.setValue("count", 42);
+        settings.setValue("ratio", 3.14);
+        settings.setValue("special", QStringLiteral("a=b\\c;d"));
+        settings.setValue("targets", QStringLiteral("uuid-a111, uuid-b222"));
+        settings.setValue("emptyValue", QString());
+        settings.sync();
+    };
+    const QString corePath = tempDir.path() + "/core-written.ini";
+    const QString qtPath = tempDir.path() + "/qt-written.ini";
+    writeContent(corePath, true);
+    writeContent(qtPath, false);
+
+    const auto readAll = [](const QString &path) {
+        QFile file(path);
+        file.open(QIODevice::ReadOnly);
+        return file.readAll();
+    };
+    QCOMPARE(readAll(corePath), readAll(qtPath));
+
+    // 反向兼容：QSettings 读回 ConfigStore 写出的文件，值逐项一致（降级安全）
+    QSettings reload(corePath, QSettings::IniFormat);
+    QCOMPARE(reload.value("device/name").toString(), QStringLiteral("鸽邮 设备 名"));
+    QCOMPARE(reload.value("flag").toBool(), true);
+    QCOMPARE(reload.value("count").toInt(), 42);
+    QVERIFY(qFuzzyCompare(reload.value("ratio").toDouble(), 3.14));
+    QCOMPARE(reload.value("special").toString(), QStringLiteral("a=b\\c;d"));
+    QCOMPARE(reload.value("targets").toString(), QStringLiteral("uuid-a111, uuid-b222"));
+    QCOMPARE(reload.value("emptyValue").toString(), QString());
 }
 
 // UUID 生成与校验格式基线固化

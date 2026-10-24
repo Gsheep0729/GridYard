@@ -163,6 +163,7 @@ target_link_libraries(appGridYard PRIVATE
     Qt6::Widgets        # SystemTrayIcon / Menu 等需要 Widgets
     gy_shared
     gy_storage
+    gy_core
 )
 
 target_include_directories(appGridYard PRIVATE core network domain)

@@ -1,12 +1,13 @@
 /**
 * @file    config_manager.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 7.26.1
+* @date    2026-10-24
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
-* 实现配置的读取、写入和持久化。使用 QSettings 存储设备名、
-* 接收路径、TCP 端口等配置项。支持环境变量覆盖（GRIDYARD_CONFIG、
+* 实现配置的读取、写入和持久化。内部经纯 C++ 的 ConfigStore 读写 INI
+* 文件（语义与 QSettings(IniFormat) 逐字节兼容，旧配置直接可读），对外
+* 保持 Qt 属性接口不变。支持环境变量覆盖（GRIDYARD_CONFIG、
 * GRIDYARD_NAME、GRIDYARD_PORT、GRIDYARD_INSTANCE），便于单机多实例测试。
 */
 
@@ -14,6 +15,7 @@
 #include "application_paths.h"
 #include "protocol.h"
 
+#include "core/config/config_store.h"
 #include "net_interfaces.h"
 
 #include <algorithm>
@@ -24,7 +26,6 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
-#include <QSettings>
 #include <QSysInfo>
 #include <QUrl>
 #include <QUuid>
@@ -42,10 +43,32 @@ static QString resolveConfigPath()
     return ApplicationPaths::configDir() + "/gridyard.ini";
 }
 
-// 打开当前配置文件，读写点各自短暂打开，避免多处拼装 QSettings
-static QSettings openSettings()
+// 打开当前配置文件的纯 C++ 存取器，读写点各自短暂加载
+static gy::config::ConfigStore openConfigStore()
 {
-    return QSettings(resolveConfigPath(), QSettings::IniFormat);
+    return gy::config::ConfigStore{resolveConfigPath().toStdString()};
+}
+
+// 读取字符串配置，键不存在回落默认值
+static QString readConfigString(gy::config::ConfigStore &store, const char *group,
+                                const char *key, const QString &defaultValue)
+{
+    const auto value = store.get(group, key);
+    return value ? QString::fromStdString(*value) : defaultValue;
+}
+
+// 读取整数配置，键不存在或非数字回落默认值
+static int readConfigInt(gy::config::ConfigStore &store, const char *group,
+                         const char *key, int defaultValue)
+{
+    return static_cast<int>(store.getInt(group, key).value_or(defaultValue));
+}
+
+// 读取布尔配置，键不存在或无法识别回落默认值
+static bool readConfigBool(gy::config::ConfigStore &store, const char *group,
+                           const char *key, bool defaultValue)
+{
+    return store.getBool(group, key).value_or(defaultValue);
 }
 
 // 查询默认路由所在的网络接口名；非 Linux 或查询失败返回空
@@ -64,25 +87,25 @@ static QString defaultRouteInterface()
     return match.hasMatch() ? match.captured(1) : QString();
 }
 
-// 构造函数：从 QSettings 加载配置，支持环境变量覆盖
+// 构造函数：从配置文件加载配置，支持环境变量覆盖
 ConfigManager::ConfigManager(QObject *parent)
     : QObject{parent}
 {
     // 配置文件统一存放在系统配置目录
-    QSettings settings(openSettings());
+    gy::config::ConfigStore store = openConfigStore();
 
     // 设备名：优先使用命令行参数，否则读配置，否则用主机名
     QString envName = qEnvironmentVariable("GRIDYARD_NAME");
     _deviceName = envName.isEmpty()
-        ? settings.value("device/name", QSysInfo::machineHostName()).toString()
+        ? readConfigString(store, "device", "name", QSysInfo::machineHostName())
         : envName;
 
     // 接收路径默认为 ~/GridYard/document，不存在则自动创建
     const QString defaultPath = QDir::homePath() + "/GridYard/document";
-    _receivePath = settings.value("device/receivePath", defaultPath).toString();
+    _receivePath = readConfigString(store, "device", "receivePath", defaultPath);
     QDir().mkpath(_receivePath);
-    _autoAcceptFiles = settings.value("device/autoAcceptFiles", false).toBool();
-    _retentionDays = std::max(0, settings.value("history/retentionDays", 0).toInt());
+    _autoAcceptFiles = readConfigBool(store, "device", "autoAcceptFiles", false);
+    _retentionDays = std::max(0, readConfigInt(store, "history", "retentionDays", 0));
 
     // 开发者模式实例号：正常模式为 0，仅用于本机资源隔离（目录后缀与端口偏移）
     _instanceNumber = ApplicationPaths::instanceNumber();
@@ -91,24 +114,26 @@ ConfigManager::ConfigManager(QObject *parent)
     // 开发者实例的默认端口按实例号确定性偏移（+10N），已保存的配置仍然优先
     QString envPort = qEnvironmentVariable("GRIDYARD_PORT");
     _tcpPort = envPort.isEmpty()
-        ? settings.value("network/tcpPort", gy::protocol::instanceP2pPort(_instanceNumber)).toUInt()
+        ? static_cast<quint16>(readConfigInt(store, "network", "tcpPort",
+                                             gy::protocol::instanceP2pPort(_instanceNumber)))
         : envPort.toUInt();
 
     // Reachability 配置：协调服务器
-    _rendezvousEnabled = settings.value("reachability/rendezvousEnabled", false).toBool();
-    _rendezvousHost = settings.value("reachability/rendezvousHost", "127.0.0.1").toString();
-    _rendezvousPort = settings.value("reachability/rendezvousPort", gy::protocol::kDefaultRendezvousPort).toInt();
-    _rendezvousToken = settings.value("reachability/rendezvousToken").toString();
-    int relayModeInt = settings.value("reachability/relayMode", static_cast<int>(RelayMode::AskBeforeRelay)).toInt();
-    _relayMode = static_cast<RelayMode>(relayModeInt);
+    _rendezvousEnabled = readConfigBool(store, "reachability", "rendezvousEnabled", false);
+    _rendezvousHost = readConfigString(store, "reachability", "rendezvousHost", QStringLiteral("127.0.0.1"));
+    _rendezvousPort = readConfigInt(store, "reachability", "rendezvousPort",
+                                    gy::protocol::kDefaultRendezvousPort);
+    _rendezvousToken = readConfigString(store, "reachability", "rendezvousToken", QString());
+    _relayMode = static_cast<RelayMode>(readConfigInt(
+        store, "reachability", "relayMode", static_cast<int>(RelayMode::AskBeforeRelay)));
 
     // 关窗行为：默认每次关窗弹确认窗，勾选"记住我的选择"后写入选中动作
-    int closeActionInt = settings.value("window/closeWindowAction", static_cast<int>(CloseWindowAction::Ask)).toInt();
-    _closeWindowAction = static_cast<CloseWindowAction>(closeActionInt);
+    _closeWindowAction = static_cast<CloseWindowAction>(readConfigInt(
+        store, "window", "closeWindowAction", static_cast<int>(CloseWindowAction::Ask)));
 
     // 开发者模式启动入口开关：默认关闭，仅控制设置页"启动新实例"入口可见性，
     // 不改变当前实例的任何运行属性
-    _developerLaunchEntryEnabled = settings.value("developer/launchEntryEnabled", false).toBool();
+    _developerLaunchEntryEnabled = readConfigBool(store, "developer", "launchEntryEnabled", false);
 
     // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
     ensureDeviceId();
@@ -184,10 +209,10 @@ QString ConfigManager::localIp() const
 // 备份恢复身份：仅写入配置文件，运行期保持当前身份不变，重启后生效
 void ConfigManager::restoreDeviceIdentity(const QString &deviceId, const QString &deviceName)
 {
-    QSettings settings(openSettings());
-    settings.setValue("device/id", deviceId);
+    gy::config::ConfigStore store = openConfigStore();
+    store.set("device", "id", deviceId.toStdString());
     if (!deviceName.isEmpty()) {
-        settings.setValue("device/name", deviceName);
+        store.set("device", "name", deviceName.toStdString());
     }
 }
 
@@ -248,8 +273,8 @@ void ConfigManager::setDeviceName(const QString &name)
 
     _deviceName = name;
 
-    // 持久化到 QSettings
-    openSettings().setValue("device/name", name);
+    // 持久化到配置文件
+    openConfigStore().set("device", "name", name.toStdString());
 
     // 清除环境变量影响，确保下次启动时使用 QSettings 中的值
     qunsetenv("GRIDYARD_NAME");
@@ -269,7 +294,7 @@ void ConfigManager::setReceivePath(const QString &path)
     // 确保目录存在
     QDir().mkpath(path);
 
-    openSettings().setValue("device/receivePath", path);
+    openConfigStore().set("device", "receivePath", path.toStdString());
 
     emit receivePathChanged();
 }
@@ -281,7 +306,7 @@ void ConfigManager::setAutoAcceptFiles(bool enabled)
 
     _autoAcceptFiles = enabled;
 
-    openSettings().setValue("device/autoAcceptFiles", enabled);
+    openConfigStore().setBool("device", "autoAcceptFiles", enabled);
 
     emit autoAcceptFilesChanged();
 }
@@ -293,7 +318,7 @@ void ConfigManager::setTcpPort(quint16 port)
 
     _tcpPort = port;
 
-    openSettings().setValue("network/tcpPort", port);
+    openConfigStore().setInt("network", "tcpPort", port);
 
     emit tcpPortChanged();
 }
@@ -305,20 +330,21 @@ void ConfigManager::setRetentionDays(int days)
     if (_retentionDays == days) return;
 
     _retentionDays = days;
-    openSettings().setValue("history/retentionDays", days);
+    openConfigStore().setInt("history", "retentionDays", days);
     emit retentionDaysChanged();
 }
 
 // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
 void ConfigManager::ensureDeviceId()
 {
-    QSettings settings(openSettings());
-    _deviceId = settings.value("device/id").toString();
+    gy::config::ConfigStore store = openConfigStore();
+    const auto savedId = store.get("device", "id");
+    _deviceId = savedId ? QString::fromStdString(*savedId) : QString();
 
     // 首次运行时生成 UUID 并持久化，确保设备标识跨会话稳定
     if (_deviceId.isEmpty()) {
         _deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        settings.setValue("device/id", _deviceId);
+        store.set("device", "id", _deviceId.toStdString());
         qDebug() << "ConfigManager: 生成新的 deviceId:" << _deviceId;
     } else {
         qDebug() << "ConfigManager: 使用已有的 deviceId:" << _deviceId;
@@ -399,7 +425,7 @@ void ConfigManager::setRendezvousEnabled(bool enabled)
 {
     if (_rendezvousEnabled == enabled) return;
     _rendezvousEnabled = enabled;
-    openSettings().setValue("reachability/rendezvousEnabled", enabled);
+    openConfigStore().setBool("reachability", "rendezvousEnabled", enabled);
     emit rendezvousEnabledChanged();
 }
 
@@ -408,7 +434,7 @@ void ConfigManager::setRendezvousHost(const QString &host)
 {
     if (_rendezvousHost == host) return;
     _rendezvousHost = host;
-    openSettings().setValue("reachability/rendezvousHost", host);
+    openConfigStore().set("reachability", "rendezvousHost", host.toStdString());
     emit rendezvousHostChanged();
 }
 
@@ -418,7 +444,7 @@ void ConfigManager::setRendezvousPort(int port)
     port = std::max(1, std::min(65535, port));
     if (_rendezvousPort == port) return;
     _rendezvousPort = port;
-    openSettings().setValue("reachability/rendezvousPort", port);
+    openConfigStore().setInt("reachability", "rendezvousPort", port);
     emit rendezvousPortChanged();
 }
 
@@ -427,7 +453,7 @@ void ConfigManager::setRendezvousToken(const QString &token)
 {
     if (_rendezvousToken == token) return;
     _rendezvousToken = token;
-    openSettings().setValue("reachability/rendezvousToken", token);
+    openConfigStore().set("reachability", "rendezvousToken", token.toStdString());
     emit rendezvousTokenChanged();
 }
 
@@ -436,7 +462,7 @@ void ConfigManager::setRelayMode(RelayMode mode)
 {
     if (_relayMode == mode) return;
     _relayMode = mode;
-    openSettings().setValue("reachability/relayMode", static_cast<int>(mode));
+    openConfigStore().setInt("reachability", "relayMode", static_cast<int>(mode));
     emit relayModeChanged();
 }
 
@@ -445,7 +471,7 @@ void ConfigManager::setCloseWindowAction(CloseWindowAction action)
 {
     if (_closeWindowAction == action) return;
     _closeWindowAction = action;
-    openSettings().setValue("window/closeWindowAction", static_cast<int>(action));
+    openConfigStore().setInt("window", "closeWindowAction", static_cast<int>(action));
     emit closeWindowActionChanged();
 }
 
@@ -454,7 +480,7 @@ void ConfigManager::setDeveloperLaunchEntryEnabled(bool enabled)
 {
     if (_developerLaunchEntryEnabled == enabled) return;
     _developerLaunchEntryEnabled = enabled;
-    openSettings().setValue("developer/launchEntryEnabled", enabled);
+    openConfigStore().setBool("developer", "launchEntryEnabled", enabled);
     emit developerLaunchEntryEnabledChanged();
 }
 
