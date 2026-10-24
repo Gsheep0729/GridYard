@@ -1,48 +1,51 @@
 /**
 * @file    protocol.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 7.26.1
+* @date 2026-10-25
 * @author  GridYard Team
 * @brief   应用层通信协议定义（TLV 帧格式 + Type 码集合）
 *
 * 全局唯一的协议常量定义入口。所有 Type 码、帧头字段、Payload 字段名
 * 常量都集中在 gy::protocol 命名空间下，避免散落到各模块复制粘贴。
+* 本文件为纯 C++ 头（不依赖 Qt），整型宽度与旧 QtGlobal 别名一致。
 * TLV 帧格式见《V1.0 架构设计说明书》§7：8 字节帧头（uint32 Type +
 * uint32 Length 大端序）+ Length 字节载荷。
 */
 
 #pragma once
 
-#include <QtGlobal>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 
 namespace gy::protocol {
 
 // 帧头总长度（uint32 Type + uint32 Length）
-inline constexpr quint32 kHeaderBytes = 8;
+inline constexpr std::uint32_t kHeaderBytes = 8;
 
 // 最大帧载荷长度（256MB，覆盖 8MB chunk + JSON 元数据）
-inline constexpr quint32 kMaxPayloadBytes = 256 * 1024 * 1024;
+inline constexpr std::uint32_t kMaxPayloadBytes = 256 * 1024 * 1024;
 
 // 按 Type 分级的 Payload 上限（控制帧不应允许 256MB）
-inline constexpr quint32 kMaxControlPayloadBytes = 1 * 1024 * 1024;   // 1MB：控制帧上限
-inline constexpr quint32 kMaxDataPayloadBytes     = 256 * 1024 * 1024; // 256MB：数据帧上限
+inline constexpr std::uint32_t kMaxControlPayloadBytes = 1 * 1024 * 1024;   // 1MB：控制帧上限
+inline constexpr std::uint32_t kMaxDataPayloadBytes     = 256 * 1024 * 1024; // 256MB：数据帧上限
 
 // 协议版本（用于 Hello 帧和传输协商）
 // 高 8 位为主版本号，低 8 位为次版本号
-inline constexpr quint16 kProtocolVersion = 0x0100;  // v1.0
-inline constexpr quint8  kProtocolMajorVersion = 1;   // 主版本号
-inline constexpr quint8  kProtocolMinorVersion = 0;   // 次版本号
+inline constexpr std::uint16_t kProtocolVersion = 0x0100;  // v1.0
+inline constexpr std::uint8_t  kProtocolMajorVersion = 1;   // 主版本号
+inline constexpr std::uint8_t  kProtocolMinorVersion = 0;   // 次版本号
 
 // 从完整版本号提取主/次版本号
-inline constexpr quint8 majorVersion(quint16 version) { return static_cast<quint8>(version >> 8); }
-inline constexpr quint8 minorVersion(quint16 version) { return static_cast<quint8>(version & 0xFF); }
+inline constexpr std::uint8_t majorVersion(std::uint16_t version) { return static_cast<std::uint8_t>(version >> 8); }
+inline constexpr std::uint8_t minorVersion(std::uint16_t version) { return static_cast<std::uint8_t>(version & 0xFF); }
 
 // 默认网络端口
-inline constexpr quint16 kDefaultDiscoveryPort = 45678;   // UDP 设备发现
-inline constexpr quint16 kDefaultP2pPort       = 35100;   // TCP P2P 文件传输
+inline constexpr std::uint16_t kDefaultDiscoveryPort = 45678;   // UDP 设备发现
+inline constexpr std::uint16_t kDefaultP2pPort       = 35100;   // TCP P2P 文件传输
 // 协调服务器默认端口
-inline constexpr quint16 kDefaultRendezvousPort = 45679;   // 协调节点（默认）
-inline constexpr quint16 kDefaultRelayPort      = 45679;   // 中继服务器（与协调节点同端口：协调模式内置中继分流，--mode relay 独立部署）
+inline constexpr std::uint16_t kDefaultRendezvousPort = 45679;   // 协调节点（默认）
+inline constexpr std::uint16_t kDefaultRelayPort      = 45679;   // 中继服务器（与协调节点同端口：协调模式内置中继分流，--mode relay 独立部署）
 inline constexpr const char *kDefaultRendezvousRoom = "default";  // 默认协调房间名
 
 // 开发者模式多实例端口偏移（仅客户端本机资源隔离用，实例号不进协议报文）：
@@ -54,29 +57,29 @@ inline constexpr int kInstancePortStride = 10;
 inline constexpr int kMaxInstanceNumber  = 9;
 
 // 实例 N 的 UDP 发现端口（实例号夹紧到 [0, kMaxInstanceNumber]）
-inline quint16 instanceDiscoveryPort(int instance)
+inline std::uint16_t instanceDiscoveryPort(int instance)
 {
-    const int n = qBound(0, instance, kMaxInstanceNumber);
-    return static_cast<quint16>(kDefaultDiscoveryPort + kInstancePortStride * n);
+    const int n = std::clamp(instance, 0, kMaxInstanceNumber);
+    return static_cast<std::uint16_t>(kDefaultDiscoveryPort + kInstancePortStride * n);
 }
 
 // 实例 N 的 TCP P2P 端口（实例号夹紧到 [0, kMaxInstanceNumber]）
-inline quint16 instanceP2pPort(int instance)
+inline std::uint16_t instanceP2pPort(int instance)
 {
-    const int n = qBound(0, instance, kMaxInstanceNumber);
-    return static_cast<quint16>(kDefaultP2pPort + kInstancePortStride * n);
+    const int n = std::clamp(instance, 0, kMaxInstanceNumber);
+    return static_cast<std::uint16_t>(kDefaultP2pPort + kInstancePortStride * n);
 }
 
 // ---- V1.0 Type 码 --------------------------------------------------------
-inline constexpr quint32 kTypeHello        = 0x0001;   // UDP 广播：设备上线 / 心跳
-inline constexpr quint32 kTypeTransferReq  = 0x0101;   // TCP：文件元数据握手请求
-inline constexpr quint32 kTypeTransferRsp  = 0x0102;   // TCP：握手响应（接受/拒绝）
-inline constexpr quint32 kTypeDataChunk    = 0x0201;   // TCP：文件数据分块
-inline constexpr quint32 kTypeChunkAck     = 0x0301;   // TCP：单文件完成确认与校验
-inline constexpr quint32 kTypeTransferDone = 0x0302;   // TCP：全部文件发送完毕
-inline constexpr quint32 kTypeCancel       = 0x0401;   // TCP：取消本次传输
-inline constexpr quint32 kTypeChatText     = 0x0501;   // TCP：P2P 在线文本消息
-inline constexpr quint32 kTypeChatAck      = 0x0502;   // TCP：在线文本消息送达回执
+inline constexpr std::uint32_t kTypeHello        = 0x0001;   // UDP 广播：设备上线 / 心跳
+inline constexpr std::uint32_t kTypeTransferReq  = 0x0101;   // TCP：文件元数据握手请求
+inline constexpr std::uint32_t kTypeTransferRsp  = 0x0102;   // TCP：握手响应（接受/拒绝）
+inline constexpr std::uint32_t kTypeDataChunk    = 0x0201;   // TCP：文件数据分块
+inline constexpr std::uint32_t kTypeChunkAck     = 0x0301;   // TCP：单文件完成确认与校验
+inline constexpr std::uint32_t kTypeTransferDone = 0x0302;   // TCP：全部文件发送完毕
+inline constexpr std::uint32_t kTypeCancel       = 0x0401;   // TCP：取消本次传输
+inline constexpr std::uint32_t kTypeChatText     = 0x0501;   // TCP：P2P 在线文本消息
+inline constexpr std::uint32_t kTypeChatAck      = 0x0502;   // TCP：在线文本消息送达回执
 
 // 聊天消息 JSON 字段
 inline constexpr char kChatMessageIdField[]      = "message_id";
@@ -86,8 +89,8 @@ inline constexpr char kChatContentField[]        = "content";
 inline constexpr char kChatSentAtField[]         = "sent_at";
 
 // 聊天消息业务上限，低于通用控制帧限制，避免单条文本占用过多内存
-inline constexpr qsizetype kMaxChatPayloadBytes = 64 * 1024;
-inline constexpr qsizetype kMaxChatContentChars = 4000;
+inline constexpr std::ptrdiff_t kMaxChatPayloadBytes = 64 * 1024;
+inline constexpr std::ptrdiff_t kMaxChatContentChars = 4000;
 
 // 传输记录终态字符串：存储层与客户端 gy::session 状态值共用同一拼写
 inline constexpr char kTransferStatusCompleted[] = "completed";
@@ -96,14 +99,14 @@ inline constexpr char kTransferStatusCancelled[] = "cancelled";
 inline constexpr char kTransferStatusRejected[]  = "rejected";
 
 // 获取指定 Type 的最大 Payload 长度
-inline constexpr quint32 maxPayloadForType(quint32 type)
+inline constexpr std::uint32_t maxPayloadForType(std::uint32_t type)
 {
     // 只有 kTypeDataChunk 允许大 payload，其他帧限制为 1MB
     return (type == kTypeDataChunk) ? kMaxDataPayloadBytes : kMaxControlPayloadBytes;
 }
 
 // ---- 错误码 ---------------------------------------------------------------
-enum class ErrorCode : quint16 {
+enum class ErrorCode : std::uint16_t {
     Success             = 0,    // 成功
     ConnectionTimeout   = 1001, // 连接超时
     ConnectionLost      = 1002, // 连接断开
