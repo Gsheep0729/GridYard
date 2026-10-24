@@ -1,7 +1,7 @@
 /**
 * @file    test_backup.cpp
-* @version 7.23.0
-* @date 2026-10-07
+* @version 7.26.1
+* @date    2026-10-25
 * @author  GY
 * @brief   用户数据备份与迁移测试
 *
@@ -11,9 +11,6 @@
 
 #include <QtTest/QtTest>
 #include <QJsonArray>
-#include <QSqlDatabase>
-#include <QSqlError>
-#include <QSqlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
@@ -25,9 +22,6 @@
 #include "config_manager.h"
 #include "db_seed.h"
 #include "local_data_broker.h"
-#include "sqlite_device_repository.h"
-#include "sqlite_message_repository.h"
-#include "sqlite_transfer_history_repository.h"
 
 class TestBackup : public QObject {
     Q_OBJECT
@@ -389,28 +383,32 @@ void TestBackup::seedDatabase(const QString &fileName, const QList<PeerRecord> &
 {
     auto database = gy::test::openDatabase(_tempDir->path(), fileName);
     QVERIFY(database);
-    SqliteDeviceRepository deviceRepository(database.get());
-    SqliteMessageRepository messageRepository(database.get());
-    SqliteTransferHistoryRepository transferRepository(database.get());
-    QString error;
+    gy::storage::DeviceRepositoryCore deviceRepository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
+    gy::storage::TransferRepositoryCore transferRepository(database.get());
+    std::string error;
     for (const PeerRecord &record : devices) {
-        QVERIFY2(deviceRepository.upsertPeer(record, &error), qPrintable(error));
+        QVERIFY2(deviceRepository.upsertPeer(gy::test::toCoreRecord(record), &error),
+                 qPrintable(QString::fromStdString(error)));
         // upsert 刻意不写管理列（防心跳清标记），种子数据用独立 UPDATE 补齐
-        QSqlQuery management(database->connectionForWorkerThread(&error));
-        management.prepare("UPDATE peer_devices SET alias = ?, pinned = ?, hidden = ?, "
-                           "favorite = ? WHERE device_id = ?");
-        management.addBindValue(record.alias);
-        management.addBindValue(record.pinned ? 1 : 0);
-        management.addBindValue(record.hidden ? 1 : 0);
-        management.addBindValue(record.favorite ? 1 : 0);
-        management.addBindValue(record.deviceId);
-        QVERIFY2(management.exec(), qPrintable(management.lastError().text()));
+        gy::storage::SqliteStmt management{
+            database->connection(),
+            "UPDATE peer_devices SET alias = ?, pinned = ?, hidden = ?, "
+            "favorite = ? WHERE device_id = ?"};
+        management.bind(1, record.alias.toStdString());
+        management.bind(2, int64_t{record.pinned ? 1 : 0});
+        management.bind(3, int64_t{record.hidden ? 1 : 0});
+        management.bind(4, int64_t{record.favorite ? 1 : 0});
+        management.bind(5, record.deviceId.toStdString());
+        QVERIFY2(management.step().has_value(), qPrintable(QString::fromStdString(error)));
     }
     for (const MessageRecord &record : messages) {
-        QVERIFY2(messageRepository.saveMessage(record, &error), qPrintable(error));
+        QVERIFY2(messageRepository.saveMessage(gy::test::toCoreRecord(record), &error),
+                 qPrintable(QString::fromStdString(error)));
     }
     for (const TransferRecord &record : transfers) {
-        QVERIFY2(transferRepository.upsertFinishedTransfer(record, &error), qPrintable(error));
+        QVERIFY2(transferRepository.upsertFinishedTransfer(gy::test::toCoreRecord(record), &error),
+                 qPrintable(QString::fromStdString(error)));
     }
 }
 

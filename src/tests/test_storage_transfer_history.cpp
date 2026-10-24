@@ -1,30 +1,29 @@
 /**
 * @file    test_storage_transfer_history.cpp
 * @version 7.26.1
-* @date 2026-10-24
+* @date    2026-10-25
 * @author  GY
-* @brief   SQLite 传输历史 Repository 测试
+* @brief   传输历史仓储测试
+*
+* 结束态记录的字段往返、session_id 幂等覆盖、筛选分页、删除与过期清理
+* 语义直接验证纯 C++ 传输历史仓储（TransferRepositoryCore）。旧 Qt 版
+* 仓储已随 gy_storage 退役。
 */
 
 #include <QtTest/QtTest>
 
+#include <QDateTime>
+#include <QFile>
+#include <QTemporaryDir>
+
+#include <memory>
+
 #include "application_paths.h"
-#include "history_records.h"
 #include "db_seed.h"
-#include "sqlite_database_broker.h"
-#include "sqlite_device_repository.h"
-#include "sqlite_transfer_history_repository.h"
 
 #include "core/storage/database_core.h"
 #include "core/storage/device_repository_core.h"
 #include "core/storage/transfer_repository_core.h"
-
-#include <QFile>
-#include <QSqlDatabase>
-#include <QSqlQuery>
-#include <QTemporaryDir>
-
-#include <memory>
 
 class TestStorageTransferHistory : public QObject {
 private:
@@ -33,23 +32,13 @@ private:
 private slots:
     void initTestCase();
     void cleanupTestCase();
-    void testSaveAndQuery();
-    void testUpsertBySessionId();
-    void testFiltersAndPagination();
-    void testSameMillisecondCursorPagination();
-    void testDeleteTransferKeepsSourceFile();
-    void testDeleteExpiredTransfers();
-    void testReopenDatabase();
     void testCoreUpsertBySessionIdAndNullErrorColumns();
     void testCoreFiltersAndCursorPagination();
     void testCoreDeleteAndClear();
+    void testCoreReopenDatabase();
 
 private:
-    std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
-    void seedDevice(SqliteDatabaseBroker &database, const QString &deviceId, const QString &name);
-    TransferRecord makeRecord(const QString &sessionId, const QString &peerDeviceId,
-                              const QString &status, const QDateTime &startedAt);
-    int transferRowCount(SqliteDatabaseBroker &database);
+    std::unique_ptr<gy::storage::DatabaseCore> openDatabase(const QString &relativePath);
 
     QTemporaryDir _temporaryDir;
 };
@@ -65,311 +54,32 @@ void TestStorageTransferHistory::cleanupTestCase()
     ApplicationPaths::clearTestCover();
 }
 
-void TestStorageTransferHistory::testSaveAndQuery()
-{
-    auto database = openDatabase("save-query.sqlite");
-    QVERIFY(database);
-    SqliteTransferHistoryRepository repository(database.get());
-    seedDevice(*database, "peer-A", "Device Alpha");
-
-    QString error;
-    const QDateTime startedAt = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs);
-    const TransferRecord record = makeRecord("session-001", "peer-A", "completed", startedAt);
-    QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
-
-    TransferQuery query;
-    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
-    QVERIFY2(loaded.size() == 1, qPrintable(error));
-    QCOMPARE(loaded.first().sessionId, QStringLiteral("session-001"));
-    QCOMPARE(loaded.first().peerDeviceId, QStringLiteral("peer-A"));
-    QCOMPARE(loaded.first().peerName, QStringLiteral("Peer peer-A"));
-    QCOMPARE(loaded.first().displayName, QStringLiteral("archive.zip"));
-    QCOMPARE(loaded.first().status, QStringLiteral("completed"));
-    QCOMPARE(loaded.first().fileCount, 1);
-    QCOMPARE(loaded.first().totalBytes, qint64(4096));
-    QCOMPARE(loaded.first().errorCode, 0);
-    QVERIFY(loaded.first().errorMessage.isEmpty());
-}
-
-void TestStorageTransferHistory::testUpsertBySessionId()
-{
-    auto database = openDatabase("upsert.sqlite");
-    QVERIFY(database);
-    SqliteTransferHistoryRepository repository(database.get());
-    seedDevice(*database, "peer-B", "Device Bravo");
-
-    QString error;
-    const QDateTime startedAt = QDateTime::fromString("2026-06-25T16:10:00.000Z", Qt::ISODateWithMs);
-    TransferRecord first = makeRecord("session-dup", "peer-B", "failed", startedAt);
-    first.errorCode = 7;
-    first.errorMessage = QString::fromUtf8("连接断开");
-    QVERIFY2(repository.upsertFinishedTransfer(first, &error), qPrintable(error));
-
-    TransferRecord second = first;
-    second.recordId = "transfer-rewritten";
-    second.errorCode = 8;
-    second.errorMessage = QString::fromUtf8("磁盘空间不足");
-    QVERIFY2(repository.upsertFinishedTransfer(second, &error), qPrintable(error));
-
-    TransferQuery query;
-    query.peerDeviceId = "peer-B";
-    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
-    QVERIFY2(loaded.size() == 1, qPrintable(error));
-    QCOMPARE(loaded.first().sessionId, QStringLiteral("session-dup"));
-    QCOMPARE(loaded.first().recordId, QStringLiteral("transfer-001"));
-    QCOMPARE(loaded.first().errorCode, 8);
-    QCOMPARE(loaded.first().errorMessage, QString::fromUtf8("磁盘空间不足"));
-}
-
-void TestStorageTransferHistory::testFiltersAndPagination()
-{
-    auto database = openDatabase("filters.sqlite");
-    QVERIFY(database);
-    SqliteTransferHistoryRepository repository(database.get());
-    seedDevice(*database, "peer-C", "Device Charlie");
-    seedDevice(*database, "peer-D", "Device Delta");
-
-    QString error;
-    const QDateTime base = QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs);
-    TransferRecord first = makeRecord("session-c1", "peer-C", "completed", base);
-    first.recordId = "transfer-c1";
-    first.displayName = "folder-A";
-    first.isDirectory = true;
-    first.fileCount = 4;
-    first.totalBytes = 1024;
-    QVERIFY2(repository.upsertFinishedTransfer(first, &error), qPrintable(error));
-
-    TransferRecord second = makeRecord("session-c2", "peer-C", "failed", base.addSecs(60));
-    second.recordId = "transfer-c2";
-    second.errorCode = 9;
-    second.errorMessage = QString::fromUtf8("网络错误");
-    QVERIFY2(repository.upsertFinishedTransfer(second, &error), qPrintable(error));
-
-    TransferRecord third = makeRecord("session-d1", "peer-D", "cancelled", base.addSecs(120));
-    third.recordId = "transfer-d1";
-    third.errorCode = 10;
-    third.errorMessage = QString::fromUtf8("已取消");
-    QVERIFY2(repository.upsertFinishedTransfer(third, &error), qPrintable(error));
-
-    TransferQuery peerQuery;
-    peerQuery.peerDeviceId = "peer-C";
-    const QList<TransferRecord> peerRecords = repository.queryTransfers(peerQuery, 10, &error);
-    QVERIFY2(peerRecords.size() == 2, qPrintable(error));
-    QCOMPARE(peerRecords.at(0).recordId, QStringLiteral("transfer-c2"));
-    QCOMPARE(peerRecords.at(1).recordId, QStringLiteral("transfer-c1"));
-
-    TransferQuery statusQuery;
-    statusQuery.status = "cancelled";
-    const QList<TransferRecord> statusRecords = repository.queryTransfers(statusQuery, 10, &error);
-    QVERIFY2(statusRecords.size() == 1, qPrintable(error));
-    QCOMPARE(statusRecords.first().recordId, QStringLiteral("transfer-d1"));
-
-    TransferQuery pageQuery;
-    const QList<TransferRecord> firstPage = repository.queryTransfers(pageQuery, 2, &error);
-    QVERIFY2(firstPage.size() == 2, qPrintable(error));
-    pageQuery.beforeStartedAt = firstPage.last().startedAt;
-    const QList<TransferRecord> secondPage = repository.queryTransfers(pageQuery, 2, &error);
-    QVERIFY2(secondPage.size() == 1, qPrintable(error));
-    QCOMPARE(secondPage.first().recordId, QStringLiteral("transfer-c1"));
-}
-
-// 同一毫秒的多条记录翻页：游标带 record_id 次键时不重不漏，
-// 只带时间游标会跳过与本页末尾同毫秒的记录
-void TestStorageTransferHistory::testSameMillisecondCursorPagination()
-{
-    auto database = openDatabase("same-ms-cursor.sqlite");
-    QVERIFY(database);
-    SqliteTransferHistoryRepository repository(database.get());
-    seedDevice(*database, "peer-F", "Device Foxtrot");
-
-    QString error;
-    const QDateTime sameMs = QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs);
-    const QStringList recordIds{"transfer-f1", "transfer-f2", "transfer-f3"};
-    for (const QString &recordId : recordIds) {
-        TransferRecord record = makeRecord("session-" + recordId, "peer-F", "completed", sameMs);
-        record.recordId = recordId;
-        QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
-    }
-
-    // 第一页按 record_id 倒序取两条：f3、f2，末尾与本页首条同毫秒
-    TransferQuery query;
-    const QList<TransferRecord> firstPage = repository.queryTransfers(query, 2, &error);
-    QVERIFY2(firstPage.size() == 2, qPrintable(error));
-    QCOMPARE(firstPage.at(0).recordId, QStringLiteral("transfer-f3"));
-    QCOMPARE(firstPage.at(1).recordId, QStringLiteral("transfer-f2"));
-
-    // 时间 + record_id 二元组游标：翻出第三条且不重复
-    query.beforeStartedAt = firstPage.last().startedAt;
-    query.beforeRecordId = firstPage.last().recordId;
-    const QList<TransferRecord> secondPage = repository.queryTransfers(query, 2, &error);
-    QVERIFY2(secondPage.size() == 1, qPrintable(error));
-    QCOMPARE(secondPage.first().recordId, QStringLiteral("transfer-f1"));
-
-    // 只带时间游标的旧行为对照：同毫秒的 f1 被跳过，翻页丢失记录
-    TransferQuery legacyQuery;
-    const QList<TransferRecord> legacyFirst = repository.queryTransfers(legacyQuery, 2, &error);
-    legacyQuery.beforeStartedAt = legacyFirst.last().startedAt;
-    const QList<TransferRecord> legacySecond = repository.queryTransfers(legacyQuery, 2, &error);
-    QVERIFY2(legacySecond.isEmpty(), "仅时间游标应跳过同毫秒剩余记录（旧行为对照）");
-}
-
-void TestStorageTransferHistory::testDeleteTransferKeepsSourceFile()
-{
-    auto database = openDatabase("delete-one.sqlite");
-    QVERIFY(database);
-    SqliteTransferHistoryRepository repository(database.get());
-    seedDevice(*database, "peer-E", "Device Echo");
-
-    QFile sourceFile(_temporaryDir.path() + "/keep-source.txt");
-    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
-    sourceFile.write("keep me");
-    sourceFile.close();
-
-    QString error;
-    TransferRecord record = makeRecord("session-e1", "peer-E", "completed",
-                                       QDateTime::fromString("2026-06-25T18:00:00.000Z",
-                                                             Qt::ISODateWithMs));
-    record.recordId = "transfer-e1";
-    QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
-    QVERIFY(QFile::exists(sourceFile.fileName()));
-
-    QVERIFY2(repository.deleteTransfer("transfer-e1", &error), qPrintable(error));
-    QCOMPARE(transferRowCount(*database), 0);
-    QVERIFY(QFile::exists(sourceFile.fileName()));
-}
-
-void TestStorageTransferHistory::testDeleteExpiredTransfers()
-{
-    auto database = openDatabase("delete-expired.sqlite");
-    QVERIFY(database);
-    SqliteTransferHistoryRepository repository(database.get());
-    seedDevice(*database, "peer-F", "Device Foxtrot");
-
-    QString error;
-    const QDateTime oldTime = QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs);
-    const QDateTime keepTime = QDateTime::fromString("2026-06-25T19:05:00.000Z", Qt::ISODateWithMs);
-    TransferRecord oldRecord = makeRecord("session-f1", "peer-F", "completed", oldTime);
-    oldRecord.recordId = "transfer-f1";
-    TransferRecord keepRecord = makeRecord("session-f2", "peer-F", "completed", keepTime);
-    keepRecord.recordId = "transfer-f2";
-    QVERIFY2(repository.upsertFinishedTransfer(oldRecord, &error), qPrintable(error));
-    QVERIFY2(repository.upsertFinishedTransfer(keepRecord, &error), qPrintable(error));
-
-    QVERIFY2(repository.deleteExpiredTransfers(keepTime, &error), qPrintable(error));
-
-    TransferQuery query;
-    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
-    QVERIFY2(loaded.size() == 1, qPrintable(error));
-    QCOMPARE(loaded.first().recordId, QStringLiteral("transfer-f2"));
-}
-
-void TestStorageTransferHistory::testReopenDatabase()
-{
-    const QString path = _temporaryDir.path() + "/reopen.sqlite";
-
-    {
-        auto database = openDatabase("reopen.sqlite");
-        QVERIFY(database);
-        SqliteTransferHistoryRepository repository(database.get());
-        seedDevice(*database, "peer-G", "Device Golf");
-
-        QString error;
-        TransferRecord record = makeRecord("session-g1", "peer-G", "rejected",
-                                           QDateTime::fromString("2026-06-25T20:00:00.000Z",
-                                                                 Qt::ISODateWithMs));
-        record.recordId = "transfer-g1";
-        record.errorCode = 11;
-        record.errorMessage = QString::fromUtf8("对方拒绝");
-        QVERIFY2(repository.upsertFinishedTransfer(record, &error), qPrintable(error));
-
-        // WAL 模式下，关闭前做一次 checkpoint 确保数据落盘到主库
-        QSqlDatabase conn = database->connectionForWorkerThread(&error);
-        QSqlQuery q(conn);
-        q.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-        conn.close();
-    }
-
-    // 清理当前线程上所有残留的 Qt 数据库连接句柄
-    for (const QString &name : QSqlDatabase::connectionNames()) {
-        QSqlDatabase::removeDatabase(name);
-    }
-
-    auto reopened = openDatabase("reopen.sqlite");
-    QVERIFY(reopened);
-    SqliteTransferHistoryRepository repository(reopened.get());
-    QString error;
-    TransferQuery query;
-    const QList<TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
-    QVERIFY2(loaded.size() == 1, qPrintable(error));
-    QCOMPARE(loaded.first().recordId, QStringLiteral("transfer-g1"));
-    QCOMPARE(loaded.first().status, QStringLiteral("rejected"));
-}
-
-std::unique_ptr<SqliteDatabaseBroker> TestStorageTransferHistory::openDatabase(const QString &relativePath)
-{
-    return gy::test::openDatabase(_temporaryDir.path(), relativePath);
-}
-
-void TestStorageTransferHistory::seedDevice(SqliteDatabaseBroker &database, const QString &deviceId,
-                                            const QString &name)
-{
-    QVERIFY2(gy::test::seedDevice(database, deviceId, name,
-                                  QDateTime::fromString("2026-06-25T15:00:00.000Z",
-                                                        Qt::ISODateWithMs),
-                                  QStringLiteral("192.168.1.10"), 35100),
-             "seedDevice 失败");
-}
-
-TransferRecord TestStorageTransferHistory::makeRecord(const QString &sessionId,
-                                                      const QString &peerDeviceId,
-                                                      const QString &status,
-                                                      const QDateTime &startedAt)
-{
-    TransferRecord record;
-    record.recordId = "transfer-001";
-    record.sessionId = sessionId;
-    record.peerDeviceId = peerDeviceId;
-    record.peerName = QStringLiteral("Peer %1").arg(peerDeviceId);
-    record.direction = RecordDirection::Outgoing;
-    record.displayName = "archive.zip";
-    record.isDirectory = false;
-    record.fileCount = 1;
-    record.totalBytes = 4096;
-    record.status = status;
-    record.startedAt = startedAt;
-    record.finishedAt = startedAt.addSecs(30);
-    return record;
-}
-
-int TestStorageTransferHistory::transferRowCount(SqliteDatabaseBroker &database)
-{
-    return gy::test::tableRowCount(database, QStringLiteral("transfer_history"));
-}
-
-// 纯 C++ 版 session_id 幂等覆盖与完成态错误列置空契约
+// session_id 幂等覆盖与完成态错误列置空契约，字段往返完整
 void TestStorageTransferHistory::testCoreUpsertBySessionIdAndNullErrorColumns()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
-    std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-tr-upsert.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore devices(&database);
-    core::TransferRepositoryCore repository(&database);
+    auto database = openDatabase("core-tr-upsert.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore devices(database.get());
+    core::TransferRepositoryCore repository(database.get());
 
     core::PeerRecord peer;
     peer.deviceId = "core-tr-peer";
     peer.deviceName = "Transfer Peer";
     peer.firstSeenAtMs = 1770000000000;
     peer.lastSeenAtMs = 1770000000000;
+    std::string error;
     QVERIFY(devices.upsertPeer(peer, &error));
 
-    const int64_t started = QDateTime::fromString("2026-06-25T20:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const int64_t started =
+        QDateTime::fromString("2026-06-25T20:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
     core::TransferRecord record;
     record.recordId = "core-tr-001";
     record.sessionId = "session-core-dup";
     record.peerDeviceId = peer.deviceId;
     record.peerName = "Transfer Peer";
     record.displayName = "archive.zip";
+    record.isDirectory = true;
     record.fileCount = 2;
     record.totalBytes = 2048;
     record.status = "failed";
@@ -378,6 +88,19 @@ void TestStorageTransferHistory::testCoreUpsertBySessionIdAndNullErrorColumns()
     record.errorCode = 7;
     record.errorMessage = QString::fromUtf8("连接中断").toStdString();
     QVERIFY(repository.upsertFinishedTransfer(record, &error));
+
+    // 首写字段完整往返
+    core::TransferQuery allQuery;
+    const std::vector<core::TransferRecord> seeded = repository.queryTransfers(allQuery, 10, &error);
+    QCOMPARE(int(seeded.size()), 1);
+    QCOMPARE(QString::fromStdString(seeded.front().sessionId), QStringLiteral("session-core-dup"));
+    QCOMPARE(QString::fromStdString(seeded.front().peerDeviceId), QStringLiteral("core-tr-peer"));
+    QCOMPARE(QString::fromStdString(seeded.front().peerName), QStringLiteral("Transfer Peer"));
+    QCOMPARE(QString::fromStdString(seeded.front().displayName), QStringLiteral("archive.zip"));
+    QVERIFY(seeded.front().isDirectory);
+    QCOMPARE(seeded.front().fileCount, 2);
+    QCOMPARE(seeded.front().totalBytes, int64_t{2048});
+    QCOMPARE(seeded.front().errorCode, 7);
 
     // 同 session_id 重复写入：record_id 保留首写，错误信息覆盖为最新快照
     core::TransferRecord rewritten = record;
@@ -391,7 +114,8 @@ void TestStorageTransferHistory::testCoreUpsertBySessionIdAndNullErrorColumns()
     QCOMPARE(int(loaded.size()), 1);
     QCOMPARE(QString::fromStdString(loaded.front().recordId), QStringLiteral("core-tr-001"));
     QCOMPARE(loaded.front().errorCode, 8);
-    QCOMPARE(QString::fromStdString(loaded.front().errorMessage), QString::fromUtf8("磁盘空间不足"));
+    QCOMPARE(QString::fromStdString(loaded.front().errorMessage),
+             QString::fromUtf8("磁盘空间不足"));
 
     // 完成态覆盖：error_code/error_message 列清空，结束时间保留
     core::TransferRecord completed = record;
@@ -405,15 +129,15 @@ void TestStorageTransferHistory::testCoreUpsertBySessionIdAndNullErrorColumns()
     QVERIFY(finals.front().finishedAtMs.has_value());
 }
 
-// 纯 C++ 版筛选、倒序分页与同毫秒次键游标
+// 筛选、倒序分页与同毫秒次键游标
 void TestStorageTransferHistory::testCoreFiltersAndCursorPagination()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
+    auto database = openDatabase("core-tr-query.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore devices(database.get());
+    core::TransferRepositoryCore repository(database.get());
     std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-tr-query.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore devices(&database);
-    core::TransferRepositoryCore repository(&database);
 
     const auto seedPeer = [&](const char *id) {
         core::PeerRecord peer;
@@ -426,7 +150,8 @@ void TestStorageTransferHistory::testCoreFiltersAndCursorPagination()
     QVERIFY(seedPeer("core-tr-c"));
     QVERIFY(seedPeer("core-tr-d"));
 
-    const int64_t base = QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const int64_t base =
+        QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
     const auto seed = [&](const char *recordId, const char *sessionId, const char *peerId,
                           const char *status, int64_t started) {
         core::TransferRecord record;
@@ -471,13 +196,9 @@ void TestStorageTransferHistory::testCoreFiltersAndCursorPagination()
     QCOMPARE(QString::fromStdString(records.front().recordId), QStringLiteral("core-c1"));
 
     // 同毫秒三条按 record_id 倒序，二元组游标翻页不重不漏
-    core::PeerRecord samePeer;
-    samePeer.deviceId = "core-tr-f";
-    samePeer.deviceName = "core-tr-f";
-    samePeer.firstSeenAtMs = 1770000000000;
-    samePeer.lastSeenAtMs = 1770000000000;
-    QVERIFY(devices.upsertPeer(samePeer, &error));
-    const int64_t sameMs = QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    QVERIFY(seedPeer("core-tr-f"));
+    const int64_t sameMs =
+        QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
     QVERIFY(seed("core-f1", "core-s-f1", "core-tr-f", "completed", sameMs));
     QVERIFY(seed("core-f2", "core-s-f2", "core-tr-f", "completed", sameMs));
     QVERIFY(seed("core-f3", "core-s-f3", "core-tr-f", "completed", sameMs));
@@ -490,29 +211,37 @@ void TestStorageTransferHistory::testCoreFiltersAndCursorPagination()
     QCOMPARE(QString::fromStdString(firstPage.at(1).recordId), QStringLiteral("core-f2"));
     query.beforeStartedAtMs = firstPage.back().startedAtMs;
     query.beforeRecordId = firstPage.back().recordId;
-    const std::vector<core::TransferRecord> secondPage = repository.queryTransfers(query, 2, &error);
+    const std::vector<core::TransferRecord> secondPage =
+        repository.queryTransfers(query, 2, &error);
     QCOMPARE(int(secondPage.size()), 1);
     QCOMPARE(QString::fromStdString(secondPage.front().recordId), QStringLiteral("core-f1"));
 }
 
-// 纯 C++ 版单条删除、过期清理边界与全表清空
+// 单条删除不触碰已落盘文件、过期清理边界与全表清空
 void TestStorageTransferHistory::testCoreDeleteAndClear()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
-    std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-tr-del.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore devices(&database);
-    core::TransferRepositoryCore repository(&database);
+    auto database = openDatabase("core-tr-del.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore devices(database.get());
+    core::TransferRepositoryCore repository(database.get());
+
+    // 已接收文件在历史删除后必须保留在磁盘上
+    QFile sourceFile(_temporaryDir.path() + "/keep-source.txt");
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write("keep me");
+    sourceFile.close();
 
     core::PeerRecord peer;
     peer.deviceId = "core-tr-x";
     peer.deviceName = "core-tr-x";
     peer.firstSeenAtMs = 1770000000000;
     peer.lastSeenAtMs = 1770000000000;
+    std::string error;
     QVERIFY(devices.upsertPeer(peer, &error));
 
-    const int64_t cutoff = QDateTime::fromString("2026-06-25T21:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const int64_t cutoff =
+        QDateTime::fromString("2026-06-25T21:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
     const auto seed = [&](const char *recordId, int64_t started) {
         core::TransferRecord record;
         record.recordId = recordId;
@@ -522,7 +251,7 @@ void TestStorageTransferHistory::testCoreDeleteAndClear()
         record.displayName = "x.bin";
         record.fileCount = 1;
         record.totalBytes = 10;
-        record.status = "completed";
+        record.status = core::kTransferStatusCompleted;
         record.startedAtMs = started;
         record.finishedAtMs = started + 1000;
         return repository.upsertFinishedTransfer(record, &error);
@@ -531,8 +260,10 @@ void TestStorageTransferHistory::testCoreDeleteAndClear()
     QVERIFY(seed("core-x2", cutoff));
     QVERIFY(seed("core-x3", cutoff + 1));
 
-    // 单条删除
+    // 单条删除：行消失，磁盘文件保留
     QVERIFY(repository.deleteTransfer("core-x3", &error));
+    QVERIFY(QFile::exists(sourceFile.fileName()));
+
     // 过期边界保留：严格早于截止时间的才被清理
     QVERIFY(repository.deleteExpiredTransfers(cutoff, &error));
     core::TransferQuery query;
@@ -540,11 +271,62 @@ void TestStorageTransferHistory::testCoreDeleteAndClear()
     std::vector<core::TransferRecord> records = repository.queryTransfers(query, 10, &error);
     QCOMPARE(int(records.size()), 1);
     QCOMPARE(QString::fromStdString(records.front().recordId), QStringLiteral("core-x2"));
+    QVERIFY(QFile::exists(sourceFile.fileName()));
 
     // 全表清空幂等
     QVERIFY(repository.clearAllTransfers(&error));
     QVERIFY(repository.clearAllTransfers(&error));
     QVERIFY(repository.allTransfers(&error).empty());
+}
+
+// 重启后传输历史可恢复
+void TestStorageTransferHistory::testCoreReopenDatabase()
+{
+    namespace core = gy::storage;
+    {
+        auto database = openDatabase("reopen.sqlite");
+        QVERIFY(database);
+        QVERIFY(gy::test::seedDevice(*database, QStringLiteral("peer-G"),
+                                     QStringLiteral("Device Golf"),
+                                     QDateTime::fromString("2026-06-25T19:30:00.000Z",
+                                                           Qt::ISODateWithMs)));
+        core::TransferRepositoryCore repository(database.get());
+
+        core::TransferRecord record;
+        record.recordId = "transfer-g1";
+        record.sessionId = "session-g1";
+        record.peerDeviceId = "peer-G";
+        record.peerName = "Device Golf";
+        record.displayName = "photo.png";
+        record.fileCount = 1;
+        record.totalBytes = 65536;
+        record.status = "rejected";
+        record.startedAtMs =
+            QDateTime::fromString("2026-06-25T20:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+        record.finishedAtMs = record.startedAtMs + 30000;
+        record.errorCode = 11;
+        record.errorMessage = QString::fromUtf8("对方拒绝").toStdString();
+        std::string error;
+        QVERIFY(repository.upsertFinishedTransfer(record, &error));
+    }
+
+    auto reopened = openDatabase("reopen.sqlite");
+    QVERIFY(reopened);
+    core::TransferRepositoryCore repository(reopened.get());
+    std::string error;
+    core::TransferQuery query;
+    const std::vector<core::TransferRecord> loaded = repository.queryTransfers(query, 10, &error);
+    QCOMPARE(int(loaded.size()), 1);
+    QCOMPARE(QString::fromStdString(loaded.front().recordId), QStringLiteral("transfer-g1"));
+    QCOMPARE(QString::fromStdString(loaded.front().status), QStringLiteral("rejected"));
+    QCOMPARE(loaded.front().errorCode, 11);
+}
+
+// 工具方法：在临时目录中打开（或创建）核心数据库
+std::unique_ptr<gy::storage::DatabaseCore> TestStorageTransferHistory::openDatabase(
+    const QString &relativePath)
+{
+    return gy::test::openDatabase(_temporaryDir.path(), relativePath);
 }
 
 QTEST_MAIN(TestStorageTransferHistory)

@@ -1,7 +1,7 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.24.0
-* @date 2026-10-08
+* @version 7.26.1
+* @date    2026-10-25
 * @author  GY
 * @brief   设备发现视图模型测试
 *
@@ -23,7 +23,8 @@
 #include "db_seed.h"
 #include "discovery_service.h"
 #include "local_data_broker.h"
-#include "sqlite_message_repository.h"
+#include "core/storage/device_repository_core.h"
+#include "core/storage/message_repository_core.h"
 #include "peer_discovery_view_model.h"
 
 class TestPeerDiscoveryViewModel : public QObject {
@@ -555,7 +556,7 @@ void TestPeerDiscoveryViewModel::testSearchPeersLimitAndOrder()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "search-limit.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     // 直写 150 台命中设备，活跃时间递增：越靠后越新
     const QDateTime base = QDateTime::fromString("2026-10-01T09:00:00.000Z", Qt::ISODateWithMs);
@@ -567,8 +568,8 @@ void TestPeerDiscoveryViewModel::testSearchPeersLimitAndOrder()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 60);
         record.lastSeenAt = base.addSecs(i * 60);
-        QString error;
-        QVERIFY(repository.upsertPeer(record, &error));
+        std::string error;
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &error));
     }
 
     auto broker = openBroker("search-limit.sqlite");
@@ -623,7 +624,7 @@ void TestPeerDiscoveryViewModel::testSegmentAssignmentAndInSegmentOrder()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "segments.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     // 两台离线历史设备：rec-old 较早且被置顶，rec-new 较新不置顶
     const QDateTime base = QDateTime::fromString("2026-10-05T08:00:00.000Z", Qt::ISODateWithMs);
@@ -636,8 +637,8 @@ void TestPeerDiscoveryViewModel::testSegmentAssignmentAndInSegmentOrder()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 600);
         record.lastSeenAt = base.addSecs(i * 600);
-        QString error;
-        QVERIFY(repository.upsertPeer(record, &error));
+        std::string error;
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &error));
     }
 
     auto broker = openBroker("segments.sqlite");
@@ -692,7 +693,7 @@ void TestPeerDiscoveryViewModel::testRecentVisibleLimitTruncation()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "recent-limit.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     // 直写 12 台离线历史设备，活跃时间递增：越靠后越新
     const QDateTime base = QDateTime::fromString("2026-10-04T08:00:00.000Z", Qt::ISODateWithMs);
@@ -704,8 +705,8 @@ void TestPeerDiscoveryViewModel::testRecentVisibleLimitTruncation()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 60);
         record.lastSeenAt = base.addSecs(i * 60);
-        QString error;
-        QVERIFY(repository.upsertPeer(record, &error));
+        std::string error;
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &error));
     }
 
     auto broker = openBroker("recent-limit.sqlite");
@@ -749,7 +750,7 @@ void TestPeerDiscoveryViewModel::testRecentExpandDefaultTruncated()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "expand-default.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     // 直写 12 台离线历史设备，活跃时间递增：越靠后越新
     const QDateTime base = QDateTime::fromString("2026-10-04T08:00:00.000Z", Qt::ISODateWithMs);
@@ -761,8 +762,8 @@ void TestPeerDiscoveryViewModel::testRecentExpandDefaultTruncated()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 60);
         record.lastSeenAt = base.addSecs(i * 60);
-        QString error;
-        QVERIFY(repository.upsertPeer(record, &error));
+        std::string error;
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &error));
     }
 
     auto broker = openBroker("expand-default.sqlite");
@@ -793,7 +794,7 @@ void TestPeerDiscoveryViewModel::testRecentExpandShowsAllAndCollapses()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "expand-toggle.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     const QDateTime base = QDateTime::fromString("2026-10-04T09:00:00.000Z", Qt::ISODateWithMs);
     for (int i = 1; i <= 12; ++i) {
@@ -804,8 +805,8 @@ void TestPeerDiscoveryViewModel::testRecentExpandShowsAllAndCollapses()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 60);
         record.lastSeenAt = base.addSecs(i * 60);
-        QString error;
-        QVERIFY(repository.upsertPeer(record, &error));
+        std::string error;
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &error));
     }
 
     auto broker = openBroker("expand-toggle.sqlite");
@@ -851,7 +852,7 @@ void TestPeerDiscoveryViewModel::testRecentExpandSurvivesHeartbeat()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "expand-heartbeat.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     const QDateTime base = QDateTime::fromString("2026-10-04T10:00:00.000Z", Qt::ISODateWithMs);
     for (int i = 1; i <= 12; ++i) {
@@ -862,8 +863,8 @@ void TestPeerDiscoveryViewModel::testRecentExpandSurvivesHeartbeat()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 60);
         record.lastSeenAt = base.addSecs(i * 60);
-        QString error;
-        QVERIFY(repository.upsertPeer(record, &error));
+        std::string error;
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &error));
     }
 
     auto broker = openBroker("expand-heartbeat.sqlite");
@@ -916,7 +917,7 @@ void TestPeerDiscoveryViewModel::testFavoriteSurvivesRecentTruncation()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "fav-truncate.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     // 直写 12 台离线历史设备，活跃时间递增；最旧的 dev-01 将被收藏
     const QDateTime base = QDateTime::fromString("2026-10-03T08:00:00.000Z", Qt::ISODateWithMs);
@@ -928,8 +929,8 @@ void TestPeerDiscoveryViewModel::testFavoriteSurvivesRecentTruncation()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 60);
         record.lastSeenAt = base.addSecs(i * 60);
-        QString error;
-        QVERIFY(repository.upsertPeer(record, &error));
+        std::string error;
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &error));
     }
 
     auto broker = openBroker("fav-truncate.sqlite");
@@ -1022,11 +1023,11 @@ void TestPeerDiscoveryViewModel::testMergeDeviceFollowsSelection()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "merge-selection.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
-    SqliteMessageRepository messageRepository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
 
     const QDateTime base = QDateTime::fromString("2026-10-06T12:00:00.000Z", Qt::ISODateWithMs);
-    QString dbError;
+    std::string dbError;
     PeerRecord oldRecord;
     oldRecord.deviceId = QStringLiteral("vm-merge-old");
     oldRecord.deviceName = QStringLiteral("旧设备");
@@ -1034,7 +1035,7 @@ void TestPeerDiscoveryViewModel::testMergeDeviceFollowsSelection()
     oldRecord.lastTcpPort = 35100;
     oldRecord.firstSeenAt = base;
     oldRecord.lastSeenAt = base;
-    QVERIFY(repository.upsertPeer(oldRecord, &dbError));
+    QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(oldRecord), &dbError));
 
     // 旧设备名下两条聊天，供迁移与计数断言
     for (int i = 1; i <= 2; ++i) {
@@ -1047,7 +1048,7 @@ void TestPeerDiscoveryViewModel::testMergeDeviceFollowsSelection()
         message.content = QStringLiteral("消息%1").arg(i);
         message.sentAt = base.addSecs(i * 30);
         message.createdAt = message.sentAt;
-        QVERIFY(messageRepository.saveMessage(message, &dbError));
+        QVERIFY(messageRepository.saveMessage(gy::test::toCoreRecord(message), &dbError));
     }
 
     auto broker = openBroker("merge-selection.sqlite");
@@ -1103,7 +1104,7 @@ void TestPeerDiscoveryViewModel::testHiddenFilteredAcrossSegments()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "hidden-segments.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     const QDateTime base = QDateTime::fromString("2026-10-05T06:00:00.000Z", Qt::ISODateWithMs);
     PeerRecord hiddenOffline;
@@ -1113,15 +1114,15 @@ void TestPeerDiscoveryViewModel::testHiddenFilteredAcrossSegments()
     hiddenOffline.lastTcpPort = 35100;
     hiddenOffline.firstSeenAt = base;
     hiddenOffline.lastSeenAt = base;
-    QString dbError;
-    QVERIFY(repository.upsertPeer(hiddenOffline, &dbError));
+    std::string dbError;
+    QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(hiddenOffline), &dbError));
     PeerRecord visibleOffline = hiddenOffline;
     visibleOffline.deviceId = QStringLiteral("hs-visible-off");
     visibleOffline.deviceName = QStringLiteral("可见离线");
     visibleOffline.lastIpAddress = QStringLiteral("10.80.0.2");
     visibleOffline.firstSeenAt = base.addSecs(60);
     visibleOffline.lastSeenAt = base.addSecs(60);
-    QVERIFY(repository.upsertPeer(visibleOffline, &dbError));
+    QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(visibleOffline), &dbError));
 
     auto broker = openBroker("hidden-segments.sqlite");
     QVERIFY(broker);
@@ -1138,14 +1139,14 @@ void TestPeerDiscoveryViewModel::testHiddenFilteredAcrossSegments()
     hiddenOnlineRecord.lastTcpPort = hiddenOnline.tcpPort;
     hiddenOnlineRecord.firstSeenAt = base.addSecs(120);
     hiddenOnlineRecord.lastSeenAt = base.addSecs(120);
-    QVERIFY(repository.upsertPeer(hiddenOnlineRecord, &dbError));
+    QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(hiddenOnlineRecord), &dbError));
     PeerRecord visibleOnlineRecord = hiddenOnlineRecord;
     visibleOnlineRecord.deviceId = visibleOnline.deviceId;
     visibleOnlineRecord.deviceName = visibleOnline.deviceName;
     visibleOnlineRecord.lastIpAddress = visibleOnline.ipAddress;
     visibleOnlineRecord.firstSeenAt = base.addSecs(180);
     visibleOnlineRecord.lastSeenAt = base.addSecs(180);
-    QVERIFY(repository.upsertPeer(visibleOnlineRecord, &dbError));
+    QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(visibleOnlineRecord), &dbError));
 
     bool offlineHidden = false;
     broker->setDeviceHidden(this, QStringLiteral("hs-hidden-off"), true,
@@ -1181,10 +1182,10 @@ void TestPeerDiscoveryViewModel::testSegmentFavoritePriorityAndFallback()
 {
     auto database = gy::test::openDatabase(_tempDir->path(), "favorite-segments.sqlite");
     QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
+    gy::storage::DeviceRepositoryCore repository(database.get());
 
     const QDateTime base = QDateTime::fromString("2026-10-05T05:00:00.000Z", Qt::ISODateWithMs);
-    QString dbError;
+    std::string dbError;
     // 离线两台：fav-off 较旧但将被收藏，plain-off 较新
     for (int i = 0; i < 2; ++i) {
         PeerRecord record;
@@ -1194,7 +1195,7 @@ void TestPeerDiscoveryViewModel::testSegmentFavoritePriorityAndFallback()
         record.lastTcpPort = 35100;
         record.firstSeenAt = base.addSecs(i * 60);
         record.lastSeenAt = base.addSecs(i * 60);
-        QVERIFY(repository.upsertPeer(record, &dbError));
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &dbError));
     }
 
     auto broker = openBroker("favorite-segments.sqlite");
@@ -1220,7 +1221,7 @@ void TestPeerDiscoveryViewModel::testSegmentFavoritePriorityAndFallback()
         record.lastTcpPort = info->tcpPort;
         record.firstSeenAt = info->lastSeen;
         record.lastSeenAt = info->lastSeen;
-        QVERIFY(repository.upsertPeer(record, &dbError));
+        QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(record), &dbError));
     }
     _discovery->addManualPeer(favOn);
     _discovery->addManualPeer(plainOn);

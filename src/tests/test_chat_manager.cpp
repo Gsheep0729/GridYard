@@ -30,9 +30,11 @@
 #include "posix_tcp_server.h"
 #include "posix_tcp_socket.h"
 #include "protocol.h"
-#include "sqlite_database_broker.h"
-#include "sqlite_device_repository.h"
-#include "sqlite_message_repository.h"
+
+#include "core/storage/database_core.h"
+#include "core/storage/device_repository_core.h"
+#include "core/storage/message_repository_core.h"
+#include "db_seed.h"
 
 #include <QSharedPointer>
 
@@ -312,12 +314,13 @@ void TestChatManager::testInvalidFollowUpFrameRejected()
 
 void TestChatManager::testMessagesPersisted()
 {
-    SqliteDatabaseBroker database;
-    QString errorMessage;
-    QVERIFY2(database.initialize(_tempDir->path() + "/chat-history.sqlite", &errorMessage),
-             qPrintable(errorMessage));
-    SqliteDeviceRepository deviceRepository(&database);
-    SqliteMessageRepository messageRepository(&database);
+    gy::storage::DatabaseCore database;
+    std::string errorMessage;
+    QVERIFY2(database.initialize((_tempDir->path() + "/chat-history.sqlite").toStdString(),
+                                 &errorMessage),
+             qPrintable(QString::fromStdString(errorMessage)));
+    gy::storage::DeviceRepositoryCore deviceRepository(&database);
+    gy::storage::MessageRepositoryCore messageRepository(&database);
 
     bool persisted = true;
     int persistedCount = 0;
@@ -329,8 +332,9 @@ void TestChatManager::testMessagesPersisted()
             peer.deviceName = record.senderName;
             peer.firstSeenAt = record.sentAt;
             peer.lastSeenAt = record.sentAt;
-            persisted = deviceRepository.upsertPeer(peer, &errorMessage)
-                        && messageRepository.saveMessage(record, &errorMessage);
+            persisted = deviceRepository.upsertPeer(gy::test::toCoreRecord(peer), &errorMessage)
+                        && messageRepository.saveMessage(gy::test::toCoreRecord(record),
+                                                         &errorMessage);
             ++persistedCount;
         });
 
@@ -344,7 +348,7 @@ void TestChatManager::testMessagesPersisted()
     gy::net::PosixTcpSocket *peerSocket = peerServer.nextPendingConnection();
     QVERIFY(peerSocket != nullptr);
     QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 1, 3000);
-    QVERIFY2(persisted, qPrintable(errorMessage));
+    QVERIFY2(persisted, qPrintable(QString::fromStdString(errorMessage)));
 
     gy::ChatMessage incoming = createPeerMessage(
         "9c4c6d2a-1f2b-47d6-8f25-0d5be1e8e36b", "持久化入站消息");
@@ -354,17 +358,18 @@ void TestChatManager::testMessagesPersisted()
     QVERIFY(peerSocket->write(incomingFrame) == incomingFrame.size());
     QVERIFY(peerSocket->waitForBytesWritten(1000));
     QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 2, 3000);
-    QVERIFY2(persisted, qPrintable(errorMessage));
+    QVERIFY2(persisted, qPrintable(QString::fromStdString(errorMessage)));
 
-    MessageCursor cursor;
-    cursor.peerDeviceId = deviceId;
-    const QList<MessageRecord> messages = messageRepository.loadMessages(cursor, 50, &errorMessage);
-    QVERIFY2(errorMessage.isEmpty(), qPrintable(errorMessage));
-    QCOMPARE(messages.size(), 2);
+    gy::storage::MessageCursor cursor;
+    cursor.peerDeviceId = deviceId.toStdString();
+    const std::vector<gy::storage::MessageRecord> messages =
+        messageRepository.loadMessages(cursor, 50, &errorMessage);
+    QVERIFY2(errorMessage.empty(), qPrintable(QString::fromStdString(errorMessage)));
+    QCOMPARE(int(messages.size()), 2);
 
     QStringList contents;
-    for (const MessageRecord &record : messages) {
-        contents.append(record.content);
+    for (const auto &record : messages) {
+        contents.append(QString::fromStdString(record.content));
     }
     QVERIFY(contents.contains("持久化出站消息"));
     QVERIFY(contents.contains("持久化入站消息"));

@@ -1,7 +1,7 @@
 /**
 * @file    test_history_controller.cpp
 * @version 7.26.1
-* @date    2026-10-24
+* @date    2026-10-25
 * @author  GY
 * @brief   HistoryController 本地历史视图与保留清理测试
  */
@@ -16,16 +16,14 @@
 #include "history_repositories.h"
 #include "local_data_broker.h"
 #include "db_seed.h"
-#include "sqlite_database_broker.h"
-#include "sqlite_device_repository.h"
-#include "sqlite_message_repository.h"
-#include "sqlite_transfer_history_repository.h"
+
+#include "core/storage/database_core.h"
+#include "core/storage/message_repository_core.h"
+#include "core/storage/transfer_repository_core.h"
 
 #include <QSignalSpy>
 #include <QFile>
 #include <QSet>
-#include <QSqlDatabase>
-#include <QSqlQuery>
 #include <QTemporaryDir>
 
 #include <memory>
@@ -53,16 +51,16 @@ private slots:
     void testHistoryControllerRecoversAfterDegradedQuery();
 
 private:
-    std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
+    std::unique_ptr<gy::storage::DatabaseCore> openDatabase(const QString &relativePath);
     std::unique_ptr<LocalDataBroker> openDataBroker(const QString &relativePath);
-    void seedDevice(SqliteDatabaseBroker &database, const QString &deviceId, const QString &name);
-    void seedMessage(SqliteMessageRepository &repository, const QString &deviceId, const QString &msgId,
-                     const QDateTime &sentAt, const QString &content = "test");
-    void seedTransfer(SqliteTransferHistoryRepository &repository, const QString &sessionId,
+    void seedDevice(gy::storage::DatabaseCore &database, const QString &deviceId, const QString &name);
+    void seedMessage(gy::storage::MessageRepositoryCore &repository, const QString &deviceId,
+                     const QString &msgId, const QDateTime &sentAt, const QString &content = "test");
+    void seedTransfer(gy::storage::TransferRepositoryCore &repository, const QString &sessionId,
                       const QString &peerDeviceId, const QString &status, const QDateTime &startedAt);
-    int messageRowCount(SqliteDatabaseBroker &database);
-    int transferRowCount(SqliteDatabaseBroker &database);
-    int deviceRowCount(SqliteDatabaseBroker &database);
+    int messageRowCount(gy::storage::DatabaseCore &database);
+    int transferRowCount(gy::storage::DatabaseCore &database);
+    int deviceRowCount(gy::storage::DatabaseCore &database);
 
     QTemporaryDir _temporaryDir;
 };
@@ -82,7 +80,7 @@ void TestHistoryController::testChatPaginationCursorAdvances()
 {
     auto database = openDatabase("cursor-advance.sqlite");
     QVERIFY(database);
-    SqliteMessageRepository messageRepository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
     seedDevice(*database, "peer-A", "Device Alpha");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs);
@@ -119,7 +117,7 @@ void TestHistoryController::testChatPaginationNoDuplicates()
 {
     auto database = openDatabase("no-dup.sqlite");
     QVERIFY(database);
-    SqliteMessageRepository messageRepository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
     seedDevice(*database, "peer-B", "Device Bravo");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T11:00:00.000Z", Qt::ISODateWithMs);
@@ -148,7 +146,7 @@ void TestHistoryController::testTransferFilterByDevice()
 {
     auto database = openDatabase("filter-device.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryRepository transferRepository(database.get());
+    gy::storage::TransferRepositoryCore transferRepository(database.get());
     seedDevice(*database, "peer-C", "Device Charlie");
     seedDevice(*database, "peer-D", "Device Delta");
 
@@ -177,7 +175,7 @@ void TestHistoryController::testTransferFilterByStatus()
 {
     auto database = openDatabase("filter-status.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryRepository transferRepository(database.get());
+    gy::storage::TransferRepositoryCore transferRepository(database.get());
     seedDevice(*database, "peer-E", "Device Echo");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs);
@@ -206,7 +204,7 @@ void TestHistoryController::testTransferLoadMorePagination()
 {
     auto database = openDatabase("load-more.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryRepository transferRepository(database.get());
+    gy::storage::TransferRepositoryCore transferRepository(database.get());
     seedDevice(*database, "peer-P", "Device Papa");
     seedDevice(*database, "peer-Q", "Device Quebec");
 
@@ -278,7 +276,7 @@ void TestHistoryController::testDeleteMessageOnlyAffectsTarget()
 {
     auto database = openDatabase("del-msg.sqlite");
     QVERIFY(database);
-    SqliteMessageRepository messageRepository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
     seedDevice(*database, "peer-F", "Device Foxtrot");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs);
@@ -319,7 +317,7 @@ void TestHistoryController::testDeleteConversationOnlyAffectsTarget()
 {
     auto database = openDatabase("del-conv.sqlite");
     QVERIFY(database);
-    SqliteMessageRepository messageRepository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
     seedDevice(*database, "peer-G", "Device Golf");
     seedDevice(*database, "peer-H", "Device Hotel");
 
@@ -365,7 +363,7 @@ void TestHistoryController::testDeleteTransferOnlyAffectsTarget()
 {
     auto database = openDatabase("del-transfer.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryRepository transferRepository(database.get());
+    gy::storage::TransferRepositoryCore transferRepository(database.get());
     seedDevice(*database, "peer-I", "Device India");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs);
@@ -391,7 +389,7 @@ void TestHistoryController::testClearAllMessagesPreservesDevices()
 {
     auto database = openDatabase("clear-msg.sqlite");
     QVERIFY(database);
-    SqliteMessageRepository messageRepository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
     seedDevice(*database, "peer-J", "Device Juliet");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs);
@@ -412,7 +410,7 @@ void TestHistoryController::testClearAllTransfersPreservesDevices()
 {
     auto database = openDatabase("clear-transfer.sqlite");
     QVERIFY(database);
-    SqliteTransferHistoryRepository transferRepository(database.get());
+    gy::storage::TransferRepositoryCore transferRepository(database.get());
     seedDevice(*database, "peer-K", "Device Kilo");
 
     const QDateTime base = QDateTime::fromString("2026-06-25T18:00:00.000Z", Qt::ISODateWithMs);
@@ -432,8 +430,8 @@ void TestHistoryController::testRetentionDaysCleansExpired()
 {
     auto database = openDatabase("retention.sqlite");
     QVERIFY(database);
-    SqliteMessageRepository messageRepository(database.get());
-    SqliteTransferHistoryRepository transferRepository(database.get());
+    gy::storage::MessageRepositoryCore messageRepository(database.get());
+    gy::storage::TransferRepositoryCore transferRepository(database.get());
     seedDevice(*database, "peer-L", "Device Lima");
 
     const QDateTime old = QDateTime::currentDateTimeUtc().addDays(-30);
@@ -630,7 +628,7 @@ void TestHistoryController::testHistoryControllerRecoversAfterDegradedQuery()
     QVERIFY(controller.transfers().isEmpty());
 }
 
-std::unique_ptr<SqliteDatabaseBroker> TestHistoryController::openDatabase(
+std::unique_ptr<gy::storage::DatabaseCore> TestHistoryController::openDatabase(
     const QString &relativePath)
 {
     return gy::test::openDatabase(_temporaryDir.path(), relativePath);
@@ -647,7 +645,7 @@ std::unique_ptr<LocalDataBroker> TestHistoryController::openDataBroker(const QSt
     return dataBroker;
 }
 
-void TestHistoryController::seedDevice(SqliteDatabaseBroker &database,
+void TestHistoryController::seedDevice(gy::storage::DatabaseCore &database,
                                        const QString &deviceId, const QString &name)
 {
     gy::test::seedDevice(database, deviceId, name,
@@ -655,7 +653,8 @@ void TestHistoryController::seedDevice(SqliteDatabaseBroker &database,
                          QStringLiteral("192.168.1.10"), 35100);
 }
 
-void TestHistoryController::seedMessage(SqliteMessageRepository &repository, const QString &deviceId,
+void TestHistoryController::seedMessage(gy::storage::MessageRepositoryCore &repository,
+                                        const QString &deviceId,
                                         const QString &msgId, const QDateTime &sentAt,
                                         const QString &content)
 {
@@ -672,7 +671,7 @@ void TestHistoryController::seedMessage(SqliteMessageRepository &repository, con
     gy::test::seedMessage(repository, record);
 }
 
-void TestHistoryController::seedTransfer(SqliteTransferHistoryRepository &repository,
+void TestHistoryController::seedTransfer(gy::storage::TransferRepositoryCore &repository,
                                          const QString &sessionId,
                                          const QString &peerDeviceId,
                                          const QString &status,
@@ -695,17 +694,17 @@ void TestHistoryController::seedTransfer(SqliteTransferHistoryRepository &reposi
     gy::test::seedTransfer(repository, record);
 }
 
-int TestHistoryController::messageRowCount(SqliteDatabaseBroker &database)
+int TestHistoryController::messageRowCount(gy::storage::DatabaseCore &database)
 {
     return gy::test::tableRowCount(database, QStringLiteral("chat_messages"));
 }
 
-int TestHistoryController::transferRowCount(SqliteDatabaseBroker &database)
+int TestHistoryController::transferRowCount(gy::storage::DatabaseCore &database)
 {
     return gy::test::tableRowCount(database, QStringLiteral("transfer_history"));
 }
 
-int TestHistoryController::deviceRowCount(SqliteDatabaseBroker &database)
+int TestHistoryController::deviceRowCount(gy::storage::DatabaseCore &database)
 {
     return gy::test::tableRowCount(database, QStringLiteral("peer_devices"));
 }

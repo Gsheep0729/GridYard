@@ -1,36 +1,33 @@
 /**
 * @file    test_storage_device.cpp
 * @version 7.26.1
-* @date 2026-10-24
+* @date    2026-10-25
 * @author  GY
-* @brief   SQLite 设备目录 Repository 测试
+* @brief   设备目录仓储与设备合并测试
 *
-* 覆盖设备 upsert 幂等、聊天/传输活动时间更新、最近设备排序、
-* 相同发现快照节流和数据库重新打开后的设备目录恢复。
+* 仓储语义直接验证纯 C++ 设备仓储（DeviceRepositoryCore）：写入更新、
+* 活动时间、排序、节流、管理标记、检索与级联删除；跨设备关联合并经
+* LocalDataBroker 的对外入口验证。旧 Qt 版仓储已随 gy_storage 退役。
 */
 
 #include <QtTest/QtTest>
 
+#include <QDateTime>
+#include <QSharedPointer>
+#include <QTemporaryDir>
+
+#include <memory>
+
 #include "application_paths.h"
 #include "db_seed.h"
-#include "protocol.h"
-#include "sqlite_database_broker.h"
+#include "history_records.h"
 #include "local_data_broker.h"
-#include "sqlite_device_repository.h"
-#include "sqlite_message_repository.h"
-#include "sqlite_transfer_history_repository.h"
 
 #include "core/storage/database_core.h"
 #include "core/storage/device_repository_core.h"
 #include "core/storage/message_repository_core.h"
+#include "core/storage/sqlite_conn.h"
 #include "core/storage/transfer_repository_core.h"
-
-#include <QSqlDatabase>
-#include <QSqlError>
-#include <QSqlQuery>
-
-#include <QSharedPointer>
-#include <QTemporaryDir>
 
 class TestStorageDevice : public QObject {
     Q_OBJECT
@@ -38,41 +35,32 @@ class TestStorageDevice : public QObject {
 private slots:
     void initTestCase();
     void cleanupTestCase();
-    void testUpsertInsertThenUpdate();
-    void testMarkChatActivity();
-    void testMarkTransferActivity();
-    void testRecentPeersOrderByActivity();
-    void testDiscoveryThrottle();
-    void testReopenDatabase();
-    void testSetDevicePinnedAndHidden();
-    void testSetDeviceAlias();
-    void testDeleteDeviceWithHistoryCascade();
-    void testV2MigratedToV3KeepsManagementColumns();
-    void testSetDeviceFavoriteAndRecentOrder();
-    void testMergeManualPeerMarkersToRealPeer();
-    void testMergeDeviceRecordsWithHistory();
-    void testMergeDeviceRecordsWithoutHistory();
-    void testCoreUpsertKeepsManagementColumns();
+    void testCoreUpsertInsertThenUpdateKeepsManagement();
+    void testCoreMarkActivityColumns();
     void testCoreRecentPeersOrderByActivity();
+    void testCoreSettersIdempotentAndSteps();
     void testCoreDiscoveryThrottle();
+    void testCoreReopenDatabase();
+    void testCoreV2MigratedToV3KeepsManagementColumns();
     void testCoreSearchPeersEscapeAndHidden();
     void testCoreMergeManualPeerMarkers();
     void testCoreDeleteDeviceWithHistoryCascade();
     void testCoreComposeStepsInSingleTransaction();
+    void testMergeDeviceRecordsWithHistory();
+    void testMergeDeviceRecordsWithoutHistory();
 
 private:
-    // 在当前测试数据库上构造一个已初始化的设备 Repository
-    std::unique_ptr<SqliteDatabaseBroker> openDatabase(const QString &relativePath);
-    // 构造一份带固定字段的设备记录
-    PeerRecord makeRecord(const QString &deviceId, const QString &name, const QDateTime &seen);
-    // 构造一条指定会话的入站聊天消息记录
-    MessageRecord makeMessage(const QString &deviceId, const QString &messageId,
-                              const QDateTime &sentAt);
-    // 构造一条已完成的传输历史记录
-    TransferRecord makeTransfer(const QString &deviceId, const QString &recordId,
-                                const QDateTime &startedAt);
-    // 直接读取 peer_devices 行数，用于幂等校验
-    int peerRowCount(SqliteDatabaseBroker &database);
+    // 在临时目录中打开（或创建）指定相对路径的核心数据库
+    std::unique_ptr<gy::storage::DatabaseCore> openDatabase(const QString &relativePath);
+    // 构造一份带固定字段的核心设备记录
+    gy::storage::PeerRecord makeRecord(const QString &deviceId, const QString &name,
+                                       int64_t seenMs);
+    // 构造一条指定会话的入站核心消息记录
+    gy::storage::MessageRecord makeMessage(const QString &deviceId, const QString &messageId,
+                                           int64_t sentMs);
+    // 构造一条已完成的核心传输历史记录
+    gy::storage::TransferRecord makeTransfer(const QString &deviceId, const QString &recordId,
+                                             int64_t startedMs);
 
     QTemporaryDir _temporaryDir;
     QString _databasePath;
@@ -92,776 +80,309 @@ void TestStorageDevice::cleanupTestCase()
     ApplicationPaths::clearTestCover();
 }
 
-// 首次 upsert 写入新设备，同 device_id 的二次 upsert 更新快照而不产生重复行
-void TestStorageDevice::testUpsertInsertThenUpdate()
-{
-    auto database = openDatabase("insert-update.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository repository(database.get());
-    const QDateTime firstSeen = QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs);
-
-    const PeerRecord first = makeRecord("device-A", "Alpha", firstSeen);
-    QString error;
-    QVERIFY2(repository.upsertPeer(first, &error), qPrintable(error));
-    QCOMPARE(peerRowCount(*database), 1);
-
-    // 同 device_id 不同名称、IP，应触发更新而不是插入
-    PeerRecord updated = first;
-    updated.deviceName = "Alpha-Renamed";
-    updated.lastIpAddress = "192.168.1.55";
-    updated.lastSeenAt = firstSeen.addSecs(60);
-    QVERIFY2(repository.upsertPeer(updated, &error), qPrintable(error));
-    QCOMPARE(peerRowCount(*database), 1);
-
-    // recentPeers 应反映最新名称和 IP
-    const QList<PeerRecord> records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-A"));
-    QCOMPARE(records.first().deviceName, QStringLiteral("Alpha-Renamed"));
-    QCOMPARE(records.first().lastIpAddress, QStringLiteral("192.168.1.55"));
-}
-
-// markChatActivity 只更新 last_chat_at，不改变其他字段
-void TestStorageDevice::testMarkChatActivity()
-{
-    auto database = openDatabase("chat-activity.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository repository(database.get());
-    const QDateTime base = QDateTime::fromString("2026-06-25T11:00:00.000Z", Qt::ISODateWithMs);
-    const PeerRecord seed = makeRecord("device-B", "Bravo", base);
-    QString error;
-    QVERIFY2(repository.upsertPeer(seed, &error), qPrintable(error));
-
-    // 名称变更触发非节流路径，确保 seed 已写入
-    PeerRecord renamed = seed;
-    renamed.deviceName = "Bravo-2";
-    QVERIFY2(repository.upsertPeer(renamed, &error), qPrintable(error));
-
-    const QDateTime chatTime = base.addSecs(120);
-    QVERIFY2(repository.markChatActivity("device-B", chatTime, &error), qPrintable(error));
-
-    const QList<PeerRecord> records = repository.recentPeers(5, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().lastChatAt.toUTC(), chatTime.toUTC());
-    // 其他字段保持 upsert 后的值
-    QCOMPARE(records.first().deviceName, QStringLiteral("Bravo-2"));
-    QVERIFY(!records.first().lastTransferAt.isValid());
-}
-
-// markTransferActivity 只更新 last_transfer_at，不改变其他字段
-void TestStorageDevice::testMarkTransferActivity()
-{
-    auto database = openDatabase("transfer-activity.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository repository(database.get());
-    const QDateTime base = QDateTime::fromString("2026-06-25T12:00:00.000Z", Qt::ISODateWithMs);
-    const PeerRecord seed = makeRecord("device-C", "Charlie", base);
-    QString error;
-    QVERIFY2(repository.upsertPeer(seed, &error), qPrintable(error));
-    QVERIFY2(repository.markChatActivity("device-C", base.addSecs(60), &error), qPrintable(error));
-
-    const QDateTime transferTime = base.addSecs(300);
-    QVERIFY2(repository.markTransferActivity("device-C", transferTime, &error), qPrintable(error));
-
-    const QList<PeerRecord> records = repository.recentPeers(5, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().lastTransferAt.toUTC(), transferTime.toUTC());
-    // 聊天时间不受影响
-    QCOMPARE(records.first().lastChatAt.toUTC(), base.addSecs(60).toUTC());
-}
-
-// recentPeers 按 COALESCE(last_chat_at, last_transfer_at, last_seen_at) DESC 排序
-void TestStorageDevice::testRecentPeersOrderByActivity()
-{
-    auto database = openDatabase("recent-order.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository repository(database.get());
-    QString error;
-
-    // 三个设备初始 last_seen 各不相同
-    const QDateTime t1 = QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs);
-    const QDateTime t2 = QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs);
-    const QDateTime t3 = QDateTime::fromString("2026-06-25T11:00:00.000Z", Qt::ISODateWithMs);
-
-    PeerRecord a = makeRecord("device-A", "Alpha", t1);
-    PeerRecord b = makeRecord("device-B", "Bravo", t2);
-    PeerRecord c = makeRecord("device-C", "Charlie", t3);
-    QVERIFY2(repository.upsertPeer(a, &error), qPrintable(error));
-    QVERIFY2(repository.upsertPeer(b, &error), qPrintable(error));
-    QVERIFY2(repository.upsertPeer(c, &error), qPrintable(error));
-
-    // 让 A 的聊天时间最新，应排到第一位
-    const QDateTime aChat = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
-    QVERIFY2(repository.markChatActivity("device-A", aChat, &error), qPrintable(error));
-
-    const QList<PeerRecord> records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 3);
-    QCOMPARE(records.at(0).deviceId, QStringLiteral("device-A"));
-    // C 的 last_seen 比 B 新，排在 B 前面
-    QCOMPARE(records.at(1).deviceId, QStringLiteral("device-C"));
-    QCOMPARE(records.at(2).deviceId, QStringLiteral("device-B"));
-
-    // limit 生效
-    const QList<PeerRecord> topTwo = repository.recentPeers(2, &error);
-    QCOMPARE(topTwo.size(), 2);
-    QCOMPARE(topTwo.first().deviceId, QStringLiteral("device-A"));
-}
-
-// 同一无变化发现快照在节流间隔内不重复写入磁盘
-void TestStorageDevice::testDiscoveryThrottle()
-{
-    auto database = openDatabase("throttle.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository repository(database.get());
-    const QDateTime firstSeen = QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs);
-    const PeerRecord seed = makeRecord("device-D", "Delta", firstSeen);
-    QString error;
-    QVERIFY2(repository.upsertPeer(seed, &error), qPrintable(error));
-
-    // 直接在外部把 last_chat_at 改成一个可识别的值，作为节流是否生效的探针
-    const QDateTime probeTime = QDateTime::fromString("2026-06-25T13:30:00.000Z", Qt::ISODateWithMs);
-    QVERIFY2(repository.markChatActivity("device-D", probeTime, &error), qPrintable(error));
-
-    // 节流窗口内（< 30s）再次 upsert 完全相同的发现快照
-    PeerRecord heartbeat = seed;
-    heartbeat.lastSeenAt = firstSeen.addSecs(5);  // 远小于 30 秒
-    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
-
-    // 探针时间应保持不变，说明节流跳过了 upsert 的潜在覆盖
-    const QList<PeerRecord> records = repository.recentPeers(5, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().lastChatAt.toUTC(), probeTime.toUTC());
-
-    // 超过节流窗口后再次 upsert，应执行写入并刷新 last_seen_at
-    PeerRecord later = seed;
-    later.lastSeenAt = firstSeen.addSecs(60);  // 超过 30 秒
-    QVERIFY2(repository.upsertPeer(later, &error), qPrintable(error));
-    const QList<PeerRecord> afterWindow = repository.recentPeers(5, &error);
-    QCOMPARE(afterWindow.size(), 1);
-    QCOMPARE(afterWindow.first().lastSeenAt.toUTC(), later.lastSeenAt.toUTC());
-}
-
-// 关闭并重新打开数据库后，设备目录仍可恢复
-void TestStorageDevice::testReopenDatabase()
-{
-    const QString path = _temporaryDir.path() + "/reopen.sqlite";
-
-    {
-        SqliteDatabaseBroker database;
-        QString error;
-        QVERIFY2(database.initialize(path, &error), qPrintable(error));
-        SqliteDeviceRepository repository(&database);
-        const QDateTime seen = QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs);
-        const PeerRecord record = makeRecord("device-E", "Echo", seen);
-        QVERIFY2(repository.upsertPeer(record, &error), qPrintable(error));
-        QVERIFY2(repository.markChatActivity("device-E", seen.addSecs(120), &error), qPrintable(error));
-    }
-
-    // 重新打开数据库，设备目录和活动时间应保留
-    SqliteDatabaseBroker reopened;
-    QString error;
-    QVERIFY2(reopened.initialize(path, &error), qPrintable(error));
-    SqliteDeviceRepository repository(&reopened);
-    const QList<PeerRecord> records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-E"));
-    QCOMPARE(records.first().deviceName, QStringLiteral("Echo"));
-    QVERIFY(records.first().lastChatAt.isValid());
-}
-
-// 置顶与隐藏状态落库、幂等、心跳不清状态，且 Step 变体可组合进单事务
-void TestStorageDevice::testSetDevicePinnedAndHidden()
-{
-    auto database = openDatabase("pin-hide.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository repository(database.get());
-    const QDateTime base = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
-    QString error;
-    QVERIFY2(repository.upsertPeer(makeRecord("device-pin", "Pinned", base), &error),
-             qPrintable(error));
-
-    // 置顶与隐藏各自落库，读链路带出状态
-    QVERIFY2(repository.setDevicePinned("device-pin", true, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceHidden("device-pin", true, &error), qPrintable(error));
-    QList<PeerRecord> records = repository.recentPeers(5, &error);
-    QCOMPARE(records.size(), 1);
-    QVERIFY(records.first().pinned);
-    QVERIFY(records.first().hidden);
-
-    // 重复设置幂等，不产生重复行也不报错
-    QVERIFY2(repository.setDevicePinned("device-pin", true, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceHidden("device-pin", true, &error), qPrintable(error));
-    QCOMPARE(peerRowCount(*database), 1);
-    records = repository.recentPeers(5, &error);
-    QVERIFY(records.first().pinned);
-    QVERIFY(records.first().hidden);
-
-    // 设备行不存在的更新同样幂等返回成功
-    QVERIFY2(repository.setDevicePinned("no-such-device", true, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceHidden("no-such-device", true, &error), qPrintable(error));
-
-    // 心跳 upsert 不清管理状态（ON CONFLICT 不触碰三列的既有契约）
-    PeerRecord heartbeat = makeRecord("device-pin", "Pinned", base.addSecs(60));
-    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
-    records = repository.recentPeers(5, &error);
-    QVERIFY(records.first().pinned);
-    QVERIFY(records.first().hidden);
-
-    // 取消置顶与恢复显示
-    QVERIFY2(repository.setDevicePinned("device-pin", false, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceHidden("device-pin", false, &error), qPrintable(error));
-    records = repository.recentPeers(5, &error);
-    QVERIFY(!records.first().pinned);
-    QVERIFY(!records.first().hidden);
-
-    // Step 变体可与其他步骤组合进同一事务执行
-    QVERIFY2(database->runSteps(
-                 {SqliteDeviceRepository::setDevicePinnedStep("device-pin", true),
-                  SqliteDeviceRepository::setDeviceHiddenStep("device-pin", true)},
-                 &error),
-             qPrintable(error));
-    records = repository.recentPeers(5, &error);
-    QVERIFY(records.first().pinned);
-    QVERIFY(records.first().hidden);
-}
-
-// 备注别名设置、覆盖与清除幂等，心跳 upsert 不触碰备注列
-void TestStorageDevice::testSetDeviceAlias()
-{
-    auto database = openDatabase("alias.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository repository(database.get());
-    const QDateTime base = QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs);
-    QString error;
-    QVERIFY2(repository.upsertPeer(makeRecord("device-alias", "Alias", base), &error),
-             qPrintable(error));
-
-    // 设置备注后读链路带出
-    QVERIFY2(repository.setDeviceAlias("device-alias", QStringLiteral("老王"), &error),
-             qPrintable(error));
-    QList<PeerRecord> records = repository.recentPeers(5, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().alias, QStringLiteral("老王"));
-
-    // 重复设置覆盖旧值且幂等，不产生重复行
-    QVERIFY2(repository.setDeviceAlias("device-alias", QStringLiteral("小李"), &error),
-             qPrintable(error));
-    QVERIFY2(repository.setDeviceAlias("device-alias", QStringLiteral("小李"), &error),
-             qPrintable(error));
-    QCOMPARE(peerRowCount(*database), 1);
-    records = repository.recentPeers(5, &error);
-    QCOMPARE(records.first().alias, QStringLiteral("小李"));
-
-    // 设备行不存在的更新同样幂等返回成功
-    QVERIFY2(repository.setDeviceAlias("no-such-device", QStringLiteral("幽灵"), &error),
-             qPrintable(error));
-
-    // 心跳 upsert 变更设备名与 IP 后备注保持：ON CONFLICT 不触碰 alias 列
-    PeerRecord heartbeat = makeRecord("device-alias", "Alias-Renamed", base.addSecs(60));
-    heartbeat.lastIpAddress = QStringLiteral("192.168.1.99");
-    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
-    records = repository.recentPeers(5, &error);
-    QCOMPARE(records.first().deviceName, QStringLiteral("Alias-Renamed"));
-    QCOMPARE(records.first().lastIpAddress, QStringLiteral("192.168.1.99"));
-    QCOMPARE(records.first().alias, QStringLiteral("小李"));
-
-    // 清除备注（空串）后回落空值
-    QVERIFY2(repository.setDeviceAlias("device-alias", QString(), &error), qPrintable(error));
-    records = repository.recentPeers(5, &error);
-    QVERIFY(records.first().alias.isEmpty());
-
-    // Step 变体可组合进同一事务执行
-    QVERIFY2(database->runSteps(
-                 {SqliteDeviceRepository::setDeviceAliasStep("device-alias",
-                                                             QStringLiteral("事务备注"))},
-                 &error),
-             qPrintable(error));
-    records = repository.recentPeers(5, &error);
-    QCOMPARE(records.first().alias, QStringLiteral("事务备注"));
-}
-
-// 删除设备级联清空聊天与传输历史且不触碰文件系统，再次发现按全新设备入目录
-void TestStorageDevice::testDeleteDeviceWithHistoryCascade()
-{
-    auto database = openDatabase("delete-cascade.sqlite");
-    QVERIFY(database);
-
-    SqliteDeviceRepository deviceRepository(database.get());
-    SqliteMessageRepository messageRepository(database.get());
-    SqliteTransferHistoryRepository transferRepository(database.get());
-    QString error;
-
-    const QDateTime base = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs);
-    QVERIFY2(deviceRepository.upsertPeer(makeRecord("device-del", "DeleteMe", base), &error),
-             qPrintable(error));
-    QVERIFY2(deviceRepository.upsertPeer(makeRecord("device-keep", "KeepMe", base), &error),
-             qPrintable(error));
-
-    // 被删设备两条聊天消息（会话行由 saveMessageStep 幂等创建）与两条传输历史
-    QVERIFY2(messageRepository.saveMessage(makeMessage("device-del", "msg-1", base), &error),
-             qPrintable(error));
-    QVERIFY2(messageRepository.saveMessage(makeMessage("device-del", "msg-2", base.addSecs(60)), &error),
-             qPrintable(error));
-    QVERIFY2(transferRepository.upsertFinishedTransfer(makeTransfer("device-del", "tr-1", base), &error),
-             qPrintable(error));
-    QVERIFY2(transferRepository.upsertFinishedTransfer(makeTransfer("device-del", "tr-2", base.addSecs(30)), &error),
-             qPrintable(error));
-    // 保留设备同样有数据，用于验证删除不误伤
-    QVERIFY2(messageRepository.saveMessage(makeMessage("device-keep", "msg-k", base), &error),
-             qPrintable(error));
-    QVERIFY2(transferRepository.upsertFinishedTransfer(makeTransfer("device-keep", "tr-k", base), &error),
-             qPrintable(error));
-
-    // 删除路径只涉及数据库行，不触碰任何本地文件
-    QVERIFY2(deviceRepository.deleteDeviceWithHistory("device-del", &error), qPrintable(error));
-
-    // 级联完整：设备行删除、传输历史清空、聊天会话与消息随 CASCADE 清空，
-    // 保留设备的数据一行不少
-    QCOMPARE(peerRowCount(*database), 1);
-    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_messages")), 1);
-    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_conversations")), 1);
-    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("transfer_history")), 1);
-
-    // 幂等：设备行已不存在时再次删除仍返回成功
-    QVERIFY2(deviceRepository.deleteDeviceWithHistory("device-del", &error), qPrintable(error));
-    QCOMPARE(peerRowCount(*database), 1);
-
-    const QList<PeerRecord> records = deviceRepository.recentPeers(5, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-keep"));
-
-    // 删除后同快照心跳不被节流缓存拦截，按全新设备重新入目录（first_seen 语义），
-    // 且目录重建不会带回任何旧聊天或传输历史
-    deviceRepository.noteDeviceDeleted("device-del");
-    QVERIFY2(deviceRepository.upsertPeer(makeRecord("device-del", "DeleteMe", base), &error),
-             qPrintable(error));
-    QCOMPARE(peerRowCount(*database), 2);
-    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_messages")), 1);
-    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("transfer_history")), 1);
-}
-
-// v2 存量库升级到 v3：favorite 加列默认 0，alias/pinned/hidden 与快照字段全部保留
-void TestStorageDevice::testV2MigratedToV3KeepsManagementColumns()
-{
-    const QString path = _databasePath + ".v2-upgrade.sqlite";
-
-    // 手工造一个最小 v2 假库：schema_version 登记 2，peer_devices 含管理三列并带存量值
-    {
-        QSqlDatabase seed = QSqlDatabase::addDatabase("QSQLITE", "v2-seed");
-        seed.setDatabaseName(path);
-        QVERIFY2(seed.open(), qPrintable(seed.lastError().text()));
-        QSqlQuery build(seed);
-        QVERIFY2(build.exec("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"),
-                 qPrintable(build.lastError().text()));
-        QVERIFY2(build.exec("INSERT INTO schema_version VALUES(2, '2026-10-05T00:00:00.000Z')"),
-                 qPrintable(build.lastError().text()));
-        QVERIFY2(build.exec("CREATE TABLE peer_devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, last_ip_address TEXT, last_tcp_port INTEGER, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, last_chat_at TEXT, last_transfer_at TEXT, alias TEXT, pinned INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0)"),
-                 qPrintable(build.lastError().text()));
-        QVERIFY2(build.exec("INSERT INTO peer_devices VALUES('device-v2', '存量设备', '192.168.1.30', 35100, "
-                            "'2026-06-25T08:00:00.000Z', '2026-06-25T09:00:00.000Z', NULL, NULL, "
-                            "'老王的电脑', 1, 0)"),
-                 qPrintable(build.lastError().text()));
-        seed.close();
-    }
-    QSqlDatabase::removeDatabase("v2-seed");
-
-    SqliteDatabaseBroker database;
-    QString error;
-    QVERIFY2(database.initialize(path, &error), qPrintable(error));
-    QCOMPARE(database.schemaVersion(), 3);
-
-    SqliteDeviceRepository repository(&database);
-    const QList<PeerRecord> records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 1);
-    const PeerRecord &record = records.first();
-    // 管理三列与快照字段在 v2 到 v3 迁移后必须原样保留，收藏默认未勾选
-    QCOMPARE(record.deviceId, QStringLiteral("device-v2"));
-    QCOMPARE(record.alias, QStringLiteral("老王的电脑"));
-    QCOMPARE(record.pinned, true);
-    QCOMPARE(record.hidden, false);
-    QCOMPARE(record.favorite, false);
-}
-
-// 收藏读写与排序：favorite 优先于普通设备恢复，心跳 upsert 不清收藏，取消后回落
-void TestStorageDevice::testSetDeviceFavoriteAndRecentOrder()
-{
-    auto database = openDatabase("favorite.sqlite");
-    QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
-
-    const QDateTime base = QDateTime::fromString("2026-06-25T12:00:00.000Z", Qt::ISODateWithMs);
-    QString error;
-    // 普通设备比收藏设备更新，且心跳后的收藏设备仍须保持更旧：
-    // 取消收藏后回落排序的判别才成立
-    QVERIFY2(repository.upsertPeer(makeRecord("device-plain", "普通设备", base.addSecs(120)), &error),
-             qPrintable(error));
-    QVERIFY2(repository.upsertPeer(makeRecord("device-fav", "收藏设备", base), &error),
-             qPrintable(error));
-
-    QVERIFY2(repository.setDeviceFavorite("device-fav", true, &error), qPrintable(error));
-
-    // 收藏设备反超排最前，favorite 标记随行返回
-    QList<PeerRecord> records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 2);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-fav"));
-    QCOMPARE(records.first().favorite, true);
-    QCOMPARE(records.at(1).deviceId, QStringLiteral("device-plain"));
-    QCOMPARE(records.at(1).favorite, false);
-
-    // 心跳改名 upsert 不携带 favorite 列：收藏按 device_id 落键，远程改名不清收藏
-    // （活跃时间保持在普通设备之前）
-    PeerRecord heartbeat = makeRecord("device-fav", "收藏设备已改名", base.addSecs(60));
-    QVERIFY2(repository.upsertPeer(heartbeat, &error), qPrintable(error));
-    records = repository.recentPeers(10, &error);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-fav"));
-    QCOMPARE(records.first().deviceName, QStringLiteral("收藏设备已改名"));
-    QCOMPARE(records.first().favorite, true);
-
-    // 取消收藏后回落到按活跃时间排序
-    QVERIFY2(repository.setDeviceFavorite("device-fav", false, &error), qPrintable(error));
-    records = repository.recentPeers(10, &error);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-plain"));
-    QCOMPARE(records.first().favorite, false);
-}
-
-// 真身同 IP 合并出现时，手动伪条目的管理标记迁入真行并删除伪行：
-// 备注取非空一方、置顶/隐藏/收藏取或，无伪行时为空操作
-void TestStorageDevice::testMergeManualPeerMarkersToRealPeer()
-{
-    auto database = openDatabase("merge-manual.sqlite");
-    QVERIFY(database);
-    SqliteDeviceRepository repository(database.get());
-
-    const QDateTime base = QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs);
-    QString error;
-
-    // 手动伪条目带备注、置顶与好友标记
-    PeerRecord pseudo = makeRecord("manual_192.168.1.77", "手动端点 (192.168.1.77)", base);
-    pseudo.lastIpAddress = "192.168.1.77";
-    QVERIFY2(repository.upsertPeer(pseudo, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceAlias("manual_192.168.1.77", "老王的电脑", &error), qPrintable(error));
-    QVERIFY2(repository.setDevicePinned("manual_192.168.1.77", true, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceFavorite("manual_192.168.1.77", true, &error), qPrintable(error));
-
-    // 真身从同 IP 出现后跑迁移小事务：真行另有隐藏标记，按取或规则保留
-    PeerRecord real = makeRecord("real-uuid-1", "真身设备", base.addSecs(60));
-    real.lastIpAddress = "192.168.1.77";
-    QVERIFY2(repository.upsertPeer(real, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceHidden("real-uuid-1", true, &error), qPrintable(error));
-    QVERIFY2(repository.mergeManualPeerMarkers("real-uuid-1", "manual_192.168.1.77", &error),
-             qPrintable(error));
-
-    QList<PeerRecord> records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 1);  // 伪行已删除，只剩真行
-    const PeerRecord merged = records.first();
-    QCOMPARE(merged.deviceId, QStringLiteral("real-uuid-1"));
-    QCOMPARE(merged.alias, QStringLiteral("老王的电脑"));
-    QCOMPARE(merged.pinned, true);
-    QCOMPARE(merged.favorite, true);
-    QCOMPARE(merged.hidden, true);
-
-    // 真行已有备注时不被伪行值覆盖（备注取非空一方）
-    PeerRecord pseudo2 = makeRecord("manual_192.168.1.78", "手动端点 (192.168.1.78)", base);
-    pseudo2.lastIpAddress = "192.168.1.78";
-    QVERIFY2(repository.upsertPeer(pseudo2, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceAlias("manual_192.168.1.78", "伪身备注", &error), qPrintable(error));
-    PeerRecord real2 = makeRecord("real-uuid-2", "真身设备二", base.addSecs(90));
-    real2.lastIpAddress = "192.168.1.78";
-    QVERIFY2(repository.upsertPeer(real2, &error), qPrintable(error));
-    QVERIFY2(repository.setDeviceAlias("real-uuid-2", "真身备注", &error), qPrintable(error));
-    QVERIFY2(repository.mergeManualPeerMarkers("real-uuid-2", "manual_192.168.1.78", &error),
-             qPrintable(error));
-    records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 2);
-    for (const PeerRecord &record : records) {
-        if (record.deviceId == QStringLiteral("real-uuid-2")) {
-            QCOMPARE(record.alias, QStringLiteral("真身备注"));
-        }
-    }
-
-    // 无伪行时迁移为空操作，真行保持原样
-    QVERIFY2(repository.mergeManualPeerMarkers("real-uuid-1", "manual_10.0.0.1", &error),
-             qPrintable(error));
-    records = repository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 2);
-}
-
-// 关联合并（含历史）：旧行的管理标记并入新行，聊天与传输记录整体改挂新 ID，
-// 旧行删除；新行不存在时先按传入记录建行
-void TestStorageDevice::testMergeDeviceRecordsWithHistory()
-{
-    auto database = openDatabase("merge-device-history.sqlite");
-    QVERIFY(database);
-    SqliteDeviceRepository deviceRepository(database.get());
-    SqliteMessageRepository messageRepository(database.get());
-    SqliteTransferHistoryRepository transferRepository(database.get());
-
-    const QDateTime base = QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs);
-    QString error;
-    PeerRecord oldDevice = makeRecord("device-old", "旧设备", base);
-    oldDevice.lastIpAddress = "192.168.1.20";
-    QVERIFY2(deviceRepository.upsertPeer(oldDevice, &error), qPrintable(error));
-    QVERIFY2(deviceRepository.setDeviceAlias("device-old", "旧名备注", &error), qPrintable(error));
-    QVERIFY2(deviceRepository.setDeviceFavorite("device-old", true, &error), qPrintable(error));
-    QVERIFY2(deviceRepository.setDevicePinned("device-old", true, &error), qPrintable(error));
-
-    // 旧设备两台消息与一条传输记录
-    MessageRecord message;
-    message.messageId = "old-msg-1";
-    message.peerDeviceId = "device-old";
-    message.direction = RecordDirection::Incoming;
-    message.senderDeviceId = "device-old";
-    message.senderName = "旧设备";
-    message.content = "旧消息";
-    message.sentAt = base.addSecs(60);
-    message.createdAt = base.addSecs(60);
-    QVERIFY2(messageRepository.saveMessage(message, &error), qPrintable(error));
-
-    TransferRecord transfer = makeTransfer("device-old", "old-rec-1", base.addSecs(120));
-    QVERIFY2(transferRepository.upsertFinishedTransfer(transfer, &error), qPrintable(error));
-
-    // 新设备已存在（真身重新出现），带自己的名称
-    PeerRecord newDevice = makeRecord("device-new", "新设备", base.addSecs(300));
-    QVERIFY2(deviceRepository.upsertPeer(newDevice, &error), qPrintable(error));
-
-    const auto done = QSharedPointer<bool>::create(false);
-    auto merge = std::make_unique<LocalDataBroker>();
-    QVERIFY(merge->initialize(_temporaryDir.path() + "/merge-device-history.sqlite", &error));
-    merge->mergeDeviceRecords(merge.get(), newDevice, "device-old", true,
-                              [done](bool succeeded) { *done = succeeded; });
-    QTRY_VERIFY(*done);
-    merge->closeStorage();
-
-    // 旧行已删除，新行带迁移来的标记
-    QList<PeerRecord> records = deviceRepository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-new"));
-    QCOMPARE(records.first().deviceName, QStringLiteral("新设备"));
-    QCOMPARE(records.first().alias, QStringLiteral("旧名备注"));
-    QCOMPARE(records.first().favorite, true);
-    QCOMPARE(records.first().pinned, true);
-
-    // 聊天与传输已改挂新 ID
-    MessageCursor cursor;
-    cursor.peerDeviceId = "device-new";
-    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).size(), 1);
-    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).first().messageId,
-             QStringLiteral("old-msg-1"));
-    TransferQuery query;
-    query.peerDeviceId = "device-new";
-    QCOMPARE(transferRepository.queryTransfers(query, 10, &error).size(), 1);
-}
-
-// 关联合并（不迁移历史）：管理标记并入、旧行删除、旧聊天与传输一并放弃
-void TestStorageDevice::testMergeDeviceRecordsWithoutHistory()
-{
-    auto database = openDatabase("merge-device-nohistory.sqlite");
-    QVERIFY(database);
-    SqliteDeviceRepository deviceRepository(database.get());
-    SqliteMessageRepository messageRepository(database.get());
-    SqliteTransferHistoryRepository transferRepository(database.get());
-
-    const QDateTime base = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs);
-    QString error;
-    PeerRecord oldDevice = makeRecord("device-old2", "旧设备二", base);
-    QVERIFY2(deviceRepository.upsertPeer(oldDevice, &error), qPrintable(error));
-    QVERIFY2(deviceRepository.setDeviceAlias("device-old2", "待并备注", &error), qPrintable(error));
-
-    MessageRecord message;
-    message.messageId = "old2-msg-1";
-    message.peerDeviceId = "device-old2";
-    message.direction = RecordDirection::Incoming;
-    message.senderDeviceId = "device-old2";
-    message.senderName = "旧设备二";
-    message.content = "将放弃的消息";
-    message.sentAt = base.addSecs(60);
-    message.createdAt = base.addSecs(60);
-    QVERIFY2(messageRepository.saveMessage(message, &error), qPrintable(error));
-    QVERIFY2(transferRepository.upsertFinishedTransfer(
-                 makeTransfer("device-old2", "old2-rec-1", base.addSecs(120)), &error),
-             qPrintable(error));
-
-    // 新行不存在：按传入记录建行
-    PeerRecord newDevice = makeRecord("device-new2", "新设备二", base.addSecs(300));
-
-    auto merge = std::make_unique<LocalDataBroker>();
-    QVERIFY(merge->initialize(_temporaryDir.path() + "/merge-device-nohistory.sqlite", &error));
-    const auto done = QSharedPointer<bool>::create(false);
-    merge->mergeDeviceRecords(merge.get(), newDevice, "device-old2", false,
-                              [done](bool succeeded) { *done = succeeded; });
-    QTRY_VERIFY(*done);
-    merge->closeStorage();
-
-    QList<PeerRecord> records = deviceRepository.recentPeers(10, &error);
-    QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().deviceId, QStringLiteral("device-new2"));
-    QCOMPARE(records.first().alias, QStringLiteral("待并备注"));
-
-    // 旧历史被放弃：聊天随旧行级联清理，传输显式删除
-    MessageCursor cursor;
-    cursor.peerDeviceId = "device-old2";
-    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).size(), 0);
-    cursor.peerDeviceId = "device-new2";
-    QCOMPARE(messageRepository.loadMessages(cursor, 10, &error).size(), 0);
-    TransferQuery query;
-    query.peerDeviceId = "device-old2";
-    QCOMPARE(transferRepository.queryTransfers(query, 10, &error).size(), 0);
-    query.peerDeviceId = "device-new2";
-    QCOMPARE(transferRepository.queryTransfers(query, 10, &error).size(), 0);
-}
-
-// 纯 C++ 版心跳 upsert 不清除管理状态，读链路完整带回各列
-void TestStorageDevice::testCoreUpsertKeepsManagementColumns()
+// 首次 upsert 写入新设备，同 device_id 的二次 upsert 更新快照不产生重复行，
+// 且名称/IP 变化的心跳不清除管理三列
+void TestStorageDevice::testCoreUpsertInsertThenUpdateKeepsManagement()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
+    auto database = openDatabase("insert-update.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore repository(database.get());
+
+    const int64_t firstSeen =
+        QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const core::PeerRecord first = makeRecord("device-A", "Alpha", firstSeen);
     std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-manage.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore repository(&database);
+    QVERIFY(repository.upsertPeer(first, &error));
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("peer_devices")), 1);
 
-    const int64_t base = QDateTime::fromString("2026-06-25T10:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
-    core::PeerRecord peer;
-    peer.deviceId = "device-core";
-    peer.deviceName = "原始名";
-    peer.lastIpAddress = "192.168.1.10";
-    peer.lastTcpPort = 35100;
-    peer.firstSeenAtMs = base;
-    peer.lastSeenAtMs = base;
-    QVERIFY(repository.upsertPeer(peer, &error));
-    QVERIFY(repository.setDeviceAlias("device-core", "旧友备注", &error));
-    QVERIFY(repository.setDevicePinned("device-core", true, &error));
-    QVERIFY(repository.setDeviceHidden("device-core", true, &error));
+    // 同 device_id 不同名称、IP，应触发更新而不是插入
+    core::PeerRecord updated = first;
+    updated.deviceName = "Alpha-Renamed";
+    updated.lastIpAddress = "192.168.1.55";
+    updated.lastSeenAtMs = firstSeen + 60000;
+    QVERIFY(repository.upsertPeer(updated, &error));
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("peer_devices")), 1);
 
-    // 名称/IP 变化绕开发现节流，必然写盘；管理状态必须保持
-    core::PeerRecord heartbeat = peer;
-    heartbeat.deviceName = "改名后";
-    heartbeat.lastIpAddress = "192.168.1.11";
-    heartbeat.lastSeenAtMs = base + 60000;
+    // recentPeers 应反映最新名称和 IP，管理列默认值完整带回
+    const std::vector<core::PeerRecord> records = repository.recentPeers(10, &error);
+    QCOMPARE(int(records.size()), 1);
+    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("device-A"));
+    QCOMPARE(QString::fromStdString(records.front().deviceName), QStringLiteral("Alpha-Renamed"));
+    QCOMPARE(QString::fromStdString(records.front().lastIpAddress), QStringLiteral("192.168.1.55"));
+    QVERIFY(records.front().alias.empty());
+    QVERIFY(!records.front().pinned);
+    QVERIFY(!records.front().hidden);
+
+    // 设置管理标记后，心跳 upsert 不清管理状态（ON CONFLICT 不触碰三列的既有契约）
+    QVERIFY(repository.setDeviceAlias("device-A", "旧友备注", &error));
+    QVERIFY(repository.setDevicePinned("device-A", true, &error));
+    QVERIFY(repository.setDeviceHidden("device-A", true, &error));
+    core::PeerRecord heartbeat = updated;
+    heartbeat.deviceName = "Alpha-Heartbeat";
+    heartbeat.lastIpAddress = "192.168.1.66";
+    heartbeat.lastSeenAtMs = firstSeen + 120000;
     QVERIFY(repository.upsertPeer(heartbeat, &error));
 
-    const std::vector<core::PeerRecord> records = repository.recentPeers(5, &error);
-    QCOMPARE(int(records.size()), 1);
-    QCOMPARE(QString::fromStdString(records.front().deviceName), QStringLiteral("改名后"));
-    QCOMPARE(QString::fromStdString(records.front().lastIpAddress), QStringLiteral("192.168.1.11"));
-    QCOMPARE(QString::fromStdString(records.front().alias), QStringLiteral("旧友备注"));
-    QVERIFY(records.front().pinned);
-    QVERIFY(records.front().hidden);
-    QCOMPARE(records.front().lastSeenAtMs, base + 60000);
-    QVERIFY(!records.front().lastChatAtMs.has_value());
+    const std::vector<core::PeerRecord> after = repository.recentPeers(10, &error);
+    QCOMPARE(int(after.size()), 1);
+    QCOMPARE(QString::fromStdString(after.front().deviceName), QStringLiteral("Alpha-Heartbeat"));
+    QCOMPARE(QString::fromStdString(after.front().alias), QStringLiteral("旧友备注"));
+    QVERIFY(after.front().pinned);
+    QVERIFY(after.front().hidden);
 }
 
-// 纯 C++ 版 recentPeers 排序：收藏、置顶优先，其后按最近活动倒序，limit 生效
+// markChatActivity 只更新 last_chat_at，markTransferActivity 只更新 last_transfer_at
+void TestStorageDevice::testCoreMarkActivityColumns()
+{
+    namespace core = gy::storage;
+    auto database = openDatabase("activity-columns.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore repository(database.get());
+
+    const int64_t base =
+        QDateTime::fromString("2026-06-25T11:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    std::string error;
+    // 名称与默认种子不同，绕开节流确保写入
+    core::PeerRecord seed = makeRecord("device-B", "Bravo", base);
+    seed.deviceName = "Bravo-Init";
+    QVERIFY(repository.upsertPeer(seed, &error));
+
+    QVERIFY(repository.markChatActivity("device-B", base + 120000, &error));
+    std::vector<core::PeerRecord> records = repository.recentPeers(5, &error);
+    QCOMPARE(int(records.size()), 1);
+    QCOMPARE(records.front().lastChatAtMs.value_or(0), base + 120000);
+    QVERIFY(!records.front().lastTransferAtMs.has_value());  // 传输列不受影响
+
+    QVERIFY(repository.markTransferActivity("device-B", base + 300000, &error));
+    records = repository.recentPeers(5, &error);
+    QCOMPARE(records.front().lastTransferAtMs.value_or(0), base + 300000);
+    QCOMPARE(records.front().lastChatAtMs.value_or(0), base + 120000);  // 聊天时间不受影响
+}
+
+// recentPeers 排序：收藏优先，其后按 COALESCE(last_chat_at, last_transfer_at,
+// last_seen_at) 倒序，limit 生效；取消收藏后回落按活动排序
 void TestStorageDevice::testCoreRecentPeersOrderByActivity()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
+    auto database = openDatabase("order.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore repository(database.get());
     std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-order.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore repository(&database);
 
-    const int64_t t1 = QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
-    const int64_t t2 = t1 + 3600000;
-    const int64_t t3 = t1 + 7200000;
-    const auto seed = [&repository, &error](const char *id, const char *name, int64_t seen) {
-        core::PeerRecord record;
-        record.deviceId = id;
-        record.deviceName = name;
-        record.lastIpAddress = "192.168.1.10";
-        record.lastTcpPort = 35100;
-        record.firstSeenAtMs = seen;
-        record.lastSeenAtMs = seen;
-        return repository.upsertPeer(record, &error);
-    };
-    QVERIFY(seed("device-A", "Alpha", t1));
-    QVERIFY(seed("device-B", "Bravo", t2));
-    QVERIFY(seed("device-C", "Charlie", t3));
+    const int64_t t1 =
+        QDateTime::fromString("2026-06-25T09:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    QVERIFY(repository.upsertPeer(makeRecord("device-A", "Alpha", t1), &error));
+    QVERIFY(repository.upsertPeer(makeRecord("device-B", "Bravo", t1 + 3600000), &error));
+    QVERIFY(repository.upsertPeer(makeRecord("device-C", "Charlie", t1 + 7200000), &error));
 
-    const int64_t aChat = QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    // 让 A 的聊天时间最新，压过 C 的心跳；B 收藏后反超全场
+    const int64_t aChat =
+        QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
     QVERIFY(repository.markChatActivity("device-A", aChat, &error));
-    // 收藏（favorite DESC）优先级高于活动排序，B 排到 A 之前；
-    // A 的聊天时间最新压过 C 的心跳，C 又新于 B 的心跳
     QVERIFY(repository.setDeviceFavorite("device-B", true, &error));
 
-    const std::vector<core::PeerRecord> records = repository.recentPeers(10, &error);
+    std::vector<core::PeerRecord> records = repository.recentPeers(10, &error);
     QCOMPARE(int(records.size()), 3);
     QCOMPARE(QString::fromStdString(records.at(0).deviceId), QStringLiteral("device-B"));
+    QVERIFY(records.at(0).favorite);
     QCOMPARE(QString::fromStdString(records.at(1).deviceId), QStringLiteral("device-A"));
     QCOMPARE(QString::fromStdString(records.at(2).deviceId), QStringLiteral("device-C"));
 
+    // limit 生效
     const std::vector<core::PeerRecord> topTwo = repository.recentPeers(2, &error);
     QCOMPARE(int(topTwo.size()), 2);
     QCOMPARE(QString::fromStdString(topTwo.front().deviceId), QStringLiteral("device-B"));
+
+    // 心跳改名 upsert 不携带 favorite 列：收藏按 device_id 落键，远程改名不清收藏
+    core::PeerRecord heartbeat = makeRecord("device-B", "Bravo-Renamed", t1 + 60000);
+    QVERIFY(repository.upsertPeer(heartbeat, &error));
+    records = repository.recentPeers(10, &error);
+    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("device-B"));
+    QCOMPARE(QString::fromStdString(records.front().deviceName), QStringLiteral("Bravo-Renamed"));
+    QVERIFY(records.front().favorite);
+
+    // 取消收藏后回落到按活动时间排序
+    QVERIFY(repository.setDeviceFavorite("device-B", false, &error));
+    records = repository.recentPeers(10, &error);
+    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("device-A"));
+    QVERIFY(!records.front().favorite);
 }
 
-// 纯 C++ 版发现节流：窗口内无变化心跳不写盘，超窗后恢复写入
+// 置顶/隐藏/备注设置幂等、设备行不存在同样返回成功，Step 变体可组合进单事务
+void TestStorageDevice::testCoreSettersIdempotentAndSteps()
+{
+    namespace core = gy::storage;
+    auto database = openDatabase("setters.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore repository(database.get());
+
+    const int64_t base =
+        QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    std::string error;
+    QVERIFY(repository.upsertPeer(makeRecord("device-manage", "Managed", base), &error));
+
+    // 设置备注、置顶与隐藏，读链路带出
+    QVERIFY(repository.setDeviceAlias("device-manage", "老王", &error));
+    QVERIFY(repository.setDevicePinned("device-manage", true, &error));
+    QVERIFY(repository.setDeviceHidden("device-manage", true, &error));
+    std::vector<core::PeerRecord> records = repository.recentPeers(5, &error);
+    QCOMPARE(QString::fromStdString(records.front().alias), QStringLiteral("老王"));
+    QVERIFY(records.front().pinned);
+    QVERIFY(records.front().hidden);
+
+    // 重复设置幂等且覆盖旧值，不产生重复行
+    QVERIFY(repository.setDeviceAlias("device-manage", "小李", &error));
+    QVERIFY(repository.setDeviceAlias("device-manage", "小李", &error));
+    QVERIFY(repository.setDevicePinned("device-manage", true, &error));
+    QVERIFY(repository.setDeviceHidden("device-manage", true, &error));
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("peer_devices")), 1);
+
+    // 设备行不存在的更新同样幂等返回成功
+    QVERIFY(repository.setDeviceAlias("no-such-device", "幽灵", &error));
+    QVERIFY(repository.setDevicePinned("no-such-device", true, &error));
+    QVERIFY(repository.setDeviceHidden("no-such-device", true, &error));
+
+    // 取消置顶、恢复显示、清除备注（空串）后回落默认值
+    QVERIFY(repository.setDevicePinned("device-manage", false, &error));
+    QVERIFY(repository.setDeviceHidden("device-manage", false, &error));
+    QVERIFY(repository.setDeviceAlias("device-manage", "", &error));
+    records = repository.recentPeers(5, &error);
+    QVERIFY(!records.front().pinned);
+    QVERIFY(!records.front().hidden);
+    QVERIFY(records.front().alias.empty());
+
+    // Step 变体可与其他步骤组合进同一事务执行
+    QVERIFY(database->runSteps(
+        {core::DeviceRepositoryCore::setDevicePinnedStep("device-manage", true),
+         core::DeviceRepositoryCore::setDeviceHiddenStep("device-manage", true),
+         core::DeviceRepositoryCore::setDeviceAliasStep("device-manage", "事务备注")},
+        &error));
+    records = repository.recentPeers(5, &error);
+    QVERIFY(records.front().pinned);
+    QVERIFY(records.front().hidden);
+    QCOMPARE(QString::fromStdString(records.front().alias), QStringLiteral("事务备注"));
+}
+
+// 同一无变化发现快照在节流间隔内不重复写入磁盘
 void TestStorageDevice::testCoreDiscoveryThrottle()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
-    std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-throttle.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore repository(&database);
+    auto database = openDatabase("throttle.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore repository(database.get());
 
-    const int64_t firstSeen = QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
-    core::PeerRecord seed;
-    seed.deviceId = "device-core-d";
-    seed.deviceName = "Delta";
-    seed.lastIpAddress = "192.168.1.10";
-    seed.lastTcpPort = 35100;
-    seed.firstSeenAtMs = firstSeen;
-    seed.lastSeenAtMs = firstSeen;
+    const int64_t firstSeen =
+        QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const core::PeerRecord seed = makeRecord("device-D", "Delta", firstSeen);
+    std::string error;
     QVERIFY(repository.upsertPeer(seed, &error));
 
-    // 节流探针：外部改动 last_chat_at，观察后续 upsert 是否真的写盘
+    // 直接在外部把 last_chat_at 改成一个可识别的值，作为节流是否生效的探针
     const int64_t probeTime = firstSeen + 1800000;
-    QVERIFY(repository.markChatActivity("device-core-d", probeTime, &error));
+    QVERIFY(repository.markChatActivity("device-D", probeTime, &error));
 
+    // 节流窗口内（< 30s）再次 upsert 完全相同的发现快照
     core::PeerRecord heartbeat = seed;
     heartbeat.lastSeenAtMs = firstSeen + 5000;  // 远小于 30 秒
     QVERIFY(repository.upsertPeer(heartbeat, &error));
+
+    // 探针时间应保持不变，说明节流跳过了 upsert 的潜在覆盖
     std::vector<core::PeerRecord> records = repository.recentPeers(5, &error);
     QCOMPARE(int(records.size()), 1);
-    QCOMPARE(records.front().lastChatAtMs.value_or(0), probeTime);  // 探针未被覆盖
+    QCOMPARE(records.front().lastChatAtMs.value_or(0), probeTime);
 
-    // 超过 30 秒后恢复写入并刷新 last_seen_at
+    // 超过节流窗口后再次 upsert，应执行写入并刷新 last_seen_at
     core::PeerRecord later = seed;
-    later.lastSeenAtMs = firstSeen + 60000;
+    later.lastSeenAtMs = firstSeen + 60000;  // 超过 30 秒
     QVERIFY(repository.upsertPeer(later, &error));
     records = repository.recentPeers(5, &error);
     QCOMPARE(records.front().lastSeenAtMs, later.lastSeenAtMs);
 }
 
-// 纯 C++ 版 searchPeers：LIKE 通配符按字面匹配、隐藏设备不返回
+// 关闭并重新打开数据库后，设备目录与活动时间仍可恢复
+void TestStorageDevice::testCoreReopenDatabase()
+{
+    namespace core = gy::storage;
+    const QString path = _temporaryDir.path() + "/reopen.sqlite";
+    const int64_t seen =
+        QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+
+    {
+        auto database = openDatabase("reopen.sqlite");
+        QVERIFY(database);
+        core::DeviceRepositoryCore repository(database.get());
+        std::string error;
+        QVERIFY(repository.upsertPeer(makeRecord("device-E", "Echo", seen), &error));
+        QVERIFY(repository.markChatActivity("device-E", seen + 120000, &error));
+    }
+
+    // 重新打开数据库，设备目录和活动时间应保留
+    auto reopened = openDatabase("reopen.sqlite");
+    QVERIFY(reopened);
+    core::DeviceRepositoryCore repository(reopened.get());
+    std::string error;
+    const std::vector<core::PeerRecord> records = repository.recentPeers(10, &error);
+    QCOMPARE(int(records.size()), 1);
+    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("device-E"));
+    QCOMPARE(QString::fromStdString(records.front().deviceName), QStringLiteral("Echo"));
+    QVERIFY(records.front().lastChatAtMs.has_value());
+}
+
+// v2 存量库升级到 v3：favorite 加列默认 0，alias/pinned/hidden 与快照字段全部保留
+void TestStorageDevice::testCoreV2MigratedToV3KeepsManagementColumns()
+{
+    namespace core = gy::storage;
+    const QString path = _databasePath + ".v2-upgrade.sqlite";
+
+    // 用纯 C++ 连接手工造一个最小 v2 假库：schema_version 登记 2，
+    // peer_devices 含管理三列并带存量值
+    {
+        auto opened = core::SqliteConn::open(path.toStdString());
+        QVERIFY(opened.has_value());
+        core::SqliteConn &conn = opened.value();
+        QVERIFY(conn.exec("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)").has_value());
+        QVERIFY(conn.exec("INSERT INTO schema_version VALUES(2, '2026-10-05T00:00:00.000Z')").has_value());
+        QVERIFY(conn.exec("CREATE TABLE peer_devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, last_ip_address TEXT, last_tcp_port INTEGER, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, last_chat_at TEXT, last_transfer_at TEXT, alias TEXT, pinned INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0)").has_value());
+        QVERIFY(conn.exec("INSERT INTO peer_devices VALUES('device-v2', '存量设备', '192.168.1.30', 35100, "
+                          "'2026-06-25T08:00:00.000Z', '2026-06-25T09:00:00.000Z', NULL, NULL, "
+                          "'老王的电脑', 1, 0)").has_value());
+    }
+
+    core::DatabaseCore database;
+    std::string error;
+    QVERIFY(database.initialize(path.toStdString(), &error));
+    QCOMPARE(database.schemaVersion(), 3);
+
+    core::DeviceRepositoryCore repository(&database);
+    const std::vector<core::PeerRecord> records = repository.recentPeers(10, &error);
+    QCOMPARE(int(records.size()), 1);
+    const core::PeerRecord &record = records.front();
+    // 管理三列与快照字段在 v2 到 v3 迁移后必须原样保留，收藏默认未勾选
+    QCOMPARE(QString::fromStdString(record.deviceId), QStringLiteral("device-v2"));
+    QCOMPARE(QString::fromStdString(record.alias), QStringLiteral("老王的电脑"));
+    QCOMPARE(record.pinned, true);
+    QCOMPARE(record.hidden, false);
+    QCOMPARE(record.favorite, false);
+}
+
+// searchPeers：LIKE 通配符按字面匹配、隐藏设备不返回
 void TestStorageDevice::testCoreSearchPeersEscapeAndHidden()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
-    std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-search.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore repository(&database);
+    auto database = openDatabase("search.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore repository(database.get());
 
-    const int64_t seen = QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
-    const auto seed = [&repository, &error, seen](const char *id, const char *name, const char *ip) {
-        core::PeerRecord record;
-        record.deviceId = id;
-        record.deviceName = name;
-        record.lastIpAddress = ip;
-        record.lastTcpPort = 35100;
-        record.firstSeenAtMs = seen;
-        record.lastSeenAtMs = seen;
-        return repository.upsertPeer(record, &error);
-    };
-    QVERIFY(seed("core-plain", "普通设备", "192.168.1.21"));
-    QVERIFY(seed("core-wild", "名称带%百分号", "192.168.1.22"));
-    QVERIFY(seed("core-under", "名称带_下划线", "192.168.1.23"));
-    QVERIFY(seed("core-hidden", "隐藏设备", "192.168.1.24"));
+    const int64_t seen =
+        QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    std::string error;
+    QVERIFY(repository.upsertPeer(makeRecord("core-plain", "普通设备", seen), &error));
+    QVERIFY(repository.upsertPeer(makeRecord("core-wild", "名称带%百分号", seen), &error));
+    QVERIFY(repository.upsertPeer(makeRecord("core-under", "名称带_下划线", seen), &error));
+    core::PeerRecord hidden = makeRecord("core-hidden", "隐藏设备", seen);
+    hidden.lastIpAddress = "192.168.1.24";  // 独立 IP，验证隐藏条目按地址同样不可见
+    QVERIFY(repository.upsertPeer(hidden, &error));
     QVERIFY(repository.setDeviceHidden("core-hidden", true, &error));
 
     // 关键字 % 与 _ 只做字面包含，不做通配展开
@@ -872,7 +393,7 @@ void TestStorageDevice::testCoreSearchPeersEscapeAndHidden()
     QCOMPARE(int(hits.size()), 1);
     QCOMPARE(QString::fromStdString(hits.front().deviceId), QStringLiteral("core-under"));
 
-    // 常规关键字命中"名称带"前缀的两台，隐藏设备不返回
+    // 常规关键字命中"名称带"前缀的两台，隐藏设备按名称与 IP 检索均不返回
     hits = repository.searchPeers("名称带", 10, &error);
     QCOMPARE(int(hits.size()), 2);
     hits = repository.searchPeers("隐藏", 10, &error);
@@ -884,135 +405,132 @@ void TestStorageDevice::testCoreSearchPeersEscapeAndHidden()
     QVERIFY(repository.searchPeers("   ", 10, &error).empty());
 }
 
-// 纯 C++ 版伪条目标记合并：备注取非空、布尔取或、伪行删除
+// 伪条目标记合并：备注取非空一方、置顶/隐藏/收藏取或，伪行删除后幂等
 void TestStorageDevice::testCoreMergeManualPeerMarkers()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
+    auto database = openDatabase("merge-manual.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore repository(database.get());
+
+    const int64_t seen =
+        QDateTime::fromString("2026-06-25T13:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
     std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-markers.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore repository(&database);
 
-    const int64_t seen = QDateTime::fromString("2026-06-25T17:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
-    const auto seed = [&repository, &error, seen](const char *id, const char *name) {
-        core::PeerRecord record;
-        record.deviceId = id;
-        record.deviceName = name;
-        record.lastIpAddress = "192.168.1.30";
-        record.lastTcpPort = 35100;
-        record.firstSeenAtMs = seen;
-        record.lastSeenAtMs = seen;
-        return repository.upsertPeer(record, &error);
-    };
-    QVERIFY(seed("manual_192.168.1.30", "手动条目"));
-    QVERIFY(repository.setDeviceAlias("manual_192.168.1.30", "手动备注", &error));
-    QVERIFY(repository.setDevicePinned("manual_192.168.1.30", true, &error));
-    QVERIFY(seed("real-device", "真身"));
-    QVERIFY(repository.setDeviceAlias("real-device", "真身备注", &error));
-    QVERIFY(repository.setDeviceFavorite("real-device", true, &error));
+    // 手动伪条目带备注与置顶标记，真身带隐藏标记
+    core::PeerRecord pseudo = makeRecord("manual_192.168.1.77", "手动端点", seen);
+    pseudo.lastIpAddress = "192.168.1.77";
+    QVERIFY(repository.upsertPeer(pseudo, &error));
+    QVERIFY(repository.setDeviceAlias("manual_192.168.1.77", "老王的电脑", &error));
+    QVERIFY(repository.setDevicePinned("manual_192.168.1.77", true, &error));
+    QVERIFY(repository.setDeviceFavorite("manual_192.168.1.77", true, &error));
 
-    QVERIFY(repository.mergeManualPeerMarkers("real-device", "manual_192.168.1.30", &error));
+    core::PeerRecord real = makeRecord("real-uuid-1", "真身设备", seen + 60000);
+    real.lastIpAddress = "192.168.1.77";
+    QVERIFY(repository.upsertPeer(real, &error));
+    QVERIFY(repository.setDeviceHidden("real-uuid-1", true, &error));
+    QVERIFY(repository.mergeManualPeerMarkers("real-uuid-1", "manual_192.168.1.77", &error));
 
-    const std::vector<core::PeerRecord> records = repository.recentPeers(5, &error);
-    QCOMPARE(int(records.size()), 1);
-    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("real-device"));
-    // 真身已有非空备注优先，置顶取或，收藏保留真身值
-    QCOMPARE(QString::fromStdString(records.front().alias), QStringLiteral("真身备注"));
-    QVERIFY(records.front().pinned);
-    QVERIFY(records.front().favorite);
+    std::vector<core::PeerRecord> records = repository.recentPeers(10, &error);
+    QCOMPARE(int(records.size()), 1);  // 伪行已删除，只剩真行
+    const core::PeerRecord &merged = records.front();
+    QCOMPARE(QString::fromStdString(merged.deviceId), QStringLiteral("real-uuid-1"));
+    QCOMPARE(QString::fromStdString(merged.alias), QStringLiteral("老王的电脑"));
+    QVERIFY(merged.pinned);
+    QVERIFY(merged.favorite);
+    QVERIFY(merged.hidden);
 
-    // 幂等：伪行已删除后再次合并不报错
-    QVERIFY(repository.mergeManualPeerMarkers("real-device", "manual_192.168.1.30", &error));
+    // 真行已有备注时不被伪行值覆盖（备注取非空一方）
+    core::PeerRecord pseudo2 = makeRecord("manual_192.168.1.78", "手动端点二", seen);
+    pseudo2.lastIpAddress = "192.168.1.78";
+    QVERIFY(repository.upsertPeer(pseudo2, &error));
+    QVERIFY(repository.setDeviceAlias("manual_192.168.1.78", "伪身备注", &error));
+    core::PeerRecord real2 = makeRecord("real-uuid-2", "真身设备二", seen + 90000);
+    real2.lastIpAddress = "192.168.1.78";
+    QVERIFY(repository.upsertPeer(real2, &error));
+    QVERIFY(repository.setDeviceAlias("real-uuid-2", "真身备注", &error));
+    QVERIFY(repository.mergeManualPeerMarkers("real-uuid-2", "manual_192.168.1.78", &error));
+    records = repository.recentPeers(10, &error);
+    QCOMPARE(int(records.size()), 2);
+    for (const core::PeerRecord &record : records) {
+        if (record.deviceId == "real-uuid-2") {
+            QCOMPARE(QString::fromStdString(record.alias), QStringLiteral("真身备注"));
+        }
+    }
+
+    // 无伪行时迁移为空操作，真行保持原样；伪行已删除后再次合并不报错
+    QVERIFY(repository.mergeManualPeerMarkers("real-uuid-1", "manual_10.0.0.1", &error));
+    QVERIFY(repository.mergeManualPeerMarkers("real-uuid-1", "manual_192.168.1.77", &error));
+    QCOMPARE(int(repository.recentPeers(10, &error).size()), 2);
 }
 
-// 纯 C++ 版删除设备：先清传输历史再删设备行，聊天两级级联
+// 删除设备级联清空聊天与传输历史且不触碰文件系统，保留设备不误伤；
+// 再次发现按全新设备入目录
 void TestStorageDevice::testCoreDeleteDeviceWithHistoryCascade()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
+    auto database = openDatabase("delete-cascade.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore devices(database.get());
+    core::MessageRepositoryCore messages(database.get());
+    core::TransferRepositoryCore transfers(database.get());
+
+    const int64_t base =
+        QDateTime::fromString("2026-06-25T16:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
     std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-cascade.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore devices(&database);
-    core::MessageRepositoryCore messages(&database);
-    core::TransferRepositoryCore transfers(&database);
+    QVERIFY(devices.upsertPeer(makeRecord("device-del", "DeleteMe", base), &error));
+    QVERIFY(devices.upsertPeer(makeRecord("device-keep", "KeepMe", base), &error));
 
-    const int64_t at = QDateTime::fromString("2026-06-25T18:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
-    core::PeerRecord peer;
-    peer.deviceId = "core-cascade";
-    peer.deviceName = "Cascade";
-    peer.lastIpAddress = "192.168.1.40";
-    peer.lastTcpPort = 35100;
-    peer.firstSeenAtMs = at;
-    peer.lastSeenAtMs = at;
-    QVERIFY(devices.upsertPeer(peer, &error));
+    // 被删设备两条聊天消息与两条传输历史，保留设备各一条
+    QVERIFY(messages.saveMessage(makeMessage("device-del", "msg-1", base), &error));
+    QVERIFY(messages.saveMessage(makeMessage("device-del", "msg-2", base + 60000), &error));
+    QVERIFY(transfers.upsertFinishedTransfer(makeTransfer("device-del", "tr-1", base), &error));
+    QVERIFY(transfers.upsertFinishedTransfer(makeTransfer("device-del", "tr-2", base + 30000), &error));
+    QVERIFY(messages.saveMessage(makeMessage("device-keep", "msg-k", base), &error));
+    QVERIFY(transfers.upsertFinishedTransfer(makeTransfer("device-keep", "tr-k", base), &error));
 
-    core::MessageRecord message;
-    message.messageId = "core-msg-1";
-    message.peerDeviceId = peer.deviceId;
-    message.senderDeviceId = peer.deviceId;
-    message.senderName = "Cascade";
-    message.content = "级联删除消息";
-    message.sentAtMs = at;
-    message.localStatus = 1;
-    message.createdAtMs = at;
-    QVERIFY(messages.saveMessage(message, &error));
+    // 删除路径只涉及数据库行，不触碰任何本地文件
+    QVERIFY(devices.deleteDeviceWithHistory("device-del", &error));
 
-    core::TransferRecord transfer;
-    transfer.recordId = "core-tr-1";
-    transfer.sessionId = "core-tr-1-s";
-    transfer.peerDeviceId = peer.deviceId;
-    transfer.peerName = "Cascade";
-    transfer.displayName = "file.bin";
-    transfer.fileCount = 1;
-    transfer.totalBytes = 4096;
-    transfer.status = core::kTransferStatusCompleted;
-    transfer.startedAtMs = at;
-    transfer.finishedAtMs = at + 10000;
-    QVERIFY(transfers.upsertFinishedTransfer(transfer, &error));
+    // 级联完整：设备行删除、传输历史清空、聊天会话与消息随 CASCADE 清空，
+    // 保留设备的数据一行不少
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("peer_devices")), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_messages")), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_conversations")), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("transfer_history")), 1);
 
-    QVERIFY(devices.deleteDeviceWithHistory(peer.deviceId, &error));
+    // 幂等：设备行已不存在时再次删除仍返回成功
+    QVERIFY(devices.deleteDeviceWithHistory("device-del", &error));
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("peer_devices")), 1);
 
-    core::MessageCursor cursor;
-    cursor.peerDeviceId = peer.deviceId;
-    QCOMPARE(int(messages.loadMessages(cursor, 10, &error).size()), 0);
-    core::TransferQuery query;
-    query.peerDeviceId = peer.deviceId;
-    QCOMPARE(int(transfers.queryTransfers(query, 10, &error).size()), 0);
-    QCOMPARE(int(devices.recentPeers(10, &error).size()), 0);
+    const std::vector<core::PeerRecord> records = devices.recentPeers(5, &error);
+    QCOMPARE(int(records.size()), 1);
+    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("device-keep"));
+
+    // 删除后同快照心跳不被节流缓存拦截，按全新设备重新入目录（first_seen 语义），
+    // 且目录重建不会带回任何旧聊天或传输历史
+    devices.noteDeviceDeleted("device-del");
+    QVERIFY(devices.upsertPeer(makeRecord("device-del", "DeleteMe", base), &error));
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("peer_devices")), 2);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("chat_messages")), 1);
+    QCOMPARE(gy::test::tableRowCount(*database, QStringLiteral("transfer_history")), 1);
 }
 
-// 纯 C++ 版 *Step 组合进单事务：全部成功才提交
+// *Step 组合进单事务：全部成功才提交，任一步失败整体回滚
 void TestStorageDevice::testCoreComposeStepsInSingleTransaction()
 {
     namespace core = gy::storage;
-    core::DatabaseCore database;
-    std::string error;
-    QVERIFY(database.initialize((_temporaryDir.path() + "/core-steps.sqlite").toStdString(), &error));
-    core::DeviceRepositoryCore devices(&database);
-    core::MessageRepositoryCore messages(&database);
+    auto database = openDatabase("steps.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore devices(database.get());
+    core::MessageRepositoryCore messages(database.get());
 
-    const int64_t at = QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
-    core::PeerRecord peer;
-    peer.deviceId = "core-steps";
-    peer.deviceName = "Steps";
-    peer.lastIpAddress = "192.168.1.50";
-    peer.lastTcpPort = 35100;
-    peer.firstSeenAtMs = at;
-    peer.lastSeenAtMs = at;
-
-    core::MessageRecord message;
-    message.messageId = "core-steps-msg";
-    message.peerDeviceId = peer.deviceId;
-    message.senderDeviceId = "self";
-    message.senderName = "Self";
-    message.content = "组合事务消息";
-    message.sentAtMs = at;
-    message.localStatus = 0;
-    message.createdAtMs = at;
+    const int64_t at =
+        QDateTime::fromString("2026-06-25T19:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    const core::PeerRecord peer = makeRecord("device-steps", "Steps", at);
+    const core::MessageRecord message = makeMessage("device-steps", "steps-msg", at);
 
     // 设备 upsert、消息写入、活动时间三步同事务，再补一个必失败步验证整体回滚
-    core::MessageRecord conflict = message;
-    conflict.messageId = "core-steps-msg";
     const auto failStep = [](core::SqliteConn &, std::string *taskError) {
         if (taskError) {
             *taskError = "组合事务失败步";
@@ -1020,81 +538,202 @@ void TestStorageDevice::testCoreComposeStepsInSingleTransaction()
         return false;
     };
 
-    QVERIFY(!database.runSteps({core::DeviceRepositoryCore::upsertPeerStep(peer),
-                                core::MessageRepositoryCore::saveMessageStep(message),
-                                failStep},
-                               &error));
+    std::string error;
+    QVERIFY(!database->runSteps({core::DeviceRepositoryCore::upsertPeerStep(peer),
+                                 core::MessageRepositoryCore::saveMessageStep(message),
+                                 failStep},
+                                &error));
     QVERIFY(devices.recentPeers(5, &error).empty());  // 第一步也已回滚
 
-    QVERIFY(database.runSteps({core::DeviceRepositoryCore::upsertPeerStep(peer),
-                               core::MessageRepositoryCore::saveMessageStep(message),
-                               core::DeviceRepositoryCore::markChatActivityStep(peer.deviceId, at + 1000)},
-                              &error));
+    QVERIFY(database->runSteps({core::DeviceRepositoryCore::upsertPeerStep(peer),
+                                core::MessageRepositoryCore::saveMessageStep(message),
+                                core::DeviceRepositoryCore::markChatActivityStep(peer.deviceId, at + 1000)},
+                               &error));
     core::MessageCursor cursor;
     cursor.peerDeviceId = peer.deviceId;
     QCOMPARE(int(messages.loadMessages(cursor, 5, &error).size()), 1);
 }
 
-// 工具方法：在临时目录中创建并初始化数据库
-std::unique_ptr<SqliteDatabaseBroker> TestStorageDevice::openDatabase(const QString &relativePath)
+// 关联合并（含历史）：旧行的管理标记并入新行，聊天与传输记录整体改挂新 ID，
+// 旧行删除；新行不存在时先按传入记录建行
+void TestStorageDevice::testMergeDeviceRecordsWithHistory()
+{
+    namespace core = gy::storage;
+    auto database = openDatabase("merge-device-history.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore deviceRepository(database.get());
+    core::MessageRepositoryCore messageRepository(database.get());
+    core::TransferRepositoryCore transferRepository(database.get());
+
+    const int64_t base =
+        QDateTime::fromString("2026-06-25T14:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    std::string error;
+    core::PeerRecord oldDevice = makeRecord("device-old", "旧设备", base);
+    oldDevice.lastIpAddress = "192.168.1.20";
+    QVERIFY(deviceRepository.upsertPeer(oldDevice, &error));
+    QVERIFY(deviceRepository.setDeviceAlias("device-old", "旧名备注", &error));
+    QVERIFY(deviceRepository.setDeviceFavorite("device-old", true, &error));
+    QVERIFY(deviceRepository.setDevicePinned("device-old", true, &error));
+
+    // 旧设备一条消息与一条传输记录
+    QVERIFY(messageRepository.saveMessage(makeMessage("device-old", "old-msg-1", base + 60000), &error));
+    QVERIFY(transferRepository.upsertFinishedTransfer(
+        makeTransfer("device-old", "old-rec-1", base + 120000), &error));
+
+    // 新设备已存在（真身重新出现），带自己的名称
+    core::PeerRecord newDevice = makeRecord("device-new", "新设备", base + 300000);
+    QVERIFY(deviceRepository.upsertPeer(newDevice, &error));
+
+    // 合并入口是 LocalDataBroker 的对外契约，传入 Qt 领域记录
+    PeerRecord newDeviceQt;
+    newDeviceQt.deviceId = "device-new";
+    newDeviceQt.deviceName = "新设备";
+    newDeviceQt.lastIpAddress = "192.168.1.10";
+    newDeviceQt.lastTcpPort = 35100;
+    newDeviceQt.firstSeenAt = QDateTime::fromMSecsSinceEpoch(newDevice.firstSeenAtMs, QTimeZone::UTC);
+    newDeviceQt.lastSeenAt = newDeviceQt.firstSeenAt;
+
+    const auto done = QSharedPointer<bool>::create(false);
+    auto merge = std::make_unique<LocalDataBroker>();
+    QString qtError;
+    QVERIFY(merge->initialize(_temporaryDir.path() + "/merge-device-history.sqlite", &qtError));
+    merge->mergeDeviceRecords(merge.get(), newDeviceQt, "device-old", true,
+                              [done](bool succeeded) { *done = succeeded; });
+    QTRY_VERIFY(*done);
+    merge->closeStorage();
+
+    // 旧行已删除，新行带迁移来的标记
+    const std::vector<core::PeerRecord> records = deviceRepository.recentPeers(10, &error);
+    QCOMPARE(int(records.size()), 1);
+    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("device-new"));
+    QCOMPARE(QString::fromStdString(records.front().deviceName), QStringLiteral("新设备"));
+    QCOMPARE(QString::fromStdString(records.front().alias), QStringLiteral("旧名备注"));
+    QVERIFY(records.front().favorite);
+    QVERIFY(records.front().pinned);
+
+    // 聊天与传输已改挂新 ID
+    core::MessageCursor cursor;
+    cursor.peerDeviceId = "device-new";
+    const std::vector<core::MessageRecord> moved =
+        messageRepository.loadMessages(cursor, 10, &error);
+    QCOMPARE(int(moved.size()), 1);
+    QCOMPARE(QString::fromStdString(moved.front().messageId), QStringLiteral("old-msg-1"));
+    core::TransferQuery query;
+    query.peerDeviceId = "device-new";
+    QCOMPARE(int(transferRepository.queryTransfers(query, 10, &error).size()), 1);
+}
+
+// 关联合并（不迁移历史）：管理标记并入、旧行删除、旧聊天与传输一并放弃
+void TestStorageDevice::testMergeDeviceRecordsWithoutHistory()
+{
+    namespace core = gy::storage;
+    auto database = openDatabase("merge-device-nohistory.sqlite");
+    QVERIFY(database);
+    core::DeviceRepositoryCore deviceRepository(database.get());
+    core::MessageRepositoryCore messageRepository(database.get());
+    core::TransferRepositoryCore transferRepository(database.get());
+
+    const int64_t base =
+        QDateTime::fromString("2026-06-25T15:00:00.000Z", Qt::ISODateWithMs).toMSecsSinceEpoch();
+    std::string error;
+    QVERIFY(deviceRepository.upsertPeer(makeRecord("device-old2", "旧设备二", base), &error));
+    QVERIFY(deviceRepository.setDeviceAlias("device-old2", "待并备注", &error));
+    QVERIFY(messageRepository.saveMessage(makeMessage("device-old2", "old2-msg-1", base + 60000), &error));
+    QVERIFY(transferRepository.upsertFinishedTransfer(
+        makeTransfer("device-old2", "old2-rec-1", base + 120000), &error));
+
+    // 新行不存在：按传入记录建行
+    PeerRecord newDeviceQt;
+    newDeviceQt.deviceId = "device-new2";
+    newDeviceQt.deviceName = "新设备二";
+    newDeviceQt.firstSeenAt =
+        QDateTime::fromMSecsSinceEpoch(base + 300000, QTimeZone::UTC);
+    newDeviceQt.lastSeenAt = newDeviceQt.firstSeenAt;
+
+    const auto done = QSharedPointer<bool>::create(false);
+    auto merge = std::make_unique<LocalDataBroker>();
+    QString qtError;
+    QVERIFY(merge->initialize(_temporaryDir.path() + "/merge-device-nohistory.sqlite", &qtError));
+    merge->mergeDeviceRecords(merge.get(), newDeviceQt, "device-old2", false,
+                              [done](bool succeeded) { *done = succeeded; });
+    QTRY_VERIFY(*done);
+    merge->closeStorage();
+
+    const std::vector<core::PeerRecord> records = deviceRepository.recentPeers(10, &error);
+    QCOMPARE(int(records.size()), 1);
+    QCOMPARE(QString::fromStdString(records.front().deviceId), QStringLiteral("device-new2"));
+    QCOMPARE(QString::fromStdString(records.front().alias), QStringLiteral("待并备注"));
+
+    // 旧历史被放弃：聊天随旧行级联清理，传输显式删除
+    core::MessageCursor cursor;
+    cursor.peerDeviceId = "device-old2";
+    QCOMPARE(int(messageRepository.loadMessages(cursor, 10, &error).size()), 0);
+    cursor.peerDeviceId = "device-new2";
+    QCOMPARE(int(messageRepository.loadMessages(cursor, 10, &error).size()), 0);
+    core::TransferQuery query;
+    query.peerDeviceId = "device-old2";
+    QCOMPARE(int(transferRepository.queryTransfers(query, 10, &error).size()), 0);
+    query.peerDeviceId = "device-new2";
+    QCOMPARE(int(transferRepository.queryTransfers(query, 10, &error).size()), 0);
+}
+
+// 工具方法：在临时目录中打开（或创建）核心数据库
+std::unique_ptr<gy::storage::DatabaseCore> TestStorageDevice::openDatabase(
+    const QString &relativePath)
 {
     return gy::test::openDatabase(_temporaryDir.path(), relativePath);
 }
 
-// 工具方法：构造一份固定的 PeerRecord
-PeerRecord TestStorageDevice::makeRecord(const QString &deviceId, const QString &name,
-                                         const QDateTime &seen)
+// 工具方法：构造一份固定的核心设备记录
+gy::storage::PeerRecord TestStorageDevice::makeRecord(const QString &deviceId,
+                                                      const QString &name, int64_t seenMs)
 {
-    PeerRecord record;
-    record.deviceId = deviceId;
-    record.deviceName = name;
+    gy::storage::PeerRecord record;
+    record.deviceId = deviceId.toStdString();
+    record.deviceName = name.toStdString();
     record.lastIpAddress = "192.168.1.10";
     record.lastTcpPort = 35100;
-    record.firstSeenAt = seen;
-    record.lastSeenAt = seen;
+    record.firstSeenAtMs = seenMs;
+    record.lastSeenAtMs = seenMs;
     return record;
 }
 
-// 工具方法：构造一条指定会话的入站聊天消息记录
-MessageRecord TestStorageDevice::makeMessage(const QString &deviceId, const QString &messageId,
-                                             const QDateTime &sentAt)
+// 工具方法：构造一条指定会话的入站核心消息记录
+gy::storage::MessageRecord TestStorageDevice::makeMessage(const QString &deviceId,
+                                                          const QString &messageId,
+                                                          int64_t sentMs)
 {
-    MessageRecord record;
-    record.messageId = messageId;
-    record.peerDeviceId = deviceId;
-    record.direction = RecordDirection::Incoming;
-    record.senderDeviceId = deviceId;
+    gy::storage::MessageRecord record;
+    record.messageId = messageId.toStdString();
+    record.peerDeviceId = deviceId.toStdString();
+    record.direction = gy::storage::RecordDirection::Incoming;
+    record.senderDeviceId = deviceId.toStdString();
     record.senderName = "Sender";
     record.content = "级联删除测试消息";
-    record.sentAt = sentAt;
+    record.sentAtMs = sentMs;
     record.localStatus = 1;
-    record.createdAt = sentAt;
+    record.createdAtMs = sentMs;
     return record;
 }
 
-// 工具方法：构造一条已完成的传输历史记录
-TransferRecord TestStorageDevice::makeTransfer(const QString &deviceId, const QString &recordId,
-                                               const QDateTime &startedAt)
+// 工具方法：构造一条已完成的核心传输历史记录
+gy::storage::TransferRecord TestStorageDevice::makeTransfer(const QString &deviceId,
+                                                            const QString &recordId,
+                                                            int64_t startedMs)
 {
-    TransferRecord record;
-    record.recordId = recordId;
-    record.sessionId = recordId + "-session";
-    record.peerDeviceId = deviceId;
+    gy::storage::TransferRecord record;
+    record.recordId = recordId.toStdString();
+    record.sessionId = (recordId + "-session").toStdString();
+    record.peerDeviceId = deviceId.toStdString();
     record.peerName = "Peer";
-    record.direction = RecordDirection::Incoming;
+    record.direction = gy::storage::RecordDirection::Incoming;
     record.displayName = "file.txt";
     record.fileCount = 1;
     record.totalBytes = 100;
-    record.status = gy::protocol::kTransferStatusCompleted;
-    record.startedAt = startedAt;
-    record.finishedAt = startedAt.addSecs(10);
+    record.status = gy::storage::kTransferStatusCompleted;
+    record.startedAtMs = startedMs;
+    record.finishedAtMs = startedMs + 10000;
     return record;
-}
-
-// 工具方法：统计 peer_devices 表行数
-int TestStorageDevice::peerRowCount(SqliteDatabaseBroker &database)
-{
-    return gy::test::tableRowCount(database, QStringLiteral("peer_devices"));
 }
 
 QTEST_MAIN(TestStorageDevice)

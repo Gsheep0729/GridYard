@@ -5,6 +5,7 @@ find_package(Qt6 REQUIRED COMPONENTS Test Gui)
 # 通用 include 路径
 set(CLIENT_CORE_DIR ${CMAKE_SOURCE_DIR}/client/core)
 set(CLIENT_NET_DIR ${CMAKE_SOURCE_DIR}/client/network)
+set(CLIENT_STORAGE_DIR ${CMAKE_SOURCE_DIR}/client/storage)
 
 # 原生套接字 Qt 适配器（Phase5-b 自 shared/net 归位客户端）按需直编的源分组；
 # 事件泵核心经 gy_net_core 链接，"core/..." 前缀头随之可解析
@@ -22,11 +23,14 @@ target_include_directories(gy_test_utils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/t
 # --- SQLite 数据库基础测试 ---
 qt_add_executable(test_storage_database test_storage_database.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_STORAGE_DIR}/local_data_broker.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
 )
-target_link_libraries(test_storage_database PRIVATE gy_storage gy_storage_core Qt6::Test Qt6::Sql)
+target_link_libraries(test_storage_database PRIVATE gy_shared gy_storage_core Qt6::Test)
 target_include_directories(test_storage_database PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
 )
 target_compile_features(test_storage_database PRIVATE cxx_std_23)
 add_test(NAME test_storage_database COMMAND test_storage_database)
@@ -34,12 +38,15 @@ add_test(NAME test_storage_database COMMAND test_storage_database)
 # --- 设备目录 Repository 测试 ---
 qt_add_executable(test_storage_device test_storage_device.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_STORAGE_DIR}/local_data_broker.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
 )
 target_link_libraries(test_storage_device PRIVATE
-    gy_test_utils gy_storage gy_storage_core Qt6::Test Qt6::Sql)
+    gy_test_utils gy_shared gy_storage_core Qt6::Test)
 target_include_directories(test_storage_device PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
 )
 target_compile_features(test_storage_device PRIVATE cxx_std_23)
 add_test(NAME test_storage_device COMMAND test_storage_device)
@@ -49,10 +56,11 @@ qt_add_executable(test_storage_message test_storage_message.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
 target_link_libraries(test_storage_message PRIVATE
-    gy_test_utils gy_storage gy_storage_core Qt6::Test Qt6::Sql)
+    gy_test_utils gy_shared gy_storage_core Qt6::Test)
 target_include_directories(test_storage_message PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
 )
 target_compile_features(test_storage_message PRIVATE cxx_std_23)
 add_test(NAME test_storage_message COMMAND test_storage_message)
@@ -62,10 +70,11 @@ qt_add_executable(test_storage_transfer_history test_storage_transfer_history.cp
     ${CLIENT_CORE_DIR}/application_paths.cpp
 )
 target_link_libraries(test_storage_transfer_history PRIVATE
-    gy_test_utils gy_storage gy_storage_core Qt6::Test Qt6::Sql)
+    gy_test_utils gy_shared gy_storage_core Qt6::Test)
 target_include_directories(test_storage_transfer_history PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
 )
 target_compile_features(test_storage_transfer_history PRIVATE cxx_std_23)
 add_test(NAME test_storage_transfer_history COMMAND test_storage_transfer_history)
@@ -104,16 +113,18 @@ qt_add_executable(test_chat_manager test_chat_manager.cpp
     ${CLIENT_NET_DIR}/p2p_server.cpp
     ${CLIENT_NET_DIR}/file_receiver_worker.cpp
     ${CLIENT_CORE_DIR}/data_types.h
+    ${CLIENT_STORAGE_DIR}/local_data_broker.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
     ${NET_ADAPTER_ALL}
 )
 target_link_libraries(test_chat_manager PRIVATE
     gy_shared
-    gy_storage
+    gy_storage_core
+    gy_test_utils
     Qt6::Test
     Qt6::Core
     Qt6::Gui
     Qt6::Qml
-    Qt6::Sql
     gy_core
     gy_net_core
 )
@@ -147,16 +158,17 @@ qt_add_executable(test_history_controller test_history_controller.cpp
 
     ${CLIENT_NET_DIR}/rendezvous_client.cpp
     ${CLIENT_CORE_DIR}/data_types.h
+    ${CLIENT_STORAGE_DIR}/local_data_broker.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
     ${NET_ADAPTER_ALL}
 )
 target_link_libraries(test_history_controller PRIVATE
     gy_test_utils
     gy_shared
-    gy_storage
+    gy_storage_core
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Sql
     gy_core
     gy_net_core
 )
@@ -467,16 +479,17 @@ qt_add_executable(test_peer_discovery_view_model test_peer_discovery_view_model.
     ${CLIENT_CORE_DIR}/application_paths.cpp
     ${CLIENT_NET_DIR}/discovery_service.cpp
     ${CLIENT_CORE_DIR}/data_types.h
+    ${CLIENT_STORAGE_DIR}/local_data_broker.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
     ${NET_ADAPTER_UDP}
 )
 target_link_libraries(test_peer_discovery_view_model PRIVATE
     gy_shared
-    gy_storage
+    gy_storage_core
     gy_test_utils
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Sql
     gy_core
     gy_net_core
 )
@@ -496,16 +509,17 @@ qt_add_executable(test_backup test_backup.cpp
     ${CLIENT_CORE_DIR}/backup_controller.cpp
     ${CLIENT_CORE_DIR}/config_manager.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_STORAGE_DIR}/local_data_broker.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
     ${NET_ADAPTER_INTERFACES}
 )
 target_link_libraries(test_backup PRIVATE
     gy_shared
-    gy_storage
+    gy_storage_core
     gy_test_utils
     Qt6::Test
     Qt6::Core
     Qt6::Gui
-    Qt6::Sql
     gy_core
     gy_net_core
 )
@@ -522,8 +536,9 @@ add_test(NAME test_backup COMMAND test_backup)
 # --- DatabaseWorker 语义测试 ---
 qt_add_executable(test_database_worker test_database_worker.cpp
     ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
 )
-target_link_libraries(test_database_worker PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_link_libraries(test_database_worker PRIVATE gy_shared gy_storage_core Qt6::Test)
 target_include_directories(test_database_worker PRIVATE
     ${CLIENT_CORE_DIR}
     ${CMAKE_SOURCE_DIR}/client/storage
@@ -550,12 +565,10 @@ qt_add_executable(test_conversation_timeline_model test_conversation_timeline_mo
 )
 target_link_libraries(test_conversation_timeline_model PRIVATE
     gy_shared
-    gy_storage
     Qt6::Test
     Qt6::Core
     Qt6::Gui
     Qt6::Qml
-    Qt6::Sql
     gy_core
     gy_net_core
 )
