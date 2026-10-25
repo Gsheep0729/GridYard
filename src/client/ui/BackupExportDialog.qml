@@ -1,7 +1,7 @@
 /**
- * @file    BackupExportDialog.qml
- * @version 7.23.0
- * @date 2026-10-07
+* @file    BackupExportDialog.qml
+* @version 8.0.0
+* @date 2026-10-25
  * @author  GridYard Team
  * @brief   用户数据导出对话框（备份与迁移）
  *
@@ -14,6 +14,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
+import "../utils/FormatUtils.js" as FormatUtils
 import "../utils/Style.js" as Style
 
 Dialog {
