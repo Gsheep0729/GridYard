@@ -8,7 +8,8 @@
 默认用法（全仓扫描）：遍历 src/ 下 .h/.cpp/.qml/.js 文件（排除 build/dist 等
 构建产物目录），解析文件头 @version，对照主版本。主版本以 src/CMakeLists.txt
 的 project VERSION 为准，并与 src/client/main.cpp 的 setApplicationVersion、
-README.md 的项目版本行交叉核对，三处不一致算漂移。
+README.md 的项目版本行、src/scripts/PKGBUILD 的 pkgver 交叉核对，四处
+不一致算漂移。
 文件头漂移只认：领先主版本、缺 @version、缺文件头、版本行格式坏；落后主版本
 的文件归类为"历史版本（正常）"单独列出，不算漂移——文件头只要求本提交实际
 改到的文件对齐，未涉及文件保留历史版本头，不再全仓批量对齐。
@@ -42,12 +43,15 @@ RE_PROJECT = re.compile(r"project\(GridYard\s+VERSION\s+(\d+(?:\.\d+){0,2})")
 RE_APP_VERSION = re.compile(r'setApplicationVersion\("(\d+(?:\.\d+){0,2})"\)')
 # README 项目版本行
 RE_README_VERSION = re.compile(r"\|\s*项目版本\s*\|\s*v?(\d+(?:\.\d+){0,2})\s*\|")
+# PKGBUILD 包版本行（行首锚定，避免误匹配注释）
+RE_PKGBUILD_VERSION = re.compile(r"^pkgver=(\d+(?:\.\d+){0,2})", re.MULTILINE)
 
-# 版本三处的读取位置（CMakeLists 是主版本权威来源，另两处交叉核对）
+# 版本四处的读取位置（CMakeLists 是主版本权威来源，另三处交叉核对）
 VERSION_SOURCES = {
     "src/CMakeLists.txt": RE_PROJECT,
     "src/client/main.cpp": RE_APP_VERSION,
     "README.md": RE_README_VERSION,
+    "src/scripts/PKGBUILD": RE_PKGBUILD_VERSION,
 }
 
 
@@ -93,7 +97,7 @@ def body_after_header(text):
 
 
 def read_version_sources(texts):
-    """从版本三处文本解析主版本，返回 {位置: 版本字符串或 None}"""
+    """从版本四处文本解析主版本，返回 {位置: 版本字符串或 None}"""
     versions = {}
     for location, regex in VERSION_SOURCES.items():
         text = texts.get(location)
@@ -102,13 +106,13 @@ def read_version_sources(texts):
     return versions
 
 
-def three_locations_consistent(versions):
-    """版本三处是否齐全且一致"""
+def version_sources_consistent(versions):
+    """版本四处是否齐全且一致"""
     return all(versions.values()) and len({normalize(v) for v in versions.values()}) == 1
 
 
 def format_versions(versions):
-    """把版本三处读取结果排成一行展示文本"""
+    """把版本四处读取结果排成一行展示文本"""
     return "、".join(f"{loc}={fmt_version(v)}" for loc, v in versions.items())
 
 
@@ -164,16 +168,16 @@ def scan_repository():
         elif header_ver and normalize(header_ver) < main_ver:
             historical.append((rel, header_ver, None))
 
-    consistent = three_locations_consistent(versions)
+    consistent = version_sources_consistent(versions)
     state = "一致" if consistent else "不一致"
-    print(f"主版本 {fmt_version(versions['src/CMakeLists.txt'])}，版本三处{state}（{format_versions(versions)}）")
+    print(f"主版本 {fmt_version(versions['src/CMakeLists.txt'])}，版本四处{state}（{format_versions(versions)}）")
 
     if not consistent:
-        print("漂移：版本三处主版本不一致（见上行读取结果）")
+        print("漂移：版本四处主版本不一致（见上行读取结果）")
 
     if drifts:
         print(f"漂移：{len(drifts)} 个文件（只有领先主版本、缺 @version、缺文件头、"
-              f"版本行格式坏、版本三处不一致算漂移）")
+              f"版本行格式坏、版本四处不一致算漂移）")
         print_rows(drifts, with_problems=True)
     else:
         print("漂移：0 个文件")
@@ -264,9 +268,9 @@ def check_commit(ref, verbose):
         need_align.append((new_path, header_ver, problems))
 
     print(f"提交 {sha} {subject}")
-    consistent = three_locations_consistent(versions)
+    consistent = version_sources_consistent(versions)
     state = "一致" if consistent else "不一致"
-    print(f"声明版本：{fmt_version(declared)}（该提交版本三处{state}：{format_versions(versions)}）")
+    print(f"声明版本：{fmt_version(declared)}（该提交版本四处{state}：{format_versions(versions)}）")
 
     if need_align:
         print(f"需对齐文件集（实质改到的 src 源码文件，共 {len(need_align)} 个）：")
