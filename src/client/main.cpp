@@ -123,7 +123,16 @@ int main(int argc, char *argv[]) {
 
     // 设置环境变量，供 ConfigManager 读取
     if (parser.isSet(portOption)) {
-        qputenv("GRIDYARD_PORT", parser.value(portOption).toUtf8());
+        // 端口须为 1~65535 的数字：ConfigManager 侧按 quint16 接收，超出范围的
+        // 值会被静默截断成其他端口（如 70000 变 4464），入口处直接拒绝
+        const QString portValue = parser.value(portOption);
+        bool portOk = false;
+        const quint16 parsedPort = portValue.toUShort(&portOk);
+        if (!portOk || parsedPort == 0) {
+            qCritical("无效的 --port 参数：%s（应为 1~65535 之间的数字）", qPrintable(portValue));
+            return 1;
+        }
+        qputenv("GRIDYARD_PORT", portValue.toUtf8());
     }
     if (parser.isSet(configOption)) {
         qputenv("GRIDYARD_CONFIG", parser.value(configOption).toUtf8());
