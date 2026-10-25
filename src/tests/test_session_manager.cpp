@@ -1090,7 +1090,15 @@ void TestSessionManager::testMultiSendRejectsReentryWhileSerializing()
 
     QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);  // 只有第一批真正发起
     QCOMPARE(startedSpy.first().first().toInt(), 2);
-    QCOMPARE(errorSpy.count(), 1);  // 第二次调用恰好留下一条重入提示
+    // 第一批目标的连接拒绝错误与本断言无关，可能赶在断言前送达（实测过滤单跑必现），
+    // 只按重入提示文本计数，避免把传输期错误误计为重入拒绝
+    int reentryErrors = 0;
+    for (const QList<QVariant> &entry : errorSpy) {
+        if (entry.value(0).toString().contains(QStringLiteral("上一次群发"))) {
+            ++reentryErrors;
+        }
+    }
+    QCOMPARE(reentryErrors, 1);  // 第二次调用恰好留下一条重入提示
 
     // 会话卡只属于第一批的两台目标，第三台未因重入被建会话
     const QVariantList sessions = _manager->sessions();
