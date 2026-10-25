@@ -9,6 +9,9 @@ set(CMAKE_CXX_MODULE_STD ON)
 
 project(GridYard VERSION 8.0.0 LANGUAGES CXX)
 
+# 安装规则（client 与 rendezvous 的 install()）使用的 bin/lib 目标目录变量由这里提供
+include(GNUInstallDirs)
+
 # QuickDialogs2 提供原生 FileDialog / FolderDialog，替代已废弃的 Qt.labs.platform 方案
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Widgets)
 qt_standard_project_setup(REQUIRES 6.10)
