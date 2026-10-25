@@ -1,6 +1,6 @@
 /**
 * @file    local_data_broker.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-25
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
@@ -453,12 +453,20 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
             const std::vector<gy::storage::PeerRecord> recentDevices =
                 _deviceRepository->recentPeers(10, &error);
             if (recentDevices.empty() && error.empty()) {
+                // 空设备目录是正常结果：回投一次空表成功，兑现"任何路径恰好回调一次"契约
+                gy::bridge::postToUiThread(receiver, [callback] {
+                    callback({}, true);
+                });
                 return true;
             }
             if (!error.empty()) {
                 if (errorMessage) {
                     *errorMessage = QString::fromStdString(error);
                 }
+                // 任务失败同样回投一次失败，消费方的等待状态才能复位（与 loadRecentPeers 语义一致）
+                gy::bridge::postToUiThread(receiver, [callback] {
+                    callback({}, false);
+                });
                 return false;
             }
 
@@ -473,6 +481,9 @@ void LocalDataBroker::loadRecentChatHistories(QObject *receiver,
                     if (errorMessage) {
                         *errorMessage = QString::fromStdString(error);
                     }
+                    gy::bridge::postToUiThread(receiver, [callback] {
+                        callback({}, false);
+                    });
                     return false;
                 }
                 if (!messages.empty()) {
@@ -513,6 +524,10 @@ void LocalDataBroker::loadRecentTransferHistories(QObject *receiver,
                 if (errorMessage) {
                     *errorMessage = QString::fromStdString(error);
                 }
+                // 任务失败回投一次失败，与 loadRecentPeers / loadRecentChatHistories 的语义一致
+                gy::bridge::postToUiThread(receiver, [callback] {
+                    callback({}, false);
+                });
                 return false;
             }
 

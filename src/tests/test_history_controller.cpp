@@ -1,6 +1,6 @@
 /**
 * @file    test_history_controller.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-25
 * @author  GY
 * @brief   HistoryController 本地历史视图与保留清理测试
@@ -48,6 +48,7 @@ private slots:
     void testRetentionDaysCleansExpired();
     void testConfigManagerRetentionDaysPersists();
     void testUnavailableBrokerCallbacksFire();
+    void testRecentHistoriesCallbackOnEmptyStore();
     void testHistoryControllerRecoversAfterDegradedQuery();
 
 private:
@@ -595,6 +596,40 @@ void TestHistoryController::testUnavailableBrokerCallbacksFire()
     QCOMPARE(deleteTransferSucceeded, false);
     QCOMPARE(clearMessagesSucceeded, false);
     QCOMPARE(clearTransfersSucceeded, false);
+}
+
+// 契约：空设备目录是正常结果，启动恢复仍须恰好回调一次（空表成功），不得静默吞掉等待方
+void TestHistoryController::testRecentHistoriesCallbackOnEmptyStore()
+{
+    LocalDataBroker broker;
+    QString error;
+    QVERIFY(broker.initialize(_temporaryDir.path() + "/empty-store/db.sqlite", &error));
+    QVERIFY(broker.isAvailable());
+
+    int chatCalls = 0;
+    bool chatSucceeded = false;
+    QHash<QString, QList<MessageRecord>> chatResult;
+    broker.loadRecentChatHistories(&broker,
+        [&](const QHash<QString, QList<MessageRecord>> &histories, bool succeeded) {
+            ++chatCalls;
+            chatSucceeded = succeeded;
+            chatResult = histories;
+        });
+    QTRY_COMPARE_WITH_TIMEOUT(chatCalls, 1, 5000);
+    QCOMPARE(chatSucceeded, true);
+    QVERIFY(chatResult.isEmpty());
+
+    int transferCalls = 0;
+    bool transferSucceeded = false;
+    broker.loadRecentTransferHistories(&broker,
+        [&](const QList<TransferRecord> &, bool succeeded) {
+            ++transferCalls;
+            transferSucceeded = succeeded;
+        });
+    QTRY_COMPARE_WITH_TIMEOUT(transferCalls, 1, 5000);
+    QCOMPARE(transferSucceeded, true);
+
+    broker.closeStorage();
 }
 
 void TestHistoryController::testHistoryControllerRecoversAfterDegradedQuery()
