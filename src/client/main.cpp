@@ -22,18 +22,54 @@
 #include <QCommandLineParser>
 #include <QIcon>
 #include <QQuickStyle>
+#include <QSocketNotifier>
 #include <QStringList>
 
+#include <fcntl.h>
+#include <signal.h>
+#include <unistd.h>
+
+#include <cerrno>
 #include <csignal>
 
 #include "app_controller.h"
 #include "data_types.h"
 #include "logger.h"
 
+namespace {
+
+// SIGTERM/SIGINT 自管对写端：信号处理器只做一次字节写入（async-signal-safe），
+// 排空动作全部延迟到主线程事件循环中执行
+int g_signalPipe[2] = {-1, -1};
+
+extern "C" void handleTerminationSignal(int)
+{
+    const char token = 1;
+    ssize_t written = 0;
+    do {
+        written = ::write(g_signalPipe[1], &token, 1);
+    } while (written < 0 && errno == EINTR);
+}
+
+}  // namespace
+
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
     // 对端关闭后继续写入时忽略 SIGPIPE，套接字层另有 MSG_NOSIGNAL 逐次兜底
     std::signal(SIGPIPE, SIG_IGN);
+
+    // SIGTERM/SIGINT 自管对：处理器仅写一字节，读端经 QSocketNotifier 在主线程
+    // 事件循环触发既有排空链（与托盘退出同链路），不弹任何确认框
+    if (::pipe2(g_signalPipe, O_CLOEXEC | O_NONBLOCK) != 0) {
+        g_signalPipe[0] = g_signalPipe[1] = -1;
+    } else {
+        struct sigaction action {};
+        action.sa_handler = handleTerminationSignal;
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = SA_RESTART;
+        ::sigaction(SIGTERM, &action, nullptr);
+        ::sigaction(SIGINT, &action, nullptr);
+    }
 
     QGuiApplication::setApplicationName("GridYard");
     QGuiApplication::setApplicationVersion("8.0.0");
@@ -110,6 +146,18 @@ int main(int argc, char *argv[]) {
     // QML 根对象创建失败时直接退出，避免进入无窗口事件循环。
     if (!controller->uiReady()) {
         return -1;
+    }
+
+    // 信号读端注册进主线程：读空管道后调用 AppController::quit() 既有排空链，
+    // requestQuit 内部防重入、重复信号安全；普通关窗路径不受影响
+    if (g_signalPipe[0] >= 0) {
+        auto *signalNotifier = new QSocketNotifier(g_signalPipe[0], QSocketNotifier::Read, &app);
+        QObject::connect(signalNotifier, &QSocketNotifier::activated, &app, [] {
+            char drain[64];
+            while (::read(g_signalPipe[0], drain, sizeof(drain)) > 0) {
+            }
+            AppController::singleton()->quit();
+        });
     }
 
     return app.exec();
