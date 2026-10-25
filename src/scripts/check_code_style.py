@@ -6,7 +6,9 @@
 2. 非法外部协议（严禁 http/ws，仅放行 gridyard://invite 与 file://）；
 3. 类体与函数内部违规出现 Doxygen @brief/@param/@return 标签；
 4. 头文件缺少 #pragma once 宏卫哨；
-5. 文件头残留已废弃的 Change Log 段。
+5. 文件头残留已废弃的 Change Log 段；
+6. config_manager 禁止直接包含 QSettings（配置读写已收口纯 C++ ConfigStore）；
+7. 栈对象 QThread 自身 moveToThread 启发式（唯一正确形态=归属线程内 deleteLater）。
 
 支持 --fix 自动修复缺失的 #pragma once，以标准退出码（0 成功，1 违规）集成于 CI 或本地构建。
 """
@@ -28,6 +30,8 @@ RE_FORBIDDEN_PROTO = re.compile(r"(?i)\b(https?|wss?)://")
 RE_ALLOW_PROTO = re.compile(r"(?i)\b(gridyard://invite|file://|http://www\.w3\.org)")
 RE_DOXYGEN_BODY = re.compile(r"^\s*(\*|//)?\s*@(brief|param|return)\b")
 RE_CHANGELOG = re.compile(r"(?i)(change\s*log|变更历史)")
+RE_CONFIG_QSETTINGS = re.compile(r"#include\s*<QSettings>")
+RE_QTHREAD_STACK_DECL = re.compile(r"\bQThread\s+([A-Za-z_]\w*)\s*;")
 
 
 def scan_file(path: Path, fix: bool) -> list[str]:
@@ -72,6 +76,41 @@ def scan_file(path: Path, fix: bool) -> list[str]:
             )
         if i > header_end and RE_DOXYGEN_BODY.search(line):
             errors.append(f"{rel}:{i}: 类/函数内部违规出现 @brief/@param 注释: {line.strip()}")
+
+    # 以下新增检查跳过整行注释，避免注释示例触发误报
+    def is_comment_line(raw: str) -> bool:
+        s = raw.strip()
+        return s.startswith("//") or s.startswith("/*") or s.startswith("*")
+
+    # 规则六：config_manager 禁止直接包含 QSettings（配置读写已收口纯 C++ ConfigStore）
+    if path.stem == "config_manager" and path.suffix in {".h", ".cpp"}:
+        for i, line in enumerate(lines, 1):
+            if not is_comment_line(line) and RE_CONFIG_QSETTINGS.search(line):
+                errors.append(
+                    f"{rel}:{i}: config_manager 禁止 #include <QSettings>（配置读写收口 ConfigStore）: {line.strip()}"
+                )
+
+    # 规则七：栈对象 QThread 自身 moveToThread 启发式——同文件出现
+    # `QThread X;` 声明与 `X.moveToThread(` 调用共存（X 无指针形态）时报告；
+    # 线程对象跨线程移动属危险用法，唯一正确形态=归属线程内 deleteLater
+    thread_decls: dict[str, int] = {}
+    for i, line in enumerate(lines, 1):
+        if is_comment_line(line):
+            continue
+        m = RE_QTHREAD_STACK_DECL.search(line)
+        if m and m.group(1) not in thread_decls:
+            thread_decls[m.group(1)] = i
+    for name, decl_line in thread_decls.items():
+        move_re = re.compile(rf"\b{re.escape(name)}\s*\.\s*moveToThread\s*\(")
+        for i, line in enumerate(lines, 1):
+            if is_comment_line(line):
+                continue
+            if move_re.search(line):
+                errors.append(
+                    f"{rel}:{i}: 栈对象 QThread「{name}」自身 moveToThread（声明于 :{decl_line}；"
+                    "唯一正确形态=归属线程内 deleteLater）: {0}".format(line.strip())
+                )
+                break
 
     return errors
 
