@@ -10,7 +10,7 @@
 
 | 规范维度 | 核心条款 | 约束等级 | 典型反例 | 正确示例 |
 | :--- | :--- | :--- | :--- | :--- |
-| **网络层选型** | 全局禁用 `Qt6::Network`，统一使用 `gy_net` | **强制 (MUST)** | `#include <QTcpSocket>` | `#include "posix_tcp_socket.h"` |
+| **网络层选型** | 全局禁用 `Qt6::Network`，客户端用 `src/client/network/` 套接字适配器、服务端用 `gy_net_core` | **强制 (MUST)** | `#include <QTcpSocket>` | `#include "posix_tcp_socket.h"` |
 | **外部通信协议** | 局域网 TLV 二进制传输与 JSON 协调行协议 | **强制 (MUST)** | 引入 HTTP REST 或 WebSocket | 原生 TCP/UDP + TLV 二进制编解码 |
 | **头文件宏卫哨** | 统一使用 `#pragma once` | **强制 (MUST)** | `#ifndef SRC_FOO_H_` | `#pragma once` |
 | **私有成员命名** | 单前置下划线 `_` 前缀 | **强制 (MUST)** | `m_socket` / `socket_` | `_socket` / `_finished` |
@@ -40,20 +40,20 @@ GridYard 整体设计严格遵循四层架构模型，确保关注点分离与�
    - 约束：应用逻辑层不直接实现通信细节，而是组织领域对象与仓储接口完成用例。
 
 3. **领域层（Domain Layer）**：
-   - 路径：`src/shared/`、`src/client/domain/`、`src/client/network/`
-   - 职责：定义系统的核心领域概念、协议实体、业务契约与仓储接口。包括设备发现服务（`DiscoveryService`）、传输服务后台（`P2pServer`）、分块发送/接收工作器（`FileSenderWorker`、`FileReceiverWorker`）、目录扁平化序列化器（`DirSerializer`）及 TLV 帧编解码器（`FrameCodec`）。
-   - 约束：领域层不依赖上层表现层，独立保持高内聚。
+   - 路径：`src/core/`（纯 C++ 核心）、`src/client/domain/`、`src/client/network/`
+   - 职责：定义系统的核心领域概念、协议实体、业务契约与仓储接口。协议编解码与领域类型的现役实现在 `src/core/` 的纯 C++ 双生版（`FrameCodecCore`、`ChatMessageCore`），客户端经 `codec_bridge.h` 桥接调用；设备发现服务（`DiscoveryService`）、传输服务后台（`P2pServer`）、分块发送/接收工作器（`FileSenderWorker`、`FileReceiverWorker`）与目录扁平化序列化器（`DirSerializer`）位于客户端网络与应用层。
+   - 约束：领域层不依赖上层表现层，独立保持高内聚；`src/core/` 内严禁引入任何 Qt 类型。
 
 4. **数据管理与基础设施层（Infrastructure / Data Layer）**：
-   - 路径：`src/shared/net/`（`gy_net`）、`src/client/storage/`
-   - 职责：提供底层基础设施实现，包括 Linux 原生套接字系统原语封装（`PosixTcpSocket`、`PosixTcpServer`、`PosixUdpSocket`）、SQLite 数据库连接池与异步调度（`SqliteDatabaseBroker`、`DatabaseWorker`）以及仓储实体持久化（`SqliteDeviceRepository`、`SqliteMessageRepository`、`SqliteTransferHistoryRepository`）。
-   - 约束：基础设施对上层通过抽象契约提供服务，数据库访问通过 `PRIVATE` 链接隔离。
+   - 路径：`src/shared/net/core/`（`gy_net_core`）、`src/core/storage/`（`gy_storage_core`）、`src/client/storage/`
+   - 职责：提供底层基础设施实现。事件泵与套接字核心（NetReactor、`TcpSocketCore` 等）为纯 C++；SQLite 访问基于 vendored sqlite3 C API 的 RAII 封装（`DatabaseCore` 与三个 `*RepositoryCore`），异步调度由 `DatabaseWorker` 承担；客户端侧的 `LocalDataBroker` 负责记录互转与任务编排。
+   - 约束：核心层目标零 Qt 依赖并显式关闭 AUTOMOC/AUTOUIC/AUTORCC；Qt 类型只在客户端桥接边界出现。
 
 ```mermaid
 graph TD
     UI["表现层 (QML / UI)"] --> APP["应用逻辑层 (AppController / Managers)"]
-    APP --> DOM["领域层 (gy_domain / Protocols / Workers)"]
-    DOM --> INFRA["基础设施与存储层 (gy_net / SQLite Storage)"]
+    APP --> DOM["领域层 (Protocols / Workers / 桥接件)"]
+    DOM --> INFRA["基础设施与存储层 (gy_net_core / gy_storage_core)"]
 ```
 
 ### 1.2 组合根与生命周期模型
@@ -71,13 +71,16 @@ graph TD
 
 全工程基于 CMake 组织为职责明确的静态库与可执行目标：
 
-- `gy_shared`：跨端通用数据结构、TLV 二进制帧编解码、加密哈希计算及全局常量。
-- `gy_net`：纯 Linux 原生 POSIX 套接字与网络原语封装，零 Qt 网络模块依赖。
-- `gy_domain`：领域逻辑接口定义与核心模型。
-- `gy_storage`：SQLite 持久化引擎、WAL 模式管理与异步仓储映射实现。
-- `appGridYard`：桌面端主可执行程序，集成 QML 表现层与核心业务控制器。
-- `gridyard_rendezvous`：独立运行的协调节点与流式中继服务端控制台程序。
-- `tests`：基于 CTest 与 QTest 构建的自动化单元测试与并发回归测试套件。
+- `gy_core`：纯 C++23 领域类型、TLV 帧编解码、聊天消息编解码、目录哈希与 INI 配置读写，零 Qt。
+- `gy_storage_core`：基于 vendored SQLite3 的纯 C++ 存储封装与三个仓储实现，零 Qt。
+- `gy_net_core`：NetReactor 事件泵与 TCP/UDP 套接字核心，零 Qt。
+- `gy_protocol_contracts`：协调与中继行协议键常量的 header-only 接口目标。
+- `gy_shared`：TLV 协议常量头的 header-only 目标（编码实现已由 gy_core 承担）。
+- `gy_rendezvous` / `gridyard_rendezvous`：纯 C++ 的协调节点与流式中继服务端库与独立程序，二进制零 Qt 依赖。
+- `appGridYard`：桌面端主可执行程序，集成 QML 表现层、业务控制器、套接字适配器与数据层代管者，是产品中唯一链接 Qt 的目标。
+- `tests`：基于 CTest 与 QTest 构建的自动化单元测试与并发回归测试套件，按需直编客户端源文件。
+
+核心层与客户端层的完整分层说明、终态链接矩阵与红线验证方法见同目录《GridYard_纯C++核心架构说明.md》。
 
 ---
 
@@ -130,7 +133,7 @@ graph TD
 ### 3.2 非阻塞套接字与事件调度
 
 - **非阻塞模式保证**：所有创建的套接字均需在初始化时通过 `fcntl(fd, F_SETFL, flags | O_NONBLOCK)` 设置为非阻塞模式，防止网络波动或对端异常挂起导致线程卡死。
-- **事件泵集成**：`PosixTcpSocket` 与 `PosixTcpServer` 内部通过 `QSocketNotifier` 挂载读写事件监听，无缝融入 Qt 线程事件循环，确保无轮询开销的事件驱动响应。
+- **事件泵集成**：套接字核心由 NetReactor 事件泵（`gy_net_core`，独立线程 poll + eventfd）驱动；客户端适配器（`PosixTcpSocket` 等，位于 `src/client/network/`）把 Reactor 回调经 QueuedConnection 投回套接字归属线程，线程亲和与阻塞等待语义与 Qt 事件循环保持一致；服务端直接以回调风格挂接事件泵，不经任何 Qt 机制。
 - **信号屏蔽**：套接字初始化时统一对套接字设置 `MSG_NOSIGNAL` 标记，或屏蔽 `SIGPIPE` 信号，避免连接对端异常断开时导致整个进程崩溃退出。
 
 ### 3.3 缓冲管理与写背压水线契约
@@ -148,17 +151,17 @@ graph TD
 ```mermaid
 sequenceDiagram
     participant Main as 主线程 / 监听器
-    participant Socket as 原生套接字 (gy_net)
+    participant Socket as 原生套接字 (客户端适配器)
     participant Worker as 工作线程 (Worker)
 
-    Main->>Socket: 1. 注销当前事件通知器 (disable notifiers)
+    Main->>Socket: 1. 摘除事件泵监听 (prepareThreadMove)
     Main->>Socket: 2. 剥离父对象 (setParent(nullptr))
     Main->>Socket: 3. 移交线程亲和性 (moveToThread(targetThread))
     Main->>Worker: 4. 发射移交信号传递指针与未消费缓存
-    Worker->>Socket: 5. 绑定工作线程事件循环并重新挂载通知器
+    Worker->>Socket: 5. 绑定工作线程事件循环并重新挂载监听
 ```
 
-1. **事件注销**：原拥有者在跨线程移交前，必须完全停用并销毁套接字上的所有 `QSocketNotifier`，确保移交过程中无并发事件派发。
+1. **事件注销**：原拥有者在跨线程移交前，必须完全停用套接字在事件泵上的读写监听（`prepareThreadMove`），确保移交过程中无并发事件派发。
 2. **所有权剥离**：清除父对象引用（`setParent(nullptr)`），防止对象树析构竞态。
 3. **线程转移**：调用 `moveToThread(targetThread)` 迁移套接字对象的事件处理亲和性。
 4. **缓冲转交**：若在握手阶段已有预读入但未消费的数据，必须打包作为参数随移交信号一并传递给工作对象，工作对象在挂载新事件前优先处理预读缓冲。
@@ -236,7 +239,7 @@ Q_PROPERTY(bool isTransferring READ isTransferring NOTIFY isTransferringChanged)
 
 ```cpp
 // 提交多步数据库操作事务，在发生任意步骤失败时自动回滚
-bool SqliteDatabaseBroker::runSteps(const std::vector<StepCallback> &steps);
+bool gy::storage::DatabaseCore::runSteps(const std::vector<TransactionTask> &steps) const;
 ```
 
 ### 5.3 成员变量行尾注释规范
@@ -276,7 +279,7 @@ int _retryCount = 0;                // 当前重连重试计数，达到阈值�
 ### 6.3 自动化测试与高并发稳定性验证
 
 - **单元测试隔离性**：每个测试目标（基于 QTest）必须保持环境自洁，网络测试必须使用动态随机端口或预置端口隔离，避免端口冲突；数据库测试必须在临时内存库或专属临时路径下运行。
-- **回归与并发检验**：每次重大提交必须通过全量 27 组自动化单测。在网络层与中继链路改动后，需执行连续重复回归以杜绝偶发性竞态：
+- **回归与并发检验**：每次重大提交必须通过全量 28 组自动化单测。在网络层与中继链路改动后，需执行连续重复回归以杜绝偶发性竞态：
   ```bash
   ctest --test-dir build-ninja -R "test_posix_socket|test_relay_chain|test_file_transfer" --repeat until-fail:3 --output-on-failure
   ```

@@ -7,6 +7,11 @@
 | 适用阶段 | Stage 6 本地数据层与体验打磨 |
 | 当前状态 | 阶段 A~G 已验收完成，v6.7.0 补充 LocalDataBroker 代管层与 Repository 命名对齐 |
 
+> 现状说明：本文描述的 Qt Sql 基础设施（SqliteDatabaseBroker、gy_domain/gy_storage 目标与
+> Qt6::Sql 链接）自 v8.0.0 起已被 `src/core/storage/` 的纯 C++ 实现取代并退役，SQL 语义与
+> 库文件格式保持兼容；本文其余内容作为 Stage 6 的历史设计记录保留。当前分层与链接关系见
+> 同目录《GridYard_纯C++核心架构说明.md》与《GridYard_CMake构建逻辑与分组说明.md》。
+
 ## 1. 目标与边界
 
 Stage 6 为客户端建立独立的数据管理层。应用退出后，已连接设备目录、聊天消息和已结束传输记录仍可查询；Stage 5 的在线 P2P 收发链路、发现协议和文件内容传输保持不变。

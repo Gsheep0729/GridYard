@@ -8,7 +8,7 @@
 
 - 只做**发现兜底**和**在线流式转发**：不落盘任何文件内容，不保存离线消息，不替代 P2P 直连。
 - 与客户端不共享进程；客户端通过 `rendezvousEnabled / rendezvousHost / rendezvousPort` 配置接入。
-- 网络收发基于 `src/shared/net/` 的 `gy_net` 原生套接字封装实现，协调与中继进程不依赖 Qt 网络模块。
+- 网络收发基于 `src/shared/net/core/` 的 `gy_net_core` 纯 C++ 事件泵与套接字核心实现，协调与中继进程零 Qt 依赖，二进制只链接系统 C/C++ 运行库。
 - 认证（token 全链路）与注册表防投毒尚未落地，见 §6 挂起项。
 
 ## 2. 两种运行模式
