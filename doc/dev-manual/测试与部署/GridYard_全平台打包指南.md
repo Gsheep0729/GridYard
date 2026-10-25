@@ -191,11 +191,11 @@ makepkg -si
 
 典型部署：
 ```bash
-# 协调节点模式（默认端口 45678，可选 --token 开启访问令牌校验）
-gridyard_rendezvous --port 45678 --token <部署口令>
+# 协调节点模式（默认端口 45679，可选 --token 开启访问令牌校验）
+gridyard_rendezvous --port 45679 --token <部署口令>
 
 # 中继模式
-gridyard_rendezvous --mode relay --port 45678
+gridyard_rendezvous --mode relay --port 45679
 ```
 
 客户端在设置页填写协调服务器地址与端口（及令牌）即可接入；服务端的资源上限、超时与日志行为见《GridYard_协调节点与中继服务设计》。
