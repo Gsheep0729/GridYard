@@ -27,6 +27,8 @@ v8.0.0 起产品包含两个可执行程序：桌面客户端 `appGridYard`（Qt
 
 ## 2. Linux 分发体系（现行实现）
 
+> **交付路线裁决（2026-10）**：交付不走 CPack，维持 `src/scripts/build_tarball.sh`、`src/scripts/build_deb.sh`、`src/scripts/PKGBUILD` 三脚本直拷路线——CPack 对"双二进制 + 白名单瘦身 + 系统注册"组合形态的控制力不及脚本直拷，工程内勿引入 CPack 配置。
+
 ### 2.1 环境依赖与前置准备
 
 在进行打包前，需确保系统已安装基础编译环境与 Qt6 模块。工程要求 **CMake ≥ 4.2.3** 与 **GCC ≥ 15**（C++23 `import std` 依赖 libstdc++ 的 std 模块支持），发行版自带版本不足时需自行安装新版工具链：
