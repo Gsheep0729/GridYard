@@ -1,6 +1,6 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 7.25.0
+* @version 8.0.0
 * @date 2026-10-08
 * @author  GridYard Team
 * @brief   传输会话管理器实现
@@ -310,6 +310,12 @@ void TransferSessionManager::createMultiSendSessions(const QStringList &deviceId
         emit errorOccurred(tr("没有可发送的目标或文件不存在"));
         return;
     }
+    // 序列化在途时拒绝重入：暂存的目标与元数据会被第二次调用覆写，先启动的线程
+    // 完成后将消费错误的目标清单并重复建会话；置位与检查都在 UI 线程同步段完成
+    if (_multiSerializationBusy) {
+        emit errorOccurred(tr("上一次群发仍在准备中，请稍候再试"));
+        return;
+    }
 
     // 解析全部目标的端点快照，离线目标在此剔除并提示
     QList<MultiTarget> targets;
@@ -368,7 +374,8 @@ void TransferSessionManager::createMultiSendSessions(const QStringList &deviceId
             finishMultiSendStart(fileList);
         });
     });
-    // 暂存目标与元数据，序列化完成后取用
+    // 暂存目标与元数据，序列化完成后取用；序列化无失败旁路，完成回投时必定清除忙标志
+    _multiSerializationBusy = true;
     _multiTargets = targets;
     _multiFilePath = filePath;
     _multiIsDirectory = isDirectory;
@@ -382,6 +389,8 @@ void TransferSessionManager::createMultiSendSessions(const QStringList &deviceId
 // 序列化完成后逐台建立群发会话（UI 线程）
 void TransferSessionManager::finishMultiSendStart(const QList<gy::FileItem> &fileList)
 {
+    _multiSerializationBusy = false;  // 解除重入保护，后续群发可再次发起
+
     // 会话预览清单：只含相对路径，与单发口径一致
     QStringList paths;
     for (const auto &item : fileList) {
@@ -487,6 +496,10 @@ void TransferSessionManager::startSendWorker(const QVariantMap &session,
             this, [this, sessionId](qint64 bytesSent, qint64 totalBytes) {
         // 就地更新发送会话进度，模型只发出该行的 dataChanged
         _model->updateSession(sessionId, [this, bytesSent, totalBytes](QVariantMap &session) {
+            // 迟到的进度不得复活已终结的会话：取消后排队中的最后一个进度事件可能晚于状态翻转
+            if (isFinishedStatus(session.value(kStatus).toString())) {
+                return;
+            }
             const QString previousStatus = session.value(kStatus).toString();
             const int previousProgress = session.value(kProgress).toInt();
             const qint64 previousTotalBytes = session.value(kTotalBytes).toLongLong();
@@ -966,6 +979,10 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     connect(worker, &FileReceiverWorker::progressChanged,
             this, [this, sessionId](qint64 bytesReceived, qint64 totalBytes) {
         _model->updateSession(sessionId, [this, bytesReceived, totalBytes](QVariantMap &session) {
+            // 迟到的进度不得复活已终结的会话：取消后排队中的最后一个进度事件可能晚于状态翻转
+            if (isFinishedStatus(session.value(kStatus).toString())) {
+                return;
+            }
             const QString previousStatus = session.value(kStatus).toString();
             const int previousProgress = session.value(kProgress).toInt();
             const qint64 previousTotalBytes = session.value(kTotalBytes).toLongLong();

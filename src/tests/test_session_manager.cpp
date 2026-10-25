@@ -71,6 +71,7 @@ private slots:
     void testIncomingRequestEntrySignal();
     void testMultiSendSharesSerializedList();
     void testMultiTargetsPersistence();
+    void testMultiSendRejectsReentryWhileSerializing();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -1065,6 +1066,46 @@ void TestSessionManager::testMultiTargetsPersistence()
     // 覆写生效
     _manager->saveMultiTargets({QStringLiteral("device-ccc")});
     QCOMPARE(_manager->lastMultiTargets(), QStringList{QStringLiteral("device-ccc")});
+}
+
+// 群发序列化在途时重入被拒绝：第二次调用立即报错，先启动的目标清单不被覆写
+void TestSessionManager::testMultiSendRejectsReentryWhileSerializing()
+{
+    const QString dirPath = _tempDir->path() + "/reentry-src";
+    QDir().mkpath(dirPath);
+    QFile file{dirPath + "/a.txt"};
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("reentry-body");
+    file.close();
+
+    const QString id1 = addTargetDevice("reentry-target-1", 1);
+    const QString id2 = addTargetDevice("reentry-target-2", 2);
+    const QString id3 = addTargetDevice("reentry-target-3", 3);
+
+    QSignalSpy startedSpy(_manager, &TransferSessionManager::multiSendStarted);
+    QSignalSpy errorSpy(_manager, &TransferSessionManager::errorOccurred);
+    // 第一次调用在同步段置位忙标志后返回，紧接的第二次调用必命中重入拒绝（同线程确定性）
+    _manager->createMultiSendSessions({id1, id2}, dirPath);
+    _manager->createMultiSendSessions({id3}, dirPath);
+
+    QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);  // 只有第一批真正发起
+    QCOMPARE(startedSpy.first().first().toInt(), 2);
+    QCOMPARE(errorSpy.count(), 1);  // 第二次调用恰好留下一条重入提示
+
+    // 会话卡只属于第一批的两台目标，第三台未因重入被建会话
+    const QVariantList sessions = _manager->sessions();
+    QStringList sessionDevices;
+    for (const QVariant &entry : sessions) {
+        sessionDevices.append(entry.toMap().value(gy::session::kDeviceId).toString());
+    }
+    QVERIFY(!sessionDevices.contains(id3));
+    QCOMPARE(sessionDevices.count(id1) + sessionDevices.count(id2), 2);
+
+    // 忙标志随完成回投清除：此后再发起不再被拒
+    QSignalSpy secondRoundSpy(_manager, &TransferSessionManager::multiSendStarted);
+    _manager->createMultiSendSessions({id3}, dirPath);
+    QTRY_COMPARE_WITH_TIMEOUT(secondRoundSpy.count(), 1, 8000);
+    QCOMPARE(secondRoundSpy.first().first().toInt(), 1);
 }
 
 QTEST_MAIN(TestSessionManager)

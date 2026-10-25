@@ -1,6 +1,6 @@
 /**
  * @file    transfer_session_manager.h
- * @version 7.26.1
+ * @version 8.0.0
  * @date    2026-10-23
  * @author  GridYard Team
  * @brief   传输会话管理器
@@ -168,6 +168,7 @@ private:
     };
     QList<MultiTarget> _multiTargets;  // 待建会话的目标清单
     QString _multiFilePath;  // 群发源路径
+    bool _multiSerializationBusy = false;  // 群发序列化在途标志：重入会覆写暂存目标，须拒绝
     bool _multiIsDirectory = false;  // 源是否为目录
     QString _multiRootName;  // 源名称
     int _multiFileCount = 0;  // 文件总数
