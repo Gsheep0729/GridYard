@@ -1,0 +1,52 @@
+# GridYard 持续集成：镜像开发机工具链（g++-15 + CMake≥4.2.3 + Qt 6.11.1）做配置构建、
+# 串行全量 ctest 与守卫三脚本。ctest 严禁 -j 并行：UDP 45678 发现端口串扰已有实证（开发心得第 66 章）。
+name: CI
+
+on:
+  push:
+    branches: [gy, dev]
+  pull_request:
+    branches: [gy, dev]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装系统依赖与 g++-15
+        run: |
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-15 \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libdbus-1-3 libfontconfig1 libglib2.0-0 libegl1
+          # 隔离脚本 --compile-check 字面调用 g++，指向 15 保持 C++23 检查口径与本机一致
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-15 100
+
+      - name: 安装 CMake 与 Qt 6.11.1
+        run: |
+          pipx install cmake
+          pipx install aqtinstall
+          aqt install-qt linux desktop 6.11.1 gcc_64 -O /opt/Qt -m qtsvg qtimageformats qtshadertools
+          echo "/opt/Qt/6.11.1/gcc_64/bin" >> "$GITHUB_PATH"
+
+      - name: 配置与构建
+        run: |
+          cmake -S src -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=g++-15 \
+            -DCMAKE_PREFIX_PATH=/opt/Qt/6.11.1/gcc_64
+          cmake --build build-ci -j"$(nproc)"
+
+      - name: 串行全量 ctest
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-ci --output-on-failure
+
+      - name: 守卫三脚本
+        run: |
+          python3 src/scripts/check_versions.py
+          python3 src/scripts/check_code_style.py
+          python3 src/scripts/check_core_isolation.py --core-dirs src/core src/shared/net/core --strict --compile-check
