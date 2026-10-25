@@ -1,6 +1,6 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-24
 * @author  GY
 * @brief   Relay 降级链路测试
@@ -72,6 +72,8 @@ private slots:
     void testStandaloneRelayWithToken();
     void testStandaloneRelayForwarding();
     void testCancelDuringRelayWait();
+    void testRelayInviteRegistryLimit();
+    void testRelayHandshakeRejectsInvalidRelayId();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -877,6 +879,68 @@ void TestRelayChain::testStandaloneRelayForwarding()
     sender->disconnectFromHost();
     receiver->disconnectFromHost();
     QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 3000);
+}
+
+// 待领取邀请登记达到上限后拒绝，一次性消费释放名额后可再次登记
+void TestRelayChain::testRelayInviteRegistryLimit()
+{
+    OnlineRegistry registry{30};
+    registry.setMaxRelayInvites(2);
+
+    OnlineRegistry::RelayInvite invite;
+    invite.targetDeviceId = "invite-limit-target";
+    invite.relayId = "invite-limit-1";
+    QVERIFY(registry.addRelayInvite("room", invite));
+    invite.relayId = "invite-limit-2";
+    QVERIFY(registry.addRelayInvite("room", invite));
+    invite.relayId = "invite-limit-3";
+    QVERIFY(!registry.addRelayInvite("room", invite));  // 名额满，新邀请被拒
+
+    invite.relayId = "invite-limit-1";
+    QVERIFY(registry.addRelayInvite("room", invite));   // 同 id 更新不占新名额
+
+    const auto taken = registry.consumeRelayInvites("room", "invite-limit-target");
+    QCOMPARE(static_cast<int>(taken.size()), 2);
+    invite.relayId = "invite-limit-4";
+    QVERIFY(registry.addRelayInvite("room", invite));   // 消费后名额释放
+}
+
+// 中继握手的会话标识校验：超长或含字母数字连字符之外的字符直接拒绝
+void TestRelayChain::testRelayHandshakeRejectsInvalidRelayId()
+{
+    RelayServer relay{0, {}};
+    QVERIFY(relay.start());
+
+    auto connectOne = [&relay]() -> gy::net::PosixTcpSocket * {
+        auto *socket = new gy::net::PosixTcpSocket;
+        socket->connectToHost(gy::net::IpAddress::localHost(), relay.serverPort());
+        // QTRY 断言宏在返回指针的 lambda 内不可用，改用测试等待工具
+        gy::test::waitFor([&socket]() {
+            return socket->state() == gy::net::SocketState::ConnectedState;
+        }, 3000);
+        return socket;
+    };
+
+    // 超长标识（65 字符）
+    auto *tooLong = connectOne();
+    QJsonObject longHello;
+    longHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    longHello[QStringLiteral("relay_id")] = QString(65, QLatin1Char('a'));
+    writeJsonLine(tooLong, longHello);
+    QTRY_VERIFY_WITH_TIMEOUT(tooLong->state() == gy::net::SocketState::UnconnectedState, 3000);
+    tooLong->deleteLater();
+
+    // 非法字符（分号可注入日志）
+    auto *injected = connectOne();
+    QJsonObject injectHello;
+    injectHello[QStringLiteral("type")] = QStringLiteral("relay_create");
+    injectHello[QStringLiteral("relay_id")] = QStringLiteral("bad;id");
+    writeJsonLine(injected, injectHello);
+    QTRY_VERIFY_WITH_TIMEOUT(injected->state() == gy::net::SocketState::UnconnectedState, 3000);
+    injected->deleteLater();
+
+    // 两次非法握手都不应建立会话
+    QTRY_COMPARE(relay.sessionCount(), 0);
 }
 
 QTEST_MAIN(TestRelayChain)

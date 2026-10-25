@@ -1,6 +1,6 @@
 /**
 * @file    online_registry.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-24
 * @author  GridYard Team
 * @brief   协调节点在线设备注册表实现
@@ -17,6 +17,7 @@ OnlineRegistry::OnlineRegistry(int defaultTtlSeconds)
     , _maxRooms{gy::rendezvous::kMaxRegistryRooms}
     , _maxDevicesPerRoom{gy::rendezvous::kMaxDevicesPerRoom}
     , _relayInviteTtlSeconds{gy::rendezvous::kRelayInviteTtlSeconds}
+    , _maxRelayInvites{gy::rendezvous::kMaxRelayInvites}
 {
 }
 
@@ -28,6 +29,14 @@ void OnlineRegistry::setRegistryLimits(int maxRooms, int maxDevicesPerRoom)
     }
     if (maxDevicesPerRoom > 0) {
         _maxDevicesPerRoom = maxDevicesPerRoom;
+    }
+}
+
+// 调整待领取邀请的登记上限
+void OnlineRegistry::setMaxRelayInvites(int maxInvites)
+{
+    if (maxInvites > 0) {
+        _maxRelayInvites = maxInvites;
     }
 }
 
@@ -93,9 +102,16 @@ bool OnlineRegistry::hasPeer(const std::string &room, const std::string &deviceI
     return deviceIt != roomIt->second.end() && !isExpired(deviceIt->second);
 }
 
-// 登记一条中继邀请，等待目标设备轮询领取
-void OnlineRegistry::addRelayInvite(const std::string &room, const RelayInvite &invite)
+// 登记一条中继邀请，等待目标设备轮询领取；待领取条目达到上限时拒绝
+bool OnlineRegistry::addRelayInvite(const std::string &room, const RelayInvite &invite)
 {
+    // 同 relayId 的重复邀请按更新处理不占新名额，与既有幂等语义一致
+    const bool exists = _relayInvites.find(invite.relayId) != _relayInvites.end();
+    if (!exists && static_cast<int>(_relayInvites.size()) >= _maxRelayInvites) {
+        gy::rendezvous::logWarn("[OnlineRegistry] 待领取邀请达到上限 " + std::to_string(_maxRelayInvites)
+                                + "，拒绝 " + invite.relayId + " 目标 " + invite.targetDeviceId);
+        return false;
+    }
     RelayInvite stored = invite;
     stored.room = room;
     stored.createdAtMs = gy::rendezvous::nowUtcMs();
@@ -103,6 +119,7 @@ void OnlineRegistry::addRelayInvite(const std::string &room, const RelayInvite &
 
     gy::rendezvous::logInfo("[OnlineRegistry] 登记中继邀请 " + stored.relayId + " 目标 "
                             + stored.targetDeviceId + " 房间 " + room);
+    return true;
 }
 
 // 领取目标为本设备的所有中继邀请（一次性消费）

@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_limits.h
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-24
 * @author  GridYard Team
 * @brief   协调节点与中继服务的资源上限常量
@@ -56,5 +56,9 @@ inline constexpr int kRelaySessionWaitMs = 60000;
 inline constexpr int kRegistryPruneIntervalMs = 10000;
 // 中继邀请有效期：接收端按心跳周期轮询，60 秒足够覆盖短暂离线
 inline constexpr int kRelayInviteTtlSeconds = 60;
+
+// 待领取中继邀请的登记上限：邀请是会话的前置且短寿命（TTL + 一次性消费），
+// 恶意端狂发 relay_invite 时以此封顶内存占用（对齐会话/房间同量级）
+inline constexpr int kMaxRelayInvites = 256;
 
 }

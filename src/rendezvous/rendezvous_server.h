@@ -1,6 +1,6 @@
 /**
  * @file    rendezvous_server.h
- * @version 7.26.1
+ * @version 8.0.0
  * @date    2026-10-24
  * @author  GridYard Team
  * @brief   协调节点服务器
@@ -94,6 +94,8 @@ public:
     void setSessionTimeouts(int handshakeTimeoutMs, int idleTimeoutMs);
     // 调整注册表房间数与每房设备数上限（测试可调小）
     void setRegistryLimits(int maxRooms, int maxDevicesPerRoom);
+    // 调整待领取中继邀请的登记上限（测试可调小）
+    void setMaxRelayInvites(int maxInvites);
     // 调整过期数据清理周期（测试可调小；下一周期生效）
     void setPruneIntervalMs(int intervalMs);
     // 调整响应写队列上限（测试可调小；对新建立的会话生效）

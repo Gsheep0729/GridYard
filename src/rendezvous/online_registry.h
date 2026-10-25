@@ -1,6 +1,6 @@
 /**
  * @file    online_registry.h
- * @version 7.26.1
+ * @version 8.0.0
  * @date    2026-10-24
  * @author  GridYard Team
  * @brief   协调节点在线设备注册表
@@ -54,6 +54,8 @@ public:
     void setRegistryLimits(int maxRooms, int maxDevicesPerRoom);
     // 调整中继邀请有效期（测试可调小）
     void setRelayInviteTtlSeconds(int ttlSeconds);
+    // 调整待领取邀请的登记上限（测试可调小）
+    void setMaxRelayInvites(int maxInvites);
 
     // 获取房间内所有未过期的设备
     std::vector<PeerInfo> peersForRoom(const std::string &room) const;
@@ -61,8 +63,8 @@ public:
     // 判断设备是否在房间内且未过期
     bool hasPeer(const std::string &room, const std::string &deviceId) const;
 
-    // 登记一条中继邀请，等待目标设备轮询领取
-    void addRelayInvite(const std::string &room, const RelayInvite &invite);
+    // 登记一条中继邀请，等待目标设备轮询领取；待领取条目达到上限时拒绝并返回假
+    bool addRelayInvite(const std::string &room, const RelayInvite &invite);
 
     // 领取目标为本设备的所有中继邀请（一次性消费）
     std::vector<RelayInvite> consumeRelayInvites(const std::string &room,
@@ -83,6 +85,7 @@ private:
     int _maxRooms = 0;              // 房间数上限，0 表示未初始化（构造时取常量默认）
     int _maxDevicesPerRoom = 0;     // 每房设备数上限
     int _relayInviteTtlSeconds = 0; // 中继邀请有效期，0 表示未初始化
+    int _maxRelayInvites = 0;       // 待领取邀请登记上限，0 表示未初始化
     std::unordered_map<std::string, std::unordered_map<std::string, PeerInfo>> _rooms;  // room -> (deviceId -> peer)
     std::unordered_map<std::string, RelayInvite> _relayInvites;  // relayId -> invite，过期由 pruneExpired 统一回收
 };

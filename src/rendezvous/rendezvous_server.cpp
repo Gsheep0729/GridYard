@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-24
 * @author  GridYard Team
 * @brief   协调节点服务器实现
@@ -150,7 +150,11 @@ void RendezvousSession::processRequest(const nlohmann::json &json)
             sendResponse(RendezvousProtocol::buildError("目标设备不在线或未注册"));
             break;
         }
-        _registry->addRelayInvite(room, invite);
+        // 登记达到上限时回错误，发送端立即改走失败提示而不是干等受理超时
+        if (!_registry->addRelayInvite(room, invite)) {
+            sendResponse(RendezvousProtocol::buildError("待领取中继邀请已达上限，稍后重试"));
+            break;
+        }
         sendResponse(RendezvousProtocol::buildRelayInviteAck(invite.relayId));
         break;
     }
@@ -283,6 +287,14 @@ void RendezvousServer::setRegistryLimits(int maxRooms, int maxDevicesPerRoom)
 {
     runOnLoop([this, maxRooms, maxDevicesPerRoom]() {
         _registry->setRegistryLimits(maxRooms, maxDevicesPerRoom);
+    });
+}
+
+// 调整待领取中继邀请的登记上限
+void RendezvousServer::setMaxRelayInvites(int maxInvites)
+{
+    runOnLoop([this, maxInvites]() {
+        _registry->setMaxRelayInvites(maxInvites);
     });
 }
 

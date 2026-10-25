@@ -1,11 +1,12 @@
 /**
 * @file    relay_server.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-24
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 */
 
+#include <algorithm>
 #include "relay_server.h"
 #include "rendezvous_limits.h"
 #include "rendezvous_log.h"
@@ -490,6 +491,17 @@ void RelayServer::handleRelayHello(gy::net::TcpSocketCore *socket, const nlohman
     if (relayId.empty()) {
         logWarn("[RelayServer] 缺少 relay_id");
         dropConnection(socket, "缺少 relay_id");
+        return;
+    }
+    // 会话标识限定长度与字符集：合法调用方传 UUID 风格短串，超长或含
+    // 字母数字连字符之外字符的标识按恶意输入拒绝，防日志与映射键滥用
+    static const auto validRelayIdChar = [](char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-';
+    };
+    if (relayId.size() > 64
+        || !std::all_of(relayId.begin(), relayId.end(), validRelayIdChar)) {
+        logWarn("[RelayServer] relay_id 含非法字符或超长，拒绝握手");
+        dropConnection(socket, "relay_id 非法");
         return;
     }
     if (type != kTypeRelayCreate && type != kTypeRelayJoin) {
