@@ -1,7 +1,7 @@
 /**
  * @file    main.cpp
- * @version 7.26.1
- * @date    2026-10-23
+ * @version 8.0.0
+ * @date    2026-10-25
  * @author  GridYard Team
  * @brief   GridYard 客户端程序入口
 *
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     std::signal(SIGPIPE, SIG_IGN);
 
     QGuiApplication::setApplicationName("GridYard");
-    QGuiApplication::setApplicationVersion("7.26.1");
+    QGuiApplication::setApplicationVersion("8.0.0");
     QGuiApplication::setOrganizationName("CQNU-SED");
 
     // 命令行参数须在 QApplication 构造前解析：X11 平台层会按 X 工具惯例

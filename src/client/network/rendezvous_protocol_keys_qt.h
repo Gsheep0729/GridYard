@@ -1,7 +1,7 @@
 /**
  * @file    rendezvous_protocol_keys_qt.h
- * @version 7.26.1
- * @date    2026-10-24
+ * @version 8.0.0
+ * @date    2026-10-25
  * @author  GridYard Team
  * @brief   行协议键名常量的 Qt 侧透传
  *
