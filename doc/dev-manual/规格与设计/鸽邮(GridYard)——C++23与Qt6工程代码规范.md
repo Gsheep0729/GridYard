@@ -230,6 +230,7 @@ Q_PROPERTY(bool isTransferring READ isTransferring NOTIFY isTransferringChanged)
 
 - **严禁包含 Change Log 段落**：逐次提交的历史由 Git 提交记录原生承载，面向用户的版本摘要统一在根目录 `CHANGELOG.md` 中维护。源码文件头中严禁保留或新增任何修改历史或变更清单段。
 - **版本号维护纪律**：本提交实际发生功能修改的文件，其 `@version` 与 `@date` 必须随主版本递增同步刷新；未被本提交改动的历史文件保持原有版本标注，严禁进行全仓批量无意义版本号刷版。
+- **@author 双口径均合法**：`GY` 与 `GridYard Team` 均为有效署名口径，历史文件两种署名并存属正常状态，新文件任选其一即可，严禁以统一口径为由批量改写既有文件的署名。
 
 ### 5.2 生产代码函数契约注释
 
