@@ -1,6 +1,6 @@
 /**
 * @file    SettingsDialog.qml
-* @version 7.23.0
+* @version 8.0.0
 * @date 2026-10-07
 * @author  GridYard Team
 * @brief   设置对话框
@@ -83,8 +83,14 @@ Dialog {
         _tempRendezvousToken = ConfigManager.rendezvousToken
         _tempRelayMode = ConfigManager.relayMode
         _tempCloseWindowAction = ConfigManager.closeWindowAction
-        // 手输过路径的 TextEdit 会失去 text 绑定，重开时显式回填
+        // 手输过内容的输入控件会失去绑定，重开时全部显式回填为当前配置，
+        // 否则控件显示上次手输值而脏标记为假，显示与真实状态背离
         receivePathField.text = _tempReceivePath
+        deviceNameField.text = _tempDeviceName
+        rendezvousHostField.text = _tempRendezvousHost
+        rendezvousTokenField.text = _tempRendezvousToken
+        tcpPortSpinBox.value = _tempTcpPort
+        rendezvousPortSpinBox.value = _tempRendezvousPort
     }
 
     // 将 FolderDialog 返回的 URL 转成本地路径，统一走 FormatUtils 避免多处实现漂移

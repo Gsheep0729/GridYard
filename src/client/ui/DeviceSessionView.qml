@@ -1,6 +1,6 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 7.25.0
+ * @version 8.0.0
  * @date 2026-10-08
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
@@ -474,8 +474,15 @@ Frame {
                            deviceSessionView.chatError = ""
                        }
 
-                       // 回车发送（Shift+回车换行），与桌面 IM 习惯一致
+                       // 回车发送（Shift+回车换行），与桌面 IM 习惯一致；
+                       // 主回车与小键盘回车（Qt.Key_Enter）都要发送，否则数字区回车会插入换行
                        Keys.onReturnPressed: function(event) {
+                           if ((event.modifiers & Qt.ShiftModifier) === 0) {
+                               event.accepted = true
+                               deviceSessionView.sendChatMessage()
+                           }
+                       }
+                       Keys.onEnterPressed: function(event) {
                            if ((event.modifiers & Qt.ShiftModifier) === 0) {
                                event.accepted = true
                                deviceSessionView.sendChatMessage()

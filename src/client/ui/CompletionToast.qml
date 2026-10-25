@@ -1,6 +1,6 @@
 /**
  * @file    CompletionToast.qml
- * @version 7.19.0
+ * @version 8.0.0
  * @date 2026-10-05
  * @author  GridYard Team
  * @brief   接收完成通知卡
@@ -27,6 +27,8 @@ Popup {
         completionToast._fileName = fileName
         completionToast._filePath = filePath
         completionToast.open()
+        // 连续通知时重置计时：弹窗已打开时 visible 不变化，新通知须获得完整的自动关闭时长
+        closeTimer.restart()
     }
 
     x: parent ? parent.width - width - 24 : 0
@@ -104,6 +106,7 @@ Popup {
     }
 
     Timer {
+        id: closeTimer
         interval: 6000
         running: completionToast.visible
         onTriggered: completionToast.close()
