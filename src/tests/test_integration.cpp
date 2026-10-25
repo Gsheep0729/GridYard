@@ -1,6 +1,6 @@
 /**
 * @file    test_integration.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date 2026-10-25
 * @author  GY
 * @brief   集成测试 - 单机多实例模拟
@@ -129,6 +129,9 @@ void TestIntegration::testMultiplePorts()
 void TestIntegration::testConfigIsolation()
 {
     // 测试配置隔离 - 使用端口参数自动生成不同配置文件
+    // 两个实例刻意共用同一配置文件（本用例只验证设备名独立）；必须先把配置指到
+    // 临时目录，否则 ConfigManager 会读写真实用户配置，把测试设备名持久化进去
+    qputenv("GRIDYARD_CONFIG", (_baseDir->path() + "/config_shared").toUtf8());
     qputenv("GRIDYARD_PORT", "35200");
     qputenv("GRIDYARD_NAME", "Device1");
     ConfigManager *mgr1 = new ConfigManager{};
@@ -151,6 +154,7 @@ void TestIntegration::testConfigIsolation()
 
     qunsetenv("GRIDYARD_PORT");
     qunsetenv("GRIDYARD_NAME");
+    qunsetenv("GRIDYARD_CONFIG");
 }
 
 void TestIntegration::testDirSerializerComprehensive()
