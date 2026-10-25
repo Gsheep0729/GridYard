@@ -1,6 +1,6 @@
 /**
 * @file    test_backup.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-25
 * @author  GY
 * @brief   用户数据备份与迁移测试
@@ -30,6 +30,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void testExportImportRoundTripWithUnicode();
+    void testExportDevicesLayerToggle();
     void testImportIsIdempotent();
     void testConflictMergeRules();
     void testIdentityRejectedWhenLibraryHasData();
@@ -108,7 +109,7 @@ void TestBackup::testExportImportRoundTripWithUnicode()
     // 写出备份文件并校验是合法 JSON
     const QString backupPath = _tempDir->path() + "/roundtrip.json";
     QSignalSpy exportSpy(&exporter, &BackupController::exportFinished);
-    exporter.writeExportFile(backupPath, true, true, true);
+    exporter.writeExportFile(backupPath, true, true, true, true);
     QCOMPARE(exportSpy.count(), 1);
     QVERIFY(exportSpy.first().first().toBool());
     QVERIFY(QFile::exists(backupPath));
@@ -183,7 +184,7 @@ void TestBackup::testImportIsIdempotent()
     QVariantMap exportSummary;
     QVERIFY(waitForExport(exporter, &exportSummary));
     const QString backupPath = _tempDir->path() + "/idempotent.json";
-    exporter.writeExportFile(backupPath, false, true, true);
+    exporter.writeExportFile(backupPath, false, true, true, true);
 
     useFreshConfig("config-d.ini");
     auto target = openBroker("backup-idempotent-target.sqlite");
@@ -241,7 +242,7 @@ void TestBackup::testConflictMergeRules()
     BackupController exporter(source.get(), _config, this);
     QVERIFY(waitForExport(exporter, nullptr));
     const QString backupPath = _tempDir->path() + "/conflict.json";
-    exporter.writeExportFile(backupPath, false, true, true);
+    exporter.writeExportFile(backupPath, false, true, true, true);
 
     // 本机已有同 ID 设备：备注非空、置顶为真、last_seen 更新
     PeerRecord local = makeDevice("conflict-dev", "本机设备", base.addSecs(600));
@@ -292,7 +293,7 @@ void TestBackup::testIdentityRejectedWhenLibraryHasData()
     BackupController exporter(source.get(), _config, this);
     QVERIFY(waitForExport(exporter, nullptr));
     const QString backupPath = _tempDir->path() + "/reject.json";
-    exporter.writeExportFile(backupPath, true, false, false);
+    exporter.writeExportFile(backupPath, true, true, false, false);
 
     // 目标库已有数据（另一台设备行），身份不同
     seedDatabase("backup-reject-target.sqlite",
@@ -477,6 +478,60 @@ bool TestBackup::waitForExport(BackupController &controller, QVariantMap *out)
     }
     *out = spy.first().first().toMap();
     return true;
+}
+
+// 设备关系层的导出勾选真实生效：勾选导出含 devices 数组，取消则整层缺省，导入按空层兼容
+void TestBackup::testExportDevicesLayerToggle()
+{
+    const QDateTime base = QDateTime::fromString("2026-10-26T08:00:00.000Z", Qt::ISODateWithMs);
+    PeerRecord device = makeDevice("toggle-dev-1", QStringLiteral("开关设备"), base);
+    device.alias = QStringLiteral("toggle-alias");
+    MessageRecord message = makeMessage("toggle-dev-1", "toggle-msg-1", base.addSecs(30));
+    seedDatabase("toggle-source.sqlite", {device}, {message});
+
+    auto broker = openBroker("toggle-source.sqlite");
+    QVERIFY(broker);
+    BackupController exporter(broker.get(), _config, this);
+    QVariantMap summary;
+    QVERIFY(waitForExport(exporter, &summary));
+
+    // 勾选设备层：devices 数组在，聊天未勾选则整层缺省
+    QSignalSpy spy(&exporter, &BackupController::exportFinished);
+    const QString withPath = _tempDir->path() + "/with-devices.json";
+    exporter.writeExportFile(withPath, false, true, false, false);
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(spy.first().first().toBool());
+
+    // 取消设备层：devices 键整体缺省，与身份/历史层互不影响
+    const QString withoutPath = _tempDir->path() + "/without-devices.json";
+    exporter.writeExportFile(withoutPath, false, false, false, false);
+    QCOMPARE(spy.count(), 2);
+    QVERIFY(spy.at(1).first().toBool());
+
+    auto readObject = [](const QString &path) -> QJsonObject {
+        QFile file{path};
+        if (!file.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+        return QJsonDocument::fromJson(file.readAll()).object();
+    };
+    const QJsonObject withRoot = readObject(withPath);
+    QVERIFY(withRoot.contains("format"));  // 备份文件应可读且带格式标识
+    QVERIFY(withRoot.contains("devices"));
+    QCOMPARE(withRoot.value("devices").toArray().size(), 1);
+    QVERIFY(!withRoot.contains("chat"));
+    const QJsonObject withoutRoot = readObject(withoutPath);
+    QVERIFY(withoutRoot.contains("format"));
+    QVERIFY(!withoutRoot.contains("devices"));
+    QVERIFY(!withoutRoot.contains("chat"));
+
+    // 无设备层的备份可正常解析：设备层计 0 且不报错（导入侧缺键按空层处理）
+    QSignalSpy analyzedSpy(&exporter, &BackupController::importAnalyzed);
+    exporter.analyzeImportFile(withoutPath);
+    QTRY_COMPARE(analyzedSpy.count(), 1);
+    const QVariantMap analyzed = analyzedSpy.first().first().toMap();
+    QCOMPARE(analyzed.value("error"), QVariant());
+    QCOMPARE(analyzed.value("devices").toInt(), 0);
 }
 
 QTEST_MAIN(TestBackup)

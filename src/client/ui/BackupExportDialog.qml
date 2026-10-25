@@ -163,6 +163,7 @@ Dialog {
                 onClicked: AppController.backupController.writeExportFile(
                                exportDialog._savePath.trim(),
                                exportDialog._includeIdentity,
+                               exportDialog._includeDevices,
                                exportDialog._includeChat,
                                exportDialog._includeTransfers)
             }

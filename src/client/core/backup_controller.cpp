@@ -1,6 +1,6 @@
 /**
 * @file    backup_controller.cpp
-* @version 7.23.0
+* @version 8.0.0
 * @date 2026-10-07
 * @author  GridYard Team
 * @brief   用户数据备份与迁移控制器实现
@@ -113,7 +113,7 @@ void BackupController::prepareExport()
 }
 
 // 将最近一次导出数据按勾选层写入目标路径（明文 JSON，覆盖同名文件）
-void BackupController::writeExportFile(const QString &path, bool includeIdentity,
+void BackupController::writeExportFile(const QString &path, bool includeIdentity, bool includeDevices,
                                        bool includeChat, bool includeTransfers)
 {
     if (path.trimmed().isEmpty()) {
@@ -133,11 +133,13 @@ void BackupController::writeExportFile(const QString &path, bool includeIdentity
         root.insert(QStringLiteral("identity"), identity);
     }
 
-    QJsonArray devices;
-    for (const PeerRecord &record : _exportDevices) {
-        devices.append(deviceToJson(record));
+    if (includeDevices) {
+        QJsonArray devices;
+        for (const PeerRecord &record : _exportDevices) {
+            devices.append(deviceToJson(record));
+        }
+        root.insert(QStringLiteral("devices"), devices);
     }
-    root.insert(QStringLiteral("devices"), devices);
 
     if (includeChat) {
         QJsonArray chat;

@@ -1,6 +1,6 @@
 /**
 * @file    backup_controller.h
-* @version 7.23.0
+* @version 8.0.0
 * @date 2026-10-07
 * @author  GridYard Team
 * @brief   用户数据备份与迁移控制器
@@ -43,7 +43,7 @@ public:
     // 收集导出数据与各层条目数，完成后经 exportPrepared 携带默认路径发布
     Q_INVOKABLE void prepareExport();
     // 将最近一次导出数据按勾选层写入目标路径（明文 JSON，覆盖同名文件）
-    Q_INVOKABLE void writeExportFile(const QString &path, bool includeIdentity,
+    Q_INVOKABLE void writeExportFile(const QString &path, bool includeIdentity, bool includeDevices,
                                      bool includeChat, bool includeTransfers);
     // 解析备份文件并统计各层条目与冲突数，结果经 importAnalyzed 发布
     Q_INVOKABLE void analyzeImportFile(const QString &path);
