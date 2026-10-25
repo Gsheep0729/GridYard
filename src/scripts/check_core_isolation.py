@@ -7,16 +7,21 @@
     python3 src/scripts/check_core_isolation.py --core-dirs src/shared/net
     python3 src/scripts/check_core_isolation.py --layer 2      # 只跑指定防线（1~5）
     python3 src/scripts/check_core_isolation.py --strict       # 基线目录也按 FAIL 计（Phase 验收用）
+    python3 src/scripts/check_core_isolation.py --compile-check  # 防线3 实际执行隔离编译（较慢）
 
 退出码：0 = 无新违规（基线已知现状以 WARN 报告）；1 = 发现超出基线的新违规。
 
 背景："纯 C++23 核心 + Qt GUI 桥接"重构（Phase 0~5，目标版本 8.0.0）期间，
 src/shared 等基线核心目录仍含 Qt 依赖属已知现状；src/core/ 与 third_party/
 从建立之日起零容忍；Phase 2/3 完成后用 --strict 对应目录验收归零。
+防线3 默认只生成隔离编译命令清单（19 个头全量语法检查约半分钟，不适合
+提交前高频守卫），需要真实执行时加 --compile-check；防线5 在构建树存在时
+直接执行 ldd/nm，二进制未构建时跳过并提示。
 """
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -179,8 +184,11 @@ def layer_two(core_dirs, strict, report):
         print('  OK               — 核心目录无 Qt 符号残留')
 
 
-def layer_three(core_dirs):
-    print('[防线3] 头文件隔离编译命令模板（Phase 1 起 CI 实际执行，本阶段仅生成清单）')
+def layer_three(core_dirs, run_compile, report):
+    if run_compile:
+        print('[防线3] 头文件隔离编译（--compile-check 实际执行，零 Qt include 路径）')
+    else:
+        print('[防线3] 头文件隔离编译命令清单（加 --compile-check 实际执行）')
     headers = []
     for d, f in iter_sources(core_dirs):
         if f.suffix == '.h':
@@ -188,9 +196,24 @@ def layer_three(core_dirs):
     if not headers:
         print('  OK               — 核心目录暂无头文件')
         return
+    include_flags = ['-I', 'src/', '-I', 'third_party', '-I', 'third_party/sqlite']
+    if run_compile:
+        failures = 0
+        for h in headers:
+            cmd = ['g++', '-std=c++23', '-fsyntax-only', *include_flags, str(h)]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                failures += 1
+                report['FAIL'] += 1
+                print(f'  FAIL(新违规)  — {h.relative_to(REPO_ROOT)} 隔离编译失败：')
+                for line in result.stderr.splitlines()[:5]:
+                    print(f'    {line}')
+        if failures == 0:
+            print(f'  OK               — {len(headers)} 个头文件隔离编译全部通过')
+        return
     print(f'  共 {len(headers)} 个头文件，隔离编译命令（零 Qt include 路径下应全部通过语法检查）：')
     for h in headers[:10]:
-        print(f'    g++ -std=c++23 -fsyntax-only -I src/ {h.relative_to(REPO_ROOT)}')
+        print(f'    g++ -std=c++23 -fsyntax-only -I src/ -I third_party -I third_party/sqlite {h.relative_to(REPO_ROOT)}')
     if len(headers) > 10:
         print(f'    ……（其余 {len(headers) - 10} 个同理）')
 
@@ -233,12 +256,27 @@ def layer_four(report):
                       f'其他依赖：{", ".join(other_deps) or "无"}')
 
 
-def layer_five():
-    print('[防线5] rendezvous 二进制 Qt 闭包检查命令模板（Phase 2 完成后执行）')
-    print('    ldd ./build-ninja/rendezvous/gridyard_rendezvous | grep -i \'Qt\\|libQ\'')
-    print('    # 预期：空输出（零 Qt so 依赖）；附加符号级兜底：')
-    print("    nm -C ./build-ninja/rendezvous/gridyard_rendezvous | grep -c 'QMetaObject'")
-    print('    # 预期：0（无 Qt 符号残留）')
+def layer_five(report):
+    print('[防线5] rendezvous 二进制 Qt 闭包检查（实际执行 ldd 与符号扫描）')
+    binary = REPO_ROOT / 'build-ninja' / 'rendezvous' / 'gridyard_rendezvous'
+    if not binary.is_file():
+        print('  SKIP            — 未找到 build-ninja/rendezvous/gridyard_rendezvous，构建后再复查')
+        return
+    ldd = subprocess.run(['ldd', str(binary)], capture_output=True, text=True)
+    qt_hits = [line.strip() for line in ldd.stdout.splitlines() if re.search(r'Qt|libQ', line, re.I)]
+    if qt_hits:
+        report['FAIL'] += 1
+        for line in qt_hits:
+            print(f'  FAIL(新违规)  — ldd 命中 Qt 依赖：{line}')
+    else:
+        print('  OK               — ldd 零 Qt 动态依赖')
+    nm = subprocess.run(['nm', '-C', str(binary)], capture_output=True, text=True)
+    symbol_count = sum(1 for line in nm.stdout.splitlines() if 'QMetaObject' in line)
+    if symbol_count:
+        report['FAIL'] += 1
+        print(f'  FAIL(新违规)  — nm 检出 {symbol_count} 处 QMetaObject 符号')
+    else:
+        print('  OK               — nm 零 QMetaObject 符号')
 
 
 def main():
@@ -251,14 +289,16 @@ def main():
                         help='只跑指定防线')
     parser.add_argument('--strict', action='store_true',
                         help='基线目录也按 FAIL 计（Phase 验收归零用）')
+    parser.add_argument('--compile-check', action='store_true',
+                        help='防线3 实际执行头文件隔离编译（默认只生成命令清单）')
     args = parser.parse_args()
 
     report = {'WARN': 0, 'FAIL': 0}
     layers = {1: lambda: layer_one(args.core_dirs, args.allow, args.strict, report),
               2: lambda: layer_two(args.core_dirs, args.strict, report),
-              3: lambda: layer_three(args.core_dirs),
+              3: lambda: layer_three(args.core_dirs, args.compile_check, report),
               4: lambda: layer_four(report),
-              5: layer_five}
+              5: lambda: layer_five(report)}
     order = [args.layer] if args.layer else [1, 2, 3, 4, 5]
     for n in order:
         layers[n]()
