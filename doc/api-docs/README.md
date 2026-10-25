@@ -13,7 +13,7 @@
 | 02 | 传输管理模块 | [02-传输管理模块.md](./02-传输管理模块.md) | TransferSessionManager、FileSenderWorker、FileReceiverWorker |
 | 03 | 应用与配置模块 | [03-应用与配置模块.md](./03-应用与配置模块.md) | AppController、ConfigManager、Logger、命令行配置隔离 |
 | 04 | 协议与编解码模块 | [04-协议与编解码模块.md](./04-协议与编解码模块.md) | protocol.h、FrameCodec、TLV 帧格式、ErrorCode |
-| 05 | UI 组件模块 | [05-UI组件模块.md](./05-UI组件模块.md) | QML 组件、Style.js、FormatUtils.js、ChatView |
+| 05 | UI 组件模块 | [05-UI组件模块.md](./05-UI组件模块.md) | QML 组件、Style.js、FormatUtils.js、ConversationTimelineView、SettingsCard |
 | 06 | 全局 UI 设计规范 | [06-全局UI设计规范.md](./06-全局UI设计规范.md) | 配色、圆角、间距、动画、交互、字体规范 |
 | 07 | 在线聊天模块 | [07-在线聊天模块.md](./07-在线聊天模块.md) | ChatManager、ChatConnection、ChatMessageModel、P2P 文本聊天 |
 | 08 | 本地数据层模块 | [08-本地数据层模块.md](./08-本地数据层模块.md) | Repository 端口、SQLite Proxy、HistoryController、数据库设计、连接教程、异常恢复 |
@@ -83,10 +83,10 @@ ConfigManager.openFolder(ConfigManager.receivePath)
 
 | 层级 | 模块 | 文档 |
 |------|------|------|
-| 表现层 | Main.qml、DeviceCard、PeerListView、DeviceSessionView、ChatView、AcceptDialog、SettingsDialog、TransferTaskCard | 05-UI组件模块 |
+| 表现层 | Main.qml、DeviceCard、PeerListView、DeviceSessionView、ConversationTimelineView、AcceptDialog、SettingsDialog、TransferTaskCard | 05-UI组件模块 |
 | 应用逻辑层 | AppController、PeerDiscoveryViewModel、TransferController、ChatController、TransferSessionManager、ChatManager、HistoryController | 03-应用与配置模块、02-传输管理模块、07-在线聊天模块、08-本地数据层模块 |
 | 领域层 | DiscoveryService、P2pServer、FileSenderWorker、FileReceiverWorker、ChatConnection、FrameCodec、protocol.h、Repository 端口和值对象 | 01-设备发现模块、02-传输管理模块、04-协议与编解码模块、07-在线聊天模块、08-本地数据层模块 |
-| 数据管理层 | ConfigManager、Logger、LocalDataBroker、SqliteDatabaseBroker、SqliteDeviceRepository、SqliteMessageRepository、SqliteTransferHistoryRepository | 03-应用与配置模块、08-本地数据层模块 |
+| 数据管理层 | ConfigManager、Logger、LocalDataBroker、DatabaseWorker、DatabaseCore、DeviceRepositoryCore、MessageRepositoryCore、TransferRepositoryCore | 03-应用与配置模块、08-本地数据层模块 |
 
 ---
 

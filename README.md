@@ -41,7 +41,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 | 构建系统 | CMake 4.2.3 + Ninja |
 | 编译器 | GCC 16.1 |
 | 数据库 | SQLite（WAL 模式） |
-| 加密校验 | SHA-256（QCryptographicHash） |
+| 加密校验 | SHA-256（发送侧 picosha2 + 自研流式；接收侧增量校验 QCryptographicHash） |
 | 部署平台 | Manjaro Linux |
 
 ---
@@ -52,7 +52,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 
 - GCC 15+ 或 Clang 17+
 - CMake 4.2.3+
-- Qt 6.5+（含 Quick、QuickControls2、Sql 模块）
+- Qt 6.5+（含 Quick、QuickControls2 模块）
 - Ninja（推荐）
 - Linux 桌面门户（KDE 使用 `xdg-desktop-portal-kde`）
 
@@ -156,7 +156,7 @@ graph TD
         DOM["DiscoveryService · P2pServer<br/>FileSender/ReceiverWorker · ChatConnection<br/>FrameCodec · DirSerializer"]
     end
     subgraph 数据管理层["数据管理层 · 配置 + 日志 + 持久化"]
-        DATA["ConfigManager · Logger<br/>LocalDataBroker<br/>SqliteDatabaseBroker · Repository"]
+        DATA["ConfigManager · Logger<br/>LocalDataBroker · DatabaseWorker<br/>DatabaseCore · 仓储 RepositoryCore"]
     end
 
     ENTRY -->|"显式创建"| APP
@@ -487,6 +487,9 @@ graph TD
 ```text
 GridYard/
 ├── README.md
+├── CHANGELOG.md                         # 用户可感知变更日志
+├── CMakePresets.json                    # Debug / Release / ASan 构建预设
+├── LICENSE
 ├── doc/
 │   ├── diagrams/                        # UML 类图、组件图、序列图
 │   │   └── rendered/                    # PNG/SVG 导出
@@ -496,76 +499,165 @@ GridYard/
 │   │   └── 测试与部署/                   # 测试与打包指南
 │   ├── plan/                            # 阶段开发计划
 │   └── api-docs/                        # 模块 API 文档
+├── third_party/                         # vendored 第三方依赖（零 Qt）
+│   ├── CMakeLists.txt                   # INTERFACE 头库 + 编译型 SQLite3 目标
+│   ├── checksums.txt                    # 上游源 SHA-256 清单
+│   ├── nlohmann/json.hpp                # JSON 编解码（v3.11.3）
+│   ├── picosha2/picosha2.h              # SHA-256（发送侧哈希）
+│   └── sqlite/                          # SQLite3 amalgamation（3.45.0）
+│       ├── CMakeLists.txt
+│       ├── sqlite3.c
+│       ├── sqlite3.h
+│       └── sqlite3ext.h
 └── src/
-    ├── CMakeLists.txt                   # 顶层 CMake
-    ├── shared/                          # 共用静态库 gy_shared
+    ├── CMakeLists.txt                   # 顶层 CMake（Qt 仅 Quick/QuickControls2/QuickDialogs2/Widgets）
+    ├── shared/                          # 协议契约与 gy_net_core 网络核心（纯 C++，零 Qt）
     │   ├── CMakeLists.txt
     │   ├── protocol.h                   # TLV 协议 Type 码与常量
-    │   ├── data_types.h                 # PeerInfo / FileEntry / TransferSession
-    │   ├── chat_message.{h,cpp}         # 聊天消息 JSON 编解码
-    │   ├── frame_codec.{h,cpp}          # TLV 帧编解码（粘包状态机）
-    │   └── net/                         # gy_net 原生套接字封装（TCP/UDP/地址/网卡）
-    │       ├── posix_tcp_socket.{h,cpp}
-    │       ├── posix_tcp_server.{h,cpp}
-    │       ├── posix_udp_socket.{h,cpp}
-    │       └── ip_address.{h,cpp} / net_interfaces.{h,cpp}
+    │   ├── rendezvous_protocol_keys.h   # 协调节点与中继行协议常量（双端共用）
+    │   └── net/
+    │       ├── CMakeLists.txt
+    │       └── core/                    # poll + eventfd 事件泵与套接字核心
+    │           ├── net_reactor.{h,cpp}
+    │           ├── tcp_socket_core.{h,cpp}
+    │           ├── tcp_server_core.{h,cpp}
+    │           └── udp_socket_core.{h,cpp}
+    ├── core/                            # 纯 C++ 核心层 gy_core / gy_storage_core（零 Qt）
+    │   ├── CMakeLists.txt
+    │   ├── codec/                       # TLV 帧与聊天消息编解码
+    │   │   ├── chat_message_core.{h,cpp}
+    │   │   └── frame_codec_core.{h,cpp}
+    │   ├── config/
+    │   │   └── config_store.{h,cpp}     # INI 配置读写（与 QSettings IniFormat 逐字节兼容）
+    │   ├── types/
+    │   │   └── core_types.h             # 传输会话、文件条目等领域值类型
+    │   ├── utils/
+    │   │   └── dir_hasher.{h,cpp}       # 流式 SHA-256（picosha2 + FIPS 180-4 自研实现）
+    │   └── storage/                     # SQLite 持久化（vendored amalgamation）
+    │       ├── database_core.{h,cpp}    # 连接、迁移与损坏重建门面
+    │       ├── device_repository_core.{h,cpp}
+    │       ├── message_repository_core.{h,cpp}
+    │       ├── transfer_repository_core.{h,cpp}
+    │       ├── migration_core.{h,cpp}   # Schema 版本迁移
+    │       ├── sqlite_conn.{h,cpp}      # 连接与 PRAGMA
+    │       ├── sqlite_stmt.{h,cpp}      # 语句与参数绑定
+    │       ├── sqlite_tx.{h,cpp}        # 事务
+    │       ├── iso_time.{h,cpp}         # ISO 时间与排序
+    │       └── storage_records.h        # 领域记录定义
     ├── client/
     │   ├── CMakeLists.txt               # 客户端 QML 模块与 IDE 分组
-    │   ├── main.cpp                     # 程序入口，显式创建 AppController
+    │   ├── main.cpp                     # 程序入口，显式调用 AppController::singleton()
     │   ├── Main.qml                     # QML 根窗口，由 AppController 初始化
     │   ├── core/                        # 应用逻辑层
-    │   │   ├── app_controller.{h,cpp}   # 全局控制器，初始化应用层与 UI 层
-    │   │   ├── config_manager.{h,cpp}   # 配置管理（QSettings）
-    │   │   ├── transfer_session_manager.{h,cpp}
+    │   │   ├── app_controller.{h,cpp}   # 组合根，初始化应用层与 UI 层
+    │   │   ├── application_paths.{h,cpp}# 配置、数据、日志、数据库目录推导
+    │   │   ├── backup_controller.{h,cpp}# 备份导出与导入控制
+    │   │   ├── chat_controller.{h,cpp}  # 聊天门面
     │   │   ├── chat_manager.{h,cpp}     # 聊天连接与内存会话
+    │   │   ├── chat_message.h           # 聊天消息 DTO
     │   │   ├── chat_message_model.{h,cpp}
-    │   │   ├── history_controller.{h,cpp} # 本地历史分页、筛选和清理
-    │   │   ├── application_paths.{h,cpp}
-    │   │   ├── dir_serializer.{h,cpp}   # 目录遍历 + SHA-256
-    │   │   └── logger.{h,cpp}           # 日志拦截器
-    │   ├── network/                     # 网络层
+    │   │   ├── codec_bridge.h           # core 编解码与 Qt 类型的互转集中点
+    │   │   ├── config_manager.{h,cpp}   # 配置管理（经 ConfigStore 读写 INI）
+    │   │   ├── conversation_timeline_model.{h,cpp}  # 聊天与传输合并时间线模型
+    │   │   ├── data_types.h             # Q_GADGET 值类型（QML 反射访问）
+    │   │   ├── dir_serializer.{h,cpp}   # 目录遍历与哈希（走 gy_core）
+    │   │   ├── history_controller.{h,cpp}  # 本地历史分页、筛选和清理
+    │   │   ├── history_wiring.{h,cpp}   # 历史持久化装配
+    │   │   ├── logger.{h,cpp}           # 日志拦截器
+    │   │   ├── peer_discovery_view_model.{h,cpp}  # 设备列表视图模型（分段与搜索）
+    │   │   ├── post_to_ui_thread.h      # 后台线程回投 UI 线程
+    │   │   ├── reachability_controller.{h,cpp}    # 邀请码、端点探测与协调查询入口
+    │   │   ├── rendezvous_coordinator.{h,cpp}     # 协调客户端启停编排
+    │   │   ├── shutdown_controller.{h,cpp}        # 退出排空与缓存清理
+    │   │   ├── transfer_controller.{h,cpp}        # 传输门面
+    │   │   ├── transfer_session_manager.{h,cpp}   # 会话编排
+    │   │   ├── transfer_session_mapper.{h,cpp}    # 会话记录映射与删除策略
+    │   │   └── transfer_session_model.{h,cpp}     # 会话列表模型
+    │   ├── network/                     # 客户端网络层（gy_net 适配 + Qt Worker）
     │   │   ├── discovery_service.{h,cpp}    # UDP 设备发现
     │   │   ├── p2p_server.{h,cpp}           # TCP 服务器（首帧分流）
     │   │   ├── chat_connection.{h,cpp}      # 聊天 TCP 连接
-    │   │   ├── file_sender_worker.{h,cpp}  # 发送 Worker（后台线程）
-    │   │   └── file_receiver_worker.{h,cpp}# 接收 Worker（后台线程）
+    │   │   ├── file_sender_worker.{h,cpp}   # 发送 Worker（后台线程）
+    │   │   ├── file_receiver_worker.{h,cpp} # 接收 Worker（后台线程）
+    │   │   ├── endpoint_probe.{h,cpp}       # 端点探测
+    │   │   ├── invite_codec.{h,cpp}         # 邀请码编解码（gridyard://invite）
+    │   │   ├── rendezvous_client.{h,cpp}    # 协调节点客户端
+    │   │   ├── rendezvous_protocol_keys_qt.h # 行协议常量 Qt 透传头
+    │   │   ├── posix_tcp_socket.{h,cpp}     # Reactor 驱动的套接字适配器
+    │   │   ├── posix_tcp_server.{h,cpp}
+    │   │   ├── posix_udp_socket.{h,cpp}
+    │   │   ├── posix_net_types.h            # 套接字枚举与类型
+    │   │   ├── posix_net_error.{h,cpp}      # errno 映射
+    │   │   ├── ip_address.{h,cpp}           # 地址解析与 IPv4 映射归一化
+    │   │   └── net_interfaces.{h,cpp}       # getifaddrs 网卡枚举
     │   ├── domain/                      # 领域层（Repository 端口）
-    │   │   ├── CMakeLists.txt
     │   │   ├── history_records.h        # PeerRecord / MessageRecord / TransferRecord
     │   │   └── history_repositories.h   # IDevice/Message/TransferHistory Repository
-    │   ├── storage/                     # 基础设施层（SQLite Broker + Repository）
-    │   │   ├── CMakeLists.txt
-    │   │   ├── local_data_broker.{h,cpp}       # 本地数据层代管者
-    │   │   ├── sqlite_database_broker.{h,cpp}  # 连接、WAL、事务
-    │   │   ├── sqlite_device_repository.{h,cpp} # 设备目录 Data Mapper
-    │   │   ├── sqlite_message_repository.{h,cpp} # 聊天消息 Data Mapper
-    │   │   ├── sqlite_transfer_history_repository.{h,cpp} # 传输历史 Data Mapper
-    │   │   ├── migration_runner.{h,cpp}       # Schema 版本迁移
-    │   │   └── database_worker.{h,cpp}        # 异步数据库线程
+    │   ├── storage/                     # 基础设施层（Broker + 异步 Worker）
+    │   │   ├── local_data_broker.{h,cpp}  # 本地数据层代管者
+    │   │   └── database_worker.{h,cpp}    # 异步数据库线程
     │   ├── ui/                          # QML 界面组件
     │   │   ├── DeviceCard.qml
     │   │   ├── PeerListView.qml
     │   │   ├── DeviceSessionView.qml
-    │   │   ├── ChatView.qml             # 聊天气泡视图
+    │   │   ├── ConversationTimelineView.qml  # 聊天与传输合并时间线
     │   │   ├── SettingsDialog.qml
+    │   │   ├── SettingsCard.qml
     │   │   ├── AcceptDialog.qml
-    │   │   ├── TransferPanel.qml
+    │   │   ├── AddDeviceDialog.qml
+    │   │   ├── BackupExportDialog.qml
+    │   │   ├── BackupImportDialog.qml
+    │   │   ├── CloseConfirmDialog.qml
+    │   │   ├── CompletionToast.qml
+    │   │   ├── DangerButton.qml
+    │   │   ├── DeleteDeviceDialog.qml
+    │   │   ├── DeviceAliasDialog.qml
+    │   │   ├── DeviceHistoryDialog.qml
+    │   │   ├── DeviceMergeDialog.qml
+    │   │   ├── DialogHeader.qml
+    │   │   ├── FileTypeIcon.qml
+    │   │   ├── HideDeviceDialog.qml
+    │   │   ├── HomePlaceholder.qml
+    │   │   ├── MultiTargetDialog.qml
+    │   │   ├── RefreshIcon.qml
+    │   │   ├── RelayConfirmDialog.qml
+    │   │   ├── Sidebar.qml
+    │   │   ├── Toast.qml
     │   │   ├── TransferHistoryView.qml
     │   │   ├── TransferTaskCard.qml
-    │   │   └── FileTypeIcon.qml
+    │   │   └── TrayIcon.qml
     │   ├── icons/                       # 文件类型与应用图标资源
     │   │   ├── gridyard.png
     │   │   ├── folder.svg
     │   │   └── file-*.svg
     │   ├── images/                      # 预留图片资源
+    │   │   └── gridyard.png
     │   └── utils/                       # QML 工具模块
     │       ├── Style.js                 # 样式常量
     │       └── FormatUtils.js           # 格式化工具
-    ├── scripts/                         # 辅助脚本
-    │   └── for_md.py                    # 代码归档工具
+    ├── rendezvous/                      # 协调节点与中继服务（独立可执行，零 Qt）
+    │   ├── CMakeLists.txt
+    │   ├── main.cpp                     # 入口，--mode rendezvous/relay 与 --port、--token
+    │   ├── rendezvous_server.{h,cpp}    # 注册、列表查询与邀请信令
+    │   ├── relay_server.{h,cpp}         # 双向字节流中继
+    │   ├── rendezvous_protocol.{h,cpp}  # JSON 行协议编解码
+    │   ├── online_registry.{h,cpp}      # 房间隔离的在线设备注册表
+    │   ├── line_session.{h,cpp}         # 行分帧会话基类（超时与回收）
+    │   ├── rendezvous_limits.h          # 行长、超时、并发等资源防线
+    │   ├── rendezvous_log.h             # 最小日志封装
+    │   └── rendezvous_time.h            # 时间格式化工具
+    ├── scripts/                         # 辅助脚本与打包
+    │   ├── for_md.py                    # 代码归档工具
+    │   ├── check_versions.py            # 版本三处与文件头一致性守卫
+    │   ├── check_code_style.py          # 静态规范守卫
+    │   ├── check_core_isolation.py      # 核心纯净区零 Qt 隔离守卫
+    │   ├── build_deb.sh                 # deb 打包
+    │   ├── build_tarball.sh             # tarball 打包
+    │   └── PKGBUILD                     # Arch 打包
     ├── server/                          # V2 服务端（规划中）
     └── tests/                           # 单元测试与集成测试
         ├── CMakeLists.txt
+        ├── test_utils/                  # port、wait、json_line、db_seed 测试工具
         ├── test_frame_codec.cpp
         ├── test_chat_message.cpp
         ├── test_chat_manager.cpp
@@ -576,11 +668,24 @@ GridYard/
         ├── test_config_manager.cpp
         ├── test_edge_cases.cpp
         ├── test_integration.cpp
+        ├── test_endpoint_probe.cpp
+        ├── test_invite_codec.cpp
+        ├── test_rendezvous_protocol.cpp
+        ├── test_rendezvous_client.cpp
+        ├── test_rendezvous_coordinator.cpp
+        ├── test_reachability_controller.cpp
+        ├── test_peer_discovery_view_model.cpp
+        ├── test_history_controller.cpp
         ├── test_storage_database.cpp
         ├── test_storage_device.cpp
         ├── test_storage_message.cpp
         ├── test_storage_transfer_history.cpp
-        └── test_history_controller.cpp
+        ├── test_database_worker.cpp
+        ├── test_posix_socket.cpp
+        ├── test_relay_chain.cpp
+        ├── test_backup.cpp
+        ├── test_conversation_timeline_model.cpp
+        └── test_golden_baseline.cpp
 ```
 
 ---
@@ -595,7 +700,7 @@ GridYard/
 | 数据库访问 | Repository 端口 + Data Mapper | 应用层不感知 SQL，便于测试与未来替换 |
 | 接收线程 | 每连接独立 QThread | 写盘与 SHA-256 不阻塞 UI |
 | 界面技术 | 全 QML | 声明式绑定，C++ 只暴露状态入口 |
-| 配置存储 | QSettings | 跨平台原生配置 API |
+| 配置存储 | 自研 INI（ConfigStore） | 纯 C++23 实现，与 QSettings IniFormat 文件语义逐字节兼容 |
 
 ---
 

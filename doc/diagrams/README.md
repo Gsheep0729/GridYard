@@ -1,6 +1,6 @@
 # GridYard 架构图
 
-本目录记录 GridYard 的架构视图。当前基线为 v6.6.2：Stage 0~5 的局域网 P2P 文件传输与在线聊天已完成，Stage 6 本地数据层（SQLite 设备目录、消息与传输历史、异步 Worker、保留期限清理）已交付，并完成托盘后台、非阻塞通知与历史恢复验收。在线聊天复用 P2P 通道（Type 码 `0x0501` ChatText / `0x0502` ChatAck），不依赖服务端或登录。
+本目录记录 GridYard 的架构视图。图表渲染基线为 v6.6.2，画的是 Stage 0~5 局域网 P2P 文件传输与在线聊天加 Stage 6 本地数据层（SQLite 设备目录、消息与传输历史、异步 Worker、保留期限清理）交付时的结构；此后 v7.x 的校园网可达性增强与 v8.0.0 的纯 C++ 核心重构（gy_core 与 gy_storage_core 核心层、gy_net 网络层、零 Qt 的协调与中继服务等）尚未更新到图中，新基线图待补。在线聊天复用 P2P 通道（Type 码 `0x0501` ChatText / `0x0502` ChatAck），不依赖服务端或登录。
 
 ## 目录结构
 
