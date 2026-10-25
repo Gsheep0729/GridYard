@@ -1,6 +1,6 @@
 /**
 * @file    p2p_server.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-25
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
@@ -46,6 +46,9 @@ static constexpr int kRelayFirstFrameTimeoutMs = 30000;
 static constexpr int kRelayConnectTimeoutMs = 5000;
 // 同时挂起的中继加入数量上限，防止异常邀请占用连接资源
 static constexpr int kMaxPendingRelayJoins = 3;
+// 同时受理的入站连接上限：覆盖等首帧与传输中的全部连接，防连接洪泛占尽
+// 线程与内存（对齐服务端 256/128 有界先例，单用户桌面场景取保守值）
+static constexpr int kMaxIncomingConnections = 16;
 
 // 读取 TLV 帧头中的 Type 和 Payload 长度
 bool readFrameHeader(const QByteArray &header, quint32 *type, quint32 *payloadLength)
@@ -237,12 +240,24 @@ void P2pServer::handleNewConnection(int descriptor, const QString &peerAddress)
         _pendingConnectionDescriptors.erase(descriptor);
     }
 
+    // 受理数达上限：直接关闭并记录日志，正常使用（同网段数台设备互传）远达不到该值
+    if (_activeConnections >= kMaxIncomingConnections) {
+        qWarning() << "[P2pServer] 入站连接达到上限" << kMaxIncomingConnections
+                   << "，拒绝来自" << peerAddress;
+        ::close(descriptor);
+        return;
+    }
+
     auto *socket = new gy::net::PosixTcpSocket{this};
     if (!socket->adoptDescriptor(descriptor)) {
         qWarning() << "[P2pServer] 接入描述符包装失败，来自" << peerAddress;
         delete socket;
         return;
     }
+
+    // 计数随 socket 生命周期增减：超时关闭、对端断开、分流移交后销毁各路径都会触发 destroyed
+    ++_activeConnections;
+    connect(socket, &QObject::destroyed, this, [this]() { --_activeConnections; });
 
     // 扩大收发缓冲到 4MB，减少大文件传输时系统调用和窗口抖动。
     socket->setSocketOption(gy::net::PosixTcpSocket::SendBufferSizeOption, 4 * 1024 * 1024);

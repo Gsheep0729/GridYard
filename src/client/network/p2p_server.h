@@ -1,6 +1,6 @@
 /**
  * @file    p2p_server.h
- * @version 7.26.1
+ * @version 8.0.0
  * @date    2026-10-25
  * @author  GridYard Team
  * @brief   P2P 文件传输服务器
@@ -49,6 +49,8 @@ public:
     void stop();
     // 获取监听端口（start 前 start() 用端口 0 时为系统分配值）
     quint16 serverPort() const;
+    // 当前受理中的入站连接数（测试与诊断用：确认上限行为与清理归零）
+    int activeConnectionCount() const { return _activeConnections; }
     // 通过中继服务器加入指定会话（接收端中继降级入口），就绪后按首帧分流处理
     void joinRelaySession(const QString &host, quint16 port, const QString &relayId);
 
@@ -82,4 +84,5 @@ private:
     std::mutex _pendingConnectionMutex;  // 接入回调在 Reactor 线程，登记与消费跨线程互斥
     QHash<gy::net::PosixTcpSocket *, QTimer *> _firstFrameTimers;  // 待路由连接的首帧计时器
     QHash<gy::net::PosixTcpSocket *, QString> _relayJoins;  // 待就绪的中继连接 -> relayId
+    int _activeConnections = 0;  // 受理中的入站连接数（等首帧与已移交未销毁），达上限拒绝新连接
 };

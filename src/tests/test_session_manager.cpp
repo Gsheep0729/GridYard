@@ -1,6 +1,6 @@
 /**
 * @file    test_session_manager.cpp
-* @version 7.26.1
+* @version 8.0.0
 * @date    2026-10-24
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
@@ -32,6 +32,14 @@
 
 #include <nlohmann/json.hpp>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <array>
+
 #include "core/tcp_socket_core.h"
 #include "rendezvous_server.h"
 
@@ -59,6 +67,7 @@ private slots:
     void testSessionStaleSignal();
     void testWaitingConfirmSnapshotQueueing();
     void testActiveSessionCountLifecycle();
+    void testIncomingConnectionLimit();
     void testIncomingRequestEntrySignal();
     void testMultiSendSharesSerializedList();
     void testMultiTargetsPersistence();
@@ -818,6 +827,84 @@ void TestSessionManager::testActiveSessionCountLifecycle()
     QCOMPARE(_manager->activeSessionCount(), 0);
 
     _config->setRelayMode(RelayMode::AskBeforeRelay);
+}
+
+// 入站连接数达到上限后新连接被拒绝：前 16 路保持在线，第 17 路被服务器主动关闭
+void TestSessionManager::testIncomingConnectionLimit()
+{
+    _config->setReceivePath(_tempDir->path() + "/limit-recv");
+    _config->setTcpPort(0);
+    _p2pServer->stop();
+    QVERIFY(_p2pServer->start());
+    const quint16 port = _p2pServer->serverPort();
+
+    // 原生回环连接，不发送任何首帧字节，仅占住等首帧名额
+    auto rawConnect = [](quint16 targetPort) -> int {
+        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(targetPort);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+            ::close(fd);
+            return -1;
+        }
+        return fd;
+    };
+    // 对端是否已关闭本连接（收到 FIN/RST 即真；窗口内无事件即假）
+    auto peerClosed = [](int fd, int timeoutMs) -> bool {
+        pollfd pfd {fd, POLLIN, 0};
+        if (::poll(&pfd, 1, timeoutMs) <= 0) {
+            return false;
+        }
+        char byte = 0;
+        return ::recv(fd, &byte, 1, MSG_PEEK) == 0;
+    };
+
+    constexpr int kLimit = 16;  // 与 P2pServer 的 kMaxIncomingConnections 保持一致
+    // 断言失败会直接 return，fd 统一交给守卫析构关闭，避免名额残留传染后续用例
+    struct FdGuard {
+        QVector<int> fds;
+        void closeAll() {
+            for (const int fd : fds) {
+                ::close(fd);
+            }
+            fds.clear();
+        }
+        ~FdGuard() { closeAll(); }
+    } guard;
+
+    // 前序用例被拒会话的接收 worker 属异步销毁：先等它彻底清完再起算，名额基线才是稳定的
+    QTRY_COMPARE_WITH_TIMEOUT(_p2pServer->activeConnectionCount(), 0, 5000);
+
+    for (int i = 0; i < kLimit; ++i) {
+        const int fd = rawConnect(port);
+        QVERIFY2(fd >= 0, "名额内的连接应全部建立成功");
+        guard.fds.append(fd);
+    }
+    // 等服务器逐路 accept 并进入等首帧阶段（QTRY 期间主线程事件循环持续运转）
+    QTRY_COMPARE_WITH_TIMEOUT(_p2pServer->activeConnectionCount(), kLimit, 5000);
+
+    const int extra = rawConnect(port);
+    QVERIFY2(extra >= 0, "超限连接也应完成 TCP 握手（拒绝发生在 accept 之后）");
+    guard.fds.append(extra);
+    // 拒绝动作在服务器主线程事件循环里执行：先等待处理完成，客户端侧再确认 FIN 已到达
+    QTest::qWait(500);
+    QVERIFY2(peerClosed(extra, 500), "超限连接应被服务器关闭");
+    QCOMPARE(_p2pServer->activeConnectionCount(), kLimit);  // 拒绝不占名额
+
+    // 名额内的连接保持在线：短窗口内不应有任何一路变为可读（被关才可读）
+    QVector<pollfd> pfds(kLimit);
+    for (int i = 0; i < kLimit; ++i) {
+        pfds[i].fd = guard.fds[i];
+        pfds[i].events = POLLIN;
+    }
+    QCOMPARE(::poll(pfds.data(), kLimit, 300), 0);
+
+    guard.closeAll();
+    // 等服务器侧销毁完这批断开的 socket，计数归零后再进下一用例
+    QTRY_COMPARE_WITH_TIMEOUT(_p2pServer->activeConnectionCount(), 0, 5000);
+    _p2pServer->stop();
 }
 
 // 入站请求的处理入口信号在弹窗确认与自动接受两条路径上都发射（隐藏设备自动恢复显示的触发点）
