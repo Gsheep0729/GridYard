@@ -199,8 +199,7 @@ target_link_libraries(appGridYard PRIVATE
 target_include_directories(appGridYard PRIVATE core network domain storage)
 set_property(TARGET appGridYard PROPERTY FOLDER "client")
 
-# ---- 安装规则 ---------------------------------------------------------
-set(CMAKE_INSTALL_PREFIX "/opt/${PROJECT_NAME}" CACHE PATH "Install path prefix" FORCE)
+# ---- 安装规则（前缀遵循 CMake 标准语义，可由 -DCMAKE_INSTALL_PREFIX / cmake --install --prefix 覆盖）----
 install(TARGETS appGridYard
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

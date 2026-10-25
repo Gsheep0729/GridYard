@@ -1,10 +1,8 @@
 # rendezvous/ —— 协调节点服务
 # 独立可执行程序，提供设备注册、候选端点拉取、中继邀请信令和流式中继转发
 # 纯 C++ 实现：事件泵与套接字核心来自 gy_net_core，JSON 用 vendored nlohmann，零 Qt
-
-cmake_minimum_required(VERSION 4.2.3)
-
-project(gridyard_rendezvous VERSION 7.26.0 LANGUAGES CXX)
+# 本目录只作为顶层工程（src/CMakeLists.txt）的子目录参与构建，不声明独立工程
+# 独立 configure 因缺少顶层工程声明直接报错；单独构建服务端用 --target gridyard_rendezvous
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,8 +51,7 @@ target_link_libraries(gridyard_rendezvous PRIVATE gy_rendezvous)
 # 可执行目标同样不经过任何 Qt 代码生成工具
 set_target_properties(gridyard_rendezvous PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
 
-# 安装
-set(CMAKE_INSTALL_PREFIX "/opt/${PROJECT_NAME}" CACHE PATH "Install path prefix" FORCE)
+# 安装（前缀遵循 CMake 标准语义，可由 -DCMAKE_INSTALL_PREFIX / cmake --install --prefix 覆盖）
 install(TARGETS gridyard_rendezvous
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
