@@ -1,0 +1,113 @@
+# Maintainer: GridYard Team <support@gridyard.org>
+# Contributor: Gao Yang <gy_ubuntu@cqnu.edu.cn>
+
+pkgname=gridyard
+pkgver=8.0.0
+pkgrel=1
+pkgdesc="LAN P2P File Transfer, Instant Messaging and SQLite Local History client (C++23 + Qt6)"
+arch=('x86_64')
+url="https://github.com/cqnu-gridyard/GridYard"
+license=('custom:GridYard')
+depends=(
+    'qt6-base'
+    'qt6-declarative'
+    'qt6-svg'
+    'qt6-imageformats'
+    'hicolor-icon-theme'
+)
+makedepends=(
+    'cmake>=4.2.3'
+    'ninja'
+    'gcc>=15'
+)
+optdepends=(
+    'qt6-wayland: Native Wayland session support'
+    'noto-fonts-cjk: Chinese / Japanese / Korean font rendering support'
+)
+
+# 当从 Git 仓库本地直接构建时，向上回溯定位工程根目录
+_get_project_root() {
+    local cur_dir="${startdir:-$(pwd)}"
+    if [ -f "$cur_dir/src/CMakeLists.txt" ]; then
+        echo "$cur_dir"
+    elif [ -f "$cur_dir/../../src/CMakeLists.txt" ]; then
+        echo "$(cd "$cur_dir/../.." && pwd)"
+    elif [ -f "$srcdir/src/CMakeLists.txt" ]; then
+        echo "$srcdir"
+    else
+        echo "$(cd "$startdir/../.." && pwd)"
+    fi
+}
+
+prepare() {
+    local project_root
+    project_root="$(_get_project_root)"
+    msg2 "定位到 GridYard 工程源码根目录: $project_root"
+}
+
+build() {
+    local project_root
+    project_root="$(_get_project_root)"
+
+    # 配置并使用 Ninja 进行 Release 优化编译
+    cmake -B "$srcdir/build" -S "$project_root/src" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+
+    cmake --build "$srcdir/build" -j"$(nproc)"
+}
+
+check() {
+    # 执行单元测试套件（test_integration 为本机回环集成测试，打包环境排除）
+    local project_root
+    project_root="$(_get_project_root)"
+    ctest --test-dir "$srcdir/build" --output-on-failure -E "test_integration"
+}
+
+package() {
+    local project_root
+    project_root="$(_get_project_root)"
+
+    # 1. 安装核心可执行文件
+    install -Dm755 "$srcdir/build/client/appGridYard" "$pkgdir/usr/bin/appGridYard"
+
+    # 2. 安装协调/中继服务二进制（纯 C++ 零 Qt，--mode rendezvous/relay）
+    install -Dm755 "$srcdir/build/rendezvous/gridyard_rendezvous" "$pkgdir/usr/bin/gridyard_rendezvous"
+
+    # 3. 安装高清桌面图标
+    local icon_src="$project_root/src/client/icons/gridyard.png"
+    if [ -f "$icon_src" ]; then
+        install -Dm644 "$icon_src" "$pkgdir/usr/share/icons/hicolor/128x128/apps/gridyard.png"
+        install -Dm644 "$icon_src" "$pkgdir/usr/share/icons/hicolor/256x256/apps/gridyard.png"
+        install -Dm644 "$icon_src" "$pkgdir/usr/share/pixmaps/gridyard.png"
+    fi
+
+    # 4. 安装 FreeDesktop 标准桌面入口文件
+    install -d "$pkgdir/usr/share/applications"
+    cat > "$pkgdir/usr/share/applications/gridyard.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=GridYard
+GenericName=LAN P2P File Transfer
+Comment=GridYard 局域网 P2P 文件传输、在线聊天与本地历史
+Comment[zh_CN]=GridYard 局域网 P2P 文件传输、在线聊天与本地历史
+Exec=/usr/bin/appGridYard
+Icon=gridyard
+Categories=Network;FileTransfer;P2P;
+Terminal=false
+StartupWMClass=GridYard
+Keywords=gridyard;p2p;lan;file;chat;
+EOF
+    chmod 644 "$pkgdir/usr/share/applications/gridyard.desktop"
+
+    # 5. 安装许可证声明
+    if [ -f "$project_root/LICENSE" ]; then
+        install -Dm644 "$project_root/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    fi
+
+    # 6. 安装更新日志
+    if [ -f "$project_root/CHANGELOG.md" ]; then
+        install -Dm644 "$project_root/CHANGELOG.md" "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
+    fi
+}
