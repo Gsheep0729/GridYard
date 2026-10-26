@@ -81,11 +81,6 @@ void TestPeerDiscoveryViewModel::initTestCase()
 
     qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/config.ini").toUtf8());
     qputenv("GRIDYARD_NAME", "ViewModelTest");
-    // 实例号 1 让发现服务监听偏移端口（45688），收不到局域网真实设备
-    // 发往默认口（45678）的广播——本套注入设备走直写库与 addManualPeer，
-    // 不依赖真实 UDP 发现；绝对计数断言此前会被外部设备间歇广播污染
-    // （6-I 双负载验收实测 recentTotalCount 14≠12，外部设备 GY-TB）
-    qputenv("GRIDYARD_INSTANCE", "1");
     _config = new ConfigManager{};
 
     _discovery = new DiscoveryService(_config, this);
@@ -99,7 +94,6 @@ void TestPeerDiscoveryViewModel::cleanupTestCase()
 
     qunsetenv("GRIDYARD_CONFIG");
     qunsetenv("GRIDYARD_NAME");
-    qunsetenv("GRIDYARD_INSTANCE");
 }
 
 // 广播来源设备排在手动端点之前（broadcast > manual）
@@ -717,7 +711,10 @@ void TestPeerDiscoveryViewModel::testRecentVisibleLimitTruncation()
 
     auto broker = openBroker("recent-limit.sqlite");
     QVERIFY(broker);
-    PeerDiscoveryViewModel viewModel(_discovery);
+    // 设备全部来自直写库：传空发现服务使 recent 段只含库设备，
+    // 局域网真实设备的广播无法污染绝对计数断言（6-I 双负载实测
+    // 外部设备 GY-TB/GY-DEV1 间歇混入致 14≠12）
+    PeerDiscoveryViewModel viewModel(nullptr);
     viewModel.initDataBroker(broker.get());
     QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("limit-dev-12")).isEmpty(), 3000);
 
@@ -774,7 +771,8 @@ void TestPeerDiscoveryViewModel::testRecentExpandDefaultTruncated()
 
     auto broker = openBroker("expand-default.sqlite");
     QVERIFY(broker);
-    PeerDiscoveryViewModel viewModel(_discovery);
+    // 同 recent-limit：纯库注入，空发现服务隔离外部广播
+    PeerDiscoveryViewModel viewModel(nullptr);
     viewModel.initDataBroker(broker.get());
     QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("edef-dev-12")).isEmpty(), 3000);
 
@@ -817,7 +815,8 @@ void TestPeerDiscoveryViewModel::testRecentExpandShowsAllAndCollapses()
 
     auto broker = openBroker("expand-toggle.sqlite");
     QVERIFY(broker);
-    PeerDiscoveryViewModel viewModel(_discovery);
+    // 同 recent-limit：纯库注入，空发现服务隔离外部广播
+    PeerDiscoveryViewModel viewModel(nullptr);
     viewModel.initDataBroker(broker.get());
     QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("etg-dev-12")).isEmpty(), 3000);
 
@@ -875,7 +874,8 @@ void TestPeerDiscoveryViewModel::testRecentExpandSurvivesHeartbeat()
 
     auto broker = openBroker("expand-heartbeat.sqlite");
     QVERIFY(broker);
-    PeerDiscoveryViewModel viewModel(_discovery);
+    // 同 recent-limit：纯库注入，空发现服务隔离外部广播
+    PeerDiscoveryViewModel viewModel(nullptr);
     viewModel.initDataBroker(broker.get());
     QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("ehb-dev-12")).isEmpty(), 3000);
 
@@ -908,8 +908,8 @@ void TestPeerDiscoveryViewModel::testRecentExpandSurvivesHeartbeat()
     QCOMPARE(recentCount(viewModel), 12);
     QCOMPARE(viewModel.recentTotalCount(), 12);
 
-    // 新建视图模型模拟应用重启：展开态复位为收起
-    PeerDiscoveryViewModel freshViewModel(_discovery);
+    // 新建视图模型模拟应用重启：展开态复位为收起（空发现服务同上隔离）
+    PeerDiscoveryViewModel freshViewModel(nullptr);
     freshViewModel.initDataBroker(broker.get());
     QTRY_VERIFY_WITH_TIMEOUT(!freshViewModel.deviceById(QStringLiteral("ehb-dev-12")).isEmpty(),
                              3000);
@@ -946,7 +946,8 @@ void TestPeerDiscoveryViewModel::testFavoriteSurvivesRecentTruncation()
                               [&favSet](bool) { favSet = true; });
     QTRY_COMPARE_WITH_TIMEOUT(favSet, true, 3000);
 
-    PeerDiscoveryViewModel viewModel(_discovery);
+    // 同 recent-limit：纯库注入，空发现服务隔离外部广播
+    PeerDiscoveryViewModel viewModel(nullptr);
     viewModel.initDataBroker(broker.get());
     QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("ftv-dev-12")).isEmpty(), 3000);
 
