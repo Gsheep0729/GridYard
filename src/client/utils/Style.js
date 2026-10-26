@@ -22,8 +22,9 @@ const Color = {
     // 边框
     border: "#E5E7EB",
     borderSoft: "#EEF2F7",
-    // 设备卡悬停底色：比列表底 #F7F7F7 深一档且带蓝味，与选中 primarySoft 同族更淡
-    hoverSoft: "#E9EDF3",
+    // 设备卡悬停底色：对实测列表底 #F7F7F7 各通道差 (24,17,7)，深一档且带冷味，
+    // 灰度帧差 max≈18（旧值 surfaceLeft 仅 10 不可辨），与选中 primarySoft 同族更淡
+    hoverSoft: "#DFE6F0",
     // 品牌主色
     primary: "#3B82F6",
     primarySoft: "#EFF6FF",
