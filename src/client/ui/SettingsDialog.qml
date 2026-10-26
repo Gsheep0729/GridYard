@@ -499,9 +499,33 @@ Dialog {
                         Layout.columnSpan: 2
                         Layout.fillWidth: true
                         text: settingsDialog._tempRendezvousHost
-                        placeholderText: qsTr("例如：10.10.10.100")
+                        // 占位提示改由 background 内自绘 Label 实现：Material 原生 placeholder
+                        // 会浮成标签沉到边框上（DeviceAliasDialog 同款模式）
+                        placeholderText: ""
                         selectByMouse: true
                         onTextChanged: settingsDialog._tempRendezvousHost = text
+
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: rendezvousHostField.activeFocus ? 1.5 : 1
+                            border.color: rendezvousHostField.activeFocus
+                                          ? Style.Color.primary : Style.Color.border
+
+                            Label {
+                                visible: rendezvousHostField.text.length === 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.left: parent.left
+                                anchors.leftMargin: 16
+                                text: qsTr("例如：10.10.10.100")
+                                color: Style.Color.textWeak
+                                font.pixelSize: 13
+                            }
+
+                            Behavior on border.color {
+                                ColorAnimation { duration: Style.Motion.base }
+                            }
+                        }
                     }
 
                     Label {
@@ -533,9 +557,33 @@ Dialog {
                         Layout.columnSpan: 2
                         Layout.fillWidth: true
                         text: settingsDialog._tempRendezvousToken
-                        placeholderText: qsTr("与服务器 --token 一致，留空表示未启用")
+                        // 占位提示改由 background 内自绘 Label 实现：Material 原生 placeholder
+                        // 会浮成标签沉到边框上（DeviceAliasDialog 同款模式）
+                        placeholderText: ""
                         selectByMouse: true
                         onTextChanged: settingsDialog._tempRendezvousToken = text
+
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: rendezvousTokenField.activeFocus ? 1.5 : 1
+                            border.color: rendezvousTokenField.activeFocus
+                                          ? Style.Color.primary : Style.Color.border
+
+                            Label {
+                                visible: rendezvousTokenField.text.length === 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.left: parent.left
+                                anchors.leftMargin: 16
+                                text: qsTr("与服务器 --token 一致，留空表示未启用")
+                                color: Style.Color.textWeak
+                                font.pixelSize: 13
+                            }
+
+                            Behavior on border.color {
+                                ColorAnimation { duration: Style.Motion.base }
+                            }
+                        }
                     }
 
                     Label {
