@@ -1,7 +1,7 @@
 /**
 * @file    posix_tcp_socket.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-27
 * @author  GridYard Team
 * @brief   原生 TCP 套接字实现
 *
@@ -9,6 +9,8 @@
 * Reactor 线程回调经 QMetaObject::invokeMethod(QueuedConnection) 投回
 * socket 归属线程再执行泵逻辑，线程语义与旧 QSocketNotifier 完全一致。
 * 发送统一带 MSG_NOSIGNAL，短写与 EAGAIN 留在用户态写队列，EINTR 原处重试。
+* 阻塞等待族在局部引擎上挂异步就绪等待，不私有消费 fd 事件，
+* 与事件泵对同一 fd 的监听互不抢占。
 */
 
 #include "posix_tcp_socket.h"
@@ -20,6 +22,10 @@
 #include <QMetaType>
 #include <QThread>
 
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/posix/stream_descriptor.hpp>
+#include <boost/asio/steady_timer.hpp>
+
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -30,7 +36,6 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
-#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -40,7 +45,6 @@ namespace gy::net {
 namespace {
 
 constexpr qint64 kReceiveChunkBytes = 64 * 1024;          // 单次读取块大小
-constexpr int kPollSliceMs = 100;                         // 阻塞等待切片，便于及时响应退出
 constexpr qint64 kReadBufferCompactThreshold = 1024 * 1024;  // 读缓冲消费过半后的压缩门槛
 
 // 给描述符设置非阻塞与关闭执行标志
@@ -65,13 +69,43 @@ void applyTcpNoDelay(int fd)
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
 }
 
-// 计算本轮 poll 的等待时长
-int pollSliceMs(int remainingMs)
+// 一次性就绪等待：在局部引擎上挂异步 wait，就绪或到期即返回。
+// 事件泵对本 fd 的监听在各自独立的实例上，互不抢占事件，阻塞窗口内
+// 两边的挂起操作都拿得到各自的通知。msecs 非 0 时到期返回 false。
+bool waitDescriptorReady(int fd, bool wantWrite, int msecs)
 {
-    if (remainingMs < 0) {
-        return kPollSliceMs;
+    if (fd < 0) {
+        return false;
     }
-    return std::min(remainingMs, kPollSliceMs);
+    boost::asio::io_context engine;
+    boost::asio::posix::stream_descriptor descriptor(engine);
+    boost::system::error_code ec;
+    descriptor.assign(fd, ec);
+    if (ec) {
+        return false;
+    }
+    boost::asio::steady_timer deadline(engine);
+    bool ready = false;
+    descriptor.async_wait(wantWrite ? boost::asio::posix::descriptor_base::wait_write
+                                    : boost::asio::posix::descriptor_base::wait_read,
+                          [&ready, &deadline](const boost::system::error_code &waitEc) {
+                              if (waitEc == boost::asio::error::operation_aborted) {
+                                  return;  // 到期取消路径
+                              }
+                              ready = true;
+                              deadline.cancel();
+                          });
+    if (msecs >= 0) {
+        deadline.expires_after(std::chrono::milliseconds(msecs));
+        deadline.async_wait([&descriptor](const boost::system::error_code &timerEc) {
+            if (!timerEc) {
+                descriptor.cancel();  // 到期取消就绪等待，引擎随后排空退出
+            }
+        });
+    }
+    engine.run();
+    descriptor.release();  // 剥离引擎所有权，原生描述符归调用方
+    return ready;
 }
 
 }  // namespace
@@ -443,23 +477,8 @@ bool PosixTcpSocket::waitForConnected(int msecs)
             return false;
         }
 
-        pollfd descriptor{};
-        descriptor.fd = _fd;
-        descriptor.events = POLLOUT;
-        const int ready = ::poll(&descriptor, 1, pollSliceMs(remaining));
-        if (ready < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            const int savedErrno = errno;
-            setError(socketErrorFromErrno(savedErrno), errorMessageFromErrno(savedErrno));
-            teardownNotifiers();
-            closeDescriptor();
-            _state = SocketState::UnconnectedState;
-            return false;
-        }
-        if (ready == 0) {
-            continue;
+        if (!waitDescriptorReady(_fd, true, msecs < 0 ? -1 : remaining)) {
+            continue;  // 到期：外层超时检查收尾
         }
 
         int socketError = 0;
@@ -492,33 +511,12 @@ bool PosixTcpSocket::waitForReadyRead(int msecs)
         return false;
     }
 
-    using Clock = std::chrono::steady_clock;
-    const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(std::max(0, msecs));
-
-    while (true) {
-        const int remaining = static_cast<int>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count());
-        if (remaining <= 0 && msecs >= 0) {
-            return false;
-        }
-
-        pollfd descriptor{};
-        descriptor.fd = _fd;
-        descriptor.events = POLLIN;
-        const int ready = ::poll(&descriptor, 1, pollSliceMs(remaining));
-        if (ready < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return false;
-        }
-        if (ready == 0) {
-            continue;
-        }
-
-        pumpReadBuffer(true);
-        return bytesAvailable() > 0 || _state != SocketState::ConnectedState;
+    if (!waitDescriptorReady(_fd, false, msecs)) {
+        return false;  // 到期未就绪
     }
+
+    pumpReadBuffer(true);
+    return bytesAvailable() > 0 || _state != SocketState::ConnectedState;
 }
 
 // 阻塞等待写缓冲排空
@@ -541,18 +539,8 @@ bool PosixTcpSocket::waitForBytesWritten(int msecs)
             return false;
         }
 
-        pollfd descriptor{};
-        descriptor.fd = _fd;
-        descriptor.events = POLLOUT;
-        const int ready = ::poll(&descriptor, 1, pollSliceMs(remaining));
-        if (ready < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return false;
-        }
-        if (ready == 0) {
-            continue;
+        if (!waitDescriptorReady(_fd, true, msecs < 0 ? -1 : remaining)) {
+            return false;  // 到期未排空
         }
 
         pumpWriteBuffer();
@@ -583,18 +571,8 @@ bool PosixTcpSocket::waitForDisconnected(int msecs)
             return false;
         }
 
-        pollfd descriptor{};
-        descriptor.fd = _fd;
-        descriptor.events = POLLIN;
-        const int ready = ::poll(&descriptor, 1, pollSliceMs(remaining));
-        if (ready < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return false;
-        }
-        if (ready == 0) {
-            continue;
+        if (!waitDescriptorReady(_fd, false, msecs < 0 ? -1 : remaining)) {
+            return false;  // 到期未断开
         }
 
         // 关闭等待期间只排空缓冲，不再向业务层派发可读事件
