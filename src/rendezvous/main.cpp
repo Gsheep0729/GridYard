@@ -1,7 +1,7 @@
 /**
 * @file    main.cpp
 * @version 8.1.0
-* @date    2026-10-24
+* @date    2026-10-27
 * @author  GridYard Team
 * @brief   协调节点和中继服务入口
 *
@@ -10,8 +10,8 @@
 *   和流式中继转发（按握手类型分流）
 * - 中继模式：仅提供流式中继转发服务
 *
-* 纯 C++ 实现：手写 argv 解析，事件泵 run() 在主线程驱动，
-* signalfd 监听 SIGINT/SIGTERM 优雅退出，日志直写标准流。
+* 纯 C++ 实现：手写 argv 解析，事件引擎 run() 在主线程驱动，
+* 退出信号经 asio 信号集接管（SIGINT/SIGTERM）后优雅退出，日志直写标准流。
 */
 
 #include "rendezvous_log.h"
@@ -20,14 +20,12 @@
 
 #include "core/net_reactor.h"
 
-#include <sys/signalfd.h>
-#include <unistd.h>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/signal_set.hpp>
 
-#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <string>
 
 namespace {
@@ -123,34 +121,24 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // 阻塞退出信号并转为 signalfd，由事件泵监听后优雅退出
-    sigset_t exitSignals;
-    sigemptyset(&exitSignals);
-    sigaddset(&exitSignals, SIGINT);
-    sigaddset(&exitSignals, SIGTERM);
-    ::sigprocmask(SIG_BLOCK, &exitSignals, nullptr);
-    const int signalFd = ::signalfd(-1, &exitSignals, SFD_NONBLOCK | SFD_CLOEXEC);
-    if (signalFd < 0) {
-        gy::rendezvous::logWarn(std::string("[Main] signalfd 创建失败: ") + std::strerror(errno));
-        return 1;
-    }
-
     gy::net::NetReactor reactor;
+
+    // 退出信号经 asio 信号集接管并挂到事件引擎同一执行域：
+    // 收到 SIGINT/SIGTERM 后停泵，run() 返回即完成优雅退出
+    boost::asio::signal_set exitSignals{reactor.engineContext(), SIGINT, SIGTERM};
+    exitSignals.async_wait([&reactor](const boost::system::error_code &, int) {
+        gy::rendezvous::logInfo("[Main] 收到退出信号");
+        reactor.stop();
+    });
 
     if (mode == "relay") {
         RelayServer relay{port, token, &reactor};
         if (!relay.start()) {
             gy::rendezvous::logWarn("[Main] 中继服务启动失败: " + relay.errorString());
-            ::close(signalFd);
             return 1;
         }
         gy::rendezvous::logInfo("[Main] GridYard 中继服务已启动");
 
-        reactor.watch(signalFd, static_cast<uint32_t>(gy::net::Event::kReadable), 1,
-                      [&reactor](int, uint32_t) {
-                          gy::rendezvous::logInfo("[Main] 收到退出信号");
-                          reactor.stop();
-                      });
         reactor.run();
     } else {
         RendezvousServer rendezvous{port, token, -1, &reactor};
@@ -165,20 +153,13 @@ int main(int argc, char *argv[])
 
         if (!rendezvous.start()) {
             gy::rendezvous::logWarn("[Main] 协调节点服务启动失败: " + rendezvous.errorString());
-            ::close(signalFd);
             return 1;
         }
         gy::rendezvous::logInfo("[Main] GridYard 协调节点服务已启动（同端口内置中继）");
 
-        reactor.watch(signalFd, static_cast<uint32_t>(gy::net::Event::kReadable), 1,
-                      [&reactor](int, uint32_t) {
-                          gy::rendezvous::logInfo("[Main] 收到退出信号");
-                          reactor.stop();
-                      });
         reactor.run();
     }
 
-    ::close(signalFd);
     gy::rendezvous::logInfo("[Main] 服务已退出");
     return 0;
 }

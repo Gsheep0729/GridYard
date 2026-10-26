@@ -1,28 +1,32 @@
 /**
 * @file    tcp_socket_core.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-27
 * @author  GridYard Team
-* @brief   纯 POSIX TCP 连接核心实现
+* @brief   纯 POSIX TCP 连接核心实现（Boost.Asio 引擎）
 *
-* 所有系统调用均为非阻塞形式：recv 循环读入用户缓冲（受读上限约束，
-* 饱和后停读形成 TCP 背压），send 带 MSG_NOSIGNAL 且 EAGAIN 时余量
-* 留在用户态写队列由可写事件续传。回调契约：业务回调返回后对象才可
-* 析构，所有成员访问在触发回调之前完成。
+* 读写经异步操作驱动：读完成把数据搬入用户缓冲并按块通知，缓冲饱和即
+* 停挂读形成 TCP 背压，消费后恢复；写完成推进用户态写队列，余量续传，
+* 写错误与 EOF 分开归因。全部异步处理器绑定本套接字的 strand，关闭与
+* 取消在引擎线程内串行执行；取消完成的处理器只做零成员访问的短路返回，
+* 存活哨兵保证已析构对象的迟到完成安全丢弃。
 */
 
 #include "core/tcp_socket_core.h"
 
+#include <boost/asio/bind_executor.hpp>
+#include <boost/asio/post.hpp>
+
 #include <arpa/inet.h>
-#include <fcntl.h>
+#include <netdb.h>
 #include <netinet/tcp.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <cerrno>
 #include <cstring>
+#include <latch>
 #include <utility>
 
 namespace gy::net {
@@ -30,27 +34,6 @@ namespace gy::net {
 namespace {
 
 constexpr size_t kReceiveChunkBytes = 64 * 1024;  // 单次读取块大小
-
-// 给描述符设置非阻塞与关闭执行标志
-bool configureDescriptor(int fd)
-{
-    const int flags = ::fcntl(fd, F_GETFL, 0);
-    if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        return false;
-    }
-    const int descriptorFlags = ::fcntl(fd, F_GETFD, 0);
-    if (descriptorFlags < 0 || ::fcntl(fd, F_SETFD, descriptorFlags | FD_CLOEXEC) < 0) {
-        return false;
-    }
-    return true;
-}
-
-// 开启 TCP_NODELAY，失败不中断连接
-void applyTcpNoDelay(int fd)
-{
-    const int enabled = 1;
-    ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
-}
 
 // 把套接字地址格式化为文本：IPv4 映射的 IPv6 地址归一化为点分十进制
 std::string formatPeerAddress(const sockaddr *address, socklen_t length)
@@ -85,19 +68,37 @@ std::string formatPeerAddress(const sockaddr *address, socklen_t length)
 // 构造函数
 TcpSocketCore::TcpSocketCore(NetReactor &reactor)
     : _reactor{reactor}
+    , _socket{reactor.engineContext()}
+    , _strand{reactor.engineContext().get_executor()}
+    , _alive{std::make_shared<std::atomic_bool>(true)}
+    , _readChunk(kReceiveChunkBytes)
 {
 }
 
-// 析构函数：注销监听并关闭描述符
+// 析构函数：关闭描述符并让迟到完成经存活哨兵安全丢弃
 TcpSocketCore::~TcpSocketCore()
 {
-    if (_watchActive && _fd >= 0) {
-        _reactor.unwatchNow(_fd, _generation);
+    _alive->store(false);
+    if (_fd < 0) {
+        return;
     }
-    if (_fd >= 0) {
-        ::close(_fd);
+    if (_reactor.onReactorThread() || !_reactor.isRunning()) {
+        // 引擎线程内或引擎未运行：无并发派发，直接关闭
+        boost::system::error_code ec;
+        _socket.close(ec);
         _fd = -1;
+        return;
     }
+    // 引擎运行中的外线程析构：投递到 strand 关闭并等待生效，
+    // 返回后不再有本对象的派发在途（对齐旧注销屏障语义）
+    std::latch done(1);
+    boost::asio::post(_strand, [this, &done] {
+        boost::system::error_code ec;
+        _socket.close(ec);
+        done.count_down();
+    });
+    done.wait();
+    _fd = -1;
 }
 
 // 接管已连接描述符
@@ -106,41 +107,54 @@ bool TcpSocketCore::adopt(int descriptor)
     if (descriptor < 0) {
         return false;
     }
-    if (_watchActive && _fd >= 0) {
-        _reactor.unwatchNow(_fd, _generation);
-        _watchActive = false;
+    if (_reactor.onReactorThread() || !_reactor.isRunning()) {
+        // 引擎线程内或引擎未运行（无并发派发）：直接执行
+        return adoptOnEngine(descriptor);
     }
+    // 外线程接管：投递到 strand 执行并等待生效，保证接管期间无并发事件
+    std::latch done(1);
+    std::atomic_bool ok{false};
+    boost::asio::post(_strand, [this, descriptor, &done, &ok] {
+        ok.store(adoptOnEngine(descriptor));
+        done.count_down();
+    });
+    done.wait();
+    return ok.load();
+}
+
+// 引擎线程内的接管主体
+bool TcpSocketCore::adoptOnEngine(int descriptor)
+{
     if (_fd >= 0) {
-        ::close(_fd);
+        boost::system::error_code ec;
+        _socket.close(ec);
         _fd = -1;
     }
-
-    if (!configureDescriptor(descriptor)) {
+    boost::system::error_code ec;
+    _socket.assign(boost::asio::ip::tcp::v4(), descriptor, ec);
+    if (ec) {
+        // IPv4 协议标注不被接受时按 IPv6 再试（双栈监听接入的描述符）
+        ec.clear();
+        _socket.assign(boost::asio::ip::tcp::v6(), descriptor, ec);
+    }
+    if (ec) {
         ::close(descriptor);
         return false;
     }
 
     _fd = descriptor;
-    applyTcpNoDelay(_fd);
-    ++_generation;
+    // TCP_NODELAY 尽力开启，失败（如测试用 socketpair）不中断接管
+    boost::system::error_code optionEc;
+    _socket.set_option(boost::asio::ip::tcp::no_delay(true), optionEc);
+
     _rxBuf.clear();
     _rxOffset = 0;
     _txBuf.clear();
     _txOffset = 0;
     _gracefulClosePending = false;
-    _readWanted = true;
-    _writeWanted = false;
-
-    const int watchedFd = _fd;
-    const uint64_t generation = _generation;
-    _reactor.watch(watchedFd, static_cast<uint32_t>(Event::kReadable), generation,
-                   [this, watchedFd, generation](int fd, uint32_t events) {
-                       if (fd != watchedFd) {
-                           return;
-                       }
-                       handleEvents(events);
-                   });
-    _watchActive = true;
+    _readArmed = false;
+    _writeArmed = false;
+    armRead();
     return true;
 }
 
@@ -148,7 +162,9 @@ bool TcpSocketCore::adopt(int descriptor)
 void TcpSocketCore::setReadBufferLimit(int64_t bytes)
 {
     _readBufferLimit = std::max<int64_t>(0, bytes);
-    syncWatch();
+    if (_fd >= 0) {
+        armRead();  // 上限收紧由饱和判定立即停读，放宽则在此续挂恢复
+    }
 }
 
 // 可读字节数（用户缓冲与内核待读之和）
@@ -179,13 +195,14 @@ std::vector<uint8_t> TcpSocketCore::readAll()
     if (bufferedBytes() <= 0) {
         _rxBuf.clear();
         _rxOffset = 0;
-        syncWatch();
         return {};
     }
     std::vector<uint8_t> data(_rxBuf.begin() + static_cast<ptrdiff_t>(_rxOffset), _rxBuf.end());
     _rxBuf.clear();
     _rxOffset = 0;
-    syncWatch();
+    if (_fd >= 0) {
+        armRead();  // 消费后解除背压，恢复挂读
+    }
     return data;
 }
 
@@ -198,14 +215,14 @@ void TcpSocketCore::write(const std::vector<uint8_t> &data)
     write(data.data(), data.size());
 }
 
-// 追加写数据：先尝试直写内核，余量入队
+// 追加写数据：入队后经引擎异步送入内核
 void TcpSocketCore::write(const uint8_t *data, size_t length)
 {
     if (!data || length == 0 || _fd < 0) {
         return;
     }
     _txBuf.insert(_txBuf.end(), data, data + length);
-    pumpWrite();
+    armWrite();
 }
 
 // 优雅关闭：写队列排空后关闭
@@ -215,10 +232,11 @@ void TcpSocketCore::disconnectFromHost()
         return;
     }
     _gracefulClosePending = true;
-    pumpWrite();
-    if (_fd >= 0 && bytesToWrite() == 0) {
+    if (bytesToWrite() == 0) {
         finishClose(SocketCloseReason::kLocalClose);
+        return;
     }
+    armWrite();
 }
 
 // 立即关闭
@@ -227,7 +245,17 @@ void TcpSocketCore::abort()
     if (_fd < 0) {
         return;
     }
-    finishClose(SocketCloseReason::kLocalClose);
+    if (_reactor.onReactorThread() || !_reactor.isRunning()) {
+        finishClose(SocketCloseReason::kLocalClose);
+        return;
+    }
+    // 外线程调用：投递到 strand 关闭并等待生效（close/cancel 的引擎串行化契约）
+    std::latch done(1);
+    boost::asio::post(_strand, [this, &done] {
+        finishClose(SocketCloseReason::kLocalClose);
+        done.count_down();
+    });
+    done.wait();
 }
 
 // 对端地址文本
@@ -244,195 +272,114 @@ std::string TcpSocketCore::peerAddressText() const
     return formatPeerAddress(reinterpret_cast<const sockaddr *>(&address), length);
 }
 
-// Reactor 事件入口
-void TcpSocketCore::handleEvents(uint32_t events)
+// 异步读完成入口
+void TcpSocketCore::onReadCompleted(const boost::system::error_code &ec, size_t amount)
 {
-    if (_fd < 0 || _inCallback) {
+    if (ec == boost::asio::error::eof) {
+        finishClose(SocketCloseReason::kPeerClosed);
         return;
     }
-    // 可读与挂断统一走读泵收尾（EOF 表现为可读后 recv 返回 0）
-    if (events & (static_cast<uint32_t>(Event::kReadable)
-                  | static_cast<uint32_t>(Event::kHangup))) {
-        pumpRead();
-    }
-    if (_fd < 0) {
-        return;  // 读泵已终结连接
-    }
-    if (events & (static_cast<uint32_t>(Event::kWritable)
-                  | static_cast<uint32_t>(Event::kError))) {
-        pumpWrite();
-    }
-}
-
-// 从内核读入用户缓冲
-void TcpSocketCore::pumpRead()
-{
-    if (_fd < 0) {
-        return;
-    }
-
-    bool received = false;
-    while (true) {
-        if (_readBufferLimit > 0 && bufferedBytes() >= _readBufferLimit) {
-            break;  // 缓冲饱和：停读形成背压，消费后由 syncWatch 恢复
-        }
-        uint8_t chunk[kReceiveChunkBytes];
-        const ssize_t amount = ::recv(_fd, chunk, sizeof(chunk), 0);
-        if (amount > 0) {
-            _rxBuf.insert(_rxBuf.end(), chunk, chunk + amount);
-            received = true;
-            continue;
-        }
-        if (amount == 0) {
-            finishClose(SocketCloseReason::kPeerClosed);
-            return;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            break;
-        }
-        // 读错误与 EOF 分开归因，业务层据此区分日志与清理路径
+    if (ec) {
         ErrorCallback onError = _onError;
         if (onError) {
-            onError(std::string("recv 失败: ") + std::strerror(errno));
+            onError(std::string("recv 失败: ") + ec.message());
         }
         finishClose(SocketCloseReason::kError);
         return;
     }
 
-    if (received) {
-        ReadCallback onRead = _onRead;
-        if (onRead) {
-            _inCallback = true;
-            onRead();
-            _inCallback = false;
-        }
+    _rxBuf.insert(_rxBuf.end(), _readChunk.begin(), _readChunk.begin() + static_cast<ptrdiff_t>(amount));
+    ReadCallback onRead = _onRead;
+    if (onRead) {
+        _inCallback = true;
+        onRead();
+        _inCallback = false;
     }
     if (_fd >= 0) {
-        syncWatch();
+        armRead();  // 未饱和继续挂读；饱和由消费方触发恢复
     }
 }
 
-// 把用户态写队列送入内核
-void TcpSocketCore::pumpWrite()
+// 异步写完成入口
+void TcpSocketCore::onWriteCompleted(const boost::system::error_code &ec, size_t amount)
 {
-    if (_fd < 0 || _inCallback) {
-        return;
-    }
-
-    int64_t written = 0;
-    while (_txOffset < _txBuf.size()) {
-        const uint8_t *data = _txBuf.data() + _txOffset;
-        const size_t remaining = _txBuf.size() - _txOffset;
-        const ssize_t amount = ::send(_fd, data, remaining, MSG_NOSIGNAL);
-        if (amount > 0) {
-            _txOffset += static_cast<size_t>(amount);
-            written += amount;
-            continue;
-        }
-        if (amount == 0) {
-            break;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            break;
-        }
+    if (ec) {
         ErrorCallback onError = _onError;
         if (onError) {
-            onError(std::string("send 失败: ") + std::strerror(errno));
+            onError(std::string("send 失败: ") + ec.message());
         }
         finishClose(SocketCloseReason::kError);
         return;
     }
 
+    _txOffset += amount;
     if (_txOffset >= _txBuf.size()) {
         _txBuf.clear();
         _txOffset = 0;
     }
-
-    if (_fd >= 0) {
-        syncWatch();
-    }
-
-    if (written > 0) {
+    if (amount > 0) {
         WrittenCallback onWritten = _onWritten;
         if (onWritten) {
             _inCallback = true;
-            onWritten(written);
+            onWritten(static_cast<int64_t>(amount));
             _inCallback = false;
         }
     }
-
-    // 写队列排空且挂起了优雅关闭：此刻完成关闭
-    if (_fd >= 0 && _gracefulClosePending && bytesToWrite() == 0) {
-        finishClose(SocketCloseReason::kLocalClose);
-    }
-}
-
-// 刷新 Reactor 监听
-void TcpSocketCore::syncWatch()
-{
-    if (_fd < 0 || !_watchActive) {
-        return;
-    }
-    const bool saturated = _readBufferLimit > 0 && bufferedBytes() >= _readBufferLimit;
-    _readWanted = !saturated;
-    _writeWanted = bytesToWrite() > 0;
-
-    uint32_t events = 0;
-    if (_readWanted) {
-        events |= static_cast<uint32_t>(Event::kReadable);
-    }
-    if (_writeWanted) {
-        events |= static_cast<uint32_t>(Event::kWritable);
-    }
-
-    // 同一 fd 的再次 watch 即更新条目；Reactor 线程内即时生效
-    const int watchedFd = _fd;
-    const uint64_t generation = _generation;
-    if (events != 0) {
-        _reactor.watch(watchedFd, events, generation,
-                       [this, watchedFd, generation](int fd, uint32_t revents) {
-                           if (fd != watchedFd) {
-                               return;
-                           }
-                           handleEvents(revents);
-                       });
-    } else {
-        _reactor.unwatchNow(watchedFd, generation);
-        _watchActive = false;
-    }
-}
-
-// 统一收尾
-void TcpSocketCore::finishClose(SocketCloseReason reason)
-{
     if (_fd < 0) {
         return;
     }
-    if (_watchActive) {
-        _reactor.unwatchNow(_fd, _generation);
-        _watchActive = false;
+    if (_gracefulClosePending && bytesToWrite() == 0) {
+        // 写队列排空且挂起了优雅关闭：此刻完成关闭
+        finishClose(SocketCloseReason::kLocalClose);
+        return;
     }
-    ::close(_fd);
-    _fd = -1;
-    _rxBuf.clear();
-    _rxOffset = 0;
-    _txBuf.clear();
-    _txOffset = 0;
-    _readWanted = false;
-    _writeWanted = false;
-    _gracefulClosePending = false;
+    armWrite();
+}
 
-    // 回调最后触发且回调后零成员访问：持有方允许在回调内立即析构本对象
-    CloseCallback onClose = std::move(_onClose);
-    if (onClose) {
-        onClose(reason);
+// 按当前状态续挂异步读
+void TcpSocketCore::armRead()
+{
+    if (_fd < 0 || _readArmed || readSaturated()) {
+        return;
     }
+    _readArmed = true;
+    auto alive = _alive;
+    _socket.async_read_some(boost::asio::buffer(_readChunk.data(), _readChunk.size()),
+                            boost::asio::bind_executor(_strand, [this, alive](
+                                const boost::system::error_code &ec, size_t amount) {
+                                // 取消路径零成员访问；存活哨兵拦截已析构对象的迟到完成
+                                if (ec == boost::asio::error::operation_aborted || !alive->load()) {
+                                    return;
+                                }
+                                _readArmed = false;
+                                onReadCompleted(ec, amount);
+                            }));
+}
+
+// 按当前状态续挂异步写
+void TcpSocketCore::armWrite()
+{
+    if (_fd < 0 || _writeArmed || _txOffset >= _txBuf.size()) {
+        return;
+    }
+    _writeArmed = true;
+    auto alive = _alive;
+    _socket.async_write_some(boost::asio::buffer(_txBuf.data() + _txOffset,
+                                                 _txBuf.size() - _txOffset),
+                             boost::asio::bind_executor(_strand, [this, alive](
+                                 const boost::system::error_code &ec, size_t amount) {
+                                 if (ec == boost::asio::error::operation_aborted || !alive->load()) {
+                                     return;
+                                 }
+                                 _writeArmed = false;
+                                 onWriteCompleted(ec, amount);
+                             }));
+}
+
+// 读缓冲是否已达上限（背压判定）
+bool TcpSocketCore::readSaturated() const
+{
+    return _readBufferLimit > 0 && bufferedBytes() >= _readBufferLimit;
 }
 
 // 用户缓冲未读字节数
@@ -442,6 +389,31 @@ int64_t TcpSocketCore::bufferedBytes() const
         return 0;
     }
     return static_cast<int64_t>(_rxBuf.size() - _rxOffset);
+}
+
+// 统一收尾：关闭描述符并通知终结（仅引擎线程内执行）
+void TcpSocketCore::finishClose(SocketCloseReason reason)
+{
+    if (_fd < 0) {
+        return;
+    }
+    _fd = -1;
+    _gracefulClosePending = false;
+    _readArmed = false;
+    _writeArmed = false;
+    _rxBuf.clear();
+    _rxOffset = 0;
+    _txBuf.clear();
+    _txOffset = 0;
+    // 真关描述符：挂起的读写操作以取消落地，其处理器只做短路返回
+    boost::system::error_code ec;
+    _socket.close(ec);
+
+    // 回调最后触发且回调后零成员访问：持有方允许在回调内立即析构本对象
+    CloseCallback onClose = std::move(_onClose);
+    if (onClose) {
+        onClose(reason);
+    }
 }
 
 }  // namespace gy::net

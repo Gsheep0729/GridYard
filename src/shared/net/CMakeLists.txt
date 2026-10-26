@@ -19,7 +19,7 @@ set(GY_NET_CORE_SOURCES
 add_library(gy_net_core STATIC ${GY_NET_CORE_SOURCES})
 
 target_include_directories(gy_net_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(gy_net_core PUBLIC Threads::Threads)
+target_link_libraries(gy_net_core PUBLIC Threads::Threads gy_asio)
 target_compile_features(gy_net_core PUBLIC cxx_std_23)
 # 纯 C++ 目标显式关闭 Qt 代码生成工具
 set_target_properties(gy_net_core PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
