@@ -1,7 +1,7 @@
 /**
  * @file    MultiTargetDialog.qml
- * @version 7.25.0
- * @date 2026-10-08
+ * @version 8.1.0
+ * @date 2026-10-26
  * @author  GridYard Team
  * @brief   多选群发目标选择弹窗
  *
@@ -112,9 +112,33 @@ Dialog {
             TextField {
                 id: manualPathInput
                 Layout.fillWidth: true
-                placeholderText: qsTr("或直接粘贴文件/文件夹路径")
+                // 占位提示改由 background 内自绘 Label 实现：Material 原生 placeholder
+                // 会浮成标签沉到边框上（DeviceAliasDialog 同款模式）
+                placeholderText: ""
                 font.pixelSize: 12
                 selectByMouse: true
+
+                background: Rectangle {
+                    radius: Style.Radius.sm
+                    color: Style.Color.window
+                    border.width: manualPathInput.activeFocus ? 1.5 : 1
+                    border.color: manualPathInput.activeFocus
+                                  ? Style.Color.primary : Style.Color.border
+
+                    Label {
+                        visible: manualPathInput.text.length === 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16
+                        text: qsTr("或直接粘贴文件/文件夹路径")
+                        color: Style.Color.textWeak
+                        font.pixelSize: 12
+                    }
+
+                    Behavior on border.color {
+                        ColorAnimation { duration: Style.Motion.base }
+                    }
+                }
             }
 
             Button {
@@ -146,10 +170,34 @@ Dialog {
             id: searchInput
             Layout.fillWidth: true
             visible: multiDialog._filePath.length > 0
-            placeholderText: qsTr("搜索在线设备")
+            // 占位提示改由 background 内自绘 Label 实现：Material 原生 placeholder
+            // 会浮成标签沉到边框上（DeviceAliasDialog 同款模式）
+            placeholderText: ""
             font.pixelSize: 13
             selectByMouse: true
             onTextChanged: multiDialog._searchText = text
+
+            background: Rectangle {
+                radius: Style.Radius.sm
+                color: Style.Color.window
+                border.width: searchInput.activeFocus ? 1.5 : 1
+                border.color: searchInput.activeFocus
+                              ? Style.Color.primary : Style.Color.border
+
+                Label {
+                    visible: searchInput.text.length === 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    text: qsTr("搜索在线设备")
+                    color: Style.Color.textWeak
+                    font.pixelSize: 13
+                }
+
+                Behavior on border.color {
+                    ColorAnimation { duration: Style.Motion.base }
+                }
+            }
         }
 
         ListView {

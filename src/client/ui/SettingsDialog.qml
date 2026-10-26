@@ -193,9 +193,33 @@ Dialog {
                     id: deviceNameField
                     Layout.fillWidth: true
                     text: settingsDialog._tempDeviceName
-                    placeholderText: qsTr("输入设备名称")
+                    // 占位提示改由 background 内自绘 Label 实现：Material 原生 placeholder
+                    // 会浮成标签沉到边框上（DeviceAliasDialog 同款模式）
+                    placeholderText: ""
                     selectByMouse: true
                     onTextChanged: settingsDialog._tempDeviceName = text
+
+                    background: Rectangle {
+                        radius: Style.Radius.sm
+                        color: Style.Color.window
+                        border.width: deviceNameField.activeFocus ? 1.5 : 1
+                        border.color: deviceNameField.activeFocus
+                                      ? Style.Color.primary : Style.Color.border
+
+                        Label {
+                            visible: deviceNameField.text.length === 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            text: qsTr("输入设备名称")
+                            color: Style.Color.textWeak
+                            font.pixelSize: 14
+                        }
+
+                        Behavior on border.color {
+                            ColorAnimation { duration: Style.Motion.base }
+                        }
+                    }
                 }
 
                 Label {
@@ -230,7 +254,9 @@ Dialog {
                         id: receivePathField
                         Layout.fillWidth: true
                         text: settingsDialog._tempReceivePath
-                        placeholderText: qsTr("输入或粘贴接收路径")
+                        // 占位提示改由 background 内自绘 Label 实现：Material 原生 placeholder
+                        // 会浮成标签沉到边框上（DeviceAliasDialog 同款模式）
+                        placeholderText: ""
                         selectByMouse: true
                         font.pixelSize: 13
                         // 支持直接粘贴或手输路径；编辑实时同步临时值，与更改目录按钮等价
@@ -238,6 +264,28 @@ Dialog {
                         onEditingFinished: {
                             text = text.trim()
                             settingsDialog._tempReceivePath = text
+                        }
+
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: receivePathField.activeFocus ? 1.5 : 1
+                            border.color: receivePathField.activeFocus
+                                          ? Style.Color.primary : Style.Color.border
+
+                            Label {
+                                visible: receivePathField.text.length === 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.left: parent.left
+                                anchors.leftMargin: 16
+                                text: qsTr("输入或粘贴接收路径")
+                                color: Style.Color.textWeak
+                                font.pixelSize: 13
+                            }
+
+                            Behavior on border.color {
+                                ColorAnimation { duration: Style.Motion.base }
+                            }
                         }
                     }
 
