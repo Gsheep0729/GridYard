@@ -1,7 +1,7 @@
 /**
 * @file    test_discovery.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.0.0
+* @date 2026-10-26
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
@@ -139,8 +139,19 @@ void TestDiscovery::testNodeExpiry()
     qunsetenv("GRIDYARD_CONFIG");
     qunsetenv("GRIDYARD_NAME");
 
-    QTRY_VERIFY_WITH_TIMEOUT(spy1.count() >= 1, 10000);
-    QVERIFY(spy1.first().at(0).toString() == device4Id);
+    // 2 秒超时同样作用于仍在广播的共享实例（广播间隔 5s > 2s），其节点
+    // 过期信号可能先于 device4 到达（QHash 清理顺序与广播相位均不定），
+    // 不能假设首个过期信号就是 device4，按包含性断言（6-S 长跑 S1 第 3
+    // 轮 :143 首参断言偶发失败即此竞态）
+    const auto device4Expired = [&spy1, &device4Id]() {
+        for (const QList<QVariant> &arguments : spy1) {
+            if (arguments.at(0).toString() == device4Id) {
+                return true;
+            }
+        }
+        return false;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(device4Expired(), 10000);
     QCOMPARE(_discovery1->transferEndpoint(device4Id).isEmpty(), true);
 }
 
