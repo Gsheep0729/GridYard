@@ -23,9 +23,9 @@ GridYard 的图形界面使用 Qt（QML 表现层与 QApplication 入口），�
 | :--- | :--- | :--- |
 | `gy_core` | `src/core/`（types/codec/config/utils 四分组） | 领域类型、TLV 帧编解码、聊天消息编解码、目录哈希（picosha2 流式）、INI 配置读写 |
 | `gy_storage_core` | `src/core/storage/` | vendored SQLite3 C API 封装（连接/语句/事务 RAII）、ISO 时间互转、Schema 迁移与三个仓储的纯 C++ 实现 |
-| `gy_net_core` | `src/shared/net/core/` | NetReactor 事件泵（poll + eventfd，代际计数防描述符复用陈旧事件）与 TCP/UDP 套接字核心 |
+| `gy_net_core` | `src/shared/net/core/` | NetReactor 事件泵（Boost.Asio io_context 单线程引擎，描述符等待挂接 fd 就绪，代际校验由描述符对象身份承接）与 TCP/UDP 套接字核心 |
 | `gy_protocol_contracts` | `src/shared/`（INTERFACE） | 协调与中继行协议的键名常量，双端单一来源 |
-| `gy_rendezvous` | `src/rendezvous/` | 协调节点与流式中继的服务端实现（nlohmann JSON、NetReactor 事件泵、signalfd 优雅退出） |
+| `gy_rendezvous` | `src/rendezvous/` | 协调节点与流式中继的服务端实现（nlohmann JSON、NetReactor 事件引擎、asio 信号集优雅退出） |
 
 第三方依赖全部 vendored 在 `third_party/`（nlohmann/json、picosha2、SQLite3 amalgamation），不引入系统级 Qt 外部依赖。
 
@@ -48,7 +48,7 @@ GridYard 的图形界面使用 Qt（QML 表现层与 QApplication 入口），�
 
 ## 3. 关键机制
 
-网络事件源的换心发生在 v7.26.0：`PosixTcpSocket`/`PosixTcpServer`/`PosixUdpSocket` 保持类接口不变，内部的事件监听从 QSocketNotifier 换成共享的 NetReactor（独立线程跑 poll，回调经 QueuedConnection 投回套接字归属线程执行，线程亲和与阻塞等待语义与旧实现一致）。服务端则彻底不经 Qt：LineSession、RelayServer、RendezvousServer 直接以回调风格挂接事件泵。
+网络事件源的换心发生在 v7.26.0：`PosixTcpSocket`/`PosixTcpServer`/`PosixUdpSocket` 保持类接口不变，内部的事件监听从 QSocketNotifier 换成共享的 NetReactor（回调经 QueuedConnection 投回套接字归属线程执行，线程亲和与阻塞等待语义与旧实现一致）。服务端则彻底不经 Qt：LineSession、RelayServer、RendezvousServer 直接以回调风格挂接事件泵。v8.1.0 起 NetReactor 的引擎线程由手写 poll 循环换为 Boost.Asio io_context（vendored，纯头库，单线程运转保持命令先于派发与注销屏障语义），fd 就绪监听经 asio 描述符等待承载，核心 TCP 套接字与监听器改为 asio 套接字对象并各配 strand 串行关闭与取消，fd 复用后的陈旧事件由描述符对象身份结构性隔离，不再依赖手工代际比对。
 
 协议编解码的现役实现是 `src/core/codec/` 的双生版（FrameCodecCore/ChatMessageCore），客户端经 `codec_bridge.h` 调用，golden 基线套件（test_golden_baseline）以冻结字面量对拍新旧实现的输出字节，是线格式不变的最高裁判。
 

@@ -225,7 +225,8 @@ def layer_three(core_dirs, run_compile, report):
     if not headers:
         print('  OK               — 核心目录暂无头文件')
         return
-    include_flags = ['-I', 'src/', '-I', 'third_party', '-I', 'third_party/sqlite']
+    include_flags = ['-I', 'src/', '-I', 'third_party', '-I', 'third_party/sqlite',
+                     '-I', 'third_party/asio/include']
     if run_compile:
         failures = 0
         for h in headers:
@@ -242,7 +243,7 @@ def layer_three(core_dirs, run_compile, report):
         return
     print(f'  共 {len(headers)} 个头文件，隔离编译命令（零 Qt include 路径下应全部通过语法检查）：')
     for h in headers[:10]:
-        print(f'    g++ -std=c++23 -fsyntax-only -I src/ -I third_party -I third_party/sqlite {h.relative_to(REPO_ROOT)}')
+        print(f'    g++ -std=c++23 -fsyntax-only -I src/ -I third_party -I third_party/sqlite -I third_party/asio/include {h.relative_to(REPO_ROOT)}')
     if len(headers) > 10:
         print(f'    ……（其余 {len(headers) - 10} 个同理）')
 
