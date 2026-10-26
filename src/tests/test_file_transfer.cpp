@@ -734,8 +734,14 @@ void TestFileTransfer::testCancelTransfer()
     QTest::qWait(200);
     QMetaObject::invokeMethod(&sender, "cancel", Qt::QueuedConnection);
 
-    // 验证发送端收到取消结果
-    QVERIFY(waitForTransfer(senderSpy, 10000));
+    // 验证发送端收到取消结果。取消链本身派发后 ≤1.5s（waitForBytesWritten
+    // 1000ms + disconnectFromHost(waitForPeer,500ms)），但排队的 cancel 槽
+    // 必须等 startTransfer 内 500MB 序列化（读 + 纯 C++ SHA-256，Debug -O0
+    // 无硬件加速）结束：实测 serialize 段空闲 5.31s、双负载 8.06s（strace），
+    // 双负载下成功轮整函数 10161ms——旧 10s 死线只剩 40ms 余量，负载敏感
+    // 竞态由此而来。30s ≈ 实测最坏值 3 倍，信号必达（spy.wait 等新信号，
+    // 无丢信号窗口），远小于本套 ctest TIMEOUT 600s。
+    QVERIFY(waitForTransfer(senderSpy, 30000));
     QVERIFY(!senderSpy.first().at(0).toBool());
 
     stopSenderThread(sender, senderThread);
