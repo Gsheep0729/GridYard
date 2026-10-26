@@ -75,6 +75,14 @@ BASELINE_LINK_MATRIX = {
 
 CORE_TARGETS = set(BASELINE_LINK_MATRIX.keys())
 
+# 防线4 允许依赖表（非 Qt 依赖白名单）：vendored 第三方目标，A1 起登记。
+# gy_asio 为 Boost.Asio 闭包接入目标（SYSTEM 头），A1 阶段尚无真实链接方，
+# 先行登记占位——A2 接线后核心目标依赖中出现 gy_asio 即属允许表内。
+# 当前非 Qt 依赖仅做展示标注不强检（强检收紧属后续防线演进，非本批范围）
+ALLOWED_NON_QT_LINK_DEPS = {
+    'gy_asio',
+}
+
 QT_LINK_RE = re.compile(r'^Qt6::\w+$')
 
 CMAKE_SCOPES = {'PRIVATE', 'PUBLIC', 'INTERFACE', 'LINK_PUBLIC', 'LINK_PRIVATE', 'LINK_INTERFACE'}
@@ -239,6 +247,13 @@ def layer_three(core_dirs, run_compile, report):
         print(f'    ……（其余 {len(headers) - 10} 个同理）')
 
 
+def format_other_deps(deps):
+    """非 Qt 依赖展示：允许依赖表内的条目附带标注"""
+    if not deps:
+        return '无'
+    return ', '.join(f'{d}(允许表内)' if d in ALLOWED_NON_QT_LINK_DEPS else d for d in deps)
+
+
 def layer_four(report):
     print('[防线4] CMake 核心目标依赖白名单检查（静态解析 target_link_libraries）')
     link_re = re.compile(r'target_link_libraries\s*\(\s*([^\s)]+)([^)]*)\)', re.S)
@@ -265,16 +280,16 @@ def layer_four(report):
         qt_deps = sorted(d for d in deps if QT_LINK_RE.match(d))
         other_deps = sorted(d for d in deps if not QT_LINK_RE.match(d))
         if not qt_deps:
-            print(f'  {target:<16} Qt 链接：无（OK）   其他依赖：{", ".join(other_deps) or "无"}')
+            print(f'  {target:<16} Qt 链接：无（OK）   其他依赖：{format_other_deps(other_deps)}')
             continue
         for qt in qt_deps:
             if qt in BASELINE_LINK_MATRIX[target]:
                 print(f'  {target:<16} {qt:<12} WARN(基线已知) [{BASELINE_LINK_MATRIX[target][qt]}]   '
-                      f'其他依赖：{", ".join(other_deps) or "无"}')
+                      f'其他依赖：{format_other_deps(other_deps)}')
             else:
                 report['FAIL'] += 1
                 print(f'  {target:<16} {qt:<12} FAIL(新违规)  [基线矩阵外的 Qt 依赖，禁止引入]   '
-                      f'其他依赖：{", ".join(other_deps) or "无"}')
+                      f'其他依赖：{format_other_deps(other_deps)}')
 
 
 def layer_five(report):
