@@ -1,7 +1,7 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.1.0
+ * @date 2026-10-27
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
@@ -307,7 +307,9 @@ Frame {
 
                     Menu {
                         id: removeMenu
-                        y: parent.height
+                        // 向上展开：传输卡常聚在时间线底部，向下弹会被窗口下缘裁切
+                        // （F14 第 28 章 f-3、7-V V-09）；设备卡菜单维持 Qt popup 自带翻转不动
+                        y: -implicitHeight
                         implicitWidth: 176
 
                         MenuItem {
