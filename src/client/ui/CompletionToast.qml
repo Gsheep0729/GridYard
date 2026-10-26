@@ -1,7 +1,7 @@
 /**
  * @file    CompletionToast.qml
- * @version 8.0.0
- * @date 2026-10-05
+ * @version 8.1.0
+ * @date 2026-10-26
  * @author  GridYard Team
  * @brief   接收完成通知卡
  *
@@ -32,7 +32,9 @@ Popup {
     }
 
     x: parent ? parent.width - width - 24 : 0
-    y: parent ? parent.height - height - 24 : 0
+    // 底边距抬到 88：底部居中 Toast（高约 44 + 32 边距）出现期间二者必然同屏，
+    // 原先 -24 在窄窗下与 Toast 右段叠压（V-06）
+    y: parent ? parent.height - height - 88 : 0
     width: Math.min(330, parent ? parent.width - 48 : 330)
     padding: 14
     modal: false
