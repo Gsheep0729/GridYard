@@ -53,11 +53,14 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_COMPILER=g++-15 \
             -DCMAKE_PREFIX_PATH="$HOME/Qt/6.11.1/gcc_64" 2>&1 | tee /tmp/cfg.log | tail -3 \
-            || { echo '### configure 尾部' >> "$GITHUB_STEP_SUMMARY"
-                 tail -50 /tmp/cfg.log >> "$GITHUB_STEP_SUMMARY"; exit 1; }
+            || { # 注解是无凭据取证的唯一可读通道（日志 403/页面登录墙/回推被拒）
+                 grep -B3 -A8 "CMake Error" /tmp/cfg.log | head -8 > /tmp/ann.txt
+                 [ -s /tmp/ann.txt ] || tail -8 /tmp/cfg.log > /tmp/ann.txt
+                 while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/ann.txt
+                 exit 1; }
           cmake --build build-ci -j"$(nproc)" 2>&1 | tee /tmp/build.log | tail -3 \
-            || { echo '### build 错误帧' >> "$GITHUB_STEP_SUMMARY"
-                 grep -E "error:|FAILED:" /tmp/build.log | head -40 >> "$GITHUB_STEP_SUMMARY"
+            || { grep -E "error:|FAILED:" /tmp/build.log | head -8 > /tmp/ann.txt
+                 while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/ann.txt
                  exit 1; }
 
       - name: 串行全量 ctest
