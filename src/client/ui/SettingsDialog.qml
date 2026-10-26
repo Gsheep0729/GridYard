@@ -1,7 +1,7 @@
 /**
 * @file    SettingsDialog.qml
-* @version 8.0.0
-* @date 2026-10-07
+* @version 8.1.0
+* @date 2026-10-26
 * @author  GridYard Team
 * @brief   设置对话框
 *
@@ -389,6 +389,7 @@ Dialog {
                         to: 65535  // SpinBox 须写数值边界，表单校验语义统一走 FormatUtils.isValidPort
                         value: settingsDialog._tempTcpPort
                         editable: true
+                        locale: Qt.locale("C")  // C 区域无千分位，端口不显示逗号分组
                         onValueModified: settingsDialog._tempTcpPort = value
                     }
                 }
@@ -467,6 +468,7 @@ Dialog {
                         to: 65535
                         value: settingsDialog._tempRendezvousPort
                         editable: true
+                        locale: Qt.locale("C")  // C 区域无千分位，端口不显示逗号分组
                         onValueModified: settingsDialog._tempRendezvousPort = value
                     }
 
