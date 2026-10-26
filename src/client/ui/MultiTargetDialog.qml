@@ -47,10 +47,35 @@ Dialog {
         }
         _checked = Object.assign({}, _checked)  // 触发依赖更新
         manualPathInput.text = AppController.transferController.lastMultiPath()
+        // 上次会话的过滤词残留在输入框会让可见列表与过滤状态不一致，打开时一并清空
+        searchInput.text = ""
         open()
     }
 
     readonly property int _checkedCount: Object.keys(_checked).filter(k => _checked[k]).length
+
+    // 已勾选中被当前搜索过滤隐藏的台数：勾选是显式意图，隐藏的目标仍参与发送，
+    // 但计数文案必须披露，避免"看不见的目标被发送"的知情缺口
+    readonly property int _hiddenCheckedCount: {
+        let hidden = 0
+        const keys = Object.keys(_checked)
+        for (let i = 0; i < keys.length; i++) {
+            if (!_checked[keys[i]]) {
+                continue
+            }
+            let visible = false
+            for (let j = 0; j < _candidates.length; j++) {
+                if (_candidates[j].deviceId === keys[i]) {
+                    visible = true
+                    break
+                }
+            }
+            if (!visible) {
+                hidden++
+            }
+        }
+        return hidden
+    }
 
     // 候选列表：在线设备（视图模型顺序已是好友置顶），按关键字过滤
     readonly property var _candidates: {
@@ -281,7 +306,10 @@ Dialog {
 
         Label {
             Layout.fillWidth: true
+            // 仅在"可见列表空且无隐藏勾选"时才算真正无目标；有隐藏勾选时
+            // 底部发送按钮已披露台数，这里不再误报"没有在线设备"
             visible: multiDialog._filePath.length > 0 && multiDialog._candidates.length === 0
+                     && multiDialog._checkedCount === 0
             text: qsTr("没有在线设备。群发只发给当前在线的设备，对方上线后可单独发送。")
             color: Style.Color.textWeak
             font.pixelSize: 12
@@ -302,7 +330,11 @@ Dialog {
             Button {
                 highlighted: true
                 enabled: multiDialog._filePath.length > 0 && multiDialog._checkedCount > 0
-                text: qsTr("发送（%1）").arg(multiDialog._checkedCount)
+                // 被搜索隐藏的已勾设备仍参与发送：计数文案在此披露，用户可据此清理过滤词核对名单
+                text: multiDialog._hiddenCheckedCount > 0
+                      ? qsTr("发送（%1，其中 %2 台被搜索隐藏）")
+                            .arg(multiDialog._checkedCount).arg(multiDialog._hiddenCheckedCount)
+                      : qsTr("发送（%1）").arg(multiDialog._checkedCount)
                 onClicked: {
                     const targets = Object.keys(multiDialog._checked)
                                         .filter(k => multiDialog._checked[k])
