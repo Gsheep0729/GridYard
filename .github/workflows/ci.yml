@@ -1,5 +1,7 @@
-# GridYard 持续集成：镜像开发机工具链（g++-15 + CMake≥4.2.3 + Qt 6.11.1）做配置构建、
+# GridYard 持续集成：镜像开发机工具链（g++-15 + CMake==4.2.3 + Qt 6.11.1）做配置构建、
 # 串行全量 ctest 与守卫三脚本。ctest 严禁 -j 并行：UDP 45678 发现端口串扰已有实证（开发心得第 66 章）。
+# CMake 必须固定 4.2.3：工程启用 C++23 import std，其实验特性 UUID 按 CMake 版本硬编码
+# （src/CMakeLists.txt:5 为 4.2 的 UUID），CMake 版本漂移会让 import std 检测失效。
 name: CI
 
 on:
@@ -38,7 +40,7 @@ jobs:
           # 落盘目录仍归一化为 <O>/6.11.1/gcc_64。另：pipx 预装与 /opt 直写
           # 不再假设（ubuntu-latest 迁移 26.04，runner-images#14748）。
           command -v pipx >/dev/null 2>&1 || sudo apt-get install -y pipx
-          pipx install cmake || pipx install cmake
+          pipx install cmake==4.2.3 || pipx install cmake==4.2.3
           pipx install aqtinstall || pipx install aqtinstall
           export PATH="$HOME/.local/bin:$PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
