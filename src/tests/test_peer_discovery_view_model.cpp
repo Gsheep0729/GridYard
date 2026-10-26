@@ -1,7 +1,7 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 7.26.1
-* @date    2026-10-25
+* @version 8.0.0
+* @date    2026-10-26
 * @author  GY
 * @brief   设备发现视图模型测试
 *
@@ -81,6 +81,11 @@ void TestPeerDiscoveryViewModel::initTestCase()
 
     qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/config.ini").toUtf8());
     qputenv("GRIDYARD_NAME", "ViewModelTest");
+    // 实例号 1 让发现服务监听偏移端口（45688），收不到局域网真实设备
+    // 发往默认口（45678）的广播——本套注入设备走直写库与 addManualPeer，
+    // 不依赖真实 UDP 发现；绝对计数断言此前会被外部设备间歇广播污染
+    // （6-I 双负载验收实测 recentTotalCount 14≠12，外部设备 GY-TB）
+    qputenv("GRIDYARD_INSTANCE", "1");
     _config = new ConfigManager{};
 
     _discovery = new DiscoveryService(_config, this);
@@ -94,6 +99,7 @@ void TestPeerDiscoveryViewModel::cleanupTestCase()
 
     qunsetenv("GRIDYARD_CONFIG");
     qunsetenv("GRIDYARD_NAME");
+    qunsetenv("GRIDYARD_INSTANCE");
 }
 
 // 广播来源设备排在手动端点之前（broadcast > manual）
