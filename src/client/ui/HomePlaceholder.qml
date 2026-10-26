@@ -1,7 +1,7 @@
 /**
  * @file    HomePlaceholder.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.1.0
+ * @date 2026-10-26
  * @author  GridYard Team
  * @brief   未选中设备的空状态占位
  *
@@ -26,7 +26,7 @@ Item {
             color: Style.Color.primary
             font.pixelSize: 48
             font.bold: true
-            opacity: 0.16
+            opacity: 0.28
             anchors.horizontalCenter: parent.horizontalCenter
         }
 
