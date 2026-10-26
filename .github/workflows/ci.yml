@@ -27,17 +27,24 @@ jobs:
 
       - name: 安装 CMake 与 Qt 6.11.1
         run: |
-          pipx install cmake
-          pipx install aqtinstall
-          aqt install-qt linux desktop 6.11.1 gcc_64 -O /opt/Qt -m qtsvg qtimageformats qtshadertools
-          echo "/opt/Qt/6.11.1/gcc_64/bin" >> "$GITHUB_PATH"
+          # 首两跑在"安装 CMake 与 Qt"步骤 exit 1（run 40246936309/40261519610，
+          # 无宿主日志权限）：ubuntu-latest 已迁移 Ubuntu 26（runner-images#14748），
+          # pipx 预装与 /opt 可写性均不可再假设——改为自愈式安装并落到用户目录
+          command -v pipx >/dev/null 2>&1 || sudo apt-get install -y pipx
+          pipx install cmake || pipx install cmake
+          pipx install aqtinstall || pipx install aqtinstall
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          aqt install-qt linux desktop 6.11.1 gcc_64 -O "$HOME/Qt" -m qtsvg qtimageformats qtshadertools \
+            || aqt install-qt linux desktop 6.11.1 gcc_64 -O "$HOME/Qt" -m qtsvg qtimageformats qtshadertools
+          echo "$HOME/Qt/6.11.1/gcc_64/bin" >> "$GITHUB_PATH"
 
       - name: 配置与构建
         run: |
           cmake -S src -B build-ci -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_COMPILER=g++-15 \
-            -DCMAKE_PREFIX_PATH=/opt/Qt/6.11.1/gcc_64
+            -DCMAKE_PREFIX_PATH="$HOME/Qt/6.11.1/gcc_64"
           cmake --build build-ci -j"$(nproc)"
 
       - name: 串行全量 ctest
