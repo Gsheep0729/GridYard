@@ -1,7 +1,7 @@
 /**
  * @file    PeerListView.qml
- * @version 7.22.0
- * @date 2026-10-07
+ * @version 8.1.0
+ * @date 2026-10-26
  * @author  GridYard Team
  * @brief   设备列表组件
  *
@@ -365,7 +365,7 @@ Rectangle {
         // 避免结果回投前的空态闪现
         ColumnLayout {
             anchors.centerIn: parent
-            width: Math.min(parent.width - Style.Space.xl * 2, 190)
+            width: Math.min(parent.width - Style.Space.xl * 2, 230)
             spacing: Style.Space.sm
             visible: peerListView._filteredCount === 0
                      && !(peerListView._searchActive
@@ -417,7 +417,7 @@ Rectangle {
 
                 Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("请确认对方已打开 GridYard 并连接同一网络；跨网段可通过邀请码添加")
+                    text: qsTr("请确认对方已打开 GridYard 并连接同一网络；\n跨网段可通过邀请码添加")
                     color: Style.Color.textMuted
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
