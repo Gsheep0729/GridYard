@@ -27,16 +27,20 @@ jobs:
 
       - name: 安装 CMake 与 Qt 6.11.1
         run: |
-          # 首两跑在"安装 CMake 与 Qt"步骤 exit 1（run 40246936309/40261519610，
-          # 无宿主日志权限）：ubuntu-latest 已迁移 Ubuntu 26（runner-images#14748），
-          # pipx 预装与 /opt 可写性均不可再假设——改为自愈式安装并落到用户目录
+          # run#1~#4 连红于本步骤的实证根因（本机 aqt 复现，run 40246936309/
+          # 40261519610/40262347519）：Qt 6.11 元数据两处变化——①arch 名
+          # gcc_64 已废，只认 linux_gcc_64（旧参数直接报错退出）；②qtsvg/
+          # qtimageformats/qtshadertools 已并入基础发行包，元数据无可选模块
+          # （带 -m 必失败；本机 ldd 实证产品零 Svg/ShaderTools 链接依赖）。
+          # 落盘目录仍归一化为 <O>/6.11.1/gcc_64。另：pipx 预装与 /opt 直写
+          # 不再假设（ubuntu-latest 迁移 26.04，runner-images#14748）。
           command -v pipx >/dev/null 2>&1 || sudo apt-get install -y pipx
           pipx install cmake || pipx install cmake
           pipx install aqtinstall || pipx install aqtinstall
           export PATH="$HOME/.local/bin:$PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          aqt install-qt linux desktop 6.11.1 gcc_64 -O "$HOME/Qt" -m qtsvg qtimageformats qtshadertools \
-            || aqt install-qt linux desktop 6.11.1 gcc_64 -O "$HOME/Qt" -m qtsvg qtimageformats qtshadertools
+          aqt install-qt linux desktop 6.11.1 linux_gcc_64 -O "$HOME/Qt" \
+            || aqt install-qt linux desktop 6.11.1 linux_gcc_64 -O "$HOME/Qt"
           echo "$HOME/Qt/6.11.1/gcc_64/bin" >> "$GITHUB_PATH"
 
       - name: 配置与构建
