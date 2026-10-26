@@ -797,6 +797,8 @@ void TestFileTransfer::testCancelReceiveDuringTransfer()
     FileSenderWorker sender;
     QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
     QThread senderThread;
+    // 同 testCancelTransfer：断言提前退出也保证发送线程先停再析构
+    SenderThreadGuard senderGuard{sender, senderThread};
     sender.moveToThread(&senderThread);
     senderThread.start();
     QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
@@ -806,7 +808,10 @@ void TestFileTransfer::testCancelReceiveDuringTransfer()
                               Q_ARG(QString, "midcancel-sender-id"),
                               Q_ARG(QString, "MidCancelSender"));
 
-    // 自动接受后等待真实字节落盘，确保取消发生在传输过程中而非确认窗口
+    // 自动接受后等待真实字节落盘，确保取消发生在传输过程中而非确认窗口。
+    // 链路比 testCancelTransfer 更长：serialize 500MB（双负载实测 8.06s，
+    // Debug -O0 纯 C++ SHA-256 主导）+ 首块到达接收端并落盘上报，双负载下
+    // QTRY 自报 12500ms 才够（旧 10s 窗口 5/5 轮超时），对齐 30s 口径
     const auto bytesTransferredOfFirst = [&manager]() -> qint64 {
         const QVariantList sessions = manager.sessions();
         if (sessions.isEmpty()) {
@@ -814,7 +819,7 @@ void TestFileTransfer::testCancelReceiveDuringTransfer()
         }
         return sessions.first().toMap().value("bytesTransferred").toLongLong();
     };
-    QTRY_VERIFY_WITH_TIMEOUT(bytesTransferredOfFirst() > 0, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(bytesTransferredOfFirst() > 0, 30000);
 
     const QVariantList sessions = manager.sessions();
     QCOMPARE(sessions.size(), 1);
