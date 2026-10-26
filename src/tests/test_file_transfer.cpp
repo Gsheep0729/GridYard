@@ -1,7 +1,7 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 7.26.1
-* @date 2026-10-25
+* @version 8.0.0
+* @date 2026-10-26
 * @author  GY
 * @brief   文件传输完整流程测试
 *
@@ -37,6 +37,33 @@
 #include <vector>
 
 using gy::DirSerializer;
+
+// 发送线程 RAII 守卫：断言提前退出也保证发送线程先停再析构，
+// 消除"等待断言失败 → 局部 QThread 带跑析构 → qFatal SIGABRT"把
+// 单用例失败升级成整个套次崩溃的路径（Phase 6-S 长跑 testCancelTransfer 候选）
+class SenderThreadGuard {
+public:
+    SenderThreadGuard(FileSenderWorker &sender, QThread &thread)
+        : _sender(sender)
+        , _thread(thread) {}
+    ~SenderThreadGuard()
+    {
+        if (!_thread.isRunning()) {
+            return;  // 正常路径已由 stopSenderThread 收尾，幂等跳过
+        }
+        // 与 stopSenderThread 相同的收尾：worker 移回主线程后退出并 join
+        QThread *mainThread = QCoreApplication::instance()->thread();
+        QMetaObject::invokeMethod(&_sender, [&sender = _sender, mainThread]() {
+            sender.moveToThread(mainThread);
+        }, Qt::BlockingQueuedConnection);
+        _thread.quit();
+        _thread.wait();
+    }
+
+private:
+    FileSenderWorker &_sender;
+    QThread &_thread;
+};
 
 class TestFileTransfer : public QObject {
     Q_OBJECT
@@ -691,6 +718,8 @@ void TestFileTransfer::testCancelTransfer()
     FileSenderWorker sender;
     QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
     QThread senderThread;
+    // 守卫后于线程声明：任何断言提前退出都先停线程，再走局部对象逆序析构
+    SenderThreadGuard senderGuard{sender, senderThread};
     sender.moveToThread(&senderThread);
     senderThread.start();
 
