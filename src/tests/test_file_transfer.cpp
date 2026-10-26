@@ -922,6 +922,8 @@ void TestFileTransfer::testConnectionLost()
     FileSenderWorker sender;
     QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
     QThread senderThread;
+    // 同 testCancelTransfer：断言提前退出也保证发送线程先停再析构
+    SenderThreadGuard senderGuard{sender, senderThread};
     sender.moveToThread(&senderThread);
     senderThread.start();
 
@@ -932,8 +934,10 @@ void TestFileTransfer::testConnectionLost()
                               Q_ARG(QString, "connlost-sender-id"),
                               Q_ARG(QString, "ConnLostSender"));
 
-    // 验证发送端收到连接断开错误
-    QVERIFY(waitForTransfer(senderSpy, 10000));
+    // 验证发送端收到连接断开错误：等待窗含 serialize 500MB（双负载实测
+    // 8.06s，Phase6-I-2 口径）+ 首块送达 + 对端断开传播，10s 窗口在双
+    // 负载下 3/3 轮超时，对齐 30s
+    QVERIFY(waitForTransfer(senderSpy, 30000));
     QVERIFY(!senderSpy.first().at(0).toBool());
     QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 5000);
     QVERIFY(!receiverSuccess);
