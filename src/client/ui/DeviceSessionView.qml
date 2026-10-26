@@ -1,7 +1,7 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 8.0.0
- * @date 2026-10-08
+ * @version 8.1.0
+ * @date 2026-10-27
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
  *
@@ -143,6 +143,10 @@ Frame {
                    font.pixelSize: 12
                    font.bold: true
                }
+
+              // 状态与动作的组间距：把"在线"状态标签同"历史/清理"按钮组拉开，
+              // 避免状态词与可点按钮等距混排让新用户把状态误当按钮（7-V V-10）
+              Item { Layout.preferredWidth: Style.Space.lg }
 
               // 历史记录入口：查看跨重启保留的聊天与传输历史
               ToolButton {
