@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 7.22.0
- * @date 2026-10-07
+ * @version 8.1.0
+ * @date 2026-10-26
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -64,7 +64,7 @@ ItemDelegate {
         radius: Style.Radius.sm
         // 选中态与悬停底色都即时切换：切换设备时颜色动画会被会话页重建卡出中间帧，观感是闪烁
         color: deviceCard.isSelected ? Style.Color.primarySoft
-             : (deviceCard.hovered ? Style.Color.surfaceLeft : Style.Color.transparent)
+             : (deviceCard.hovered ? Style.Color.hoverSoft : Style.Color.transparent)
 
         // 左侧选中指示条：明确标识当前会话设备
         Rectangle {

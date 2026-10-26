@@ -1,7 +1,7 @@
 /**
  * @file    Style.js
- * @version 7.25.0
- * @date 2026-10-08
+ * @version 8.1.0
+ * @date 2026-10-26
  * @author  GY
  * @brief   QML 界面样式常量
  *
@@ -22,6 +22,8 @@ const Color = {
     // 边框
     border: "#E5E7EB",
     borderSoft: "#EEF2F7",
+    // 设备卡悬停底色：比列表底 #F7F7F7 深一档且带蓝味，与选中 primarySoft 同族更淡
+    hoverSoft: "#E9EDF3",
     // 品牌主色
     primary: "#3B82F6",
     primarySoft: "#EFF6FF",
