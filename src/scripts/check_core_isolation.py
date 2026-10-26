@@ -14,6 +14,8 @@
 背景："纯 C++23 核心 + Qt GUI 桥接"重构（Phase 0~5，目标版本 8.0.0）期间，
 src/shared 等基线核心目录仍含 Qt 依赖属已知现状；src/core/ 与 third_party/
 从建立之日起零容忍；Phase 2/3 完成后用 --strict 对应目录验收归零。
+扫描扩展覆盖 .hpp/.ipp（vendored 第三方头树皆为此类扩展名）；third_party/asio
+按路径白名单豁免（防线1 全豁免、防线2 仅豁免 emit 模式，见下）。
 防线3 默认只生成隔离编译命令清单（19 个头全量语法检查约半分钟，不适合
 提交前高频守卫），需要真实执行时加 --compile-check；防线5 在构建树存在时
 直接执行 ldd/nm，二进制未构建时跳过并提示。
@@ -32,6 +34,13 @@ BASELINE_CORE_DIRS = ("src/shared", "src/shared/net")
 
 # 未来纯 C++ 目录：只要存在就零容忍（FAIL），从第一天起防微杜渐
 PURE_DIRS = ("src/core", "third_party")
+
+# 防线1/2 路径白名单：vendored 第三方头树按 A0 全量实测与 Qt 零交集，
+# 但 asio 以 emit 为自有成员名（cancellation_signal::emit 等）并在
+# pop_options.hpp 主动 push/pop 该宏，\bemit\b 会误报，故按路径登记：
+# 防线1 全豁免（asio 全树 0 处 Qt include），防线2 仅豁免 emit 模式，
+# 其余 Qt 符号模式对白名单目录照常扫描，混入真实 Qt 符号仍会被拦截
+GUARD_PATH_WHITELIST = ("third_party/asio/",)
 
 # Qt 头文件 include 模式（防线一）
 QT_INCLUDE_RE = re.compile(r'^\s*#\s*include\s+[<"]Q')
@@ -131,13 +140,19 @@ def classify(dir_path, strict):
     return 'WARN'
 
 
+def is_path_whitelisted(f):
+    """文件是否落在防线1/2 的路径白名单内（vendored 第三方头树）"""
+    rel = f.relative_to(REPO_ROOT).as_posix()
+    return any(rel.startswith(p) for p in GUARD_PATH_WHITELIST)
+
+
 def iter_sources(core_dirs):
     for d in core_dirs:
         p = REPO_ROOT / d
         if not p.is_dir():
             continue
         for f in sorted(p.rglob('*')):
-            if f.suffix in ('.h', '.cpp') and f.is_file():
+            if f.suffix in ('.h', '.cpp', '.hpp', '.ipp') and f.is_file():
                 yield d, f
 
 
@@ -146,6 +161,8 @@ def layer_one(core_dirs, allow, strict, report):
     allowed = set(allow or [])
     hits = 0
     for d, f in iter_sources(core_dirs):
+        if is_path_whitelisted(f):
+            continue
         level = classify(f.parent, strict)
         code = strip_comments(f.read_text(encoding='utf-8', errors='replace'))
         for lineno, line in enumerate(code.splitlines(), 1):
@@ -166,14 +183,18 @@ def layer_one(core_dirs, allow, strict, report):
 
 def layer_two(core_dirs, strict, report):
     print('[防线2] Qt 符号模式扫描（宏/关键字/类名，注释与字符串已剥离）')
-    patterns = [(re.compile(p), p) for p in QT_MACRO_PATTERNS]
-    patterns += [(re.compile(r'\b%s\b' % c), c) for c in QT_CLASS_PATTERNS]
+    # emit 在路径白名单目录下豁免（asio 自有成员名，见 GUARD_PATH_WHITELIST 注释）
+    patterns = [(re.compile(p), p, p == r'\bemit\b') for p in QT_MACRO_PATTERNS]
+    patterns += [(re.compile(r'\b%s\b' % c), c, False) for c in QT_CLASS_PATTERNS]
     hits = 0
     for d, f in iter_sources(core_dirs):
         level = classify(f.parent, strict)
+        whitelisted = is_path_whitelisted(f)
         code = strip_comments(f.read_text(encoding='utf-8', errors='replace'))
         for lineno, line in enumerate(code.splitlines(), 1):
-            for rx, name in patterns:
+            for rx, name, exemptible in patterns:
+                if whitelisted and exemptible:
+                    continue
                 if rx.search(line):
                     hits += 1
                     report[level] += 1
