@@ -3,3 +3,11 @@ b13c180161ffac8d0adc81e033e493c409457c4d1258ab9781ac80579ba3bdd8  picosha2/picos
 7956a38f236a6be6c0bb30c96ba4f85f19e5a69f6beb6d2c62c9d246972a6775  sqlite/sqlite3.c  3.45.0
 0c207567adc631521a353e067cfbc5044ebf11868f3c3fbf3178d6990409740e  sqlite/sqlite3.h  3.45.0
 b184dd1586d935133d37ad76fa353faf0a1021ff2fdedeedcc3498fff74bbb94  sqlite/sqlite3ext.h  3.45.0
+
+# Boost.Asio 1.38.2（Boost 1.92.0 内嵌版本，Boost Software License 1.0）
+# vendored 为 g++-15 / C++23 下 plain / TSan / ASan+UBSan 多配置并集头文件闭包
+#（共 482 文件 / 4,405,768 B；闭包随编译宏分支变化，单配置清单会在 sanitizer 矩阵下碎裂）
+# 逐文件校验清单见 asio/SHA256SUMS（cd third_party/asio && sha256sum -c SHA256SUMS 复验）；
+# 闭包提取/复验工具见 asio/tools/vendor_closure.py；复跑手册见 doc/plan/asio迁移/A0可行性报告.local.md §七
+# 上游完整源码包 SHA256：c4a3b310ddd2472416e091067166b0713be97c63f38c212c484ada022fd296ce
+

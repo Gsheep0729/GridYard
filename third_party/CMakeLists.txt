@@ -16,9 +16,20 @@ target_include_directories(picosha2 INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/picosha2
 )
 
+# Boost.Asio 1.38.2（Boost 1.92.0 内嵌）—— Boost Software License 1.0，
+# 网络事件引擎演进基础（当前仅登记接入目标，尚无消费方，NetReactor 照常服役）
+# vendored 闭包子集位于 asio/include/boost/...，包含目录指向 asio/include
+# 以支持 <boost/asio.hpp>；SYSTEM 语义使 asio 头告警不外溢（多配置并集
+# 闭包来源与复验方式见同目录 checksums.txt asio 区块）
+add_library(gy_asio INTERFACE)
+target_include_directories(gy_asio SYSTEM INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/asio/include
+)
+
 # SQLite 3.45.0 amalgamation（Public Domain）——编译为静态库 sqlite3_vendor，
 # 供 src/core/storage 的纯 C++ RAII 封装直接使用，替代 QSqlDatabase 执行引擎
 add_subdirectory(sqlite)
 
 set_property(TARGET nlohmann_json PROPERTY FOLDER "third_party")
 set_property(TARGET picosha2 PROPERTY FOLDER "third_party")
+set_property(TARGET gy_asio PROPERTY FOLDER "third_party")
