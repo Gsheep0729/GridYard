@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_client.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.2.0
+* @date    2026-10-29
 * @author  GridYard Team
 * @brief   协调节点客户端实现
 */
@@ -27,6 +27,7 @@ RendezvousClient::~RendezvousClient()
     disconnectFromServer();
 }
 
+// 按目标地址重建连接链：清缓存、停心跳、关旧套接字后新建并连接
 void RendezvousClient::connectToServer(const QString &host, int port)
 {
     _wantConnected = true;
@@ -54,6 +55,7 @@ void RendezvousClient::setToken(const QString &token)
     _token = token;
 }
 
+// 主动断开：清除重连意愿并关套接字，此前已连接时先发断开通知
 void RendezvousClient::disconnectFromServer()
 {
     const bool wasConnected = _isConnected;
@@ -168,6 +170,7 @@ bool RendezvousClient::isConnected() const
     return _isConnected;
 }
 
+// 套接字建连完成：置位连接状态并通知
 void RendezvousClient::onSocketConnected()
 {
     _isConnected = true;
@@ -175,6 +178,7 @@ void RendezvousClient::onSocketConnected()
     emit connected();
 }
 
+// 连接断开：停心跳、通知并安排延时重连
 void RendezvousClient::onSocketDisconnected()
 {
     _isConnected = false;
@@ -255,6 +259,7 @@ void RendezvousClient::stopHeartbeat()
     }
 }
 
+// 安排延时重连：仅在保持连接意愿且当前无在途连接时执行，重连回调内复查意愿与套接字状态防重复调度
 void RendezvousClient::scheduleReconnect()
 {
     if (!_wantConnected || _serverHost.isEmpty() || _serverPort <= 0 || _reconnectScheduled) {
@@ -303,6 +308,7 @@ bool RendezvousClient::readJson(QJsonObject *json)
     return true;
 }
 
+// 按消息类型分发服务端响应：注册确认启心跳并即时轮询邀请，其余按载荷发信号
 void RendezvousClient::handleMessage(const QJsonObject &json)
 {
     const QString type = json[key(kKeyType)].toString();
