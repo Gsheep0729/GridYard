@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_protocol.h
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.2.0
+* @date    2026-10-29
 * @author  GridYard Team
 * @brief   协调节点协议处理
 *
@@ -57,6 +57,7 @@ public:
     static std::string extractRoom(const nlohmann::json &json);
     static std::string extractToken(const nlohmann::json &json);
     static std::string extractDeviceId(const nlohmann::json &json);
+    // 提取设备信息（标识、名称与地址列表）
     static OnlineRegistry::PeerInfo extractPeerInfo(const nlohmann::json &json);
     // 提取中继邀请字段
     static OnlineRegistry::RelayInvite extractRelayInvite(const nlohmann::json &json);

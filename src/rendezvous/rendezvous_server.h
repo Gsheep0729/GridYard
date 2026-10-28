@@ -1,7 +1,7 @@
 /**
  * @file    rendezvous_server.h
- * @version 8.1.0
- * @date    2026-10-28
+ * @version 8.2.0
+ * @date    2026-10-29
  * @author  GridYard Team
  * @brief   协调节点服务器
  *
@@ -41,10 +41,12 @@ public:
         std::function<void(gy::net::TcpSocketCore *socket, const nlohmann::json &hello,
                            const std::vector<uint8_t> &pendingData)>;
 
+    // 构造协调会话并接管已接入 socket（注册表与鉴权令牌由服务端注入）
     RendezvousSession(gy::net::NetReactor &reactor, gy::net::TcpSocketCore *socket,
                       OnlineRegistry *registry, const std::string &token,
                       int handshakeTimeoutMs, int idleTimeoutMs);
 
+    // 启动会话：启动首行握手超时
     void start();
     // 调整响应写队列上限（测试可调小）
     void setMaxResponseQueueBytes(int64_t maxBytes);
@@ -76,14 +78,19 @@ public:
     // reactor 为空时自建独立事件泵（后台线程驱动），否则与调用方共用
     explicit RendezvousServer(uint16_t port, const std::string &token,
                               int maxSessions = -1, gy::net::NetReactor *reactor = nullptr);
+    // 析构：执行停机清理；自建事件泵时一并停止
     ~RendezvousServer();
 
     RendezvousServer(const RendezvousServer &)            = delete;
     RendezvousServer &operator=(const RendezvousServer &) = delete;
 
+    // 启动协调监听（双栈；失败原因见 errorString）
     bool start();
+    // 停止监听并取消过期清理定时器
     void stop();
+    // 是否正在监听
     bool isListening() const;
+    // 实际监听端口
     uint16_t serverPort() const;
     // 服务使用的活动泵（自建或外部注入），供同进程复用（如同端口中继）
     gy::net::NetReactor *reactor() const { return _reactor; }

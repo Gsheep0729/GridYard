@@ -1,7 +1,7 @@
 /**
  * @file    online_registry.h
- * @version 8.0.0
- * @date    2026-10-24
+ * @version 8.2.0
+ * @date    2026-10-29
  * @author  GridYard Team
  * @brief   协调节点在线设备注册表
  *
@@ -45,6 +45,7 @@ public:
         int64_t createdAtMs = 0;       // 登记时刻（UTC 毫秒）
     };
 
+    // 构造注册表（defaultTtlSeconds 为设备条目默认存活秒数，容量上限取 rendezvous_limits.h 默认值）
     explicit OnlineRegistry(int defaultTtlSeconds = 30);
 
     // 注册或更新设备；房间数或每房设备数达到上限时拒绝新条目
@@ -75,6 +76,7 @@ public:
 
     // 设备数量
     int totalCount() const;
+    // 指定房间的设备数量
     int roomCount(const std::string &room) const;
 
 private:

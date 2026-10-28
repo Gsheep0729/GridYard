@@ -1,7 +1,7 @@
 /**
  * @file    relay_server.h
- * @version 7.26.1
- * @date    2026-10-24
+* @version 8.2.0
+* @date    2026-10-29
  * @author  GridYard Team
  * @brief   流式中继服务器
  *
@@ -40,8 +40,10 @@ public:
     // 连接延迟回收委托（摘除归属后排空写队列再删除）
     using CloseDelegator = std::function<void(gy::net::TcpSocketCore *socket)>;
 
+    // 构造中继会话：waitMs 为等待对端加入的超时毫秒数，关闭通知与回收委托由服务端装配
     RelaySession(const std::string &relayId, int waitMs, gy::net::NetReactor &reactor,
                  ClosedNotify onClosed, CloseDelegator closeDelegator);
+    // 析构：取消空闲定时器并回收两端连接
     ~RelaySession();
 
     RelaySession(const RelaySession &)            = delete;
@@ -98,9 +100,13 @@ public:
     RelayServer(const RelayServer &)            = delete;
     RelayServer &operator=(const RelayServer &) = delete;
 
+    // 启动中继监听（双栈；失败原因见 errorString）
     bool start();
+    // 停止监听并回收全部待握手连接与中继会话
     void stop();
+    // 实际监听端口
     uint16_t serverPort() const;
+    // 当前存活中继会话数
     int sessionCount() const;
     // 服务使用的活动泵（自建或外部注入）
     gy::net::NetReactor *reactor() const { return _reactor; }
