@@ -1,7 +1,7 @@
 /**
 * @file    net_reactor.h
-* @version 8.1.0
-* @date    2026-10-27
+* @version 8.2.0
+* @date    2026-10-29
 * @author  GridYard Team
 * @brief   单线程网络事件反应器——纯 C++23，不依赖任何 Qt 类型
 *
@@ -51,7 +51,9 @@ using EventCallback = std::function<void(int fd, uint32_t events)>;
 
 class NetReactor {
 public:
+    // 构造事件泵上下文（不启动线程，start 或 run 时才进入运行态）
     NetReactor();
+    // 析构：确保引擎线程退出，未执行的投递任务随上下文一并销毁
     ~NetReactor();
 
     // 含线程与 fd，拷贝移动语义均不安全

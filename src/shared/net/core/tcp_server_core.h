@@ -1,7 +1,7 @@
 /**
 * @file    tcp_server_core.h
-* @version 8.1.0
-* @date    2026-10-27
+* @version 8.2.0
+* @date    2026-10-29
 * @author  GridYard Team
 * @brief   纯 POSIX TCP 监听服务器——accept 回调驱动，不依赖 Qt 事件循环
 *
@@ -31,7 +31,9 @@ public:
     // 接入回调：descriptor 为已连接非阻塞描述符，所有权移交调用方
     using ConnectionCallback = std::function<void(int descriptor, const std::string &peerAddress)>;
 
+    // 构造监听服务器：在所属事件泵的引擎上创建接入器与串行化执行域
     explicit TcpServerCore(NetReactor &reactor);
+    // 析构：停止监听并关闭描述符（已移交的接入连接不受影响）
     ~TcpServerCore();
 
     TcpServerCore(const TcpServerCore &)            = delete;
@@ -48,6 +50,7 @@ public:
     // 最近一次监听失败原因
     const std::string &errorString() const { return _errorText; }
 
+    // 设置接入回调（每接入一条连接触发一次）
     void setConnectionCallback(ConnectionCallback cb) { _onConnection = std::move(cb); }
 
 private:

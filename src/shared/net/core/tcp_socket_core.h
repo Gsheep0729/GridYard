@@ -1,7 +1,7 @@
 /**
 * @file    tcp_socket_core.h
-* @version 8.1.0
-* @date    2026-10-27
+* @version 8.2.0
+* @date    2026-10-29
 * @author  GridYard Team
 * @brief   纯 POSIX TCP 连接核心——回调驱动，不依赖 Qt 事件循环
 *
@@ -47,7 +47,9 @@ public:
     // 套接字错误说明（终结回调之前触发）
     using ErrorCallback = std::function<void(const std::string &message)>;
 
+    // 构造套接字核心：在所属事件泵的引擎上创建套接字与串行化执行域
     explicit TcpSocketCore(NetReactor &reactor);
+    // 析构：立即关闭描述符（终结回调触发后方可析构）
     ~TcpSocketCore();
 
     TcpSocketCore(const TcpSocketCore &)            = delete;
@@ -78,9 +80,13 @@ public:
     // 原生描述符（未接管时为 -1）
     int descriptor() const { return _fd; }
 
+    // 设置可读通知回调
     void setReadCallback(ReadCallback cb) { _onRead = std::move(cb); }
+    // 设置写出通知回调
     void setWrittenCallback(WrittenCallback cb) { _onWritten = std::move(cb); }
+    // 设置终结通知回调
     void setCloseCallback(CloseCallback cb) { _onClose = std::move(cb); }
+    // 设置错误通知回调
     void setErrorCallback(ErrorCallback cb) { _onError = std::move(cb); }
 
 private:
