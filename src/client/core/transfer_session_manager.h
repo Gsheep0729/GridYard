@@ -1,7 +1,7 @@
 /**
  * @file    transfer_session_manager.h
- * @version 8.0.0
- * @date    2026-10-23
+ * @version 8.1.0
+ * @date    2026-10-28
  * @author  GridYard Team
  * @brief   传输会话管理器
  *
@@ -15,6 +15,7 @@
 #include <QHash>
 #include <QObject>
 #include <QPair>
+#include <QPointer>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -156,7 +157,9 @@ private:
     ConfigManager    *_config    = nullptr; // 本机配置和接收路径来源
     DiscoveryService *_discovery = nullptr; // 在线设备与发送端点查询服务
     P2pServer        *_p2pServer = nullptr; // 入站传输请求来源
-    RendezvousClient *_rendezvous = nullptr; // 协调节点客户端（中继降级信令）
+    // 协调节点客户端（中继降级信令）：生命周期由组合根持有，
+    // 异步完成回调可能晚于其销毁，弱引用在此兜底为空
+    QPointer<RendezvousClient> _rendezvous;
     TransferSessionModel *_model = nullptr; // 会话行存储与 QML 增量通知
 
     // 多选群发的暂存上下文：序列化在后台线程完成后由 UI 线程消费
