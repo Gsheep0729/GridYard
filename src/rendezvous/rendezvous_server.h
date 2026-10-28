@@ -1,7 +1,7 @@
 /**
  * @file    rendezvous_server.h
- * @version 8.0.0
- * @date    2026-10-24
+ * @version 8.1.0
+ * @date    2026-10-28
  * @author  GridYard Team
  * @brief   协调节点服务器
  *
@@ -134,6 +134,7 @@ private:
     uint16_t _port = 0;                  // 服务监听端口号
     std::string _token;                  // 访问鉴权令牌
     std::string _listenError;            // 最近一次监听失败原因
+    bool _tearingDown = false;           // 停机清理标志（置位后接入完成直接回收描述符）
     int _maxSessions = 0;                // 并发会话上限
     int _handshakeTimeoutMs = 0;         // 首行握手超时
     int _idleTimeoutMs = 0;              // 会话空闲超时

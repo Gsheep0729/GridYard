@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 8.0.0
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GridYard Team
 * @brief   协调节点服务器实现
 */
@@ -335,6 +335,15 @@ void RendezvousServer::setClientDisconnectedHandler(std::function<void(const std
 // 接入新连接（事件泵线程）
 void RendezvousServer::handleNewConnection(int descriptor, const std::string &peerAddress)
 {
+    // 停机清理后仍可能落到队列尾的接入完成，不能再登记新会话；
+    // 直接回收描述符，避免对象逃过 teardown 的会话遍历
+    if (_tearingDown) {
+        gy::net::TcpSocketCore rejected{*_reactor};
+        rejected.adopt(descriptor);
+        rejected.abort();
+        return;
+    }
+
     // 并发会话达到上限时直接拒绝，防止连接堆积拖垮服务
     if (static_cast<int>(_sessions.size()) >= _maxSessions) {
         logWarn("[RendezvousServer] 会话数达到上限 " + std::to_string(_maxSessions) + "，拒绝新连接");
@@ -418,6 +427,7 @@ void RendezvousServer::schedulePrune()
 // 停机清理
 void RendezvousServer::teardown()
 {
+    _tearingDown = true;
     _reactor->cancelTimer(_pruneTimer);
     _pruneTimer = 0;
     _server->close();

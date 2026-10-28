@@ -420,6 +420,15 @@ void RelayServer::handleSessionClosed(RelaySession *session)
 // 接入新连接：握手等待交给 LineSession（行上限 + 超时）
 void RelayServer::handleNewConnection(int descriptor, const std::string &peerAddress)
 {
+    // 停机清理后仍可能落到队列尾的接入完成，不能再登记新握手；
+    // 直接回收描述符，避免对象逃过 teardown 的遍历
+    if (_tearingDown) {
+        gy::net::TcpSocketCore rejected{*_reactor};
+        rejected.adopt(descriptor);
+        rejected.abort();
+        return;
+    }
+
     logInfo("[RelayServer] 新连接来自 " + peerAddress);
 
     // 握手等待连接同样有上限，防止空连接堆积

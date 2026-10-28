@@ -1002,8 +1002,10 @@ void TestFileTransfer::testConnectionLost()
         // 传输数据开始后断开连接：以接收侧数据到达为锚（事件锚定）。
         // 旧实现的 100ms 固定时间窗在事件泵提速后不再可靠——500MB 回环
         // 传输可能整个落在窗口内，"中途断连"会退化成"传输完成后断开"。
-        auto *dataReadCount = new int(0);
-        connect(socket, &gy::net::PosixTcpSocket::readyRead, socket, [socket, dataReadCount]() {
+        // 计数由连接生命周期持有，连接销毁时随捕获释放
+        auto dataReadCount = std::make_shared<int>(0);
+        connect(socket, &gy::net::PosixTcpSocket::readyRead, socket,
+                [socket, dataReadCount]() {
             if (++(*dataReadCount) >= 3) {
                 socket->disconnectFromHost();  // 请求帧与首批数据块之后断开
             }
