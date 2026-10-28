@@ -1,7 +1,7 @@
 /**
 * @file    test_rendezvous_protocol.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GY
 * @brief   协调节点协议编解码测试
 *
@@ -23,6 +23,7 @@ class TestRendezvousProtocol : public QObject {
 private slots:
     void testParseRequestKnownTypes();
     void testParseRequestUnknownType();
+    void testParseRequestNullErrorString();
     void testBuildRegisterAck();
     void testPeerInfoRoundTrip();
     void testPeersResponseMultipleItems();
@@ -60,6 +61,18 @@ void TestRendezvousProtocol::testParseRequestUnknownType()
     QCOMPARE(RendezvousProtocol::parseRequest(nlohmann::json::object(), &error),
              RendezvousProtocol::MessageType::Error);
     QVERIFY(!error.empty());
+}
+
+// 错误出参允许为空的契约面：未知类型不得解引用空指针
+void TestRendezvousProtocol::testParseRequestNullErrorString()
+{
+    QCOMPARE(RendezvousProtocol::parseRequest(nlohmann::json{{"type", "shutdown"}}, nullptr),
+             RendezvousProtocol::MessageType::Error);
+    QCOMPARE(RendezvousProtocol::parseRequest(nlohmann::json::object(), nullptr),
+             RendezvousProtocol::MessageType::Error);
+    // 已知类型不受影响
+    QCOMPARE(RendezvousProtocol::parseRequest(nlohmann::json{{"type", "register"}}, nullptr),
+             RendezvousProtocol::MessageType::Register);
 }
 
 // 注册确认携带 TTL 与可解析的服务器时间

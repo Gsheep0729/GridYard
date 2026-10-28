@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_protocol.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GridYard Team
 * @brief   协调节点协议处理实现
 */
@@ -71,7 +71,10 @@ RendezvousProtocol::MessageType RendezvousProtocol::parseRequest(const nlohmann:
         return MessageType::RelayPoll;
     }
 
-    *errorString = "未知消息类型: " + type;
+    // 错误出参允许传空指针：调用方只关心类型判定时无需构造错误串
+    if (errorString) {
+        *errorString = "未知消息类型: " + type;
+    }
     return MessageType::Error;
 }
 
