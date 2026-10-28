@@ -1,7 +1,7 @@
 /**
 * @file    relay_server.cpp
-* @version 8.0.0
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 */
@@ -379,16 +379,20 @@ void RelayServer::adoptConnection(gy::net::TcpSocketCore *socket, const nlohmann
     });
 }
 
-// 装配会话创建通知
+// 装配会话创建通知：处理器在事件泵线程读取，写入同样经泵串行化
 void RelayServer::setSessionCreatedHandler(std::function<void(RelaySession *)> handler)
 {
-    _sessionCreatedHandler = std::move(handler);
+    runOnLoop([this, handler = std::move(handler)]() mutable {
+        _sessionCreatedHandler = std::move(handler);
+    });
 }
 
-// 装配会话关闭通知
+// 装配会话关闭通知：处理器在事件泵线程读取，写入同样经泵串行化
 void RelayServer::setSessionClosedHandler(std::function<void(RelaySession *)> handler)
 {
-    _sessionClosedHandler = std::move(handler);
+    runOnLoop([this, handler = std::move(handler)]() mutable {
+        _sessionClosedHandler = std::move(handler);
+    });
 }
 
 // 会话关闭事件入口（按对象指针判等，迟到通知不误删新会话）
