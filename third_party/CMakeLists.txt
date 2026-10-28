@@ -17,7 +17,7 @@ target_include_directories(picosha2 INTERFACE
 )
 
 # Boost.Asio 1.38.2（Boost 1.92.0 内嵌）—— Boost Software License 1.0，
-# 网络事件引擎演进基础（当前仅登记接入目标，尚无消费方，NetReactor 照常服役）
+# 网络事件引擎（NetReactor 与核心套接字类经 gy_net_core 公共链接消费）
 # vendored 闭包子集位于 asio/include/boost/...，包含目录指向 asio/include
 # 以支持 <boost/asio.hpp>；SYSTEM 语义使 asio 头告警不外溢（多配置并集
 # 闭包来源与复验方式见同目录 checksums.txt asio 区块）

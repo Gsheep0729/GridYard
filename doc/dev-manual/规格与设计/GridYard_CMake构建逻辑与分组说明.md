@@ -21,7 +21,7 @@
 src/CMakeLists.txt
 ├── find_package(Qt6 COMPONENTS Quick QuickControls2 QuickDialogs2 Widgets)
 ├── qt_standard_project_setup(...)
-├── add_subdirectory(../third_party ...)   # vendored nlohmann/picosha2/sqlite3
+├── add_subdirectory(../third_party ...)   # vendored nlohmann/picosha2/sqlite3/asio
 ├── add_subdirectory(shared)
 ├── add_subdirectory(core)
 ├── add_subdirectory(client)
@@ -46,7 +46,8 @@ ctest --test-dir build-ninja --output-on-failure
 | `src/core/` | `gy_core` | STATIC（零 Qt） | 领域类型、帧与聊天编解码、目录哈希、INI 配置读写 |
 | `src/core/storage/` | `gy_storage_core` | STATIC（零 Qt） | vendored SQLite3 封装、迁移与三个仓储的纯 C++ 实现 |
 | `src/shared/` | `gy_shared`、`gy_protocol_contracts` | STATIC（纯头）/ INTERFACE | TLV 协议常量头；协调行协议键常量 |
-| `src/shared/net/core/` | `gy_net_core` | STATIC（零 Qt） | NetReactor 事件泵与 TCP/UDP 套接字核心 |
+| `src/shared/net/core/` | `gy_net_core` | STATIC（零 Qt） | NetReactor 事件泵与 TCP/UDP 套接字核心（Boost.Asio 引擎） |
+| `third_party/asio/` | `gy_asio` | INTERFACE（SYSTEM include） | vendored Boost.Asio 纯头库接入目标 |
 | `src/client/` | `appGridYard` | EXECUTABLE + QML module | 客户端入口、QML 模块、控制器与模型、套接字适配器、数据层代管者与 Worker（domain 头与 storage 源直接编入本目标） |
 | `src/rendezvous/` | `gy_rendezvous`、`gridyard_rendezvous` | STATIC + EXECUTABLE（零 Qt） | 协调节点与流式中继服务 |
 | `src/tests/` | 多个 test target | EXECUTABLE | 单元测试和集成测试（按需直编客户端源文件） |
@@ -67,7 +68,7 @@ appGridYard
 
 gy_core          → nlohmann_json、picosha2（PRIVATE）
 gy_storage_core  → sqlite3_vendor
-gy_net_core      → Threads
+gy_net_core      → Threads、gy_asio
 gy_shared        → gy_protocol_contracts
 gy_rendezvous    → gy_net_core、gy_protocol_contracts、nlohmann_json
 gridyard_rendezvous → gy_rendezvous（ldd 零 Qt，仅系统 C++ 运行库）

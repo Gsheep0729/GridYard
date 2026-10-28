@@ -74,6 +74,7 @@ graph TD
 - `gy_core`：纯 C++23 领域类型、TLV 帧编解码、聊天消息编解码、目录哈希与 INI 配置读写，零 Qt。
 - `gy_storage_core`：基于 vendored SQLite3 的纯 C++ 存储封装与三个仓储实现，零 Qt。
 - `gy_net_core`：NetReactor 事件泵与 TCP/UDP 套接字核心，零 Qt。
+- `gy_asio`：vendored Boost.Asio 纯头库的 SYSTEM 接入目标，供 `gy_net_core` 公共链接。
 - `gy_protocol_contracts`：协调与中继行协议键常量的 header-only 接口目标。
 - `gy_shared`：TLV 协议常量头的 header-only 目标（编码实现已由 gy_core 承担）。
 - `gy_rendezvous` / `gridyard_rendezvous`：纯 C++ 的协调节点与流式中继服务端库与独立程序，二进制零 Qt 依赖。
@@ -128,12 +129,12 @@ graph TD
 ### 3.1 去 Qt6::Network 纯原生选型
 
 - **底线约束**：全工程源码（包含客户端、服务端、测试用例）严禁引入 `Qt6::Network` 模块符号，不得出现任何 `<QTcpSocket>`、`<QUdpSocket>`、`<QTcpServer>`、`<QHostAddress>`、`<QNetworkAccessManager>` 头文件引用。
-- **网络抽象层**：通信原语统一基于 `src/shared/net/`（`gy_net`）封装的 Linux 原生 POSIX 套接字实现，底层依托系统调用 `socket()`、`epoll()`/`poll()`、`fcntl()`、`bind()`、`connect()`、`accept()`、`send()`、`recv()`。
+- **网络抽象层**：通信原语统一由纯 C++ 网络核心提供：事件泵与 TCP/UDP 套接字核心位于 `src/shared/net/core/`（`gy_net_core`），事件引擎为 vendored Boost.Asio（`third_party/asio`，经 `gy_asio` 目标以 SYSTEM 语义引入，不外溢头告警）；客户端侧的套接字适配器（`PosixTcpSocket` 等）位于 `src/client/network/`。
 
 ### 3.2 非阻塞套接字与事件调度
 
 - **非阻塞模式保证**：所有创建的套接字均需在初始化时通过 `fcntl(fd, F_SETFL, flags | O_NONBLOCK)` 设置为非阻塞模式，防止网络波动或对端异常挂起导致线程卡死。
-- **事件泵集成**：套接字核心由 NetReactor 事件泵（`gy_net_core`，独立线程 poll + eventfd）驱动；客户端适配器（`PosixTcpSocket` 等，位于 `src/client/network/`）把 Reactor 回调经 QueuedConnection 投回套接字归属线程，线程亲和与阻塞等待语义与 Qt 事件循环保持一致；服务端直接以回调风格挂接事件泵，不经任何 Qt 机制。
+- **事件泵集成**：套接字核心由 NetReactor 事件泵（`gy_net_core`，Boost.Asio `io_context` 引擎线程）驱动；客户端适配器（`PosixTcpSocket` 等，位于 `src/client/network/`）把 Reactor 回调经 QueuedConnection 投回套接字归属线程，线程亲和与阻塞等待语义与 Qt 事件循环保持一致；服务端直接以回调风格挂接事件泵，不经任何 Qt 机制。
 - **信号屏蔽**：套接字初始化时统一对套接字设置 `MSG_NOSIGNAL` 标记，或屏蔽 `SIGPIPE` 信号，避免连接对端异常断开时导致整个进程崩溃退出。
 
 ### 3.3 缓冲管理与写背压水线契约
