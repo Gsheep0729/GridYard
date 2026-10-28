@@ -1,7 +1,7 @@
 /**
 * @file    device_repository_core.h
-* @version 7.26.1
-* @date    2026-10-25
+* @version 8.2.0
+* @date    2026-10-29
 * @author  GridYard Team
 * @brief   纯 C++23 SQLite 设备目录仓储——不依赖任何 Qt 类型
 *
@@ -67,10 +67,15 @@ public:
     static SqlStep upsertPeerStep(const PeerRecord &record);
     static SqlStep markChatActivityStep(const std::string &deviceId, int64_t timeMs);
     static SqlStep markTransferActivityStep(const std::string &deviceId, int64_t timeMs);
+    // 只执行置顶更新，行不存在即幂等成功
     static SqlStep setDevicePinnedStep(const std::string &deviceId, bool pinned);
+    // 只执行收藏更新，行不存在即幂等成功
     static SqlStep setDeviceFavoriteStep(const std::string &deviceId, bool favorite);
+    // 只执行隐藏更新，行不存在即幂等成功
     static SqlStep setDeviceHiddenStep(const std::string &deviceId, bool hidden);
+    // 只执行备注更新，行不存在即幂等成功
     static SqlStep setDeviceAliasStep(const std::string &deviceId, const std::string &alias);
+    // 只删除设备目录行；传输历史对设备行是 RESTRICT 外键，须在清空该设备传输历史后调用
     static SqlStep deleteDeviceStep(const std::string &deviceId);
     static SqlStep mergeManualPeerMarkersStep(const std::string &realDeviceId,
                                               const std::string &pseudoDeviceId);
