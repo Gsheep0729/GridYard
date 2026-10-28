@@ -1,7 +1,7 @@
 /**
 * @file    main.cpp
-* @version 8.1.0
-* @date    2026-10-27
+* @version 8.2.0
+* @date    2026-10-28
 * @author  GridYard Team
 * @brief   协调节点和中继服务入口
 *
@@ -31,7 +31,7 @@
 namespace {
 
 // 服务版本（与 CMake 工程 VERSION 一致）
-constexpr char kServiceVersion[] = "8.1.0";
+constexpr char kServiceVersion[] = "8.2.0";
 
 // 打印用法说明
 void printUsage(const char *program)

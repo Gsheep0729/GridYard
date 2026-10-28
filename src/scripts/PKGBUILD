@@ -2,7 +2,7 @@
 # Contributor: Gao Yang <gy_ubuntu@cqnu.edu.cn>
 
 pkgname=gridyard
-pkgver=8.1.0
+pkgver=8.2.0
 pkgrel=1
 pkgdesc="LAN P2P File Transfer, Instant Messaging and SQLite Local History client (C++23 + Qt6)"
 arch=('x86_64')
