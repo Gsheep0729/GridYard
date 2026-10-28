@@ -1,7 +1,7 @@
 /**
  * @file    DeviceMergeDialog.qml
- * @version 7.24.0
- * @date 2026-10-08
+ * @version 8.1.0
+ * @date 2026-10-28
  * @author  GridYard Team
  * @brief   设备关联向导（治理设备 ID 变化）
  *
@@ -51,6 +51,10 @@ Dialog {
         _newCounts = null
         _includeHistory = true
         _resultText = ""
+        // 重开复位搜索框文本与迁移历史勾选：两者被用户拨动后不再跟随下划线
+        // 状态，只重置状态字段会让控件显示与实际行为错位
+        searchInput.text = ""
+        historyCheck.checked = true
         open()
     }
 
