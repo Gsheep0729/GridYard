@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
-* @version 8.0.0
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -1052,7 +1052,7 @@ void TestSessionManager::testMultiSendSharesSerializedList()
     }
 }
 
-// 记住上次选择：saveMultiTargets 落盘，lastMultiTargets 跨实例读回一致
+// 记住上次选择：saveMultiTargets/saveMultiPath 落盘，跨实例读回一致
 void TestSessionManager::testMultiTargetsPersistence()
 {
     const QStringList targets{QStringLiteral("device-aaa"), QStringLiteral("device-bbb")};
@@ -1066,6 +1066,15 @@ void TestSessionManager::testMultiTargetsPersistence()
     // 覆写生效
     _manager->saveMultiTargets({QStringLiteral("device-ccc")});
     QCOMPARE(_manager->lastMultiTargets(), QStringList{QStringLiteral("device-ccc")});
+
+    // 内容路径与目标集合同源持久化：写后读、跨实例读回、覆写生效
+    const QString firstPath = _tempDir->path() + "/multi-path-one.bin";
+    _manager->saveMultiPath(firstPath);
+    QCOMPARE(_manager->lastMultiPath(), firstPath);
+    TransferSessionManager freshPath;
+    QCOMPARE(freshPath.lastMultiPath(), firstPath);
+    _manager->saveMultiPath(_tempDir->path() + "/multi-path-two.bin");
+    QCOMPARE(_manager->lastMultiPath(), _tempDir->path() + "/multi-path-two.bin");
 }
 
 // 群发序列化在途时重入被拒绝：第二次调用立即报错，先启动的目标清单不被覆写

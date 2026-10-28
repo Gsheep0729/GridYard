@@ -1,7 +1,7 @@
 /**
  * @file    MultiTargetDialog.qml
  * @version 8.1.0
- * @date 2026-10-26
+ * @date 2026-10-28
  * @author  GridYard Team
  * @brief   多选群发目标选择弹窗
  *
@@ -339,6 +339,8 @@ Dialog {
                     const targets = Object.keys(multiDialog._checked)
                                         .filter(k => multiDialog._checked[k])
                     AppController.transferController.saveMultiTargets(targets)
+                    // 记住本次内容路径，下次打开弹窗时预填输入框
+                    AppController.transferController.saveMultiPath(multiDialog._filePath)
                     AppController.transferController.createMultiSendSessions(
                                 targets, multiDialog._filePath)
                     mainWindow.showSuccessToast(qsTr("已向 %1 台设备发起传输").arg(targets.length))
