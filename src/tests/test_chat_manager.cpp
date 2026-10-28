@@ -1,7 +1,7 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 7.26.1
-* @date 2026-10-25
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GY
 * @brief   在线聊天连接与内存会话测试
 *
@@ -56,6 +56,8 @@ private slots:
     void testInvalidFollowUpFrameRejected();
     void testMessagesPersisted();
     void testIncomingMessageRestoresHiddenPeer();
+    void testInboundConnectionReuseConfirmsSend();
+    void testForeignIdentityFrameClosesConnection();
 
 private:
     void addOnlinePeer(const QString &deviceId, quint16 port);
@@ -457,6 +459,112 @@ void TestChatManager::testIncomingMessageRestoresHiddenPeer()
     QTRY_COMPARE_WITH_TIMEOUT(*clearedFlag, true, 3000);
 
     peerSocket.disconnectFromHost();
+}
+
+// 先收后发复用入站连接时，气泡转入已发送并提交持久化（入站连接必须接写回调）
+void TestChatManager::testInboundConnectionReuseConfirmsSend()
+{
+    gy::storage::DatabaseCore database;
+    std::string errorMessage;
+    QVERIFY2(database.initialize((_tempDir->path() + "/reuse-history.sqlite").toStdString(),
+                                 &errorMessage),
+             qPrintable(QString::fromStdString(errorMessage)));
+    gy::storage::DeviceRepositoryCore deviceRepository(&database);
+    gy::storage::MessageRepositoryCore messageRepository(&database);
+
+    int persistedCount = 0;
+    bool persisted = true;
+    QStringList persistedContents;
+    // 接线挂栈上作用域对象：断言提前退出时随作用域自动断连，避免悬空引用拖垮后续用例
+    QObject connectionScope;
+    const QMetaObject::Connection persistenceConnection = connect(
+        _manager, &ChatManager::messageToPersist,
+        &connectionScope, [&](const MessageRecord &record) {
+            PeerRecord peer;
+            peer.deviceId = record.peerDeviceId;
+            peer.deviceName = record.senderName;
+            peer.firstSeenAt = record.sentAt;
+            peer.lastSeenAt = record.sentAt;
+            errorMessage.clear();
+            persisted = deviceRepository.upsertPeer(gy::test::toCoreRecord(peer), &errorMessage)
+                        && messageRepository.saveMessage(gy::test::toCoreRecord(record),
+                                                         &errorMessage);
+            ++persistedCount;
+            persistedContents.append(record.content);
+        });
+
+    // 发现表挂一个只监听不受理的端点：若发送侧复用入站连接，就不会出现新连接
+    gy::net::PosixTcpServer untouchedServer;
+    QVERIFY(untouchedServer.listen(gy::net::IpAddress::localHost(), 0));
+    const QString deviceId = "reuse-peer";
+    addOnlinePeer(deviceId, untouchedServer.serverPort());
+    _manager->clearMessages(deviceId);
+
+    // 对端先发来一条消息：入站连接被归档并登记为该设备当前连接
+    gy::net::PosixTcpSocket peer;
+    peer.connectToHost(gy::net::IpAddress::localHost(), _p2pPort);
+    QVERIFY(peer.waitForConnected(3000));
+    gy::ChatMessage incoming = createPeerMessage(
+        "b3f1a2c4-5d6e-4f80-9a1b-2c3d4e5f6a7b", "入站首帧消息");
+    incoming.fromDeviceId = deviceId;
+    incoming.fromName = "ReusePeer";
+    const QByteArray incomingFrame = encodeMessageFrame(incoming);
+    QVERIFY(peer.write(incomingFrame) == incomingFrame.size());
+    QVERIFY(peer.waitForBytesWritten(1000));
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 1, 3000);
+    QCOMPARE(persistedCount, 1);
+
+    // 本机随后向同一设备发送：复用入站连接，出站帧应从原连接到达对端
+    QVERIFY(_manager->sendText(deviceId, "复用入站连接的出站消息"));
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice(deviceId).size(), 2, 3000);
+    QTest::qWait(100);
+    QVERIFY(!untouchedServer.hasPendingConnections());
+
+    // 写入确认到达后气泡必须转入已发送；缺少写回调时将永远停留在发送中
+    QTRY_COMPARE_WITH_TIMEOUT(
+        _manager->messagesForDevice(deviceId).last().toMap().value("status").toInt(), 1, 3000);
+    // 出站消息写成功后必须与入站消息一样提交持久化
+    QTRY_COMPARE_WITH_TIMEOUT(persistedCount, 2, 3000);
+    QVERIFY2(persisted, qPrintable(QString::fromStdString(errorMessage)));
+    QVERIFY(persistedContents.contains("复用入站连接的出站消息"));
+
+    // 出站帧从原入站连接到达对端（复用的直接证据）
+    QTRY_VERIFY_WITH_TIMEOUT(peer.bytesAvailable() > 0, 3000);
+
+    disconnect(persistenceConnection);
+    peer.disconnectFromHost();
+    peer.waitForDisconnected(1000);
+}
+
+// 同一连接上声称不同发送者身份的后续帧：消息照常归档，但连接被关闭而非再登记一个设备键
+void TestChatManager::testForeignIdentityFrameClosesConnection()
+{
+    gy::net::PosixTcpSocket peer;
+    QSignalSpy disconnectedSpy(&peer, &gy::net::PosixTcpSocket::disconnected);
+    peer.connectToHost(gy::net::IpAddress::localHost(), _p2pPort);
+    QVERIFY(peer.waitForConnected(3000));
+
+    // 首帧以 identity-a 身份归档并登记连接
+    gy::ChatMessage first = createPeerMessage(
+        "c1a2b3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", "首帧身份消息");
+    first.fromDeviceId = "identity-a";
+    const QByteArray firstFrame = encodeMessageFrame(first);
+    QVERIFY(peer.write(firstFrame) == firstFrame.size());
+    QVERIFY(peer.waitForBytesWritten(1000));
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice("identity-a").size(), 1, 3000);
+
+    // 同一连接换身份发第二帧：消息仍归档，但连接必须被关闭
+    gy::ChatMessage second = createPeerMessage(
+        "d2b3c4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e", "换身份的后续帧");
+    second.fromDeviceId = "identity-b";
+    const QByteArray secondFrame = encodeMessageFrame(second);
+    QVERIFY(peer.write(secondFrame) == secondFrame.size());
+    QVERIFY(peer.waitForBytesWritten(1000));
+    QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice("identity-b").size(), 1, 3000);
+    QVERIFY(disconnectedSpy.wait(3000));
+    QCOMPARE(disconnectedSpy.count(), 1);
+
+    peer.disconnectFromHost();
 }
 
 // 将测试用对端放入发现服务的在线端点表

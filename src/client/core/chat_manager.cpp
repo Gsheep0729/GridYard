@@ -1,7 +1,7 @@
 /**
 * @file    chat_manager.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   在线聊天连接与内存会话管理器实现
 *
@@ -205,6 +205,34 @@ void ChatManager::onChatConnectionReceived(gy::net::PosixTcpSocket *socket)
         }
         connection->deleteLater();
     });
+    // 入站连接同样会被复用为发送通道，必须与出站连接一样接写确认与写失败两路信号，
+    // 否则经复用连接发出的气泡永远停留在发送中，也不会提交持久化。
+    connect(connection, &ChatConnection::messageWritten,
+            this, [this, connection](const QString &messageId) {
+        const auto it = std::find_if(_connections.cbegin(), _connections.cend(),
+                                     [connection](ChatConnection *value) {
+            return value == connection;
+        });
+        if (it == _connections.cend()) {
+            return;
+        }
+        updateMessageStatus(it.key(), messageId, MessageStatus::Sent);
+        persistWrittenMessage(messageId);
+    });
+    connect(connection, &ChatConnection::messageWriteFailed,
+            this, [this, connection](const QString &messageId, gy::ChatMessageError error,
+                                     const QString &errorMessage) {
+        const auto it = std::find_if(_connections.cbegin(), _connections.cend(),
+                                     [connection](ChatConnection *value) {
+            return value == connection;
+        });
+        // 先摘暂存记录，防止断线后的旧确认触发错误持久化
+        _pendingRecords.remove(messageId);
+        if (it != _connections.cend()) {
+            updateMessageStatus(it.key(), messageId, MessageStatus::Failed);
+            emit sendFailed(it.key(), error, errorMessage);
+        }
+    });
 
     connection->adoptSocket(socket);
 }
@@ -364,6 +392,16 @@ ChatMessageModel *ChatManager::modelForDevice(const QString &deviceId)
 // 登记连接并拒绝已有活跃连接时的重复入站连接
 bool ChatManager::registerConnection(const QString &deviceId, ChatConnection *connection)
 {
+    // 一条连接只允许登记到一个设备键：对端在同一条连接上声称不同发送者身份时
+    // 拒绝重复登记，避免断开清理只摘除首个键而残留指向已销毁连接的悬空指针。
+    const auto registered = std::find_if(_connections.cbegin(), _connections.cend(),
+                                         [connection](ChatConnection *value) {
+        return value == connection;
+    });
+    if (registered != _connections.cend() && registered.key() != deviceId) {
+        return false;
+    }
+
     ChatConnection *existing = _connections.value(deviceId);
     if (!existing || existing == connection || !existing->isUsable()) {
         if (existing && existing != connection) {
