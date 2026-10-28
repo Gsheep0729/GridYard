@@ -7,7 +7,7 @@ set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "d0edc3af-4c50-42ea-a356-e2862fe7a444")
 # set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
 set(CMAKE_CXX_MODULE_STD ON)
 
-project(GridYard VERSION 8.2.0 LANGUAGES CXX)
+project(GridYard VERSION 8.2.1 LANGUAGES CXX)
 
 # 安装规则（client 与 rendezvous 的 install()）使用的 bin/lib 目标目录变量由这里提供
 include(GNUInstallDirs)
