@@ -1,6 +1,6 @@
 /**
 * @file    rendezvous_server.cpp
-* @version 8.1.0
+* @version 8.2.0
 * @date    2026-10-28
 * @author  GridYard Team
 * @brief   协调节点服务器实现
@@ -315,21 +315,31 @@ void RendezvousServer::setMaxResponseQueueBytes(int64_t maxBytes)
 }
 
 // 装配中继管道移交回调
+// 处理器在事件泵线程读取（handleNewConnection / dispatchRelayPipe），
+// 装配入口改经事件泵同步执行写入，与 setMaxSessions 同一条 runOnLoop 路径
 void RendezvousServer::setRelayPipeHandler(RelayPipeHandler handler)
 {
-    _relayPipeHandler = std::move(handler);
+    runOnLoop([this, handler = std::move(handler)]() mutable {
+        _relayPipeHandler = std::move(handler);
+    });
 }
 
 // 装配客户端接入通知
+// 处理器在事件泵线程读取，写入同样经泵串行化，消除与接入回调的数据竞争
 void RendezvousServer::setClientConnectedHandler(std::function<void(const std::string &)> handler)
 {
-    _clientConnected = std::move(handler);
+    runOnLoop([this, handler = std::move(handler)]() mutable {
+        _clientConnected = std::move(handler);
+    });
 }
 
 // 装配客户端离开通知
+// 处理器在事件泵线程读取，写入同样经泵串行化，消除与离开回调的数据竞争
 void RendezvousServer::setClientDisconnectedHandler(std::function<void(const std::string &)> handler)
 {
-    _clientDisconnected = std::move(handler);
+    runOnLoop([this, handler = std::move(handler)]() mutable {
+        _clientDisconnected = std::move(handler);
+    });
 }
 
 // 接入新连接（事件泵线程）
