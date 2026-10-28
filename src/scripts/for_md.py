@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""代码归档工具：把指定目录的源码与构建文件按顺序合并为单个 Markdown 文档。
+
+用法：python3 for_md.py <源目录>，在该目录内生成 <目录名>_knowledge_base.md。
+构建文件（CMakeLists.txt 等）写入「项目特征总结」之下、源文件之上，
+图片与二进制等非文本产物按扩展名与目录名排除。
+"""
+
 import os
 import sys
 
