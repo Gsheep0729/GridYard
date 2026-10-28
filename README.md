@@ -520,8 +520,7 @@ GridYard/
     │       └── core/                    # poll + eventfd 事件泵与套接字核心
     │           ├── net_reactor.{h,cpp}
     │           ├── tcp_socket_core.{h,cpp}
-    │           ├── tcp_server_core.{h,cpp}
-    │           └── udp_socket_core.{h,cpp}
+    │           └── tcp_server_core.{h,cpp}
     ├── core/                            # 纯 C++ 核心层 gy_core / gy_storage_core（零 Qt）
     │   ├── CMakeLists.txt
     │   ├── codec/                       # TLV 帧与聊天消息编解码

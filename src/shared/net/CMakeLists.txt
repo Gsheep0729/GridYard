@@ -12,8 +12,6 @@ set(GY_NET_CORE_SOURCES
     core/tcp_socket_core.cpp
     core/tcp_server_core.h
     core/tcp_server_core.cpp
-    core/udp_socket_core.h
-    core/udp_socket_core.cpp
 )
 
 add_library(gy_net_core STATIC ${GY_NET_CORE_SOURCES})

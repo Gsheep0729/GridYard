@@ -23,7 +23,7 @@ GridYard 的图形界面使用 Qt（QML 表现层与 QApplication 入口），�
 | :--- | :--- | :--- |
 | `gy_core` | `src/core/`（types/codec/config/utils 四分组） | 领域类型、TLV 帧编解码、聊天消息编解码、目录哈希（picosha2 流式）、INI 配置读写 |
 | `gy_storage_core` | `src/core/storage/` | vendored SQLite3 C API 封装（连接/语句/事务 RAII）、ISO 时间互转、Schema 迁移与三个仓储的纯 C++ 实现 |
-| `gy_net_core` | `src/shared/net/core/` | NetReactor 事件泵（Boost.Asio io_context 单线程引擎，描述符等待挂接 fd 就绪，代际校验由描述符对象身份承接）与 TCP/UDP 套接字核心 |
+| `gy_net_core` | `src/shared/net/core/` | NetReactor 事件泵（Boost.Asio io_context 单线程引擎，描述符等待挂接 fd 就绪，代际校验由描述符对象身份承接）与 TCP 套接字核心（UDP 核心类及其零消费者实现已退役） |
 | `gy_protocol_contracts` | `src/shared/`（INTERFACE） | 协调与中继行协议的键名常量，双端单一来源 |
 | `gy_rendezvous` | `src/rendezvous/` | 协调节点与流式中继的服务端实现（nlohmann JSON、NetReactor 事件引擎、asio 信号集优雅退出） |
 
