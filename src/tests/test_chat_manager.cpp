@@ -561,7 +561,11 @@ void TestChatManager::testForeignIdentityFrameClosesConnection()
     QVERIFY(peer.write(secondFrame) == secondFrame.size());
     QVERIFY(peer.waitForBytesWritten(1000));
     QTRY_COMPARE_WITH_TIMEOUT(_manager->messagesForDevice("identity-b").size(), 1, 3000);
-    QVERIFY(disconnectedSpy.wait(3000));
+    // 断连可能在上一步等消息归档的窗口内就已到达；Qt6 的 QSignalSpy::wait 只等
+    // 新信号，先查已有计数再补一次带超时的等待，两种时序都稳定
+    if (disconnectedSpy.isEmpty()) {
+        QVERIFY(disconnectedSpy.wait(3000));
+    }
     QCOMPARE(disconnectedSpy.count(), 1);
 
     peer.disconnectFromHost();
