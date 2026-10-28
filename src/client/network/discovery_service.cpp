@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 */
@@ -357,6 +357,7 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 
     // 真实身份已就位时合并同 IP 的离线手动伪条目，避免同一物理设备出现双卡；
     // 仍在窗口期内的手动条目留给下次真身心跳到达时清理
+    QStringList mergedPseudoIds;
     if (info.source != QStringLiteral("manual")) {
         QMutableHashIterator<QString, PeerInfo> manualIt(_peers);
         while (manualIt.hasNext()) {
@@ -367,6 +368,7 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
                     && !manualIt.value().isOnline) {
                 qDebug() << "DiscoveryService: 真实身份到达，移除同 IP 的离线手动条目"
                          << manualIt.key() << "合并至" << deviceId;
+                mergedPseudoIds.append(manualIt.key());
                 manualIt.remove();
             }
         }
@@ -374,6 +376,13 @@ void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
 
     // 应用层据此异步更新本地设备目录，发现服务不直接依赖 storage
     emit peerUpdated(info);
+
+    // 伪条目被移除按既有离线语义上报：视图模型收到后重载设备目录，伪行迁移到
+    // 真身的管理标记才能立即呈现；必须排在 peerUpdated 之后，保证目录重载
+    // 任务排在合并写库任务之后执行
+    for (const QString &pseudoId : mergedPseudoIds) {
+        emit nodeExpired(pseudoId);
+    }
 
     if (isNew) {
         qDebug() << "DiscoveryService: 发现新设备" << deviceId << info.deviceName;

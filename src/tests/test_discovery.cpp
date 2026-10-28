@@ -1,7 +1,7 @@
 /**
 * @file    test_discovery.cpp
-* @version 8.0.0
-* @date 2026-10-26
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
@@ -347,6 +347,9 @@ void TestDiscovery::testRealArrivalMergesOfflineManualEntry()
     // 先清掉可能残留的在线广播条目，确保后续 QTRY 只能由新一轮到达满足
     _discovery1->refresh();
 
+    // 伪条目被合并移除时按离线语义上报，视图模型据此重载目录承接迁移标记
+    QSignalSpy expiredSpy(_discovery1, &DiscoveryService::nodeExpired);
+
     // 对端真实广播到达（来源 IP 即本机地址），触发按 IP 合并
     _discovery2->refresh();
     QTRY_VERIFY_WITH_TIMEOUT(
@@ -361,6 +364,17 @@ void TestDiscovery::testRealArrivalMergesOfflineManualEntry()
         }
     }
     QVERIFY2(pseudoGone, "真实身份到达后同 IP 的离线手动伪条目应被移除");
+
+    // 移除必须伴随一次针对伪 ID 的 nodeExpired：视图模型收到后重载设备目录，
+    // 备注/好友等迁移结果才能立即呈现；缺失则列表残留旧状态
+    bool pseudoExpired = false;
+    for (const QList<QVariant> &entry : expiredSpy) {
+        if (entry.value(0).toString() == pseudo.deviceId) {
+            pseudoExpired = true;
+            break;
+        }
+    }
+    QVERIFY2(pseudoExpired, "伪条目被合并移除时应发 nodeExpired");
 }
 
 void TestDiscovery::testPeerInfo()
