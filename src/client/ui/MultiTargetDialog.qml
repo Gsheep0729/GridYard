@@ -341,9 +341,9 @@ Dialog {
                     AppController.transferController.saveMultiTargets(targets)
                     // 记住本次内容路径，下次打开弹窗时预填输入框
                     AppController.transferController.saveMultiPath(multiDialog._filePath)
+                    // 成功提示由管理器在建立会话后带真实台数上报，这里不再抢跑
                     AppController.transferController.createMultiSendSessions(
                                 targets, multiDialog._filePath)
-                    mainWindow.showSuccessToast(qsTr("已向 %1 台设备发起传输").arg(targets.length))
                     multiDialog.close()
                 }
             }

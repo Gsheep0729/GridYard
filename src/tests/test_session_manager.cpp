@@ -72,6 +72,7 @@ private slots:
     void testMultiSendSharesSerializedList();
     void testMultiTargetsPersistence();
     void testMultiSendRejectsReentryWhileSerializing();
+    void testMultiSendInvalidPathNoSuccessMessage();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -1000,9 +1001,18 @@ void TestSessionManager::testMultiSendSharesSerializedList()
 
     QSignalSpy startedSpy(_manager, &TransferSessionManager::multiSendStarted);
     QSignalSpy changedSpy(_manager, &TransferSessionManager::sessionsChanged);
+    QSignalSpy messageSpy(_manager, &TransferSessionManager::messageOccurred);
     _manager->createMultiSendSessions({id1, id2}, dirPath);
     QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);
     QCOMPARE(startedSpy.first().first().toInt(), 2);
+    // 起跑成功由管理器带真实台数上报（界面不再在调用前抢跑成功提示）
+    int startedMessages = 0;
+    for (const QList<QVariant> &entry : messageSpy) {
+        if (entry.value(0).toString() == QStringLiteral("已向 2 台设备发起传输")) {
+            ++startedMessages;
+        }
+    }
+    QCOMPARE(startedMessages, 1);
     QTRY_VERIFY_WITH_TIMEOUT(changedSpy.count() >= 2, 3000);
 
     // 两张独立会话卡，指向同一源路径、同一总字节数（与直接序列化一致）
@@ -1050,6 +1060,33 @@ void TestSessionManager::testMultiSendSharesSerializedList()
             _manager->cancelSession(session.value(gy::session::kSessionId).toString());
         }
     }
+}
+
+// 群发前置校验失败只报错误，不得出现"已发起"成功提示：旧界面在调用前抢跑
+// 成功 Toast，与同步到达的错误提示互相覆盖；现在成功提示由管理器按真实
+// 台数上报，校验失败路径不存在任何成功文案
+void TestSessionManager::testMultiSendInvalidPathNoSuccessMessage()
+{
+    const QString id1 = addTargetDevice("invalid-path-target", 1);
+    QSignalSpy errorSpy(_manager, &TransferSessionManager::errorOccurred);
+    QSignalSpy messageSpy(_manager, &TransferSessionManager::messageOccurred);
+
+    _manager->createMultiSendSessions({id1}, _tempDir->path() + "/missing-path.bin");
+
+    int pathErrors = 0;
+    for (const QList<QVariant> &entry : errorSpy) {
+        if (entry.value(0).toString().contains(QStringLiteral("文件不存在"))) {
+            ++pathErrors;
+        }
+    }
+    QCOMPARE(pathErrors, 1);  // 同步拒绝恰好一条错误
+    int successMessages = 0;
+    for (const QList<QVariant> &entry : messageSpy) {
+        if (entry.value(0).toString().contains(QStringLiteral("已向"))) {
+            ++successMessages;
+        }
+    }
+    QCOMPARE(successMessages, 0);
 }
 
 // 记住上次选择：saveMultiTargets/saveMultiPath 落盘，跨实例读回一致

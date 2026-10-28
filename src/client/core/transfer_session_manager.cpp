@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 8.0.0
-* @date 2026-10-08
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 */
@@ -430,6 +430,11 @@ void TransferSessionManager::finishMultiSendStart(const QList<gy::FileItem> &fil
     const int started = _multiTargets.size();
     _multiTargets.clear();
     emit multiSendStarted(started);
+    // 真实发起台数以本处为准：界面不再在调用前抢跑成功提示，校验失败时
+    // 只剩错误提示，成功时由这里带准确台数上报
+    if (started > 0) {
+        emit messageOccurred(tr("已向 %1 台设备发起传输").arg(started));
+    }
 }
 
 // 上次多选群发的目标集合（多选弹窗默认勾选仍在线的部分）
