@@ -1,7 +1,7 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 8.0.0
-* @date 2026-10-26
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GY
 * @brief   文件传输完整流程测试
 *
@@ -78,6 +78,7 @@ private slots:
     void testEmptyDirectoryTransferEndToEnd();
     void testLargeFileTransferEndToEnd();
     void testAutoAcceptAndSave();
+    void testDuplicateNameReceiveRenamesWithSuffix();
     void testPersistFinishedReceiveSession();
     void testPersistCancelledReceiveSession();
     void testReceiveFolderPreview();
@@ -527,6 +528,95 @@ void TestFileTransfer::testAutoAcceptAndSave()
     QVERIFY(QFile::exists(clearSendPath));
 
     stopSenderThread(clearSender, clearSenderThread);
+    _config->setAutoAcceptFiles(false);
+}
+
+// 同名文件二次接收静默改名为 "name (1).ext"：原文件不被覆盖，两份内容各自
+// 完整且会话 localPath 指向真实落盘路径（含 NewOnly 原子占位下的改名分支）
+void TestFileTransfer::testDuplicateNameReceiveRenamesWithSuffix()
+{
+    const QString sendPath = _sendDir->path() + "/dup_name.txt";
+    createTestFile(sendPath, "first copy content");
+
+    _config->setReceivePath(_recvDir->path());
+    _config->setAutoAcceptFiles(true);
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
+
+    DiscoveryService discovery(_config);
+    P2pServer server(_config);
+    TransferSessionManager manager;
+    manager.init(_config, &discovery, &server);
+    QVERIFY(server.start());
+
+    QSignalSpy completedSpy(&manager, &TransferSessionManager::transferCompleted);
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    SenderThreadGuard senderGuard{sender, senderThread};
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "dup-sender-id"),
+                              Q_ARG(QString, "DupSender"));
+
+    QVERIFY(waitForTransfer(completedSpy));
+    QVERIFY(waitForTransfer(senderSpy));
+    QVERIFY(senderSpy.first().at(0).toBool());
+
+    const QString firstPath = _recvDir->path() + "/dup_name.txt";
+    QVERIFY(QFile::exists(firstPath));
+    QFile firstFile(firstPath);
+    QVERIFY(firstFile.open(QIODevice::ReadOnly));
+    QCOMPARE(firstFile.readAll(), QByteArray("first copy content"));
+    firstFile.close();
+
+    // 源内容改变后二次接收同名目标：必须静默改名而不是覆盖第一份
+    createTestFile(sendPath, "second copy content");
+    completedSpy.clear();
+    FileSenderWorker secondSender;
+    QSignalSpy secondSpy(&secondSender, &FileSenderWorker::transferFinished);
+    QThread secondThread;
+    SenderThreadGuard secondGuard{secondSender, secondThread};
+    secondSender.moveToThread(&secondThread);
+    secondThread.start();
+    QMetaObject::invokeMethod(&secondSender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "dup-sender-id-2"),
+                              Q_ARG(QString, "DupSender"));
+
+    QVERIFY(waitForTransfer(completedSpy));
+    QVERIFY(waitForTransfer(secondSpy));
+    QVERIFY(secondSpy.first().at(0).toBool());
+
+    const QString renamedPath = _recvDir->path() + "/dup_name (1).txt";
+    QVERIFY(QFile::exists(renamedPath));
+    QFile renamedFile(renamedPath);
+    QVERIFY(renamedFile.open(QIODevice::ReadOnly));
+    QCOMPARE(renamedFile.readAll(), QByteArray("second copy content"));
+    renamedFile.close();
+    QFile firstFileAgain(firstPath);
+    QVERIFY(firstFileAgain.open(QIODevice::ReadOnly));
+    QCOMPARE(firstFileAgain.readAll(), QByteArray("first copy content"));
+    firstFileAgain.close();
+
+    // 会话 localPath 必须指向各自真实落盘路径，删除本地文件才不会误删他份
+    const QVariantList sessions = manager.sessions();
+    QCOMPARE(sessions.size(), 2);
+    QStringList localPaths;
+    for (const QVariant &session : sessions) {
+        localPaths.append(session.toMap()["localPath"].toString());
+    }
+    QVERIFY(localPaths.contains(firstPath));
+    QVERIFY(localPaths.contains(renamedPath));
+
+    stopSenderThread(secondSender, secondThread);
     _config->setAutoAcceptFiles(false);
 }
 

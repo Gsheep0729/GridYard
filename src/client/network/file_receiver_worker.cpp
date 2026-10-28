@@ -1,7 +1,7 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 7.26.1
-* @date 2026-10-25
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
 *
@@ -171,9 +171,16 @@ void FileReceiverWorker::acceptTransfer()
 
     if (_isDirectory) {
         _destinationRoot = uniqueTargetPath(_receivePath + "/" + _rootName, true);
-        if (!QDir().mkpath(_destinationRoot)) {
-            failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建接收目录"));
-            return;
+        // mkdir 只在目录由本次真正创建时成功，封死同名目录并发接收共用同一根目录的窗口
+        for (int attempt = 0; ; ++attempt) {
+            if (QDir().mkdir(_destinationRoot)) {
+                break;
+            }
+            if (attempt >= 16) {
+                failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建接收目录"));
+                return;
+            }
+            _destinationRoot = uniqueTargetPath(_destinationRoot, true);
         }
 
         for (const QString &relativePath : _emptyDirectories) {
@@ -666,14 +673,29 @@ bool FileReceiverWorker::openCurrentFile()
         }
     }
 
-    _file.setFileName(filePath);
-    if (!_file.open(QIODevice::WriteOnly)) {
-        qWarning() << "[FileReceiver] 无法创建文件:" << _file.errorString();
-        return false;
+    // NewOnly 要求目标不存在才创建，把"改名校验"与"打开"合并为一个原子动作，
+    // 封死检查与打开之间并发同名接收抢先创建、随后 WriteOnly 截断对方的窗口；
+    // 占位失败说明窗口内出现了同名文件，重新改名后重试。
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        _file.setFileName(filePath);
+        if (_file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+            if (!_isDirectory) {
+                // 改名后的实际落盘路径要回写，完成通知与历史记录才能指向真实文件
+                _singleFilePath = filePath;
+            }
+            qDebug() << "[FileReceiver] 开始接收文件:" << filePath;
+            return true;
+        }
+        if (!QFileInfo::exists(filePath)) {
+            // 打开失败但目标并不存在，属于权限等真实错误，不再改名重试
+            qWarning() << "[FileReceiver] 无法创建文件:" << _file.errorString();
+            return false;
+        }
+        filePath = uniqueTargetPath(filePath, false);
     }
 
-    qDebug() << "[FileReceiver] 开始接收文件:" << filePath;
-    return true;
+    qWarning() << "[FileReceiver] 同名冲突改名重试次数用尽:" << filePath;
+    return false;
 }
 
 // 处理取消传输请求，清理资源并删除不完整文件
