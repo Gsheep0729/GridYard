@@ -86,6 +86,7 @@ private slots:
     void testCancelReceiveDuringTransfer();
     void testConnectionLost();
     void testTransferTimeout();
+    void testOversizedTransferReqFailsFast();
     void testConcurrentTransfers();
     void testLargeFileTransfer();
     void testSha256Verification();
@@ -1065,6 +1066,56 @@ void TestFileTransfer::testTransferTimeout()
     QCOMPARE(senderSpy.first().at(0).toBool(), false);
     QCOMPARE(senderSpy.first().at(1).toInt(),
              static_cast<int>(gy::protocol::ErrorCode::TransferTimeout));
+
+    stopSenderThread(sender, senderThread);
+}
+
+// 清单 JSON 超过控制帧 1MB 上限时编码返回空帧，旧实现把"空数据写入 0 字节
+// 等于帧长"当作成功并傻等响应直到超时；现编码失败即刻以 FrameTooLarge 终结，
+// 不再把"清单过大"误报成"传输超时"
+void TestFileTransfer::testOversizedTransferReqFailsFast()
+{
+    gy::net::PosixTcpServer silentServer;
+    QVERIFY(silentServer.listen(gy::net::IpAddress::localHost(), 0));
+
+    // 每条目约 280 字节（180 字符长文件名 + 64 位 sha256 + 字段名与序号），
+    // 5000 条约 1.4MB，稳超 1MB 控制帧上限
+    QDir sendDir(_sendDir->path() + "/oversized_list");
+    QVERIFY(QDir().mkpath(sendDir.path()));
+    const QString namePrefix(180, QLatin1Char('a'));
+    int created = 0;
+    for (int i = 0; i < 5000; ++i) {
+        QFile file(sendDir.path() + "/" + namePrefix
+                   + QStringLiteral("%1.bin").arg(i, 5, 10, QLatin1Char('0')));
+        if (file.open(QIODevice::WriteOnly)) {
+            ++created;
+        }
+        file.close();
+    }
+    QCOMPARE(created, 5000);
+
+    FileSenderWorker sender;
+    sender.setTimeoutMs(300);  // 短超时注入：判别点是错误码而非等待时长
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+
+    QThread senderThread;
+    sender.moveToThread(&senderThread);
+    const quint16 port = silentServer.serverPort();
+    const QString dirPath = sendDir.path();
+    QObject::connect(&senderThread, &QThread::started, &sender, [&sender, port, &dirPath]() {
+        sender.startTransfer(QStringLiteral("127.0.0.1"), port, dirPath,
+                             QStringLiteral("oversize-sender"), QStringLiteral("OversizeSender"));
+    });
+    senderThread.start();
+
+    // 序列化 5000 个空文件需要一点时间；新旧行为都会在 30 秒窗口内终结，
+    // 旧实现在响应超时（300ms）后以 TransferTimeout 收场，新实现立即报上限
+    QVERIFY2(senderSpy.wait(30000), "超大清单必须在窗口内终结");
+    QCOMPARE(senderSpy.count(), 1);
+    QCOMPARE(senderSpy.first().at(0).toBool(), false);
+    QCOMPARE(senderSpy.first().at(1).toInt(),
+             static_cast<int>(gy::protocol::ErrorCode::FrameTooLarge));
+    QVERIFY(senderSpy.first().at(2).toString().contains(QStringLiteral("上限")));
 
     stopSenderThread(sender, senderThread);
 }

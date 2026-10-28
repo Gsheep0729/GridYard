@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 7.26.1
-* @date    2026-10-25
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -702,6 +702,14 @@ bool FileSenderWorker::writeControlFrame(quint32 type, const QByteArray &payload
                                          gy::protocol::ErrorCode errorCode)
 {
     const QByteArray frame = gy::bridge::encodeFrame(type, payload);
+    // 合法帧至少含帧头，编码返回空说明载荷超过该类型上限；此时不能再走写入
+    // 路径——空数据写 0 字节恰好等于帧长 0，会被误判为发送成功，发送端随后
+    // 傻等响应直到超时，把"清单过大"误报成"传输超时"
+    if (frame.isEmpty()) {
+        finish(false, gy::protocol::ErrorCode::FrameTooLarge,
+               tr("%1失败: 内容超过单帧上限").arg(description));
+        return false;
+    }
     const qint64 written = _socket->write(frame);
     if (written == frame.size()) {
         return true;
