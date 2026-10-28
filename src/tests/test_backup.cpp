@@ -1,7 +1,7 @@
 /**
 * @file    test_backup.cpp
-* @version 8.0.0
-* @date    2026-10-25
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GY
 * @brief   用户数据备份与迁移测试
 *
@@ -35,6 +35,7 @@ private slots:
     void testConflictMergeRules();
     void testIdentityRejectedWhenLibraryHasData();
     void testTransactionRollbackOnForeignKey();
+    void testFailedAnalysisInvalidatesCache();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -363,6 +364,53 @@ void TestBackup::testTransactionRollbackOnForeignKey()
         }
     });
     QTRY_COMPARE(devicesAfter->contains(QStringLiteral("rollback-dev")), false);
+}
+
+// 分析失败必须让上一次的分析缓存失效：performImport 不得导入旧文件的数据
+void TestBackup::testFailedAnalysisInvalidatesCache()
+{
+    // 第一份合法备份：导出后成功分析，缓存就位
+    const QDateTime base = QDateTime::fromString("2026-10-07T09:00:00.000Z", Qt::ISODateWithMs);
+    seedDatabase("stale-source.sqlite", {makeDevice("stale-dev-1", "缓存设备", base)});
+    auto sourceBroker = openBroker("stale-source.sqlite");
+    QVERIFY(sourceBroker);
+
+    BackupController exporter(sourceBroker.get(), _config, this);
+    QVariantMap summary;
+    QVERIFY(waitForExport(exporter, &summary));
+    const QString goodPath = _tempDir->path() + "/stale-good.json";
+    QSignalSpy exportSpy(&exporter, &BackupController::exportFinished);
+    exporter.writeExportFile(goodPath, true, true, true, true);
+    QCOMPARE(exportSpy.count(), 1);
+
+    auto targetBroker = openBroker("stale-target.sqlite");
+    QVERIFY(targetBroker);
+    useFreshConfig("config-stale.ini");
+    ConfigManager staleConfig;
+    BackupController importer(targetBroker.get(), &staleConfig, this);
+
+    QSignalSpy analyzedSpy(&importer, &BackupController::importAnalyzed);
+    importer.analyzeImportFile(goodPath);
+    QTRY_COMPARE(analyzedSpy.count(), 1);
+    QCOMPARE(analyzedSpy.first().first().toMap().value("error"), QVariant());
+
+    // 第二份文件格式不符：分析报错，上一次的缓存必须同步作废
+    const QString badPath = _tempDir->path() + "/stale-bad.json";
+    {
+        QFile file{badPath};
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write("{\"format\":\"not-gridyard\",\"version\":1}");
+    }
+    importer.analyzeImportFile(badPath);
+    QTRY_COMPARE(analyzedSpy.count(), 2);
+    QVERIFY(!analyzedSpy.at(1).first().toMap().value("error").toString().isEmpty());
+
+    // 旧实现此时仍持有第一份文件的缓存，performImport 会成功导入；修复后必须拒绝
+    QSignalSpy importSpy(&importer, &BackupController::importFinished);
+    importer.performImport();
+    QTRY_COMPARE(importSpy.count(), 1);
+    QVERIFY(!importSpy.first().first().toBool());
+    QVERIFY(importSpy.first().at(2).toString().contains(QStringLiteral("没有可导入的数据")));
 }
 
 // 工具方法：在临时目录打开一份本地历史库

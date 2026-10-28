@@ -1,7 +1,7 @@
 /**
 * @file    backup_controller.cpp
-* @version 8.0.0
-* @date 2026-10-07
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   用户数据备份与迁移控制器实现
 */
@@ -176,6 +176,14 @@ void BackupController::writeExportFile(const QString &path, bool includeIdentity
 // 解析备份文件并统计各层条目与冲突数，结果经 importAnalyzed 发布
 void BackupController::analyzeImportFile(const QString &path)
 {
+    // 新一轮分析先作废上一次的缓存：任一失败分支返回时旧缓存不得残留，
+    // 否则随后的 performImport 会导入上一个文件的陈旧数据
+    _importIdentity = {};
+    _importDevices = {};
+    _importMessages = {};
+    _importTransfers = {};
+    _lastIdentityAction.clear();
+
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
         emit importAnalyzed({{QStringLiteral("error"), QStringLiteral("无法读取文件：%1")
@@ -324,19 +332,21 @@ void BackupController::performImport()
     }
     devices.append(stubs);
 
-    // 身份层处理沿用预览决策：replace 写入配置待重启生效，reject 跳过
+    // 身份层处理沿用预览决策：replace 在数据层导入成功后写入配置待重启生效，
+    // reject 跳过；先写身份再导入时若导入失败整体回滚，身份已改无法复原，
+    // "本机数据未改动"的失败提示也会失真
     const QString identityAction = _lastIdentityAction;
-    if (identityAction == QStringLiteral("replace") && _config) {
-        _config->restoreDeviceIdentity(
-            _importIdentity.value(QStringLiteral("deviceId")).toString(),
-            _importIdentity.value(QStringLiteral("deviceName")).toString());
-    }
 
     setBusy(true);
     _dataBroker->importBackupRecords(
         this, devices, messages, transfers,
         [this, identityAction](const QVariantMap &stats, bool succeeded) {
             setBusy(false);
+            if (succeeded && identityAction == QStringLiteral("replace") && _config) {
+                _config->restoreDeviceIdentity(
+                    _importIdentity.value(QStringLiteral("deviceId")).toString(),
+                    _importIdentity.value(QStringLiteral("deviceName")).toString());
+            }
             QVariantMap summary{stats};
             summary.insert(QStringLiteral("identityAction"), identityAction);
             emit importFinished(succeeded, summary,
