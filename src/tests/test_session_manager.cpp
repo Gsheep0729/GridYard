@@ -1,6 +1,6 @@
 /**
 * @file    test_session_manager.cpp
-* @version 8.1.0
+* @version 8.2.0
 * @date    2026-10-28
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
@@ -73,6 +73,7 @@ private slots:
     void testMultiTargetsPersistence();
     void testMultiSendRejectsReentryWhileSerializing();
     void testMultiSendInvalidPathNoSuccessMessage();
+    void testMultiSendPartialFailureVisible();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -1005,10 +1006,11 @@ void TestSessionManager::testMultiSendSharesSerializedList()
     _manager->createMultiSendSessions({id1, id2}, dirPath);
     QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);
     QCOMPARE(startedSpy.first().first().toInt(), 2);
-    // 起跑成功由管理器带真实台数上报（界面不再在调用前抢跑成功提示）
+    // 起跑提示由管理器带真实台数上报（界面不再在调用前抢跑成功提示）
+    // 文案只陈述"已提交"与"正在连接"，不宣称传输已发起或已成功
     int startedMessages = 0;
     for (const QList<QVariant> &entry : messageSpy) {
-        if (entry.value(0).toString() == QStringLiteral("已向 2 台设备发起传输")) {
+        if (entry.value(0).toString() == QStringLiteral("已提交向 2 台设备发送，正在连接…")) {
             ++startedMessages;
         }
     }
@@ -1082,11 +1084,67 @@ void TestSessionManager::testMultiSendInvalidPathNoSuccessMessage()
     QCOMPARE(pathErrors, 1);  // 同步拒绝恰好一条错误
     int successMessages = 0;
     for (const QList<QVariant> &entry : messageSpy) {
-        if (entry.value(0).toString().contains(QStringLiteral("已向"))) {
+        if (entry.value(0).toString().contains(QStringLiteral("台设备"))) {
             ++successMessages;
         }
     }
     QCOMPARE(successMessages, 0);
+}
+
+// 群发提示不得暗示成功：多目标发起后单点连接失败时，聚合提示只陈述"已提交、
+// 正在连接"，失败目标的会话卡状态为 failed，且失败提示必达
+void TestSessionManager::testMultiSendPartialFailureVisible()
+{
+    const QString filePath = _tempDir->path() + "/multisend-partial.txt";
+    QFile file{filePath};
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("multisend-partial-body");
+    file.close();
+
+    // 两台目标均指向本机必然拒绝连接的端口：连接失败路径可稳定复现
+    const QString id1 = addTargetDevice("multi-partial-1", 1);
+    const QString id2 = addTargetDevice("multi-partial-2", 2);
+
+    QSignalSpy startedSpy(_manager, &TransferSessionManager::multiSendStarted);
+    QSignalSpy messageSpy(_manager, &TransferSessionManager::messageOccurred);
+    QSignalSpy errorSpy(_manager, &TransferSessionManager::errorOccurred);
+
+    _manager->createMultiSendSessions({id1, id2}, filePath);
+    QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);
+    QCOMPARE(startedSpy.first().first().toInt(), 2);
+
+    // 聚合提示：只允许"已提交/正在连接"语义，不得含成功字样或"已发起"暗示
+    QString aggregate;
+    for (const QList<QVariant> &entry : messageSpy) {
+        const QString text = entry.value(0).toString();
+        if (text.contains(QStringLiteral("台设备"))) {
+            aggregate = text;
+        }
+    }
+    QVERIFY2(!aggregate.isEmpty(), "群发起跑后应有一条聚合提示");
+    QVERIFY2(!aggregate.contains(QStringLiteral("成功")), "聚合提示不得暗示成功");
+    QVERIFY2(!aggregate.contains(QStringLiteral("发起")), "聚合提示不得暗示已发起传输");
+    QVERIFY2(aggregate.contains(QStringLiteral("正在连接")), "聚合提示应说明仍在连接中");
+
+    // 失败可见性：失败目标的会话卡状态为 failed
+    QString failedSessionId;
+    for (const QVariant &entry : _manager->sessions()) {
+        const QVariantMap session = entry.toMap();
+        if (session.value(gy::session::kDeviceId).toString() == id1) {
+            failedSessionId = session.value(gy::session::kSessionId).toString();
+        }
+    }
+    QVERIFY2(!failedSessionId.isEmpty(), "群发应建出目标会话卡");
+    QVERIFY2(waitForStatus(failedSessionId, "failed", 8000), "连接失败后会话卡状态应为 failed");
+
+    // 失败可见性：失败提示必达
+    bool sawFailureError = false;
+    for (const QList<QVariant> &entry : errorSpy) {
+        if (entry.value(0).toString().contains(QStringLiteral("发送失败"))) {
+            sawFailureError = true;
+        }
+    }
+    QVERIFY2(sawFailureError, "连接失败应弹出失败提示");
 }
 
 // 记住上次选择：saveMultiTargets/saveMultiPath 落盘，跨实例读回一致
