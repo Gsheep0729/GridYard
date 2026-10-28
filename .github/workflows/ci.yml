@@ -12,12 +12,15 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    # 显式固化 runner（runner-images 现行 ubuntu-latest 指向 24.04），防镜像漂移
+    # 破坏已验证工具链；26.04 迁移按 runner-images 公告另行跟进
+    runs-on: ubuntu-24.04
     permissions:
       contents: write  # 仅取证步骤用：失败日志回推 gy（[skip ci] 防触发环）
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        # node20 运行时已被弃用，checkout v5 起迁移 node24；锁当前稳定版 v7.0.1
+        uses: actions/checkout@v7.0.1
 
       - name: 安装系统依赖与 g++-15
         run: |
