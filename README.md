@@ -50,7 +50,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 
 ### 环境要求
 
-- GCC 15+ 或 Clang 17+
+- GCC 15+（或 Clang 18+）
 - CMake 4.2.3+
 - Qt 6.10+（含 Quick、QuickControls2、QuickDialogs2、Widgets 模块）
 - Ninja（推荐）
@@ -651,7 +651,7 @@ GridYard/
     │   └── rendezvous_time.h            # 时间格式化工具
     ├── scripts/                         # 辅助脚本与打包
     │   ├── for_md.py                    # 代码归档工具
-    │   ├── check_versions.py            # 版本三处与文件头一致性守卫
+    │   ├── check_versions.py            # 版本四处与文件头一致性守卫
     │   ├── check_code_style.py          # 静态规范守卫
     │   ├── check_core_isolation.py      # 核心纯净区零 Qt 隔离守卫
     │   ├── build_deb.sh                 # deb 打包
