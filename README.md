@@ -7,7 +7,7 @@
 | 项目版本 | v8.2.0 |
 | :--- | :--- |
 
-GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议、Qt6 全 QML 界面与 Linux 原生 POSIX socket 网络层构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
+GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议、Qt6 全 QML 界面与 Boost.Asio 事件引擎加自研 POSIX 套接字封装构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
 
 ---
 
@@ -37,7 +37,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 |:-----|:-----|
 | 语言标准 | C++23 |
 | GUI 框架 | Qt 6.11（QML 界面，Widgets 仅系统托盘依赖） |
-| 网络层 | Linux 原生 POSIX socket（自研 `gy_net` 封装） |
+| 网络层 | Boost.Asio 事件引擎 + 自研 POSIX 套接字封装（`gy_net_core`，零 Qt） |
 | 构建系统 | CMake 4.2.3 + Ninja |
 | 编译器 | GCC 16.1 |
 | 数据库 | SQLite（WAL 模式） |
@@ -182,27 +182,30 @@ graph TD
 graph LR
     subgraph 客户端模块
         QML["QML 模块<br/>appGridYard"]
-        DOM_LIB["gy_domain<br/>（INTERFACE）"]
-        STORAGE_LIB["gy_storage<br/>（STATIC）"]
-        SHARED_LIB["gy_shared<br/>（STATIC）"]
-        NET_LIB["gy_net<br/>（STATIC，原生套接字）"]
+        CORE_LIB["gy_core<br/>（STATIC，零 Qt）"]
+        STORAGE_LIB["gy_storage_core<br/>（STATIC，零 Qt）"]
+        SHARED_LIB["gy_shared / gy_protocol_contracts"]
+        NET_LIB["gy_net_core<br/>（STATIC，零 Qt，Asio 引擎）"]
+        RV_LIB["gy_rendezvous<br/>（STATIC，零 Qt）"]
+        THIRD["third_party<br/>（Asio / JSON / SHA-256 / SQLite3）"]
     end
 
-    QML --> DOM_LIB
+    QML --> CORE_LIB
+    QML --> STORAGE_LIB
     QML --> SHARED_LIB
-    STORAGE_LIB --> DOM_LIB
-    STORAGE_LIB -.->|"PRIVATE"| QTSQL["Qt6::Sql"]
-    DOM_LIB --> SHARED_LIB
-    SHARED_LIB --> NET_LIB
-
-    style QTSQL fill:#f96,stroke:#333
+    QML --> NET_LIB
+    STORAGE_LIB --> CORE_LIB
+    RV_LIB --> NET_LIB
+    RV_LIB --> SHARED_LIB
+    NET_LIB --> THIRD
+    CORE_LIB --> THIRD
 ```
 
-`Qt6::Sql` 通过 PRIVATE 链接隔离，不传播到 QML 模块或网络 Worker。
+客户端图形目标只链接 Qt Quick 家族与 Widgets；`gy_core`、`gy_storage_core`、`gy_net_core`、`gy_shared`、`gy_protocol_contracts` 与 `gy_rendezvous` 均为零 Qt 目标，协调与中继服务二进制不链接任何 Qt 库。
 
 **网络实现**
 
-UDP 广播、TCP 监听与连接、网卡枚举和地址解析均由 `src/shared/net/` 下的 `gy_net` 封装调用 Linux 系统接口完成，源码与 CMake 不依赖 `Qt6::Network`。协调/中继服务 `gridyard_rendezvous` 的 `ldd` 输出不含 `libQt6Network.so.6`；客户端 `appGridYard` 可用 `readelf -d build-ninja/client/appGridYard | grep NEEDED` 核对二进制直接依赖，在默认启用 `--as-needed` 的链接配置下其中同样没有该库。`ldd` 中若出现 `libQt6Network.so.6`，它来自 Qt 官方 QML 引擎自身的传递依赖，与本项目网络实现无关。
+UDP 广播、TCP 监听与连接、网卡枚举和地址解析由客户端的 POSIX 套接字适配层（`src/client/network/`）与 `gy_net_core` 事件引擎共同完成：适配层保留双栈与地址形态处理，事件引擎以 Boost.Asio io_context 驱动描述符就绪并经 QueuedConnection 把回调投回套接字归属线程，协调与中继服务则直接以回调风格挂接同一引擎。源码与 CMake 不依赖 `Qt6::Network`。协调/中继服务 `gridyard_rendezvous` 的 `ldd` 输出不含 `libQt6Network.so.6`；客户端 `appGridYard` 可用 `readelf -d build-ninja/client/appGridYard | grep NEEDED` 核对二进制直接依赖，在默认启用 `--as-needed` 的链接配置下其中同样没有该库。`ldd` 中若出现 `libQt6Network.so.6`，它来自 Qt 官方 QML 引擎自身的传递依赖，与本项目网络实现无关。
 
 ---
 
@@ -502,6 +505,7 @@ GridYard/
 ├── third_party/                         # vendored 第三方依赖（零 Qt）
 │   ├── CMakeLists.txt                   # INTERFACE 头库 + 编译型 SQLite3 目标
 │   ├── checksums.txt                    # 上游源 SHA-256 清单
+│   ├── asio/                            # Boost.Asio 1.38.2 闭包子集（多配置并集）
 │   ├── nlohmann/json.hpp                # JSON 编解码（v3.11.3）
 │   ├── picosha2/picosha2.h              # SHA-256（发送侧哈希）
 │   └── sqlite/                          # SQLite3 amalgamation（3.45.0）
@@ -517,7 +521,7 @@ GridYard/
     │   ├── rendezvous_protocol_keys.h   # 协调节点与中继行协议常量（双端共用）
     │   └── net/
     │       ├── CMakeLists.txt
-    │       └── core/                    # poll + eventfd 事件泵与套接字核心
+    │       └── core/                    # Boost.Asio 事件引擎与 TCP 套接字核心
     │           ├── net_reactor.{h,cpp}
     │           ├── tcp_socket_core.{h,cpp}
     │           └── tcp_server_core.{h,cpp}
@@ -572,7 +576,7 @@ GridYard/
     │   │   ├── transfer_session_manager.{h,cpp}   # 会话编排
     │   │   ├── transfer_session_mapper.{h,cpp}    # 会话记录映射与删除策略
     │   │   └── transfer_session_model.{h,cpp}     # 会话列表模型
-    │   ├── network/                     # 客户端网络层（gy_net 适配 + Qt Worker）
+    │   ├── network/                     # 客户端网络层（POSIX 套接字适配 + Qt Worker）
     │   │   ├── discovery_service.{h,cpp}    # UDP 设备发现
     │   │   ├── p2p_server.{h,cpp}           # TCP 服务器（首帧分流）
     │   │   ├── chat_connection.{h,cpp}      # 聊天 TCP 连接

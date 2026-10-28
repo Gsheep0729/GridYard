@@ -2,9 +2,9 @@
 
 | 字段 | 内容 |
 | :--- | :--- |
-| 文档版本 | v8.1.0 |
+| 文档版本 | v8.2.0 |
 | 日期 | 2026-10-28 |
-| 适用版本 | v8.1.0 |
+| 适用版本 | v8.2.0 |
 | 适用范围 | 全仓架构分层、链接依赖与红线验证方法 |
 
 ## 1. 背景与目标
@@ -27,7 +27,7 @@ GridYard 的图形界面使用 Qt（QML 表现层与 QApplication 入口），�
 | `gy_protocol_contracts` | `src/shared/`（INTERFACE） | 协调与中继行协议的键名常量，双端单一来源 |
 | `gy_rendezvous` | `src/rendezvous/` | 协调节点与流式中继的服务端实现（nlohmann JSON、NetReactor 事件引擎、asio 信号集优雅退出） |
 
-第三方依赖全部 vendored 在 `third_party/`（nlohmann/json、picosha2、SQLite3 amalgamation），不引入系统级 Qt 外部依赖。
+第三方依赖全部 vendored 在 `third_party/`（nlohmann/json、picosha2、SQLite3 amalgamation 与 Boost.Asio 闭包子集），不引入系统级 Qt 外部依赖。asio 以纯头文件形式按多配置并集入库（普通构建、ASan/UBSan、TSan 三套宏分支的依赖并集），升级版本时 `third_party/checksums.txt` 同步更新。
 
 ### 2.2 客户端桥接层
 
@@ -48,7 +48,13 @@ GridYard 的图形界面使用 Qt（QML 表现层与 QApplication 入口），�
 
 ## 3. 关键机制
 
-网络事件源的换心发生在 v7.26.0：`PosixTcpSocket`/`PosixTcpServer`/`PosixUdpSocket` 保持类接口不变，内部的事件监听从 QSocketNotifier 换成共享的 NetReactor（回调经 QueuedConnection 投回套接字归属线程执行，线程亲和与阻塞等待语义与旧实现一致）。服务端则彻底不经 Qt：LineSession、RelayServer、RendezvousServer 直接以回调风格挂接事件泵。v8.1.0 起 NetReactor 的引擎线程由手写 poll 循环换为 Boost.Asio io_context（vendored，纯头库，单线程运转保持命令先于派发与注销屏障语义），fd 就绪监听经 asio 描述符等待承载，核心 TCP 套接字与监听器改为 asio 套接字对象并各配 strand 串行关闭与取消，fd 复用后的陈旧事件由描述符对象身份结构性隔离，不再依赖手工代际比对。
+网络事件源的换心发生在 v7.26.0：`PosixTcpSocket`/`PosixTcpServer`/`PosixUdpSocket` 保持类接口不变，内部的事件监听从 QSocketNotifier 换成共享的 NetReactor（回调经 QueuedConnection 投回套接字归属线程执行，线程亲和与阻塞等待语义与旧实现一致）。服务端则彻底不经 Qt：LineSession、RelayServer、RendezvousServer 直接以回调风格挂接事件泵。
+
+v8.1.0 起 NetReactor 门面之下的引擎换为 Boost.Asio（vendored 头文件库，零 Qt），对外语义逐项保持：跨线程命令统一经 post 进入 io_context 队列，命令先于其后入队的就绪派发；注销屏障继续以同步接口呈现，内部用 latch 屏障等待引擎线程执行完毕；定时任务保持先摘除再执行；`waitFor*` 阻塞族从私有 poll 切片重写为引擎异步就绪等待加截止定时器，事件由等待操作本身消费；fd 复用后的陈旧事件由描述符对象身份结构性隔离，不再依赖手工代际比对。核心 TCP 套接字与监听器为 asio 套接字对象并各配 strand，关闭与取消一律投递到各自的串行域。
+
+引擎迁移沉淀三条长期纪律：其一，close、cancel 与套接字析构必须投递到所属 io_context 或 strand，禁止其他线程直接关闭描述符或触碰仍挂有异步操作的 I/O 对象；其二，禁止在 asio 相关翻译单元使用 `import std;`，asio 头与当前 GCC 的 std 模块不兼容，保持文本包含；其三，vendored 闭包按普通构建、ASan/UBSan、TSan 多配置并集生成并登记在 checksums.txt，单配置闭包会在 sanitizer 矩阵下缺头。
+
+性能基线以迁移前 e75f697 与迁移后代码同口径 Release 构建对比：500MB 回环传输吞吐 190.4→195.0 MB/s，建连往返中位 0.301→0.287 ms，注册往返中位 0.732→0.673 ms；单轮建连 p95 的 +11.21% 经 150 样本交替复测转为 -3.7%，判定为尾部采样噪音，四项基准均无超过 10% 的回退。迁移后基准树的实际构建点含 M1 与 A3 前两项修复，探针与被测路径与 A2 顶端等价，标签以实际构建点为准。
 
 协议编解码的现役实现是 `src/core/codec/` 的双生版（FrameCodecCore/ChatMessageCore），客户端经 `codec_bridge.h` 调用，golden 基线套件（test_golden_baseline）以冻结字面量对拍新旧实现的输出字节，是线格式不变的最高裁判。
 
@@ -93,8 +99,8 @@ nm -C build-ninja/rendezvous/gridyard_rendezvous | grep -c QMetaObject   # 预�
 核心目录的源码级隔离由守卫脚本检查，`--strict` 模式在验收与日常提交前都应零违规：
 
 ```bash
-python3 src/scripts/check_core_isolation.py --core-dirs src/core src/shared/net/core --strict
-# 退出码 0；防线一扫 Qt 头引入、防线二扫 Qt 符号、防线四静态解析核心目标的 Qt 链接
+python3 src/scripts/check_core_isolation.py --strict --compile-check
+# 退出码 0；防线一扫 Qt 头引入、防线二扫 Qt 符号、防线三做核心目标的隔离编译、防线四静态解析核心目标的 Qt 链接
 ```
 
 配套的版本头与排版守卫：
@@ -110,6 +116,6 @@ python3 src/scripts/check_code_style.py      # 静态规范（含 Qt 网络符�
 
 其一，编解码桥接对孤立代理项的处理。QString 转 UTF-8 std::string 时孤立代理项（如 U+D800）会被静默丢弃，而旧的 QJsonDocument 链路会把它转义进 JSON 文本。实测该差异只在程序化构造 QString 时可达，键盘与剪贴板输入恒为合法 UTF-16；对端伪造携带 \ud800 转义的消息在新链路按解码失败拒绝，属收紧而非回归。结论：维持现状，不接受孤立代理项。
 
-其二，套接字适配器的形态。核心层 TcpSocketCore 只提供接入侧 adopt（无 connectTo），客户端出站连接继续使用 `src/client/network/` 的 PosixTcpSocket 适配器——其事件源在换心后已是纯 POSIX（NetReactor），不迁移 connectTo 意味着不动最稳定的传输主链路。适配器归位客户端目录是终案，不在共享层恢复 Qt 桥接目标。
+其二，套接字适配器的形态。核心层 TcpSocketCore 只提供接入侧 adopt（无 connectTo），客户端出站连接继续使用 `src/client/network/` 的 PosixTcpSocket 适配器——其事件源已是自研 NetReactor 门面（引擎为 Boost.Asio，零 Qt），不迁移 connectTo 意味着不动最稳定的传输主链路。适配器归位客户端目录是终案，不在共享层恢复 Qt 桥接目标。
 
 其三，目录序列化的并列次序契约。DirSerializer 的条目排序为"名称按小写折叠的字典序，折叠相等时按原始字节序决出"。实测依据：QCollator（忽略大小写）对折叠相等的名字恒返回相等（无决出能力），QDir::LocaleAware 枚举的并列次序随目录内部顺序漂移，而 QDir::Name 默认枚举恒为字节序且与本实现一致。因此并列次序以原始字节序为契约，QCollator 无稳定承诺、不作为依据。
