@@ -1,7 +1,7 @@
 /**
 * @file    shutdown_controller.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   应用退出与缓存清理控制器实现
 */
@@ -65,6 +65,9 @@ ShutdownController::ShutdownController(LocalDataBroker *dataBroker, QObject *par
 }
 
 // 请求退出应用：排空存储任务后退出，3 秒兜底强制退出
+// 停机契约：退出链只负责关闭存储受理并等待排空，网络监听、广播与事件泵的
+// 停止先于存储 Worker 的删除，Qt 对象销毁最后进行，三者次序不得调换。
+// SIGTERM、托盘退出与关窗决策共用本入口，信号路径不经过任何确认弹窗。
 void ShutdownController::requestQuit()
 {
     if (_quitRequested) {

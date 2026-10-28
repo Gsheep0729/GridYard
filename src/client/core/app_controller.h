@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
-* @version 7.23.0
-* @date 2026-10-07
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -121,6 +121,9 @@ private:
     // 初始化 QML UI 层
     void initializeUi();
 
+    // 停机契约：这些 QObject 子对象按创建序析构。网络相关成员必须先于
+    // 存储成员创建，保证退出时先停网络、再停存储（DatabaseWorker 在归属
+    // 线程删除）、最后销毁其余 Qt 对象；调整顺序前先复核架构说明的停机段。
     ConfigManager           *_config    = nullptr;  // 本机身份与配置来源
     DiscoveryService        *_discovery = nullptr;  // 在线设备发现服务
     P2pServer               *_p2pServer = nullptr;  // P2P 入站服务器

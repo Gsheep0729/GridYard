@@ -1,7 +1,7 @@
 /**
 * @file    local_data_broker.cpp
-* @version 8.0.0
-* @date    2026-10-25
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GridYard Team
 * @brief   本地数据层代管者实现
 *
@@ -1493,8 +1493,10 @@ void LocalDataBroker::beginShutdown()
 void LocalDataBroker::closeStorage()
 {
     if (_storageThread && _storageThread->isRunning()) {
-        // 先在归属线程内同步析构 Worker：析构函数会排空任务并回收内部线程，
-        // 确保不依赖线程退出时 DeferredDelete 事件的冲刷时序，删除必然执行。
+        // 停机契约：Worker 只能在其归属线程内销毁。这里用阻塞投递让归属线程
+        // 同步执行删除，等价于 deleteLater 的线程约束，并保证删除发生在任务
+        // 线程 join 之前；不得改为 UI 线程直接 delete，也不得依赖线程退出时
+        // 的 DeferredDelete 冲刷。
         QMetaObject::invokeMethod(
             _storageWorker,
             [worker = _storageWorker] { delete worker; },
