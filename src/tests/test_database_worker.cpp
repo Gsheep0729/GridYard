@@ -1,7 +1,7 @@
 /**
 * @file    test_database_worker.cpp
-* @version 7.26.1
-* @date    2026-10-25
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GY
 * @brief   DatabaseWorker 语义测试
 *
@@ -10,6 +10,8 @@
 */
 
 #include <QtTest/QtTest>
+#include <QDir>
+#include <QFile>
 #include <QList>
 #include <QSignalSpy>
 #include <QThread>
@@ -18,6 +20,35 @@
 
 #include "core/storage/database_core.h"
 
+namespace {
+
+// 汇总当前进程全部线程的 CPU 时间（USER_HZ 计），用于侦测线程空转
+qint64 processCpuJiffies()
+{
+    qint64 total = 0;
+    QDir taskDir(QStringLiteral("/proc/self/task"));
+    const QStringList taskIds = taskDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &taskId : taskIds) {
+        QFile stat(taskDir.absoluteFilePath(taskId) + QStringLiteral("/stat"));
+        if (!stat.open(QIODevice::ReadOnly)) {
+            continue;
+        }
+        const QByteArray content = stat.readAll();
+        const int commEnd = content.lastIndexOf(')');
+        if (commEnd < 0) {
+            continue;
+        }
+        // comm 之后第 1 个字段是 state（总第 3 字段），utime/stime 是总第 14/15 字段
+        const QList<QByteArray> rest = content.mid(commEnd + 2).trimmed().split(' ');
+        if (rest.size() > 12) {
+            total += rest.at(11).toLongLong() + rest.at(12).toLongLong();
+        }
+    }
+    return total;
+}
+
+}  // namespace
+
 class TestDatabaseWorker : public QObject {
     Q_OBJECT
 
@@ -25,6 +56,7 @@ private slots:
     void testTasksExecuteInFifoOrder();
     void testSubmitRejectedAfterBeginShutdown();
     void testDrainedAfterAllAcceptedTasks();
+    void testNoSpinAfterDrained();
     void testTasksRunOffCallerThread();
     void testWorkerDestroyedOnOwnThreadBeforeQuit();
 };
@@ -94,6 +126,26 @@ void TestDatabaseWorker::testDrainedAfterAllAcceptedTasks()
 
     QTRY_COMPARE_WITH_TIMEOUT(drainedSpy.count(), 1, 5000);
     QCOMPARE(executionOrder, QList<int>({1, 2}));
+}
+
+// drained 之后线程必须回到阻塞等待：排空请求一次性生效，不得空转自旋
+void TestDatabaseWorker::testNoSpinAfterDrained()
+{
+    gy::storage::DatabaseCore database;
+    DatabaseWorker worker{&database};
+
+    QSignalSpy drainedSpy(&worker, &DatabaseWorker::drained);
+    worker.beginShutdown();
+    QTRY_COMPARE_WITH_TIMEOUT(drainedSpy.count(), 1, 5000);
+
+    // 旧实现排空后请求标志恒真，等待谓词常真，线程在空队列上持续自旋；
+    // 修复后线程阻塞在条件变量，200ms 窗口内 CPU 增量应接近零
+    // （USER_HZ=100 时空转档约 20 jiffies，阈值 10 jiffies 留足余量）
+    const qint64 before = processCpuJiffies();
+    QTest::qWait(200);
+    const qint64 delta = processCpuJiffies() - before;
+    QVERIFY2(delta < 10,
+             qPrintable(QStringLiteral("排空后线程仍在空转：CPU 增量 %1 jiffies").arg(delta)));
 }
 
 // 任务在 Worker 自有线程执行，不占用调用方线程（std::thread 队列的线程归属契约）

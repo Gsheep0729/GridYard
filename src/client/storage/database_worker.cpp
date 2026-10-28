@@ -1,7 +1,7 @@
 /**
 * @file    database_worker.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.1.0
+* @date    2026-10-28
 * @author  GridYard Team
 * @brief   SQLite 异步任务执行线程实现
 *
@@ -76,6 +76,9 @@ void DatabaseWorker::runLoop()
             if (_queue.empty()) {
                 if (_drainRequested && !_drainedNotified) {
                     _drainedNotified = true;
+                    // 排空请求一次性生效：复位标志让等待谓词恢复为"仅队列与
+                    // 停机"，线程回到阻塞等待，避免通知后到析构前空转自旋
+                    _drainRequested = false;
                     // 释锁后再发信号，避免接收方在信号内回查队列造成死锁
                     lock.unlock();
                     emit drained();
