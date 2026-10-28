@@ -1,7 +1,7 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 8.0.0
-* @date    2026-10-26
+* @version 8.2.0
+* @date    2026-10-29
 * @author  GY
 * @brief   设备发现视图模型测试
 *
@@ -57,6 +57,7 @@ private slots:
     void testMergeDeviceFollowsSelection();
     void testHiddenFilteredAcrossSegments();
     void testSegmentFavoritePriorityAndFallback();
+    void testCandidateOrderStableUnderBeaconRefresh();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -1312,6 +1313,43 @@ void TestPeerDiscoveryViewModel::seedPeer(LocalDataBroker &broker, const PeerInf
         }
     });
     QTRY_COMPARE_WITH_TIMEOUT(*seeded, true, 3000);
+}
+
+// 序位稳定性：同源同优先级的在线设备，一台信标刷新仅前进活跃时间后，
+// 两台设备的相对序位不得翻转（同段收尾键是设备标识，活跃时间只作最近
+// 见过段的排序依据）
+void TestPeerDiscoveryViewModel::testCandidateOrderStableUnderBeaconRefresh()
+{
+    PeerDiscoveryViewModel viewModel(_discovery);
+
+    const QDateTime base = QDateTime::currentDateTimeUtc();
+    PeerInfo peerA = makePeerInfo(QStringLiteral("order-stable-a"), QStringLiteral("序稳甲"),
+                                  QStringLiteral("10.253.0.1"));
+    peerA.lastSeen = base.addSecs(60);
+    _discovery->addManualPeer(peerA);
+
+    PeerInfo peerB = makePeerInfo(QStringLiteral("order-stable-b"), QStringLiteral("序稳乙"),
+                                  QStringLiteral("10.253.0.2"));
+    peerB.lastSeen = base.addSecs(120);
+    _discovery->addManualPeer(peerB);
+
+    QVERIFY2(indexOfPeer(viewModel, QStringLiteral("order-stable-a")) >= 0
+             && indexOfPeer(viewModel, QStringLiteral("order-stable-b")) >= 0,
+             "两台设备都应进入合并列表");
+    const int aBefore = indexOfPeer(viewModel, QStringLiteral("order-stable-a"));
+    const int bBefore = indexOfPeer(viewModel, QStringLiteral("order-stable-b"));
+
+    // 甲的信标刷新：仅活跃时间前进，来源、名称、地址等其余维度不变
+    PeerInfo refreshed = peerA;
+    refreshed.lastSeen = base.addSecs(180);
+    _discovery->addManualPeer(refreshed);
+    QTRY_VERIFY_WITH_TIMEOUT(viewModel.deviceById(QStringLiteral("order-stable-a"))
+                             .value("lastSeenAt").toString()
+                             == base.addSecs(180).toUTC().toString(Qt::ISODateWithMs), 3000);
+
+    QVERIFY2(indexOfPeer(viewModel, QStringLiteral("order-stable-a")) == aBefore
+             && indexOfPeer(viewModel, QStringLiteral("order-stable-b")) == bBefore,
+             "信标刷新不应改变同源同优先级设备的相对序位");
 }
 
 // 工具方法：查询设备在合并列表或隐藏列表中的下标

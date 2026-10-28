@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 7.24.0
-* @date 2026-10-08
+* @version 8.2.0
+* @date 2026-10-29
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 */
@@ -44,6 +44,12 @@ QString peerLastSeenAt(const QVariant &peer)
     return peer.toMap().value("lastSeenAt").toString();
 }
 
+// 设备标识：置顶与在线段的稳定收尾键
+QString peerDeviceId(const QVariant &peer)
+{
+    return peer.toMap().value("deviceId").toString();
+}
+
 // 分段序：置顶(0) < 在线(1) < 最近见过(2)；扫描语义下在线是主内容，
 // 历史是记忆，置顶是用户钉住的常用目标（无论在线离线）
 int segmentRank(const QVariant &peer)
@@ -64,8 +70,9 @@ bool peerFavorite(const QVariant &peer)
     return peer.toMap().value("favorite").toBool();
 }
 
-// 比较函数用于排序：段间按置顶/在线/最近见过；置顶段内沿用来源优先级加
-// 最近活跃，在线与最近见过段内收藏优先（置顶管位置、收藏管识别，分层叠加）
+// 比较函数用于排序：段间按置顶/在线/最近见过；置顶与在线段内以来源优先级
+// 加设备标识收尾（序位不随信标刷新漂移），最近见过段内按最后活跃倒序，
+// 在线与最近见过段内收藏优先（置顶管位置、收藏管识别，分层叠加）
 bool peerSortLessThan(const QVariant &a, const QVariant &b)
 {
     const int rankA = segmentRank(a);
@@ -88,8 +95,9 @@ bool peerSortLessThan(const QVariant &a, const QVariant &b)
     if (priorityA != priorityB) {
         return priorityA < priorityB;
     }
-    // 优先级相同按最后发现时间倒序
-    return peerLastSeenAt(a) > peerLastSeenAt(b);  // 较新的排在前面
+    // 优先级相同按设备标识收尾：信标刷新只前进活跃时间，若以它收尾则同段
+    // 序位随刷新漂移；"最近活跃在前"的语义保留在最近见过段（rank 2 分支）
+    return peerDeviceId(a) < peerDeviceId(b);
 }
 }
 
