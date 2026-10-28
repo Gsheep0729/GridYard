@@ -1,7 +1,7 @@
 /**
 * @file    test_conversation_timeline_model.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GY
 * @brief   ConversationTimelineModel 统一时间线模型测试
 *
@@ -66,6 +66,7 @@ class TestConversationTimelineModel : public QObject {
 private slots:
     void testMergeSortsAndFiltersDevice();
     void testTransferProgressUpdatesSingleRow();
+    void testForeignDeviceProgressKeepsModelStable();
     void testAvatarGrouping();
     void testSessionRemovalSyncs();
     void testHistoryPrependInsertsAtTop();
@@ -151,6 +152,32 @@ void TestConversationTimelineModel::testTransferProgressUpdatesSingleRow()
     QCOMPARE(changed.row(), 0);  // s1 位于合并后的第 0 行
     QCOMPARE(timeline->index(0, 0).data(ConversationTimelineModel::ProgressRole).toDouble(), 0.5);
     QCOMPARE(timeline->rowCount(), 2);
+}
+
+// 会话来源模型跨设备共享：他设备的进度更新不得触发本设备时间线全量重建
+void TestConversationTimelineModel::testForeignDeviceProgressKeepsModelStable()
+{
+    ChatManager manager;
+    ChatController controller(&manager);
+    TransferSessionModel sessions;
+
+    sessions.appendSession(sessionRow("s1", "dev1", "2026-10-02T08:00:00.000Z"));
+    sessions.appendSession(sessionRow("s2", "dev2", "2026-10-02T08:01:00.000Z"));
+
+    auto timeline = makeTimeline(&controller, &sessions, "dev1");
+    QCOMPARE(timeline->rowCount(), 1);  // 只合并本设备会话
+
+    QSignalSpy dataChangedSpy(timeline.get(), &QAbstractItemModel::dataChanged);
+    QSignalSpy resetSpy(timeline.get(), &QAbstractItemModel::modelReset);
+
+    QVERIFY(sessions.updateSession("s2", [](QVariantMap &session) {
+        session.insert("progress", 0.5);
+    }));
+
+    // 他设备会话不在合并列表中：旧实现定位失败后整表重建，现直接跳过
+    QCOMPARE(resetSpy.count(), 0);
+    QCOMPARE(dataChangedSpy.count(), 0);
+    QCOMPARE(timeline->rowCount(), 1);
 }
 
 // 连续同方向消息只在首条显示头像，传输行打断连续性

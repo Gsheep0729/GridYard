@@ -1,7 +1,7 @@
 /**
 * @file    conversation_timeline_model.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 8.1.0
+* @date 2026-10-28
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型实现
 *
@@ -414,7 +414,11 @@ void ConversationTimelineModel::onSessionsDataChanged(const QModelIndex &topLeft
             _transferSource->index(row, 0), TransferSessionModel::SessionIdRole).toString();
         const int mergedRow = mergedRowForSession(sessionId);
         if (mergedRow < 0) {
-            // 合并状态与来源不同步时退回全量重建兜底
+            // 会话来源模型跨设备共享，他设备的进度更新与本时间线无关，直接跳过；
+            // 只有本设备会话定位失败才说明合并状态与来源不同步，退回全量重建兜底
+            if (!sessionBelongsToDevice(readSessionRow(row))) {
+                continue;
+            }
             rebuildFromSources();
             return;
         }
