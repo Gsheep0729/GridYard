@@ -39,7 +39,7 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 | GUI 框架 | Qt 6.11（QML 界面，Widgets 仅系统托盘依赖） |
 | 网络层 | Boost.Asio 事件引擎 + 自研 POSIX 套接字封装（`gy_net_core`，零 Qt） |
 | 构建系统 | CMake 4.2.3 + Ninja |
-| 编译器 | GCC 16.1 |
+| 编译器 | GCC 15（g++-15） |
 | 数据库 | SQLite（WAL 模式） |
 | 加密校验 | SHA-256（发送侧 picosha2 + 自研流式；接收侧增量校验 QCryptographicHash） |
 | 部署平台 | Manjaro Linux |
@@ -194,11 +194,11 @@ graph LR
     QML --> STORAGE_LIB
     QML --> SHARED_LIB
     QML --> NET_LIB
-    STORAGE_LIB --> CORE_LIB
     RV_LIB --> NET_LIB
     RV_LIB --> SHARED_LIB
     NET_LIB --> THIRD
     CORE_LIB --> THIRD
+    STORAGE_LIB --> THIRD
 ```
 
 客户端图形目标只链接 Qt Quick 家族与 Widgets；`gy_core`、`gy_storage_core`、`gy_net_core`、`gy_shared`、`gy_protocol_contracts` 与 `gy_rendezvous` 均为零 Qt 目标，协调与中继服务二进制不链接任何 Qt 库。
