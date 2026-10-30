@@ -1,7 +1,7 @@
 /**
  * @file    AddDeviceDialog.qml
- * @version 7.22.0
- * @date 2026-10-07
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GY
  * @brief   添加设备对话框
  *
@@ -119,11 +119,10 @@ Dialog {
                     }
                 }
 
-                Button {
+                SecondaryButton {
                     id: copyInviteButton
                     Layout.alignment: Qt.AlignRight
                     text: qsTr("复制邀请码")
-                    highlighted: true
                     onClicked: {
                         addDeviceDialog.copyInvite()
                         copyFeedbackTimer.restart()
@@ -191,11 +190,10 @@ Dialog {
                     wrapMode: Text.Wrap
                 }
 
-                Button {
+                SecondaryButton {
                     Layout.alignment: Qt.AlignRight
                     text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("导入并连接")
                     enabled: importArea.text.trim().length > 0 && !addDeviceDialog._busy
-                    highlighted: true
                     onClicked: {
                         addDeviceDialog._importError = ""
                         AppController.reachabilityController.importInvite(importArea.text.trim())
@@ -267,11 +265,10 @@ Dialog {
                     wrapMode: Text.Wrap
                 }
 
-                Button {
+                SecondaryButton {
                     Layout.alignment: Qt.AlignRight
                     text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("测试并添加")
                     enabled: manualHostField.text.trim().length > 0 && !addDeviceDialog._busy
-                    highlighted: true
                     onClicked: {
                         addDeviceDialog._manualError = ""
                         AppController.reachabilityController.addManualEndpoint(

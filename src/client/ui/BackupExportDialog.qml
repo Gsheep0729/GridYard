@@ -1,7 +1,7 @@
 /**
 * @file    BackupExportDialog.qml
-* @version 8.0.0
-* @date 2026-10-25
+* @version 8.2.1
+* @date 2026-10-30
  * @author  GridYard Team
  * @brief   用户数据导出对话框（备份与迁移）
  *
@@ -129,7 +129,7 @@ Dialog {
                 onTextChanged: exportDialog._savePath = text
             }
 
-            Button {
+            SecondaryButton {
                 text: qsTr("浏览…")
                 onClicked: saveFileDialog.open()
             }
@@ -148,14 +148,12 @@ Dialog {
             Layout.alignment: Qt.AlignRight
             spacing: Style.Space.sm
 
-            Button {
+            SecondaryButton {
                 text: qsTr("关闭")
-                flat: true
                 onClicked: exportDialog.close()
             }
 
-            Button {
-                highlighted: true
+            SecondaryButton {
                 enabled: exportDialog._summary !== null
                          && !AppController.backupController.busy
                          && exportDialog._savePath.trim().length > 0

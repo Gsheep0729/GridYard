@@ -1,7 +1,7 @@
 /**
 * @file    BackupImportDialog.qml
-* @version 8.0.0
-* @date 2026-10-25
+* @version 8.2.1
+* @date 2026-10-30
  * @author  GridYard Team
  * @brief   用户数据导入对话框（备份与迁移）
  *
@@ -91,13 +91,13 @@ Dialog {
                 }
             }
 
-            Button {
+            SecondaryButton {
                 text: qsTr("浏览…")
                 onClicked: openFileDialog.open()
             }
         }
 
-        Button {
+        SecondaryButton {
             Layout.alignment: Qt.AlignRight
             enabled: importDialog._filePath.trim().length > 0
                      && !AppController.backupController.busy
@@ -201,14 +201,12 @@ Dialog {
             Layout.alignment: Qt.AlignRight
             spacing: Style.Space.sm
 
-            Button {
+            SecondaryButton {
                 text: qsTr("关闭")
-                flat: true
                 onClicked: importDialog.close()
             }
 
-            Button {
-                highlighted: true
+            SecondaryButton {
                 enabled: importDialog._summary !== null
                          && importDialog._summary.error === undefined
                          && !AppController.backupController.busy

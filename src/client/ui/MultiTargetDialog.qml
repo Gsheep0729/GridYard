@@ -1,7 +1,7 @@
 /**
  * @file    MultiTargetDialog.qml
- * @version 8.1.0
- * @date 2026-10-28
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   多选群发目标选择弹窗
  *
@@ -123,12 +123,12 @@ Dialog {
                 Layout.fillWidth: true
                 spacing: Style.Space.sm
 
-                Button {
+                SecondaryButton {
                     text: qsTr("选择文件…")
                     onClicked: multiInnerFileDialog.open()
                 }
 
-                Button {
+                SecondaryButton {
                     text: qsTr("选择文件夹…")
                     onClicked: multiInnerFolderDialog.open()
                 }
@@ -166,7 +166,7 @@ Dialog {
                 }
             }
 
-            Button {
+            SecondaryButton {
                 id: confirmContentButton
                 Layout.alignment: Qt.AlignRight
                 enabled: manualPathInput.text.trim().length > 0
@@ -321,14 +321,12 @@ Dialog {
             Layout.alignment: Qt.AlignRight
             spacing: Style.Space.sm
 
-            Button {
+            SecondaryButton {
                 text: qsTr("取消")
-                flat: true
                 onClicked: multiDialog.close()
             }
 
-            Button {
-                highlighted: true
+            SecondaryButton {
                 enabled: multiDialog._filePath.length > 0 && multiDialog._checkedCount > 0
                 // 被搜索隐藏的已勾设备仍参与发送：计数文案在此披露，用户可据此清理过滤词核对名单
                 text: multiDialog._hiddenCheckedCount > 0
