@@ -101,8 +101,9 @@ fi
 cp "${RENDZVOUS_BIN}" "${PKG_DIR}/usr/bin/"
 
 ICON_FILE="${PROJECT_ROOT}/src/client/icons/gridyard.png"
-if [ -f "${ICON_FILE}" ]; then
-    cp "${ICON_FILE}" "${PKG_DIR}/usr/share/icons/hicolor/128x128/apps/gridyard.png"
+ICON_FILE_128="${PROJECT_ROOT}/src/client/icons/gridyard-128.png"
+if [ -f "${ICON_FILE}" ] && [ -f "${ICON_FILE_128}" ]; then
+    cp "${ICON_FILE_128}" "${PKG_DIR}/usr/share/icons/hicolor/128x128/apps/gridyard.png"
     cp "${ICON_FILE}" "${PKG_DIR}/usr/share/icons/hicolor/256x256/apps/gridyard.png"
     cp "${ICON_FILE}" "${PKG_DIR}/usr/share/pixmaps/gridyard.png"
     cp "${ICON_FILE}" "${PKG_DIR}/gridyard.png"

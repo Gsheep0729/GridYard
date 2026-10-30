@@ -77,8 +77,9 @@ package() {
 
     # 3. 安装高清桌面图标
     local icon_src="$project_root/src/client/icons/gridyard.png"
-    if [ -f "$icon_src" ]; then
-        install -Dm644 "$icon_src" "$pkgdir/usr/share/icons/hicolor/128x128/apps/gridyard.png"
+    local icon_src_128="$project_root/src/client/icons/gridyard-128.png"
+    if [ -f "$icon_src" ] && [ -f "$icon_src_128" ]; then
+        install -Dm644 "$icon_src_128" "$pkgdir/usr/share/icons/hicolor/128x128/apps/gridyard.png"
         install -Dm644 "$icon_src" "$pkgdir/usr/share/icons/hicolor/256x256/apps/gridyard.png"
         install -Dm644 "$icon_src" "$pkgdir/usr/share/pixmaps/gridyard.png"
     fi

@@ -258,8 +258,9 @@ ln -sf "/opt/gridyard/GridYard.sh" "${DEB_ROOT}/usr/bin/appGridYard"
 
 # 13. 安装桌面快捷方式与图标
 ICON_FILE="${PROJECT_ROOT}/src/client/icons/gridyard.png"
-if [ -f "${ICON_FILE}" ]; then
-    cp "${ICON_FILE}" "${DEB_ROOT}/usr/share/icons/hicolor/128x128/apps/gridyard.png"
+ICON_FILE_128="${PROJECT_ROOT}/src/client/icons/gridyard-128.png"
+if [ -f "${ICON_FILE}" ] && [ -f "${ICON_FILE_128}" ]; then
+    cp "${ICON_FILE_128}" "${DEB_ROOT}/usr/share/icons/hicolor/128x128/apps/gridyard.png"
     cp "${ICON_FILE}" "${DEB_ROOT}/usr/share/icons/hicolor/256x256/apps/gridyard.png"
     cp "${ICON_FILE}" "${DEB_ROOT}/usr/share/pixmaps/gridyard.png"
     cp "${ICON_FILE}" "${APP_OPT_DIR}/gridyard.png"

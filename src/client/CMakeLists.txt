@@ -149,6 +149,8 @@ set(GRIDYARD_CLIENT_ICON_RESOURCES
     icons/file-document.svg
     icons/file-executable.svg
     icons/gridyard.png
+    icons/gridyard-128.png
+    icons/gridyard.svg
 )
 
 set_source_files_properties(utils/FormatUtils.js utils/Style.js PROPERTIES
