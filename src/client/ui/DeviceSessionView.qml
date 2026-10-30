@@ -1,7 +1,7 @@
 /**
  * @file    DeviceSessionView.qml
- * @version 8.1.0
- * @date 2026-10-27
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
  *
@@ -35,6 +35,8 @@ Frame {
                                       && messageInput.text.length <= AppController.chatController.maxChatContentLength
    // 接近协议上限时才显示字符计数，避免常驻噪音
    readonly property bool showCharCounter: messageInput.text.length > 3600
+   // 输入区逻辑最大宽度：大窗下输入盒不再无限拉长，整行居中收敛
+   readonly property int kComposerMaxWidth: 860
 
    // 校验输入后发送文本消息；返回 false 表示消息未被接受，保留输入与错误提示等待重试
    function sendChatMessage(): void {
@@ -263,12 +265,21 @@ Frame {
        // ===== 文本输入区 =====
        Rectangle {
            Layout.fillWidth: true
-           Layout.preferredHeight: 104
+           // 高度随输入内容自适应；错误提示可见时额外让出一行，避免压住 44px 单行盒
+           Layout.preferredHeight: composerRow.height + Style.Space.sm * 2
+                                   + (chatErrorText.visible ? chatErrorText.implicitHeight + 2 : 0)
            color: Style.Color.surface
 
            RowLayout {
-               anchors.fill: parent
-               anchors.margins: Style.Space.sm
+               id: composerRow
+               anchors.top: parent.top
+               anchors.topMargin: Style.Space.sm
+               anchors.horizontalCenter: parent.horizontalCenter
+               // 大窗收敛：整行不超过逻辑最大宽度，超出部分留白居中
+               width: Math.min(parent.width - Style.Space.sm * 2,
+                               deviceSessionView.kComposerMaxWidth)
+               // 单行 44 起，随内容长高，上限 120；+ 与发送按钮同高同基线
+               height: Math.max(44, Math.min(120, messageInput.contentHeight + 16))
                spacing: Style.Space.sm
 
                // 输入框容器：附件入口并入框内左侧，点 + 原位展开胶囊
@@ -284,12 +295,14 @@ Frame {
                    // 附件展开状态：展开后在原位显示文件/文件夹胶囊，再点收起
                    property bool attachExpanded: false
 
-                   // 展开/收起按钮：收起时是 +，展开时是 ×
+                   // 展开/收起按钮：收起时是 +，展开时是 ×；高度与发送按钮统一 44
                    ToolButton {
                        id: attachButton
                        anchors.left: parent.left
                        anchors.leftMargin: Style.Space.xs
                        anchors.verticalCenter: parent.verticalCenter
+                       width: 44
+                       height: 44
                        enabled: deviceSessionView.isOnline
                        text: inputBox.attachExpanded ? "×" : "+"
                        font.pixelSize: 20
@@ -462,6 +475,9 @@ Frame {
                        color: Style.Color.textMain
                        wrapMode: TextEdit.Wrap
                        selectByMouse: true
+                       // 单行居中、多行从顶部生长（与邀请码框同一写法）
+                       verticalAlignment: messageInput.contentHeight > messageInput.height
+                                          ? Text.AlignTop : Text.AlignVCenter
                        leftPadding: 0
                        rightPadding: 0
                        topPadding: 0
@@ -494,11 +510,11 @@ Frame {
                        }
                    }
 
-                   // 输入框占位提示：输入为空时显示，有内容时隐藏
+                   // 输入框占位提示：输入为空时显示，有内容时隐藏；垂直对齐跟随输入区
                    Label {
                        anchors.left: messageInput.left
                        anchors.right: messageInput.right
-                       anchors.top: messageInput.top
+                       anchors.verticalCenter: messageInput.verticalCenter
                        visible: messageInput.text.length === 0
                        text: deviceSessionView.isOnline
                              ? qsTr("输入消息，回车发送") : qsTr("设备离线，无法发送")
@@ -522,12 +538,13 @@ Frame {
                    }
                }
 
-               // 发送按钮：文字按钮，主色样式，宽度自适应
+               // 发送按钮：文字按钮，主色样式；高度与 + 统一 44，同基线
                Button {
                    id: chatSendButton
                    text: qsTr("发送")
                    highlighted: true
                    enabled: deviceSessionView.canSendChat
+                   Layout.preferredHeight: 44
                    Layout.alignment: Qt.AlignVCenter
                    onClicked: deviceSessionView.sendChatMessage()
                    ToolTip.text: qsTr("设备离线，无法发送")
@@ -538,6 +555,7 @@ Frame {
 
            // 聊天发送错误提示：仅当前设备的发送失败才显示
            Label {
+               id: chatErrorText
                anchors.left: parent.left
                anchors.leftMargin: Style.Space.md
                anchors.bottom: parent.bottom
