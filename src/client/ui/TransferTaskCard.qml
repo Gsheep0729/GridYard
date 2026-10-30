@@ -98,6 +98,30 @@ Frame {
         return taskType === "send" ? Style.Color.primary : Style.Color.receiveAccent
     }
 
+    // 状态徽标底色：浅底配深字，避免白字压实色低于 AA 对比度
+    function statusBg(): color {
+        switch (status) {
+        case "completed":       return Style.Color.statusOkBg
+        case "failed":
+        case "rejected":
+        case "cancelled":       return Style.Color.statusErrBg
+        case "transferring":    return Style.Color.primarySoft
+        default:                return Style.Color.statusWarnBg
+        }
+    }
+
+    // 状态徽标字色：与底色成对，实测对比度 4.84 / 5.21 / 5.91 / 6.16
+    function statusFg(): color {
+        switch (status) {
+        case "completed":       return Style.Color.statusOkFg
+        case "failed":
+        case "rejected":
+        case "cancelled":       return Style.Color.statusErrFg
+        case "transferring":    return Style.Color.primaryStrong
+        default:                return Style.Color.statusWarnFg
+        }
+    }
+
     background: Rectangle {
         radius: Style.Radius.sm
         color: taskCard.backgroundColor()
@@ -165,12 +189,12 @@ Frame {
                 font.bold: true
             }
 
-            // 状态标签：带颜色背景的小标签，颜色随状态变化
+            // 状态标签：浅底深字，颜色随状态变化
             Rectangle {
                 Layout.preferredWidth: statusLabel.implicitWidth + 12
                 Layout.preferredHeight: statusLabel.implicitHeight + 4
                 radius: Style.Radius.xs
-                color: taskCard.statusColor()
+                color: taskCard.statusBg()
 
                 Behavior on color {
                     ColorAnimation {
@@ -184,7 +208,7 @@ Frame {
                     anchors.centerIn: parent
                     text: taskCard.statusText()
                     font.pixelSize: 11
-                    color: Style.Color.textOnAccent
+                    color: taskCard.statusFg()
                     font.bold: true
                 }
             }

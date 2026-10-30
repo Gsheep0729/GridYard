@@ -1,7 +1,7 @@
 /**
  * @file    TransferHistoryView.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   传输历史视图
  *
@@ -187,13 +187,13 @@ Frame {
                         Layout.fillWidth: true
                         spacing: Style.Space.sm
 
-                        // 方向标识：发送/接收用带色标签区分
+                        // 方向标识：浅底深字，发送用主色档、接收用紫档
                         Rectangle {
                             Layout.preferredWidth: directionTag.implicitWidth + 10
                             Layout.preferredHeight: directionTag.implicitHeight + 4
                             radius: Style.Radius.xs
                             color: historyCard.direction === 1
-                                   ? Style.Color.primary : Style.Color.receiveAccent
+                                   ? Style.Color.primarySoft : Style.Color.receiveAccentSoft
 
                             Label {
                                 id: directionTag
@@ -201,7 +201,8 @@ Frame {
                                 text: historyCard.direction === 1 ? qsTr("发送") : qsTr("接收")
                                 font.pixelSize: 10
                                 font.bold: true
-                                color: Style.Color.textOnAccent
+                                color: historyCard.direction === 1
+                                       ? Style.Color.primaryStrong : Style.Color.receiveAccentStrong
                             }
                         }
 

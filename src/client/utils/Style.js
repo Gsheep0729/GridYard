@@ -1,7 +1,7 @@
 /**
  * @file    Style.js
- * @version 8.1.0
- * @date 2026-10-26
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GY
  * @brief   QML 界面样式常量
  *
@@ -39,6 +39,17 @@ const Color = {
     errorHover: "#DC2626",
     errorPressed: "#B91C1C",
     errorSoft: "#FEF2F2",
+    // 状态徽标成对色：浅底 + 深字，白字压实色不达 4.5 时改用这一族
+    // （实测对比度：警示 4.84、成功 5.21、失败 5.91）
+    statusWarnBg: "#FFFBEB",
+    statusWarnFg: "#B45309",
+    statusOkBg: "#ECFDF5",
+    statusOkFg: "#047857",
+    statusErrBg: "#FEF2F2",
+    statusErrFg: "#B91C1C",
+    // 浅底上的加深前景：主色/接收紫的实色压浅底不足 4.5，深一档可达 6 以上
+    primaryStrong: "#1D4ED8",
+    receiveAccentStrong: "#6D28D9",
     // 文字
     textMain: "#111827",
     textSecondary: "#4B5563",
