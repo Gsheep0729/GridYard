@@ -1,7 +1,7 @@
 /**
  * @file    PeerListView.qml
- * @version 8.1.0
- * @date 2026-10-26
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   设备列表组件
  *
@@ -425,11 +425,15 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                Button {
+                // 中央不再放第二个添加入口：底栏入口常驻，这里只做指路引导
+                Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("添加设备")
-                    highlighted: true
-                    onClicked: addDeviceDialog.open()
+                    text: qsTr("底部「添加设备」入口常驻可用：生成或粘贴邀请码、填写 IP 地址均可添加。")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.fillWidth: true
                 }
             }
         }
