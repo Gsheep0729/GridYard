@@ -1,7 +1,7 @@
 /**
  * @file    RelayConfirmDialog.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   中继确认弹窗
  *
@@ -54,25 +54,32 @@ Dialog {
         }
     }
 
-    footer: RowLayout {
-        spacing: 10
-        anchors.margins: 16
+    // footer 由弹窗布局定位、不是锚定项：承载项 + 有效锚定边距提供 16px 内边距
+    footer: Item {
+        implicitHeight: footerRow.implicitHeight + Style.Space.lg * 2
 
-        Item {
-            Layout.fillWidth: true
-        }
-        Button {
-            text: qsTr("使用中继")
-            onClicked: {
-                relayConfirmDialog.relayChosen(relayConfirmDialog.sessionId)
-                relayConfirmDialog.close()
+        RowLayout {
+            id: footerRow
+            anchors.fill: parent
+            anchors.margins: Style.Space.lg
+            spacing: 10
+
+            Item {
+                Layout.fillWidth: true
             }
-        }
-        Button {
-            text: qsTr("取消传输")
-            onClicked: {
-                relayConfirmDialog.cancelChosen(relayConfirmDialog.sessionId)
-                relayConfirmDialog.close()
+            Button {
+                text: qsTr("使用中继")
+                onClicked: {
+                    relayConfirmDialog.relayChosen(relayConfirmDialog.sessionId)
+                    relayConfirmDialog.close()
+                }
+            }
+            Button {
+                text: qsTr("取消传输")
+                onClicked: {
+                    relayConfirmDialog.cancelChosen(relayConfirmDialog.sessionId)
+                    relayConfirmDialog.close()
+                }
             }
         }
     }

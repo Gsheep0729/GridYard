@@ -1,7 +1,7 @@
 /**
  * @file    CloseConfirmDialog.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   关闭确认弹窗
  *
@@ -94,32 +94,39 @@ Dialog {
         }
     }
 
-    footer: RowLayout {
-        spacing: 10
-        anchors.margins: 16
+    // footer 由弹窗布局定位、不是锚定项：承载项 + 有效锚定边距提供 16px 内边距
+    footer: Item {
+        implicitHeight: footerRow.implicitHeight + Style.Space.lg * 2
 
-        Button {
-            visible: closeConfirmDialog.trayAvailable
-            text: qsTr("隐藏到后台")
-            highlighted: true  // 误关窗口的主路径，突出显示
-            onClicked: {
-                closeConfirmDialog.close()
-                closeConfirmDialog.hideToTrayRequested(rememberCheckBox.checked)
+        RowLayout {
+            id: footerRow
+            anchors.fill: parent
+            anchors.margins: Style.Space.lg
+            spacing: 10
+
+            Button {
+                visible: closeConfirmDialog.trayAvailable
+                text: qsTr("隐藏到后台")
+                highlighted: true  // 误关窗口的主路径，突出显示
+                onClicked: {
+                    closeConfirmDialog.close()
+                    closeConfirmDialog.hideToTrayRequested(rememberCheckBox.checked)
+                }
             }
-        }
-        Item {
-            Layout.fillWidth: true
-        }
-        Button {
-            text: qsTr("退出程序")
-            onClicked: {
-                closeConfirmDialog.close()
-                closeConfirmDialog.quitRequested(rememberCheckBox.checked)
+            Item {
+                Layout.fillWidth: true
             }
-        }
-        Button {
-            text: qsTr("取消")
-            onClicked: closeConfirmDialog.close()
+            Button {
+                text: qsTr("退出程序")
+                onClicked: {
+                    closeConfirmDialog.close()
+                    closeConfirmDialog.quitRequested(rememberCheckBox.checked)
+                }
+            }
+            Button {
+                text: qsTr("取消")
+                onClicked: closeConfirmDialog.close()
+            }
         }
     }
 }
