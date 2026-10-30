@@ -1,7 +1,7 @@
 /**
 * @file    SettingsDialog.qml
-* @version 8.1.0
-* @date 2026-10-26
+* @version 8.2.1
+* @date 2026-10-30
 * @author  GridYard Team
 * @brief   设置对话框
 *
@@ -165,10 +165,23 @@ Dialog {
         clip: true
         contentWidth: availableWidth  // 内容宽度跟随可用宽度，避免水平滚动
 
-        ColumnLayout {
-            width: scrollView.availableWidth
-            spacing: Style.Space.lg
-            Layout.margins: Style.Space.lg
+        // 滚动条按需出现并收窄到 6px，避免 16px 轨道整条压住卡片右缘
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+            width: 6
+        }
+
+        // ScrollView 内的 Layout.margins 不生效：外层 Item 提供真实左右内边距
+        Item {
+            id: contentWrapper
+            x: Style.Space.lg
+            width: scrollView.availableWidth - Style.Space.lg * 2
+            implicitHeight: contentColumn.implicitHeight
+
+            ColumnLayout {
+                id: contentColumn
+                width: parent.width
+                spacing: Style.Space.lg
 
             Item { Layout.preferredHeight: Style.Space.sm }  // 顶部留白
 
@@ -845,7 +858,8 @@ Dialog {
                 wrapMode: Text.Wrap
                 font.pixelSize: 13
             }
-        }
+            }  // contentColumn
+        }  // contentWrapper
     }
 
     footer: Rectangle {

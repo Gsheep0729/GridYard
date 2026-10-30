@@ -1,7 +1,7 @@
 /**
  * @file    SettingsCard.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   设置对话框的分组卡片外壳
  *
@@ -22,7 +22,8 @@ Rectangle {
 
     Layout.fillWidth: true
     implicitHeight: contentLayout.implicitHeight + Style.Space.lg * 2
-    color: Style.Color.surface
+    // 卡片比 pageBg 底更亮＝凸起；比底更暗的 surface 会读成凹槽
+    color: Style.Color.window
     radius: Style.Radius.lg
     border.color: Style.Color.border
     border.width: 1
