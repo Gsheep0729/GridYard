@@ -1,7 +1,7 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 8.1.0
- * @date 2026-10-27
+ * @version 8.2.1
+ * @date 2026-10-30
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
@@ -40,7 +40,7 @@ Frame {
     readonly property color kSuccessColor: Style.Color.success
     readonly property color kFailedColor:  Style.Color.error
     readonly property color kWaitingColor: Style.Color.warning
-    readonly property color kFileBgColor:   Style.Color.surface       // 普通文件卡片底色
+    readonly property color kFileBgColor:   Style.Color.window        // 普通文件卡片底色：比时间线底亮一档
     readonly property color kFolderBgColor: Style.Color.surfaceSoft   // 文件夹卡片底色，略有区分
     readonly property color kFailedBgColor: Style.Color.errorSoft     // 失败/取消/拒绝卡片底色
     readonly property int kColorDuration: Style.Motion.base           // 状态颜色过渡动画时长
@@ -49,7 +49,7 @@ Frame {
     readonly property bool isFinished: status === "completed" || status === "failed"
                                        || status === "rejected" || status === "cancelled"
 
-    implicitHeight: contentColumn.implicitHeight + 20
+    implicitHeight: contentColumn.implicitHeight + Style.Space.md * 2
     height: implicitHeight
 
     // 状态文案委托给 FormatUtils 唯一词表，与历史页保持一致
@@ -79,10 +79,29 @@ Frame {
         return isDirectory ? kFolderBgColor : kFileBgColor
     }
 
+    // 卡片描边：传输中随状态色引导注意力；已结束的普通文件卡改用更浅的细边收口白底
+    function borderColor(): color {
+        if (!isFinished) {
+            return statusColor()
+        }
+        if (!isDirectory && status === "completed") {
+            return Style.Color.borderSoft
+        }
+        return Style.Color.border
+    }
+
+    // 方向标识颜色：失败族随状态转红，其余保持发送蓝/接收紫
+    function directionColor(): color {
+        if (status === "failed" || status === "rejected" || status === "cancelled") {
+            return kFailedColor
+        }
+        return taskType === "send" ? Style.Color.primary : Style.Color.receiveAccent
+    }
+
     background: Rectangle {
         radius: Style.Radius.sm
         color: taskCard.backgroundColor()
-        border.color: taskCard.isFinished ? Style.Color.border : taskCard.statusColor()
+        border.color: taskCard.borderColor()
         border.width: 1
 
         // 状态切换时边框颜色带过渡动画，避免视觉跳变
@@ -105,11 +124,10 @@ Frame {
             Layout.fillWidth: true
             spacing: Style.Space.sm
 
-            // 方向标识：发送用上箭头，接收用下箭头，颜色区分方向
+            // 方向标识：发送用上箭头，接收用下箭头，颜色区分方向；失败族随状态转红
             Label {
                 text: taskCard.taskType === "send" ? "↑" : "↓"
-                color: taskCard.taskType === "send"
-                       ? Style.Color.primary : Style.Color.receiveAccent
+                color: taskCard.directionColor()
                 font.pixelSize: 16
                 font.bold: true
                 Layout.alignment: Qt.AlignVCenter
