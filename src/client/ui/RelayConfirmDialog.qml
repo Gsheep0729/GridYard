@@ -46,7 +46,7 @@ Dialog {
         }
 
         Label {
-            text: qsTr("暂不处理将在约 2 分钟后自动取消传输，也可以随时在任务卡片上手动取消。")
+            text: qsTr("暂不处理将在约 2 分钟后自动失败，也可以随时在任务卡片上手动取消。")
             wrapMode: Text.Wrap
             Layout.fillWidth: true
             font.pixelSize: 12
