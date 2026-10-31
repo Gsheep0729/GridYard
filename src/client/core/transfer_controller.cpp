@@ -1,12 +1,14 @@
 /**
 * @file    transfer_controller.cpp
-* @version 7.25.0
-* @date 2026-10-08
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   面向 QML 的文件传输控制器实现
 */
 
 #include "transfer_controller.h"
+
+#include <QFileInfo>
 
 #include "transfer_session_manager.h"
 
@@ -72,6 +74,27 @@ void TransferController::createSendSession(const QString &deviceId, const QStrin
     if (_manager) {
         _manager->createSendSession(deviceId, filePath);
     }
+}
+
+// 判定本地路径是否为已存在的目录：目录拖入在发起发送前需经确认弹窗回显
+bool TransferController::isDirectoryPath(const QString &path) const
+{
+    return QFileInfo{path}.isDir();
+}
+
+// 普通文件总字节数：供确认弹窗回显体量。逐个 stat 普通文件开销可忽略；
+// 遇目录返回 -1 表示体量未知（递归统计会拖累 UI 线程，交由会话统计补齐）
+qint64 TransferController::totalBytesForFiles(const QStringList &paths) const
+{
+    qint64 total = 0;
+    for (const QString &path : paths) {
+        const QFileInfo info{path};
+        if (!info.isFile()) {
+            return -1;
+        }
+        total += info.size();
+    }
+    return total;
 }
 
 // 多选群发：委托会话管理器逐台建立独立发送会话

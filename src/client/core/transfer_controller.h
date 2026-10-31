@@ -1,7 +1,7 @@
 /**
  * @file    transfer_controller.h
- * @version 7.26.1
- * @date    2026-10-23
+ * @version 8.2.1
+ * @date    2026-11-01
  * @author  GridYard Team
  * @brief   面向 QML 的文件传输控制器
  *
@@ -49,6 +49,11 @@ public:
 
     // 创建发送会话
     Q_INVOKABLE void createSendSession(const QString &deviceId, const QString &filePath);
+    // 判定本地路径是否为已存在的目录（拖拽发送确认弹窗分流用）
+    Q_INVOKABLE bool isDirectoryPath(const QString &path) const;
+    // 普通文件总字节数；任一路径为目录或不存在时返回 -1，目录体量交由会话统计
+    // （避免确认弹窗在 UI 线程递归遍历大目录，加重拖拽卡顿）
+    Q_INVOKABLE qint64 totalBytesForFiles(const QStringList &paths) const;
     // 多选群发：逐台独立 1:1 会话，序列化与哈希一次复用
     Q_INVOKABLE void createMultiSendSessions(const QStringList &deviceIds, const QString &filePath);
     // 上次多选群发勾选的目标集合（多选弹窗默认勾选）

@@ -5,9 +5,10 @@
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
-* 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复 /
-* Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）/
-* waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化 / 活动会话计数增减
+ * 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复 /
+ * Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）/
+ * waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化 / 活动会话计数增减 /
+ * 拖拽发送确认的分流判定（目录识别与文件体量统计）
 */
 
 #include <QtTest/QtTest>
@@ -59,6 +60,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void testInit();
+    void testDropSendConfirmPathInspection();
     void testCreateSendSession();
     void testSessionSignals();
     void testCancelSession();
@@ -140,6 +142,37 @@ void TestSessionManager::testInit()
     // 验证 sessions 属性
     QVariantList sessions = _manager->sessions();
     QCOMPARE(sessions.size(), 0);
+}
+
+// 拖拽发送确认（O-10）的分流数据源：目录判定与文件体量统计。
+// QML 侧据此决定拖入内容走 sendConfirmDialog 回显确认还是单文件直发——
+// 目录被误判为文件会让确认门形同虚设（整目录静默全量发送），
+// 体量统计误伤目录路径则会让回显行闪烁出错误的"总大小"
+void TestSessionManager::testDropSendConfirmPathInspection()
+{
+    TransferController controller{_manager};
+
+    const QString dirPath = _tempDir->path() + "/confirm-dir";
+    QVERIFY(QDir().mkpath(dirPath));
+    const QString filePath = dirPath + "/a.txt";
+    QFile file{filePath};
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray(2048, 'x'));
+    file.close();
+
+    // 目录判定：目录为真；普通文件与不存在路径为假
+    QVERIFY(controller.isDirectoryPath(dirPath));
+    QVERIFY(!controller.isDirectoryPath(filePath));
+    QVERIFY(!controller.isDirectoryPath(_tempDir->path() + "/confirm-no-such"));
+
+    // 纯文件列表逐个 stat 求和；任一路径为目录或不存在时返回 -1（体量未知）
+    QCOMPARE(controller.totalBytesForFiles({filePath}), qint64(2048));
+    const QStringList twoFiles{filePath, filePath};
+    QCOMPARE(controller.totalBytesForFiles(twoFiles), qint64(4096));
+    const QStringList withDir{filePath, dirPath};
+    QCOMPARE(controller.totalBytesForFiles(withDir), qint64(-1));
+    QCOMPARE(controller.totalBytesForFiles({dirPath}), qint64(-1));
+    QCOMPARE(controller.totalBytesForFiles({filePath + ".missing"}), qint64(-1));
 }
 
 // 将测试设备注入发现服务，指向给定端口

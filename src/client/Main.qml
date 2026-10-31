@@ -222,7 +222,9 @@ ApplicationWindow {
         AppController.peerDiscoveryViewModel.selectedDeviceId = deviceId
     }
 
-    // 拖拽发送：只做 URL 解码与非文件项过滤，在线裁决由 C++ createSendSession 兜底
+    // 拖拽发送：只做 URL 解码与非文件项过滤，在线裁决由 C++ createSendSession 兜底。
+    // 目录或多文件拖入先经 sendConfirmDialog 回显绝对路径供确认（对齐 J-05 文件夹
+    // 选择回显防护），误拖整个目录不再立即全量发送；单文件保持直发，与主流一致
     function handleDroppedFiles(deviceId: string, urls: var): void {
         const paths = []
         for (let i = 0; i < urls.length; i++) {
@@ -237,9 +239,19 @@ ApplicationWindow {
             return
         }
 
+        let hasDirectory = false
         for (let i = 0; i < paths.length; i++) {
-            AppController.transferController.createSendSession(deviceId, paths[i])
+            if (AppController.transferController.isDirectoryPath(paths[i])) {
+                hasDirectory = true
+                break
+            }
         }
+        if (paths.length > 1 || hasDirectory) {
+            sendConfirmDialog.openWithPaths(deviceId, paths)
+            return
+        }
+
+        AppController.transferController.createSendSession(deviceId, paths[0])
     }
 
     CloseConfirmDialog {
@@ -284,25 +296,46 @@ ApplicationWindow {
         title: qsTr("选择要发送的文件夹")
         onAccepted: {
             // selectedFolder 也是 URL 格式，需要转成本地路径
-            folderSendDialog.openWith(FormatUtils.localPathFromUrl(selectedFolder))
+            sendConfirmDialog.openWith(FormatUtils.localPathFromUrl(selectedFolder))
         }
     }
 
-    // 文件夹发送确认：GTK portal 选择器的"打开"语义是选中高亮条目而非所在目录，
-    // 导航进目录后点"打开"可能实际选中的是里面的子目录。回显所选绝对路径供
-    // 用户核对，确认后才创建发送会话，避免错发子集而不自知
+    // 发送确认弹窗：文件夹选择与目录/多文件拖拽共用。文件夹侧防护 GTK portal
+    // 选择器的"打开"语义——选中高亮条目而非所在目录，导航进目录后点"打开"可能
+    // 实际选中的是里面的子目录；拖拽侧防护误拖整个目录或多选文件直接全量发送。
+    // 回显目标与绝对路径供用户核对，确认后才创建发送会话，避免错发而不自知
     Dialog {
-        id: folderSendDialog
-        title: qsTr("确认发送文件夹")
+        id: sendConfirmDialog
+        title: sendConfirmDialog.singleFolder ? qsTr("确认发送文件夹")
+                                              : qsTr("确认发送文件")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(480, parent ? parent.width - 48 : 480)
         standardButtons: Dialog.Yes | Dialog.No
 
-        property string folderPath: ""
+        property string targetId: ""
+        property string targetLabel: ""
+        property var sendPaths: []
 
+        // 单个目录时沿用 J-05 文件夹文案；多文件或混合内容逐项回显
+        readonly property bool singleFolder: sendPaths.length === 1
+            && AppController.transferController.isDirectoryPath(sendPaths[0])
+
+        // 仅普通文件可同步统计体量（逐个 stat 开销可忽略）；含目录返回 -1 隐藏该行，
+        // 不在 UI 线程递归遍历大目录，体量交由会话统计补齐
+        readonly property int totalBytes: sendPaths.length > 0
+            ? AppController.transferController.totalBytesForFiles(sendPaths) : -1
+
+        // 文件夹选择弹窗入口：目标取当前选中设备，单路径包装成列表复用拖拽通路
         function openWith(path: string): void {
-            folderPath = path
+            openWithPaths(mainWindow._selId, [path])
+        }
+
+        function openWithPaths(deviceId: string, paths: var): void {
+            const info = AppController.peerDiscoveryViewModel.deviceById(deviceId)
+            targetId = deviceId
+            targetLabel = FormatUtils.displayName(info.alias, info.deviceName)
+            sendPaths = paths
             open()
         }
 
@@ -311,23 +344,43 @@ ApplicationWindow {
 
             Label {
                 Layout.fillWidth: true
-                text: qsTr("将向「%1」发送所选文件夹内的全部内容：")
-                      .arg(FormatUtils.displayName(mainWindow._selInfo.alias,
-                                                   mainWindow._selInfo.deviceName))
+                text: sendConfirmDialog.singleFolder
+                      ? qsTr("将向「%1」发送所选文件夹内的全部内容：")
+                            .arg(sendConfirmDialog.targetLabel)
+                      : qsTr("将向「%1」发送以下 %2 项内容：")
+                            .arg(sendConfirmDialog.targetLabel)
+                            .arg(sendConfirmDialog.sendPaths.length)
                 wrapMode: Text.Wrap
             }
 
             Label {
                 Layout.fillWidth: true
-                text: folderSendDialog.folderPath
+                // 长清单截尾展示：弹窗不滚动，只回显前若干项+总数供核对
+                text: sendConfirmDialog.sendPaths.length > 8
+                      ? sendConfirmDialog.sendPaths.slice(0, 8).join("\n")
+                        + "\n" + qsTr("…等共 %1 项").arg(sendConfirmDialog.sendPaths.length)
+                      : sendConfirmDialog.sendPaths.join("\n")
                 color: Style.Color.textSecondary
                 font.pixelSize: 12
                 wrapMode: Text.WrapAnywhere
             }
+
+            Label {
+                Layout.fillWidth: true
+                visible: sendConfirmDialog.totalBytes >= 0
+                text: qsTr("总大小：%1")
+                      .arg(FormatUtils.formatBytes(sendConfirmDialog.totalBytes))
+                color: Style.Color.textSecondary
+                font.pixelSize: 12
+            }
         }
 
-        onAccepted: AppController.transferController.createSendSession(
-                        mainWindow._selId, folderSendDialog.folderPath)
+        onAccepted: {
+            for (let i = 0; i < sendConfirmDialog.sendPaths.length; i++) {
+                AppController.transferController.createSendSession(
+                    sendConfirmDialog.targetId, sendConfirmDialog.sendPaths[i])
+            }
+        }
     }
 
     SettingsDialog { id: settingsDialog }
