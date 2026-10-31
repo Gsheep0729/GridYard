@@ -1,0 +1,519 @@
+# tests/ —— Qt Test 单元测试与集成测试入口。
+# 每个测试保持独立可执行文件，按需链接 shared、storage 或客户端实现文件，避免测试之间共享状态。
+find_package(Qt6 REQUIRED COMPONENTS Test Gui)
+
+# 通用 include 路径
+set(CLIENT_CORE_DIR ${CMAKE_SOURCE_DIR}/client/core)
+set(CLIENT_NET_DIR ${CMAKE_SOURCE_DIR}/client/network)
+
+# --- 测试公共工具（header-only：JSON 行读写、数据库种子、轮询等待、临时端口） ---
+add_library(gy_test_utils INTERFACE)
+target_include_directories(gy_test_utils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/test_utils)
+
+# --- SQLite 数据库基础测试 ---
+qt_add_executable(test_storage_database test_storage_database.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_database PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_database PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_database PRIVATE cxx_std_23)
+add_test(NAME test_storage_database COMMAND test_storage_database)
+
+# --- 设备目录 Repository 测试 ---
+qt_add_executable(test_storage_device test_storage_device.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_device PRIVATE
+    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_device PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_device PRIVATE cxx_std_23)
+add_test(NAME test_storage_device COMMAND test_storage_device)
+
+# --- 聊天消息 Repository 测试 ---
+qt_add_executable(test_storage_message test_storage_message.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_message PRIVATE
+    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_message PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_message PRIVATE cxx_std_23)
+add_test(NAME test_storage_message COMMAND test_storage_message)
+
+# --- 传输历史 Repository 测试 ---
+qt_add_executable(test_storage_transfer_history test_storage_transfer_history.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_storage_transfer_history PRIVATE
+    gy_test_utils gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_storage_transfer_history PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_storage_transfer_history PRIVATE cxx_std_23)
+add_test(NAME test_storage_transfer_history COMMAND test_storage_transfer_history)
+
+# --- FrameCodec 单测 ---
+qt_add_executable(test_frame_codec test_frame_codec.cpp)
+target_link_libraries(test_frame_codec PRIVATE gy_shared Qt6::Test)
+target_compile_features(test_frame_codec PRIVATE cxx_std_23)
+add_test(NAME test_frame_codec COMMAND test_frame_codec)
+
+# --- 在线聊天消息测试 ---
+qt_add_executable(test_chat_message test_chat_message.cpp)
+target_link_libraries(test_chat_message PRIVATE gy_shared Qt6::Test)
+target_compile_features(test_chat_message PRIVATE cxx_std_23)
+add_test(NAME test_chat_message COMMAND test_chat_message)
+
+# --- 聊天连接与会话测试 ---
+qt_add_executable(test_chat_manager test_chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_message_model.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_CORE_DIR}/peer_discovery_view_model.cpp
+    ${CLIENT_NET_DIR}/chat_connection.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+)
+target_link_libraries(test_chat_manager PRIVATE
+    gy_shared
+    gy_storage
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Qml
+    Qt6::Sql
+)
+target_include_directories(test_chat_manager PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/shared
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
+target_compile_features(test_chat_manager PRIVATE cxx_std_23)
+add_test(NAME test_chat_manager COMMAND test_chat_manager)
+
+# --- HistoryController 本地历史视图测试 ---
+qt_add_executable(test_history_controller test_history_controller.cpp
+    ${CLIENT_CORE_DIR}/chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_message_model.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
+    ${CLIENT_NET_DIR}/chat_connection.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_CORE_DIR}/history_controller.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_history_controller PRIVATE
+    gy_test_utils
+    gy_shared
+    gy_storage
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Sql
+)
+target_include_directories(test_history_controller PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/shared
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
+target_compile_features(test_history_controller PRIVATE cxx_std_23)
+add_test(NAME test_history_controller COMMAND test_history_controller)
+
+# --- 边缘场景测试 ---
+qt_add_executable(test_edge_cases test_edge_cases.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+)
+target_link_libraries(test_edge_cases PRIVATE gy_shared Qt6::Test Qt6::Core)
+target_include_directories(test_edge_cases PRIVATE ${CLIENT_CORE_DIR})
+target_compile_features(test_edge_cases PRIVATE cxx_std_23)
+add_test(NAME test_edge_cases COMMAND test_edge_cases)
+
+# --- 传输功能测试 ---
+qt_add_executable(test_transfer test_transfer.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+)
+target_link_libraries(test_transfer PRIVATE gy_shared Qt6::Test Qt6::Core)
+target_include_directories(test_transfer PRIVATE ${CLIENT_CORE_DIR})
+target_compile_features(test_transfer PRIVATE cxx_std_23)
+add_test(NAME test_transfer COMMAND test_transfer)
+
+# --- 网络端点探测测试 ---
+qt_add_executable(test_endpoint_probe test_endpoint_probe.cpp
+    ${CLIENT_NET_DIR}/endpoint_probe.cpp
+)
+target_link_libraries(test_endpoint_probe PRIVATE
+    gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Network)
+target_include_directories(test_endpoint_probe PRIVATE
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_endpoint_probe PRIVATE cxx_std_23)
+add_test(NAME test_endpoint_probe COMMAND test_endpoint_probe)
+
+# --- 邀请连接编解码测试 ---
+qt_add_executable(test_invite_codec test_invite_codec.cpp
+    ${CLIENT_NET_DIR}/invite_codec.cpp
+)
+target_link_libraries(test_invite_codec PRIVATE Qt6::Test Qt6::Core Qt6::Network)
+target_include_directories(test_invite_codec PRIVATE
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_invite_codec PRIVATE cxx_std_23)
+add_test(NAME test_invite_codec COMMAND test_invite_codec)
+
+# --- ConfigManager 配置测试 ---
+qt_add_executable(test_config_manager test_config_manager.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_config_manager PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_config_manager PRIVATE ${CLIENT_CORE_DIR})
+target_compile_features(test_config_manager PRIVATE cxx_std_23)
+add_test(NAME test_config_manager COMMAND test_config_manager)
+
+# --- DiscoveryService 设备发现测试 ---
+qt_add_executable(test_discovery test_discovery.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+)
+target_link_libraries(test_discovery PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_discovery PRIVATE ${CLIENT_CORE_DIR} ${CLIENT_NET_DIR})
+target_compile_features(test_discovery PRIVATE cxx_std_23)
+add_test(NAME test_discovery COMMAND test_discovery)
+
+# --- 文件传输集成测试 ---
+qt_add_executable(test_file_transfer test_file_transfer.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_file_transfer PRIVATE
+    gy_test_utils gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_file_transfer PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/domain
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_file_transfer PRIVATE cxx_std_23)
+add_test(NAME test_file_transfer COMMAND test_file_transfer)
+
+# --- 会话管理测试 ---
+qt_add_executable(test_session_manager test_session_manager.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_CORE_DIR}/transfer_controller.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_session_manager PRIVATE
+    gy_test_utils gy_shared gy_rendezvous Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_session_manager PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
+target_compile_features(test_session_manager PRIVATE cxx_std_23)
+add_test(NAME test_session_manager COMMAND test_session_manager)
+
+# --- 集成测试（单机多实例模拟）---
+qt_add_executable(test_integration test_integration.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_integration PRIVATE gy_shared Qt6::Test Qt6::Core Qt6::Gui Qt6::Network)
+target_include_directories(test_integration PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/domain
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_integration PRIVATE cxx_std_23)
+add_test(NAME test_integration COMMAND test_integration)
+
+# --- 中继降级链路测试 ---
+qt_add_executable(test_relay_chain test_relay_chain.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_relay_chain PRIVATE
+    gy_test_utils
+    gy_rendezvous
+    gy_shared
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+)
+target_include_directories(test_relay_chain PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_relay_chain PRIVATE cxx_std_23)
+add_test(NAME test_relay_chain COMMAND test_relay_chain)
+
+# --- 协调节点编排测试 ---
+qt_add_executable(test_rendezvous_coordinator test_rendezvous_coordinator.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_CORE_DIR}/rendezvous_coordinator.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_rendezvous_coordinator PRIVATE
+    gy_test_utils
+    gy_shared
+    gy_rendezvous
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+)
+target_include_directories(test_rendezvous_coordinator PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_rendezvous_coordinator PRIVATE cxx_std_23)
+add_test(NAME test_rendezvous_coordinator COMMAND test_rendezvous_coordinator)
+
+# --- 协调节点客户端测试 ---
+qt_add_executable(test_rendezvous_client test_rendezvous_client.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_rendezvous_client PRIVATE
+    gy_shared
+    gy_rendezvous
+    Qt6::Test
+    Qt6::Core
+    Qt6::Network
+)
+target_include_directories(test_rendezvous_client PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_rendezvous_client PRIVATE cxx_std_23)
+add_test(NAME test_rendezvous_client COMMAND test_rendezvous_client)
+
+
+# --- 协调节点协议编解码测试 ---
+qt_add_executable(test_rendezvous_protocol test_rendezvous_protocol.cpp)
+target_link_libraries(test_rendezvous_protocol PRIVATE
+    gy_rendezvous
+    gy_shared
+    Qt6::Test
+    Qt6::Core
+    Qt6::Network
+)
+target_include_directories(test_rendezvous_protocol PRIVATE
+    ${CMAKE_SOURCE_DIR}/rendezvous
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_rendezvous_protocol PRIVATE cxx_std_23)
+add_test(NAME test_rendezvous_protocol COMMAND test_rendezvous_protocol)
+
+# --- 网络可达性控制器测试 ---
+qt_add_executable(test_reachability_controller test_reachability_controller.cpp
+    ${CLIENT_CORE_DIR}/reachability_controller.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/endpoint_probe.cpp
+    ${CLIENT_NET_DIR}/invite_codec.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+)
+target_link_libraries(test_reachability_controller PRIVATE
+    gy_shared
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Qml
+)
+target_include_directories(test_reachability_controller PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client
+    ${CMAKE_SOURCE_DIR}/client/domain
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_reachability_controller PRIVATE cxx_std_23)
+add_test(NAME test_reachability_controller COMMAND test_reachability_controller)
+
+# --- 设备发现视图模型测试 ---
+qt_add_executable(test_peer_discovery_view_model test_peer_discovery_view_model.cpp
+    ${CLIENT_CORE_DIR}/peer_discovery_view_model.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+)
+target_link_libraries(test_peer_discovery_view_model PRIVATE
+    gy_shared
+    gy_storage
+    gy_test_utils
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Sql
+)
+target_include_directories(test_peer_discovery_view_model PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_peer_discovery_view_model PRIVATE cxx_std_23)
+add_test(NAME test_peer_discovery_view_model COMMAND test_peer_discovery_view_model)
+
+# --- 用户数据备份与迁移测试 ---
+qt_add_executable(test_backup test_backup.cpp
+    ${CLIENT_CORE_DIR}/backup_controller.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_backup PRIVATE
+    gy_shared
+    gy_storage
+    gy_test_utils
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Sql
+)
+target_include_directories(test_backup PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
+target_compile_features(test_backup PRIVATE cxx_std_23)
+add_test(NAME test_backup COMMAND test_backup)
+
+# --- DatabaseWorker 语义测试 ---
+qt_add_executable(test_database_worker test_database_worker.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_database_worker PRIVATE gy_storage Qt6::Test Qt6::Sql)
+target_include_directories(test_database_worker PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+)
+target_compile_features(test_database_worker PRIVATE cxx_std_23)
+add_test(NAME test_database_worker COMMAND test_database_worker)
+
+# --- 统一时间线模型测试 ---
+qt_add_executable(test_conversation_timeline_model test_conversation_timeline_model.cpp
+    ${CLIENT_CORE_DIR}/chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_controller.cpp
+    ${CLIENT_CORE_DIR}/chat_message_model.cpp
+    ${CLIENT_CORE_DIR}/conversation_timeline_model.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_NET_DIR}/chat_connection.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+)
+target_link_libraries(test_conversation_timeline_model PRIVATE
+    gy_shared
+    gy_storage
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Qml
+    Qt6::Sql
+)
+target_include_directories(test_conversation_timeline_model PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CMAKE_SOURCE_DIR}/client/storage
+    ${CMAKE_SOURCE_DIR}/shared
+    ${CMAKE_SOURCE_DIR}/client/domain
+)
+target_compile_features(test_conversation_timeline_model PRIVATE cxx_std_23)
+add_test(NAME test_conversation_timeline_model COMMAND test_conversation_timeline_model)
+
+# --- 测试超时上限：常规 300 秒，传输集成类放宽到 600 秒 ---
+set_tests_properties(test_file_transfer PROPERTIES TIMEOUT 600)
+set_tests_properties(test_relay_chain test_rendezvous_client test_rendezvous_coordinator
+    test_rendezvous_protocol test_integration test_session_manager test_storage_database
+    test_storage_device test_storage_message test_storage_transfer_history test_database_worker
+    PROPERTIES TIMEOUT 300)
+set_tests_properties(test_frame_codec test_chat_message test_chat_manager test_history_controller
+    test_edge_cases test_transfer test_endpoint_probe test_invite_codec test_config_manager
+    test_discovery test_reachability_controller test_peer_discovery_view_model
+    test_conversation_timeline_model
+    PROPERTIES TIMEOUT 300)

@@ -1,761 +1,631 @@
 # GridYard — 鸽邮
 
-> 局域网 P2P 文件传输 + IM 桌面应用。两台同网段电脑互相能看见、能直传文件，全程不走公网。
+> 局域网 P2P 文件传输与即时通讯桌面应用，全程零公网流量。
 
-| 字段       | 内容                                                                  |
-| :--------- | :-------------------------------------------------------------------- |
-| 项目版本   | v0.1.0（骨架）                                                        |
-| 当前阶段   | **Stage 0 工程奠基** 已完成                                            |
-| 下一阶段   | Stage 1 通信基石（填 protocol.h + 实现 FrameCodec + 写单测）           |
-| 技术栈     | C++23 · Qt 6.11 · QML · CMake 4.2.3 · GCC 16.1                        |
-| 部署平台   | Manjaro Linux（开发、编译、运行三端统一）                              |
-| 团队成员   | 高扬 · 杜若贤 · 冯春霖                                                |
+当前版本：v7.12.0
+
+| 项目版本 | v7.25.0 |
+| :--- | :--- |
+
+GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议与 Qt6 全 QML 技术栈构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
 
 ---
 
-## 快速导航
+## 核心特性
 
-| 想找                       | 在哪                                                         |
-| :------------------------- | :----------------------------------------------------------- |
-| **现在该做什么？**         | [`doc/plans/鸽邮(GridYard)——软件开发阶段计划.md`](doc/plans/)             |
-| 业务需求                   | [`doc/spec/鸽邮(GridYard)——技术需求与系统设计规格说明书.md`](doc/spec/) |
-| 架构决策（V1.0 + V2.0 演进） | [`doc/spec/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md`](doc/spec/) |
-| 工程实践（CMake/Git/调试） | [`doc/manuals/鸽邮(GridYard)——团队开发者手册.md`](doc/manuals/)               |
-| CMake / qmldir / 集成示例  | [`doc/templates/`](doc/templates/)                            |
+- **即时设备发现**：UDP 广播自动发现同网段设备，5 秒心跳保活，15 秒离线剔除，支持多网卡环境
+- **P2P 直传**：TCP 点对点传输，单文件与多文件目录均支持，8MB 分块 + SHA-256 校验 + 背压控制
+- **在线聊天**：复用 P2P 通道的文本消息收发，连接复用、消息去重、断线按需重连
+- **协议自研**：TLV 二进制帧格式，按 Type 分级 Payload 上限，粘包/半包状态机，协议版本协商
+- **本地持久化**：SQLite 存储聊天记录、传输历史与设备目录，重启可查；WAL 模式 + 异步写入不阻塞主链路
+- **历史管理**：聊天记录分页加载，传输历史按设备/状态筛选，支持删除、清空和保留期限设置；设备会话页提供历史记录弹窗入口
+- **桌面体验**：系统托盘后台运行，聊天和传输事件非阻塞通知，本地历史不可用时自动降级
+- **零公网**：全程局域网通信，不依赖云服务、账号体系或第三方中转
+- **跨文件系统安全**：路径穿越防护、磁盘空间预检、零字节文件处理、重名避让
+- **校园网可达性增强**：协调服务器支持跨 AP 设备发现，直连全部失败时可按策略自动或经确认切换 Relay 中继转发
+- **邀请添加设备**：设备列表提供添加设备入口，跨网段场景支持复制本机邀请码、导入对方邀请码或手动填写 IP 与端口
+- **设备管理**：列表按"置顶 / 在线设备 / 最近见过"三段展示，支持按名称、备注或 IP 搜索（含历史库深检索）、置顶、好友星标、本地备注（与原名并存显示）、不显示与删除本地记录；好友与置顶均按设备 ID 落库，远程改名不影响
+- **备份与迁移**：设置页可把设备身份、好友关系与聊天/传输历史导出为明文 JSON 备份包，重装或换机后导入恢复，无需任何账号登录；导入前预览冲突，单事务落库失败整体回滚
+- **设备关联**：对方重装或换机后新设备 ID 出现时，右键"关联到已有设备"两步合并旧条目的备注、好友等管理标记与聊天/传输历史，单事务完成、失败回滚
+- **多选群发**：会话页附件菜单"群发"入口，勾选多台在线设备逐台发起普通 1:1 传输（接收方无需新版本），同一份内容的序列化与校验只计算一次，记住上次勾选与内容路径
+
+---
+
+## 技术栈
+
+| 类别 | 选型 |
+|:-----|:-----|
+| 语言标准 | C++23 |
+| GUI 框架 | Qt 6.11（QML 界面，Widgets 仅系统托盘依赖） |
+| 构建系统 | CMake 4.2.3 + Ninja |
+| 编译器 | GCC 16.1 |
+| 数据库 | SQLite（WAL 模式） |
+| 加密校验 | SHA-256（QCryptographicHash） |
+| 部署平台 | Manjaro Linux |
+
+---
+
+## 快速开始
+
+### 环境要求
+
+- GCC 15+ 或 Clang 17+
+- CMake 4.2.3+
+- Qt 6.5+（含 Quick、Network、QuickControls2、Sql 模块）
+- Ninja（推荐）
+- Linux 桌面门户（KDE 使用 `xdg-desktop-portal-kde`）
+
+### 构建与运行
+
+```bash
+git clone <仓库地址>
+cd GridYard
+
+# 配置（在 src 目录下）
+cmake -S src -B src/build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+# 编译
+cmake --build src/build-ninja -j
+
+# 运行
+./src/build-ninja/client/appGridYard
+```
+
+### 运行测试
+
+```bash
+ctest --test-dir src/build-ninja --output-on-failure
+```
+
+### 本机多实例测试（开发者模式）
+
+设置页提供"开发者模式"开关（默认关闭）：开启后卡片内出现"启动新实例"按钮，点击即从当前实例拉起下一个开发者实例（实例号 = 当前实例号 + 1，上限 9 个），开关状态自动保存、重启后保持。实例隔离（目录、端口、标题）是启动期属性，开关只控制该入口的可见性，不会把当前实例变成开发者实例；拉起失败或实例数到达上限时会在卡片内给出行内提示。也可以直接用命令行参数获得同样效果：
+
+```bash
+# 终端 1：实例 1
+./build-ninja/client/appGridYard --instance=1 --name "devOne" &
+
+# 终端 2：实例 2
+./build-ninja/client/appGridYard --instance=2 --name "devTwo" &
+```
+
+实例 N 相对正常启动的差异：数据、配置、日志与数据库目录独立（推导目录名追加 `-devN` 后缀，如 `~/.local/share/CQNU-SED/GridYard-dev1/`），UDP 发现端口与 TCP 监听端口各确定性偏移 +10N（实例 1 为 45688/35110），窗口标题与托盘提示带 `#N` 标识，配置文件互不覆盖、设备身份各自独立。开发者实例之间完全互见、可正常互传文件；生成邀请码时端口按实际绑定值照实携带。**不带 `--instance` 参数的正常启动行为与历史版本完全一致，正常使用不受任何影响。**设置页的"开发者模式"卡附有同样的用法说明。
+
+**命令行参数**
+
+| 参数 | 说明 | 默认值 |
+|:-----|:-----|:-------|
+| `--port <port>` | TCP 监听端口 | 35100 |
+| `--name <name>` | 设备显示名称 | 系统主机名 |
+| `--config <path>` | 配置文件路径 | 见下方"运行时数据目录" |
+| `--instance <N>` | 开发者模式实例号（1~9），隔离数据目录并偏移端口 | 不启用 |
+
+### 运行时数据目录
+
+程序运行时会自动创建子目录，存放配置、数据库和日志文件。这些数据都是缓存性质，删除后不影响程序编译和重新启动，但会丢失设备 ID、聊天记录和传输历史。
+
+| 数据 | 位置规则 | 文件说明 |
+|:-----|:---------|:---------|
+| 配置文件 | 系统配置目录 | `gridyard.ini`：设备 ID、设备名、TCP 端口、接收路径等 |
+| 数据库 | 系统应用数据目录的 `database/` 子目录 | `gridyard-history.sqlite`：聊天记录、传输历史、设备目录（SQLite WAL 模式） |
+| 日志 | 系统应用数据目录的 `logs/` 子目录 | `gridyard_YYYYMMDD.log`：运行日志，按日期自动切换 |
+
+Linux 示例：
+
+| 数据 | 默认路径 |
+|:-----|:---------|
+| 配置文件 | `~/.config/CQNU-SED/GridYard/gridyard.ini` |
+| 数据库 | `~/.local/share/CQNU-SED/GridYard/database/gridyard-history.sqlite` |
+| 日志 | `~/.local/share/CQNU-SED/GridYard/logs/gridyard_YYYYMMDD.log` |
+
+AppImage 和压缩包运行时也使用上述系统目录，不在发布包同级写入配置、数据库或日志。
+
+使用 `--config` 参数时，配置文件路径以命令行指定的为准，数据库和日志仍在系统应用数据目录下。
+
+开发者模式实例 N 的配置、数据库与日志目录在上述推导上追加 `-devN` 后缀（如 `~/.local/share/CQNU-SED/GridYard-dev1/database/`），与正常实例完全隔离。
+
+**v6.8.1 最终发布验证**
+
+| 测试项 | 结果 |
+|:------|:-----|
+| `--config` 参数 | 通过，`/tmp/config_test/test.ini` 正确创建 |
+| 系统默认配置目录 | 通过，`~/.config/CQNU-SED/GridYard/gridyard.ini` 存在 |
+| 系统默认数据库 | 通过，`~/.local/share/CQNU-SED/GridYard/database/` 有 SQLite 文件 |
+| 系统默认日志 | 通过，`~/.local/share/CQNU-SED/GridYard/logs/` 有日志文件 |
+| 设备别名持久化 | 通过，重启后 `name=GY-PC` 保持不变 |
+
+结论：AppImage 使用系统标准目录策略，配置、数据库和日志都在用户目录下正确持久化。修改设备别名后重启不会丢失。
+
+---
+
+## 系统架构
+
+GridYard 采用四层架构，职责严格隔离：
+
+```mermaid
+graph TD
+    ENTRY["main.cpp<br/>QApplication"]
+    subgraph 表现层["表现层 · QML + JavaScript"]
+        UI["Main.qml · DeviceSessionView<br/>ConversationTimelineView 等 QML 组件"]
+    end
+    subgraph 应用逻辑层["应用逻辑层 · Controller + Manager"]
+        APP["AppController（组合根 / QML 单例）<br/>TransferSessionManager · ChatManager"]
+    end
+    subgraph 领域层["领域层 · 协议 + 网络 + 业务规则"]
+        DOM["DiscoveryService · P2pServer<br/>FileSender/ReceiverWorker · ChatConnection<br/>FrameCodec · DirSerializer"]
+    end
+    subgraph 数据管理层["数据管理层 · 配置 + 日志 + 持久化"]
+        DATA["ConfigManager · Logger<br/>LocalDataBroker<br/>SqliteDatabaseBroker · Repository"]
+    end
+
+    ENTRY -->|"显式创建"| APP
+    APP -->|"初始化 / 持有 UI 引擎"| UI
+    UI -->|"属性绑定 / 信号上报"| APP
+    APP -->|"接口调用 / 事件回调"| DOM
+    APP -->|"Broker 编排"| DATA
+    DOM -->|"运行期数据"| APP
+```
+
+**分层约束**
+
+- `main.cpp` 只负责创建 `QApplication`（界面全 QML，Widgets 模块仅为系统托盘的 Qt.labs.platform 依赖）、解析启动参数、初始化日志和显式创建 `AppController`
+- `AppController` 是客户端组合根，负责初始化应用层对象和 UI 层
+- QML 禁止直接访问 `QSqlDatabase`、SQL 或文件系统
+- 应用层只依赖 Repository 接口，不感知 SQLite 实现细节
+- SQL 仅存在于 `client/storage/*.cpp`，所有参数通过 `bindValue()` 绑定
+- 数据库不可用时自动降级为无历史模式，P2P 主链路不受影响
+
+**模块依赖方向**
+
+```mermaid
+graph LR
+    subgraph 客户端模块
+        QML["QML 模块<br/>appGridYard"]
+        DOM_LIB["gy_domain<br/>（INTERFACE）"]
+        STORAGE_LIB["gy_storage<br/>（STATIC）"]
+        SHARED_LIB["gy_shared<br/>（STATIC）"]
+    end
+
+    QML --> DOM_LIB
+    QML --> SHARED_LIB
+    STORAGE_LIB --> DOM_LIB
+    STORAGE_LIB -.->|"PRIVATE"| QTSQL["Qt6::Sql"]
+    DOM_LIB --> SHARED_LIB
+
+    style QTSQL fill:#f96,stroke:#333
+```
+
+`Qt6::Sql` 通过 PRIVATE 链接隔离，不传播到 QML 模块或网络 Worker。
+
+---
+
+## 协议设计
+
+> TCP/UDP 业务协议见下文；协调节点与中继的信令协议（relay_invite / relay_poll /
+> relay_create 等）与资源防线另见 `doc/dev-manual/规格与设计/GridYard_协调节点与中继服务设计.md`。
+
+GridYard 使用自研 TLV（Type-Length-Value）二进制协议：
+
+| 字段 | 长度 | 字节序 | 说明 |
+|:-----|:-----|:-------|:-----|
+| Type | 4 字节 | 大端 | 帧类型码 |
+| Length | 4 字节 | 大端 | Payload 字节数 |
+| Payload | Length 字节 | — | 业务数据 |
+
+**帧处理状态机**
+
+```mermaid
+stateDiagram-v2
+    [*] --> 等待帧头
+    等待帧头 --> 读取帧头: 累计 8 字节
+    读取帧头 --> 校验长度: 解析 Type + Length
+    校验长度 --> 等待Payload: Length ≤ 分级上限
+    校验长度 --> 帧错误: Length 超限
+    等待Payload --> 帧完成: 累计 Length 字节
+    帧完成 --> 等待帧头: emit frameReady
+    帧错误 --> [*]: emit errorOccurred
+```
+
+| Type 码 | 方向 | 用途 |
+|:--------|:-----|:-----|
+| 0x0001 | UDP | 设备 Hello / 心跳 |
+| 0x0101 | TCP | 传输握手请求 |
+| 0x0102 | TCP | 握手响应 |
+| 0x0201 | TCP | 文件数据分块 |
+| 0x0301 | TCP | 单文件完成确认 |
+| 0x0302 | TCP | 全部传输完成 |
+| 0x0401 | TCP | 取消传输 |
+| 0x0501 | TCP | 聊天文本消息 |
+| 0x0502 | TCP | 聊天送达回执 |
+
+Payload 按 Type 分级限制：控制帧 1MB，数据帧 256MB，聊天帧 64KB。协议版本字段（`kProtocolVersion = 0x0100`）支持主版本不兼容拒绝与次版本安全降级。
+
+---
+
+## 设备发现与传输流程
+
+**设备发现时序**
+
+```mermaid
+sequenceDiagram
+    participant A as 设备 A
+    participant B as 设备 B
+    participant DS as DiscoveryService
+
+    A->>DS: 启动 UDP 监听 (45678)
+    B->>DS: 启动 UDP 监听 (45678)
+
+    Note over A,B: 每 5 秒广播 Hello
+    A->>B: UDP Hello (deviceId, name, ip, port)
+    B->>A: UDP Hello (deviceId, name, ip, port)
+
+    DS->>DS: 更新内存节点表
+    DS-->>A: nodeDiscovered / peerUpdated 信号
+    DS-->>B: nodeDiscovered / peerUpdated 信号
+
+    Note over A,B: 15 秒无心跳 → 剔除
+```
+
+**文件传输时序**
+
+```mermaid
+sequenceDiagram
+    participant Sender as 发送端 Worker
+    participant Server as 接收端 P2pServer
+    participant Receiver as 接收端 Worker
+    participant UI as 接收端 UI
+
+    Sender->>Server: TCP 连接 + TransferReq
+    Server->>Receiver: 首帧分流，移交 socket
+    Receiver->>UI: 接收确认弹窗
+    UI-->>Receiver: 用户接受
+    Receiver->>Sender: TransferRsp (accept)
+
+    loop 每 8MB
+        Sender->>Receiver: DataChunk
+        Receiver->>Receiver: 写盘 + SHA-256 增量
+    end
+
+    Receiver->>Sender: ChunkAck (单文件校验通过)
+    Sender->>Receiver: TransferDone
+    Receiver->>UI: 传输完成通知
+```
+
+---
+
+## 校园网协调服务器
+
+当设备处于校园网等复杂网络环境时，UDP 广播可能被 AP 隔离阻断，导致同网段的设备无法互相发现。协调服务器提供了设备发现的兜底方案。
+
+### 网络隔离场景示意
+
+```mermaid
+graph LR
+    subgraph 校园网核心["校园网核心交换机"]
+        SW["核心交换机"]
+    end
+
+    subgraph 宿舍楼A["宿舍楼 A（10.0.1.x）"]
+        AP_A["AP A"]
+        PC_A["你的电脑"]
+    end
+
+    subgraph 宿舍楼B["宿舍楼 B（10.0.2.x）"]
+        AP_B["AP B"]
+        PC_B["室友的电脑"]
+    end
+
+    subgraph 服务器["协调/中继服务器（10.10.10.100）"]
+        RV["gridyard_rendezvous"]
+    end
+
+    PC_A -->|"UDP 广播被 AP 隔离"| AP_A
+    PC_B -->|"UDP 广播被 AP 隔离"| AP_B
+    PC_A -.->|"TCP 单播可达？<br/>（取决于 AP 安全策略）"| PC_B
+    PC_A -->|"注册/拉取设备"| RV
+    PC_B -->|"注册/拉取设备"| RV
+```
+
+**关键点**：
+- 你的电脑和室友的电脑分别在不同的宿舍楼，接入了不同的 AP
+- AP 可能会隔离同一网段的 UDP 广播，导致两台电脑无法通过 UDP 广播互相发现
+- 协调服务器是一台**在校园网内**有固定 IP 的机器（只要 TCP 能到达就行，不要求 UDP）
+- 客户端开机后自动向协调服务器注册自己的 IP:端口，并周期性拉取在线设备列表
+
+### 工作原理
+
+协调服务器不参与任何文件传输，只做两件事：**登记在线设备**和**返回设备列表**。
+
+```mermaid
+sequenceDiagram
+    participant A as 你的电脑
+    participant RV as 协调服务器
+    participant B as 室友的电脑
+
+    Note over A: 开机，启用协调服务器
+    A->>RV: TCP 连接（WebSocket/JSON）
+    A->>RV: register {"deviceId": "A", "ip": "10.0.1.50", "tcpPort": 35100}
+    RV-->>A: register_ack {"status": "ok"}
+
+    Note over B: 开机，启用协调服务器
+    B->>RV: TCP 连接
+    B->>RV: register {"deviceId": "B", "ip": "10.0.2.80", "tcpPort": 35100}
+    RV-->>B: register_ack {"status": "ok"}
+
+    Note over A: 每 10 秒刷新 TTL
+    A->>RV: register {"deviceId": "A", ...}
+    RV-->>A: register_ack {"status": "ok"}
+
+    Note over A: 每 10 秒拉取设备列表
+    A->>RV: list_peers
+    RV-->>A: peers {"peers": [{"deviceId": "B", "ip": "10.0.2.80", "tcpPort": 35100}]}
+```
+
+**结果**：你的电脑在设备列表里看到了室友的电脑（来自协调服务器），双方的 IP 和端口都已知。此时两台电脑可以尝试**直接 TCP 连接**传输文件，**不经过协调服务器**。
+
+### 部署架构：只需要一台能 SSH 的旧电脑/服务器
+
+```mermaid
+graph LR
+    subgraph 局域网["任意可达的局域网（WiFi / 有线）"]
+        SERVER["低配旧电脑或服务器<br/>运行 gridyard_rendezvous<br/>端口 45679"]
+        PC1["设备 A"]
+        PC2["设备 B"]
+        PC3["设备 C"]
+    end
+
+    SERVER -->|"注册/查询"| PC1
+    SERVER -->|"注册/查询"| PC2
+    SERVER -->|"注册/查询"| PC3
+    PC1 <-->|"直连 P2P 传输<br/>不经过 SERVER"| PC2
+    PC2 <-->|"直连 P2P 传输<br/>不经过 SERVER"| PC3
+    PC1 <-->|"直连 P2P 传输<br/>不经过 SERVER"| PC3
+```
+
+**部署要求极低**：
+- 任意一台能 SSH 连上的电脑/服务器/树莓派
+- **不需要公网 IP**，只需要在校园网内能 TCP 到达
+- **不需要域名**，IP + 端口就行
+- **内存 512MB 就够**，因为只做连接登记不做文件转发（Relay 模式除外）
+- 建议用 `--token` 参数加简单密码，客户端配置相同的 Token 防止蹭网
+
+### 两种运行模式
+
+| 模式 | 命令 | 用途 |
+|:-----|:-----|:-----|
+| 协调节点（默认） | `./gridyard_rendezvous --port 45679` | 发现兜底 + 中继邀请信令 + 同端口内置中继转发 |
+| 中继服务器 | `./gridyard_rendezvous --mode relay --port 45679` | 仅提供中继转发（无设备注册） |
+
+**协调节点**（默认）：
+```bash
+# 编译
+cd src
+cmake --build build-ninja -j
+
+# 启动协调节点（默认端口 45679，同端口内置中继）
+./build-ninja/rendezvous/gridyard_rendezvous
+
+# 指定端口和密码
+./build-ninja/rendezvous/gridyard_rendezvous --port 45780 --token my-secret-token
+```
+
+协调节点模式会按连接的首行握手分流：注册、候选拉取和中继邀请信令走协调会话，`relay_create`/`relay_join` 走中继字节管道，校园网只需开放一个端口。发送端直连失败后通过协调服务器向接收端发送中继邀请，接收端加入后两端经中继转发标准 TLV 传输流，中继不落盘任何文件内容。
+
+**中继服务器**（独立部署，仅转发不登记设备）：
+```bash
+./build-ninja/rendezvous/gridyard_rendezvous --mode relay --port 45679
+```
+> 中继模式流量经服务器转发，大文件会占带宽，只有 AP 完全隔离 TCP 的极端场景才需要。
+
+### 配置客户端
+
+1. 打开 **设置 → 协调服务器**
+2. 启用协调服务器
+3. 填入服务器地址（如 `10.10.10.100`）和端口（如 `45679`）
+4. 如果服务器设置了 Token，填入相同的 Token；客户端会把 Token 随注册、设备查询和中继握手一起发送，服务器不校验通过则无法使用
+5. 选择 **Relay 策略**：
+   - **询问后中继**（默认）：P2P 失败时弹窗询问用户
+   - **自动中继**：P2P 失败后自动通过中继服务器转发
+   - **从不**：P2P 失败则传输失败
+
+> Token 是防蹭网的简单口令，在局域网内明文传输，能挡住未配置口令的陌生设备，不能防御网络内的主动嗅探，请勿使用高敏感密码。
+
+### 设备列表分段与来源优先级
+
+设备列表按"置顶 / 在线设备 / 最近见过"三段展示：置顶段无论在线离线都排最前；在线设备是主内容，最近见过的历史设备只露出最近 10 台，其余通过搜索查找（搜索同时匹配设备名、本地备注与最近 IP，并深入检索本地历史库）。段内条目按来源优先级排序（高优先级排在前面）：
+
+| 优先级 | 来源 | 说明 |
+|:-------|:-----|:-----|
+| 1 | broadcast | UDP 广播直接发现（同 AP 内，最优先） |
+| 2 | directed | 定向 Hello 探测成功 |
+| 3 | rendezvous | 协调服务器返回的候选端点 |
+| 4 | manual | 用户手动添加的 IP 端点 |
+| 5 | history | 历史记录中的设备 |
+
+右键菜单支持置顶、添加为好友、设置本地备注、不显示该设备与删除本地记录（手动 IP 添加的条目待对方真实身份经同 IP 合并确认后才能加好友；导入对方邀请码成功即自动成为好友）；在线设备的"删除"不可用（网络里的设备删不掉，可用"不显示"忽略），离线设备删除会连同聊天与传输历史一并清除、不影响已接收文件。**连接优先级**：发现服务会按优先级尝试建立连接，成功即停，不逐个尝试。
+
+### 数据流总览
+
+```mermaid
+graph TD
+    subgraph 发现阶段["发现阶段"]
+        A["设备 A"]
+        B["设备 B"]
+        RV["协调服务器"]
+    end
+
+    subgraph 连接阶段["连接阶段（A 主动连接 B）"]
+        A -->|"1. 已知 B 的 IP:端口<br/>直接 TCP 连接"| B
+        A -.->|"2. 直连失败时尝试<br/>中继转发"| RV
+    end
+
+    subgraph 传输阶段["传输阶段"]
+        A <-.->|"3. 成功后直传文件<br/>不经过协调服务器"| B
+    end
+```
+
+### 端口说明
+
+| 服务 | 默认端口 | 说明 |
+|:-----|:---------|:-----|
+| 协调节点 | 45679 | 设备注册、列表查询、中继邀请信令与内置中继转发 |
+| 客户端 TCP 监听 | 35100 | 接收文件/聊天连接 |
+
+开发者模式实例 N（`--instance=N`，N 为 1~9）：UDP 发现端口取 45678+10N、TCP 监听端口取 35100+10N，偏移规则与合法范围定义在 `src/shared/protocol.h`；步长 10 保证实例端口不会与协调节点 45679 等既有端口冲突。
 
 ---
 
 ## 仓库目录结构
 
-> `[done]` 已就位、`[wip]` 占位（待后续阶段填充）
-
 ```text
 GridYard/
-├── README.md                              # 项目说明、构建指引、速查表
-├── .gitignore                             # Git 忽略配置
+├── README.md
 ├── doc/
-│   ├── spec/                              # 核心规格与设计文档
-│   │   ├── 鸽邮(GridYard)——技术需求与系统设计规格说明书.md
-│   │   └── 鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md
-│   ├── manuals/                           # 指导手册与踩坑心得
-│   │   ├── 鸽邮(GridYard)——团队开发者手册.md
-│   │   └── 开发心得_从架构设计到踩坑记录.md
-│   ├── plans/                             # 迭代开发计划与历史归档
-│   │   ├── 鸽邮(GridYard)——软件开发阶段计划.md
-│   │   └── history_stage0/                # [done] 已脱敏的 Stage 0 历史归档
-│   └── templates/                         # 开发模板与集成演示
-│       ├── integration_demo/              # C++ <-> QML 交互集成示例
-│       ├── CMakeLists.qml.template        # Qt Quick 项目 CMake 模板
-│       ├── CMakeLists.widgets.template    # Widgets 项目 CMake 模板
-│       ├── qmldir.template                # qmldir 声明文件模板
-│       └── README.md                      # 模板使用指南
-│
+│   ├── diagrams/                        # UML 类图、组件图、序列图
+│   │   └── rendered/                    # PNG/SVG 导出
+│   ├── dev-manual/
+│   │   ├── 规格与设计/                   # 技术规格、架构设计
+│   │   ├── 开发心得/                     # 踩坑记录、开发手册
+│   │   └── 测试与部署/                   # 测试与打包指南
+│   ├── plan/                            # 阶段开发计划
+│   └── api-docs/                        # 模块 API 文档
 └── src/
-    ├── CMakeLists.txt                     # 顶层构建入口
-    ├── scripts/
-    │   └── for_md.py                      # 代码归档工具
-    ├── shared/                            # [done] 共用核心库 gy_shared
-    │   ├── CMakeLists.txt                 # shared 模块构建配置
-    │   ├── protocol.h                     # [wip] 通信协议定义（Stage 1 填充）
-    │   ├── data_types.h                   # [done] 跨模块通用数据类型
-    │   ├── frame_codec.h                  # [wip] 帧编解码器声明（Stage 1 实现）
-    │   └── frame_codec.cpp                # [wip] 帧编解码器实现（Stage 1 实现）
-    ├── client/                            # [done] 桌面客户端（QML + C++）
-    │   ├── CMakeLists.txt                 # client 模块构建配置（含 qml module 注册）
-    │   ├── main.cpp                       # C++ 主程序入口
-    │   ├── Main.qml                       # QML 根窗口
-    │   ├── core/                          # 业务逻辑控制器
-    │   │   ├── app_controller.h           # 应用全局控制器声明
-    │   │   └── app_controller.cpp         # 应用全局控制器实现
-    │   ├── network/                       # [wip] 网络通信层（Stage 2 填充）
-    │   └── ui/                            # [wip] QML 子组件（Stage 3 填充）
-    ├── server/                            # [wip] 服务端（V2.0 阶段）
-    └── tests/                             # [wip] 单元测试（Stage 1+ 启用）
+    ├── CMakeLists.txt                   # 顶层 CMake
+    ├── shared/                          # 共用静态库 gy_shared
+    │   ├── CMakeLists.txt
+    │   ├── protocol.h                   # TLV 协议 Type 码与常量
+    │   ├── data_types.h                 # PeerInfo / FileEntry / TransferSession
+    │   ├── chat_message.{h,cpp}         # 聊天消息 JSON 编解码
+    │   └── frame_codec.{h,cpp}          # TLV 帧编解码（粘包状态机）
+    ├── client/
+    │   ├── CMakeLists.txt               # 客户端 QML 模块与 IDE 分组
+    │   ├── main.cpp                     # 程序入口，显式创建 AppController
+    │   ├── Main.qml                     # QML 根窗口，由 AppController 初始化
+    │   ├── core/                        # 应用逻辑层
+    │   │   ├── app_controller.{h,cpp}   # 全局控制器，初始化应用层与 UI 层
+    │   │   ├── config_manager.{h,cpp}   # 配置管理（QSettings）
+    │   │   ├── transfer_session_manager.{h,cpp}
+    │   │   ├── chat_manager.{h,cpp}     # 聊天连接与内存会话
+    │   │   ├── chat_message_model.{h,cpp}
+    │   │   ├── history_controller.{h,cpp} # 本地历史分页、筛选和清理
+    │   │   ├── application_paths.{h,cpp}
+    │   │   ├── dir_serializer.{h,cpp}   # 目录遍历 + SHA-256
+    │   │   └── logger.{h,cpp}           # 日志拦截器
+    │   ├── network/                     # 网络层
+    │   │   ├── discovery_service.{h,cpp}    # UDP 设备发现
+    │   │   ├── p2p_server.{h,cpp}           # TCP 服务器（首帧分流）
+    │   │   ├── chat_connection.{h,cpp}      # 聊天 TCP 连接
+    │   │   ├── file_sender_worker.{h,cpp}  # 发送 Worker（后台线程）
+    │   │   └── file_receiver_worker.{h,cpp}# 接收 Worker（后台线程）
+    │   ├── domain/                      # 领域层（Repository 端口）
+    │   │   ├── CMakeLists.txt
+    │   │   ├── history_records.h        # PeerRecord / MessageRecord / TransferRecord
+    │   │   └── history_repositories.h   # IDevice/Message/TransferHistory Repository
+    │   ├── storage/                     # 基础设施层（SQLite Broker + Repository）
+    │   │   ├── CMakeLists.txt
+    │   │   ├── local_data_broker.{h,cpp}       # 本地数据层代管者
+    │   │   ├── sqlite_database_broker.{h,cpp}  # 连接、WAL、事务
+    │   │   ├── sqlite_device_repository.{h,cpp} # 设备目录 Data Mapper
+    │   │   ├── sqlite_message_repository.{h,cpp} # 聊天消息 Data Mapper
+    │   │   ├── sqlite_transfer_history_repository.{h,cpp} # 传输历史 Data Mapper
+    │   │   ├── migration_runner.{h,cpp}       # Schema 版本迁移
+    │   │   └── database_worker.{h,cpp}        # 异步数据库线程
+    │   ├── ui/                          # QML 界面组件
+    │   │   ├── DeviceCard.qml
+    │   │   ├── PeerListView.qml
+    │   │   ├── DeviceSessionView.qml
+    │   │   ├── ChatView.qml             # 聊天气泡视图
+    │   │   ├── SettingsDialog.qml
+    │   │   ├── AcceptDialog.qml
+    │   │   ├── TransferPanel.qml
+    │   │   ├── TransferHistoryView.qml
+    │   │   ├── TransferTaskCard.qml
+    │   │   └── FileTypeIcon.qml
+    │   ├── icons/                       # 文件类型与应用图标资源
+    │   │   ├── gridyard.png
+    │   │   ├── folder.svg
+    │   │   └── file-*.svg
+    │   ├── images/                      # 预留图片资源
+    │   └── utils/                       # QML 工具模块
+    │       ├── Style.js                 # 样式常量
+    │       └── FormatUtils.js           # 格式化工具
+    ├── scripts/                         # 辅助脚本
+    │   └── for_md.py                    # 代码归档工具
+    ├── server/                          # V2 服务端（规划中）
+    └── tests/                           # 单元测试与集成测试
+        ├── CMakeLists.txt
+        ├── test_frame_codec.cpp
+        ├── test_chat_message.cpp
+        ├── test_chat_manager.cpp
+        ├── test_discovery.cpp
+        ├── test_file_transfer.cpp
+        ├── test_session_manager.cpp
+        ├── test_transfer.cpp
+        ├── test_config_manager.cpp
+        ├── test_edge_cases.cpp
+        ├── test_integration.cpp
+        ├── test_storage_database.cpp
+        ├── test_storage_device.cpp
+        ├── test_storage_message.cpp
+        ├── test_storage_transfer_history.cpp
+        └── test_history_controller.cpp
 ```
 
 ---
 
-## 构建与运行
+## 关键设计决策
 
-**环境要求**：Manjaro Linux、GCC 16.1+、CMake 4.2.3+、Qt 6.11+、Ninja 1.13+。
-
-```bash
-# 1. 首次配置（进入 src 目录执行）
-cd src
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-
-# 2. 增量构建
-cmake --build build -j
-
-# 3. 运行客户端（注意：可执行文件在 build/client/ 下）
-./build/client/appGridYard
-
-# 4. 跑全部单测（Stage 1+ 才有）
-ctest --test-dir build --output-on-failure
-```
-
-**Stage 0 预期效果**：弹出 960×640 空白窗口，标题 `GridYard v0.1.0`，中间一行文字 *"GridYard 骨架就绪 — 等待 Stage 1 填充协议层"*。关窗会在终端打印 `AppController::quit invoked from QML`，证明 QML → C++ 链路通了。
+| 决策 | 选择 | 理由 |
+|:-----|:-----|:-----|
+| 通信模型 | P2P 直连 | 局域网场景无需中转，避免单点故障与公网依赖 |
+| 协议格式 | TLV 二进制 | 比 JSON 紧凑，天然支持粘包状态机 |
+| 多线程模型 | Worker-Object + moveToThread | 避免 QThread::run 重写，信号槽跨线程安全 |
+| 数据库访问 | Repository 端口 + Data Mapper | 应用层不感知 SQL，便于测试与未来替换 |
+| 接收线程 | 每连接独立 QThread | 写盘与 SHA-256 不阻塞 UI |
+| 界面技术 | 全 QML | 声明式绑定，C++ 只暴露状态入口 |
+| 配置存储 | QSettings | 跨平台原生配置 API |
 
 ---
 
-# 快速加入仓库开发
-
-# for_md.py 使用教程
-
-`for_md.py` 是一款由GY设计编写轻量高效的代码归档工具，可将指定目录下的构建配置文件、各类源文件批量整合为结构化的 Markdown 文档，便捷实现代码归档、查阅与分享。
-
-## 功能特点
-
-1. **智能过滤无关内容**：自动排除图片、二进制文件（.exe/.dll/.so等）、编译产物（build/dist/obj等）、编辑器配置目录（.git/.idea/.vscode等），仅保留核心代码与构建文件；
-2. **构建文件优先整理**：CMakeLists.txt、Makefile、.pro/.cmake（Qt/CMake）等构建配置文件，会优先整合到「项目特征总结」后方，便于快速掌握项目构建规则；
-3. **多语言语法高亮**：适配 C/C++、Python、Java、JavaScript/TypeScript、HTML/CSS、SQL、CMake、QMake、Makefile 等主流格式，Markdown 代码块自动匹配对应语法高亮；
-4. **结构化排版**：通过多级标题区分「项目信息」「构建配置文件」「项目源文件」，并预留「项目特征总结」编辑位，文档层次清晰；
-5. **路径自适应兼容**：支持直接拖入文件夹生成路径，自动处理路径格式、转换为绝对路径，兼容 Windows/macOS/Linux 系统路径规范。
-
-## 使用步骤
-
-### 前置条件
-
-确保本地已安装 Python 环境（Python 3.x 任意版本均可）。
-
-### 操作步骤
-
-1. **运行脚本**：在脚本所在目录打开终端/命令提示符，执行命令：
-   ```bash
-   python for_md.py
-   ```
-2. **输入目标路径**：根据终端提示，输入待归档的项目根目录路径（支持直接拖入文件夹自动生成路径），示例：
-   ```
-   /run/media/root/铠侠D/桌面文件/开源技术群资料/考试/CourseSelectionSystem/CourseSelectionSystem/src/CourseSelectionSystem/
-   ```
-3. **自动生成文档**：脚本会自动扫描目录、过滤无关文件、整合代码内容，完成后在指定项目目录下生成 `<项目名>_knowledge_base.md` 文件（例：`CourseSelectionSystem_knowledge_base.md`）。
-
-## 注意事项
-1. 路径输入支持绝对路径，若路径包含空格/特殊字符，无需手动添加引号，脚本会自动处理；
-2. 生成的 Markdown 文件会被自动排除在扫描范围外，避免循环读取；
-3. 若提示「权限错误」，请检查目标目录的写入权限（如 Windows 需以管理员身份运行终端）；
-4. 非 UTF-8 编码的文件会被跳过（终端会提示），避免乱码或读取失败；
-5. 可通过修改脚本内 `IGNORE_EXTS`/`IGNORE_DIRS` 等配置项，自定义过滤规则。
-
-# 快速加入开发
-
-## Git 日常开发速查命令集（占位符版）
-
-### 如何使用此速查表
-
-1. **替换占位符**：使用时将 `<占位符>` 替换为实际值
-   - `<仓库URL>` → `https://github.com/username/repo.git`
-   - `<分支名>` → `dev`、`feature/login`、`release`
-   - `<文件名>` → `src/main.cpp`、`README.md`
-
-2. **组合命令**：根据实际工作流组合使用
-
-3. **实践练习**：在测试仓库中练习常用命令
-
-4. **自定义修改**：根据团队规范调整命令格式
-
-记住：**Git 是工具，熟练使用需要实践**。遇到问题时，`git status` 和 `git log --oneline --graph --all` 通常能帮你理清当前状态。
-
-##  日常开发速查表
-
-### **开发流程**
-
-```bash
-# 开始新功能
-git switch <主分支> && git pull && git switch -c feature/<功能名>
-
-# 日常提交
-git add . && git commit -m "feat: <功能>" && git push
-
-# 暂存所有已跟踪文件的修改
-git add -u
-
-# 拉取更新
-git switch <当前分支> && git pull
-
-# 查看状态
-git status
-
-# 查看历史
-git log --oneline --graph --all -10
-```
-
-### **分支管理**
-
-```bash
-# 创建分支
-git switch -c <分支名>
-
-# 切换分支
-git switch <分支名>
-
-# 合并分支
-git merge <源分支>
-
-# 删除分支
-git branch -d <分支名>
-```
-
-### **远程协作**
-
-```bash
-# 查看远程
-git remote -v
-
-# 添加远程
-git remote add <远程名> <远程URL>
-
-# 拉取代码
-git pull <远程名> <分支名>
-
-# 推送代码
-git push <远程名> <分支名>
-
-# 修改提交，但不修改提交信息
-# 1.暂存所有修改：
-git add -u
-# 2.替换上一次修改：
-git commit --amend --no-edit
-# 3.安全强制推送（优先推荐）：
-git push origin dev --force-with-lease
-```
-
-## ⚠️ 重要提醒
-
-### **危险操作**
-
-```bash
-# 慎用！会丢失未提交的修改
-git reset --hard
-
-# 慎用！会覆盖远程历史
-git push -f
-
-# 慎用！会删除未跟踪的文件
-git clean -fd
-
-# 操作前先备份
-git branch backup-<操作描述>
-```
-
-### Tag 合并到 Release 分支速查表
-
-#### 核心场景：添加 Tag → 合并到 Release 分支 → 推送远程
-
-##### 1. 前置准备（确保本地代码/Tag 与远程一致）
-```bash
-# 拉取远程所有分支+Tag（必做，避免本地缺失）
-git fetch origin --tags
-```
-
-##### 2. 本地添加 Tag（若未打 Tag 先执行）
-```bash
-# 方式1：附注标签（推荐，带说明）
-git tag -a <版本号/标签名> -m "Release: <版本号> 发布说明"
-# 示例：git tag -a v1.0.0 -m "Release: v1.0.0 正式版发布"
-
-# 方式2：轻量标签（仅标记，无说明）
-git tag <标签名>
-```
-
-### 3. 切换到 Release 分支并拉取最新代码
-```bash
-# 切换到release分支
-git switch release
-# 或经典写法：git checkout release
-
-# 拉取远程release最新代码
-git pull origin release
-
-# 拉取别人的分支后想删除未跟踪的文件，预览要删除的文件/目录
-git clean -nfd
-
-# 只删未跟踪文件
-git clean -fd
-
-# 删未跟踪 + 删 .gitignore 所有文件
-git clean -fdx
-```
-
-### 4. 合并 Tag 到 Release 分支（二选一）
-#### 方式1：完整合并 Tag（推荐，保留版本历史）
-```bash
-# 合并指定Tag到release分支（--no-ff 保留分支记录）
-git merge <标签名> --no-ff -m "合并 tag <标签名> 到 release 分支"
-```
-
-#### 方式2：摘取 Tag 对应提交（仅取单个提交）
-```bash
-# 精准摘取Tag对应的提交到release分支
-git cherry-pick <标签名>
-```
-
-### 5. 冲突处理（合并/摘取时触发）
-```bash
-# 1. 手动解决冲突文件后，暂存冲突文件
-git add <冲突文件名>
-
-# 2. 继续完成合并/摘取操作
-# 合并冲突：
-git merge --continue
-# 摘取冲突：
-git cherry-pick --continue
-```
-
-### 6. 推送 Release 分支 + Tag 到远程
-```bash
-# 推送release分支到远程
-git push origin release
-
-# 推送Tag到远程（首次打Tag必做，方便追溯）
-git push origin <标签名>
-
-# 批量推送所有未推送的Tag（可选）
-git push origin --tags
-```
-
-### ⚠️ 速查关键提醒
-1. 合并前必须执行 `git fetch origin --tags`，确保本地有最新Tag；
-2. 优先用 `git merge <标签名>` 合并完整版本，单个提交用 `git cherry-pick <标签名>`；
-3. 禁止直接用 `git push -f` 推送release分支，避免覆盖远程稳定代码；
-4. 合并后建议在代码平台（GitLab/GitHub）确认Release分支内容无误。
-
-### **最佳实践**
-
-1. **小步提交**：每个提交完成一个小功能
-2. **清晰信息**：使用约定式提交格式（feat:, fix:, docs:, style:, refactor:, test:, chore:）
-3. **先拉后推**：推送前先拉取最新代码避免冲突
-4. **分支策略**：功能分支开发，主分支保护
-5. **标签管理**：重要版本打标签标记
-
-##  SSH 配置与管理
-
-### **1. SSH 密钥生成与管理**
-```bash
-# 生成 SSH 密钥（如果还没有）
-ssh-keygen -t ed25519 -C "你的邮箱"
-# 或使用 RSA
-ssh-keygen -t rsa -b 4096 -C "你的邮箱"
-
-# 查看公钥
-cat ~/.ssh/id_ed25519.pub
-
-# 复制公钥（macOS）
-pbcopy < ~/.ssh/id_ed25519.pub
-# Linux
-cat ~/.ssh/id_ed25519.pub | xclip -selection clipboard
-# Windows (Git Bash)
-cat ~/.ssh/id_ed25519.pub | clip
-```
-
-### **2. SSH 连接测试**
-```bash
-# 测试 GitHub 连接
-ssh -T git@github.com
-
-# 测试 Gitee 连接
-ssh -T git@gitee.com
-
-# 测试 GitLab 连接
-ssh -T git@gitlab.com
-```
-
-##  远程仓库操作
-
-### **3. 克隆仓库**
-```bash
-# 克隆仓库（默认分支）
-git clone <仓库URL>
-
-# 克隆特定分支
-git clone -b <分支名> <仓库URL>
-
-# 克隆 SSH 方式
-git clone git@github.com:<用户名>/<仓库名>.git
-
-# 克隆并指定本地目录名
-git clone <仓库URL> <本地目录名>
-```
-
-### **4. 拉取远程分支到本地**
-```bash
-# 查看所有远程分支
-git branch -r
-
-# 拉取远程分支并创建本地分支
-git switch -c <本地分支名> origin/<远程分支名>
-# 或经典方式
-git checkout -b <本地分支名> origin/<远程分支名>
-
-# 拉取所有远程分支信息
-git fetch --all
-
-# 更新指定远程分支
-git fetch origin <远程分支名>
-```
-
-##  分支操作
-
-### **5. 分支查看与切换**
-```bash
-# 查看本地分支
-git branch
-
-# 查看所有分支（包括远程）
-git branch -a
-
-# 查看分支详细信息（跟踪关系）
-git branch -vv
-
-# 切换到已有分支
-git switch <分支名>
-# 或经典方式
-git checkout <分支名>
-
-# 切换回上一个分支
-git switch -
-# 或
-git checkout -
-```
-
-### **6. 创建与删除分支**
-```bash
-# 创建新分支（不切换）
-git branch <新分支名>
-
-# 创建并切换到新分支
-git switch -c <新分支名>
-# 或
-git checkout -b <新分支名>
-
-# 从特定提交创建分支
-git switch -c <新分支名> <提交哈希>
-
-# 删除本地分支（已合并）
-git branch -d <分支名>
-# 强制删除本地分支（未合并）
-git branch -D <分支名>
-
-# 删除远程分支
-git push origin --delete <分支名>
-# 或
-git push origin :<分支名>
-```
-
-##  状态与提交
-
-### **7. 查看状态与差异**
-```bash
-# 查看工作区状态
-git status
-
-# 简略状态（紧凑格式）
-git status -s
-
-# 查看未暂存的修改
-git diff
-
-# 查看已暂存的修改
-git diff --staged
-# 或
-git diff --cached
-
-# 查看特定文件的修改
-git diff <文件名>
-```
-
-### **8. 提交代码**
-```bash
-# 添加所有修改到暂存区
-git add .
-
-# 添加特定文件
-git add <文件1> <文件2>
-
-# 添加目录
-git add <目录名>/
-
-# 交互式添加（选择要添加的部分）
-git add -p
-
-# 提交暂存区的修改
-git commit -m "提交说明"
-
-# 提交并添加详细描述
-git commit -m "标题" -m "详细描述..."
-
-# 直接提交所有修改（跳过暂存区，慎用）
-git commit -am "提交说明"
-
-# 修改上次提交（未推送时）
-git commit --amend -m "新的提交信息"
-```
-
-##  推送与拉取
-
-### **9. 推送到远程仓库**
-```bash
-# 推送到远程并设置上游分支（第一次推送）
-git push -u origin <分支名>
-
-# 推送当前分支（已设置上游）
-git push
-
-# 强制推送（慎用）
-git push -f origin <分支名>
-# 更安全的强制推送
-git push --force-with-lease origin <分支名>
-
-# 推送所有分支
-git push --all origin
-
-# 推送标签
-git push origin <标签名>
-# 推送所有标签
-git push origin --tags
-```
-
-### **10. 拉取与合并**
-```bash
-# 拉取并合并（git fetch + git merge）
-git pull origin <分支名>
-
-# 拉取并变基（保持历史线性）
-git pull --rebase origin <分支名>
-
-# 仅拉取不合并
-git fetch origin
-
-# 拉取特定分支
-git fetch origin <分支名>
-
-# 拉取所有远程分支
-git fetch --all
-
-# 拉取并允许不相关历史合并
-git pull origin <分支名> --allow-unrelated-histories
-```
-
-##  标签操作
-
-### **11. 标签管理**
-```bash
-# 查看所有标签
-git tag
-
-# 查看标签详细信息
-git show <标签名>
-
-# 创建轻量标签
-git tag <标签名>
-
-# 创建附注标签（推荐）
-git tag -a <标签名> -m "标签说明"
-
-# 在特定提交上打标签
-git tag -a <标签名> <提交哈希> -m "标签说明"
-
-# 删除本地标签
-git tag -d <标签名>
-
-# 删除远程标签
-git push origin --delete <标签名>
-# 或
-git push origin :refs/tags/<标签名>
-
-# 把本地的v1.0标签推送到远程 origin 仓库
-git push origin <标签名>
-
-# 批量推送所有标签（防遗漏）
-git push origin --tags
-
-# 查看远程标签列表
-git ls-remote --tags origin
-```
-
-### **12. 将特定标签合并到发布分支**
-当你需要在 dev 分支为某个版本打了 tag 后，仅将这个 tag 对应的特定版本代码精准合并到 release 发布分支，而不是合并 dev 分支的所有最新提交时，可以使用以下方法：
-
-#### 方式 1：直接合并 tag（推荐，适用于 tag 是 dev 分支线性提交的终点）
-```bash
-# 1. 确保本地代码最新，拉取远程所有分支和 tag
-git fetch origin --tags
-
-# 2. 切换到 release 分支，并拉取最新的 release 代码
-git checkout release
-git pull origin release
-
-# 3. 合并指定 tag 到 release 分支
-git merge <tag名> --no-ff -m "合并 tag <tag名> 到 release 分支"
-
-# 4. 如有冲突，解决后继续
-git add <冲突文件>
-git merge --continue
-```
-
-#### 方式 2：Cherry-pick tag 对应的提交（适用于只取单个提交）
-```bash
-# 1. 先切换到 release 分支并拉取最新
-git checkout release
-git pull origin release
-
-# 2. 摘取 tag 对应的提交到 release
-git cherry-pick <tag名>
-
-# 3. 若有冲突，解决后执行：
-git add <冲突文件>
-git cherry-pick --continue
-```
-
-#### 后续步骤：推送 release 分支
-```bash
-# 推送 release 分支到远程
-git push origin release
-
-# 若 tag 未推过远程，补充推送 tag（可选，建议推送，方便追溯）
-git push origin <tag名>
-```
-
-#### 关键要点
-1. **核心命令**：合并 tag 优先用 `git merge <tag名>`（保留历史，适合完整版本），单个提交摘取用 `git cherry-pick <tag名>`
-2. **前置准备**：合并前务必 `git fetch --tags` 和 `git pull release`，确保本地代码和远程一致
-3. **冲突处理**：合并/摘取时的冲突需手动解决，解决后用 `--continue` 完成操作
-
-##  历史与日志
-
-### **13. 查看历史**
-```bash
-# 单行显示提交历史
-git log --oneline
-
-# 显示最近 N 条提交
-git log -<N>
-
-# 图形化显示分支历史
-git log --graph --oneline --all
-
-# 显示完整历史
-git log
-
-# 显示特定作者的提交
-git log --author="<作者名>"
-
-# 显示包含特定关键词的提交
-git log --grep="<关键词>"
-
-# 显示某时间段内的提交
-git log --since="<开始日期>" --until="<结束日期>"
-
-# 显示文件修改历史
-git log --follow <文件名>
-```
-
-### **14. 分支图可视化**
-```bash
-# 基础分支图
-git log --oneline --graph --all
-
-# 详细分支图
-git log --oneline --graph --all --decorate
-
-# 最近 N 条提交的图形化显示
-git log --oneline --graph --all -<N>
-
-# 彩色分支图（更清晰）
-git log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
-```
-
-##  日常开发工作流
-
-### **15. 开发新功能**
-```bash
-# 1. 切换到开发分支并更新
-git switch <开发分支>
-git pull origin <开发分支>
-
-# 2. 创建功能分支
-git switch -c feature/<功能名>
-
-# 3. 开发代码...
-git add .
-git commit -m "feat: 添加<功能名>"
-
-# 4. 推送功能分支
-git push -u origin feature/<功能名>
-
-# 5. 在代码平台创建 Pull Request/Merge Request
-```
-
-### **16. 修复 bug**
-```bash
-# 1. 从稳定分支创建修复分支
-git switch <稳定分支>
-git switch -c hotfix/<bug描述>
-
-# 2. 修复代码...
-git add .
-git commit -m "fix: 修复<bug描述>"
-
-# 3. 推送到远程
-git push -u origin hotfix/<bug描述>
-
-# 4. 创建 PR/MR 或直接合并
-```
-
-### **17. 发布新版本**
-```bash
-# 1. 切换到发布分支
-git switch <发布分支>
-git pull origin <发布分支>
-
-# 2. 从开发分支合并最新代码
-git merge <开发分支> --no-ff -m "准备发布 <版本号>"
-
-# 3. 打标签
-git tag -a <版本号> -m "Release <版本号>"
-
-# 4. 推送分支和标签
-git push origin <发布分支>
-git push origin <版本号>
-
-# 5. 在代码平台创建正式 Release
-```
-
-##  撤销与恢复
-
-### **18. 撤销操作**
-```bash
-# 撤销暂存（取消 add）
-git restore --staged <文件名>
-# 或经典方式
-git reset HEAD <文件名>
-
-# 丢弃工作区修改（危险，会丢失未提交内容）
-git restore <文件名>
-# 或经典方式
-git checkout -- <文件名>
-
-# 撤销上次提交（保留修改到工作区）
-git reset --soft HEAD~1
-
-# 撤销上次提交（丢弃修改）
-git reset --hard HEAD~1
-
-# 撤销到指定提交
-git reset --hard <提交哈希>
-
-# 安全撤销已推送的提交（生成反向提交）
-git revert <提交哈希>
-```
-
-### **19. 恢复丢失的提交**
-```bash
-# 查看操作历史（包括已删除的提交）
-git reflog
-
-# 从 reflog 恢复分支
-git switch -c <恢复分支名> <reflog哈希>
-
-# 或直接重置
-git reset --hard <reflog哈希>
-```
+## 性能与限制
+
+| 指标 | 数值 |
+|:-----|:-----|
+| 单 chunk 大小 | 8 MB |
+| 最大帧载荷 | 256 MB（数据帧）/ 1 MB（控制帧） |
+| 心跳间隔 | 5 秒 |
+| 离线剔除 | 15 秒无心跳 |
+| 发现节流 | 30 秒（相同设备快照） |
+| 数据库模式 | WAL，synchronous=NORMAL，busy_timeout=5000ms |
+| 损坏库恢复 | 备份为 `.corrupt-{timestamp}` 后重建空库 |
+| 聊天消息上限 | 4000 字符 / 64 KB Payload |
+
+---
+
+## 文档索引
+
+| 文档 | 路径 |
+|:-----|:-----|
+| 需求规格 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——技术需求与系统设计规格说明书.md` |
+| 架构设计 | `doc/dev-manual/规格与设计/鸽邮(GridYard)——V1.0架构设计与V2.0演进说明书.md` |
+| 业务逻辑 | `doc/dev-manual/规格与设计/GridYard业务逻辑说明.md` |
+| 开发心得 | `doc/dev-manual/开发心得/开发心得_从架构设计到踩坑记录.md` |
+| Stage 6 数据层设计 | `doc/dev-manual/规格与设计/GridYard_Stage6_本地数据层设计.md` |
+| 模块 API 文档 | `doc/api-docs/` |
+| UML 图 | `doc/diagrams/` |
+
+---
+
+## 团队
+
+| 成员 | 职责 |
+|:-----|:----|
+| 高扬 | 架构设计、协议层、CMake、打包部署、阶段验收 |
+| 冯春霖 | 网络传输、Worker 实现、聊天连接、性能调优 |
+| 杜若贤 | QML 界面、UI 组件、测试用例、文档与 UML |
+
+---
+
+## 许可证
+
+本项目为课程作业，版权归开发团队所有，保留所有权利。详情见 [LICENSE](./LICENSE)。

@@ -1,0 +1,575 @@
+/**
+ * @file    DeviceSessionView.qml
+ * @version 7.25.0
+ * @date 2026-10-08
+ * @author  GridYard Team
+ * @brief   当前设备的统一会话页
+ *
+ * 按设备展示聊天消息和传输任务，并提供文本、文件和文件夹发送入口；
+ * 设备离线时在页内给出明确状态提示。
+ */
+
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import cqnu.gridyard.client 1.0
+import "../utils/Style.js" as Style
+
+Frame {
+   id: deviceSessionView
+
+   required property string deviceId
+   required property string deviceName
+   // 对方广播名（原名）：备注生效时在头部小字展示，供人工核对远程改名
+   required property string remoteName
+   required property string ipAddress
+   required property bool isOnline
+
+   property var expandedSessions: ({})  // 记录每个传输任务文件夹展开状态的字典
+   property string chatError: ""  // 聊天发送失败时的错误提示文字
+   // 发送按钮可用条件：设备在线 + 输入非空 + 不超过协议层字符上限
+   readonly property bool canSendChat: isOnline
+                                      && messageInput.text.trim().length > 0
+                                      && messageInput.text.length <= AppController.chatController.maxChatContentLength
+   // 接近协议上限时才显示字符计数，避免常驻噪音
+   readonly property bool showCharCounter: messageInput.text.length > 3600
+
+   // 校验输入后发送文本消息；返回 false 表示消息未被接受，保留输入与错误提示等待重试
+   function sendChatMessage(): void {
+       if (!canSendChat) {
+           return
+       }
+       const accepted = AppController.chatController.sendText(deviceId, messageInput.text)
+       if (accepted) {
+           messageInput.clear()
+       }
+   }
+
+   // 使用 Object.assign 浅拷贝再修改，触发 QML 属性绑定更新
+   function setSessionExpanded(sessionId: string, expanded: bool): void {
+       const next = Object.assign({}, expandedSessions)
+       next[sessionId] = expanded
+       expandedSessions = next
+   }
+
+   // 当前设备已结束的传输会话数量（用于清空按钮可用性判断）
+   property int finishedCount: {
+       let count = 0
+       const sessions = AppController.transferController.sessions
+       for (let i = 0; i < sessions.length; i++) {
+           const status = sessions[i].status
+           // 只统计当前设备的会话，跳过其他设备
+           if (sessions[i].deviceId !== deviceSessionView.deviceId) {
+               continue
+           }
+           // 四种结束态：完成、失败、拒绝、取消
+           if (status === "completed" || status === "failed"
+                   || status === "rejected" || status === "cancelled") {
+               count++
+           }
+       }
+       return count
+   }
+
+   signal sendFileRequested()
+   signal sendFolderRequested()
+   signal sendMultiRequested()
+   signal filesDropped(var urls)  // 拖拽内容原样冒泡，由 Main.qml 统一裁决
+
+   ColumnLayout {
+       anchors.fill: parent
+       spacing: 0
+
+       // ===== ① 标题栏 =====
+       Rectangle {
+           Layout.fillWidth: true
+           Layout.preferredHeight: 58
+           color: Style.Color.surface
+
+           RowLayout {
+               anchors.fill: parent
+               anchors.leftMargin: Style.Space.lg
+               anchors.rightMargin: Style.Space.md
+               anchors.topMargin: Style.Space.sm
+               anchors.bottomMargin: Style.Space.sm
+               spacing: Style.Space.md
+
+               ColumnLayout {
+                   Layout.fillWidth: true
+                   spacing: 2
+
+                   Label {
+                       text: deviceSessionView.deviceName
+                       font.pixelSize: 16
+                       font.bold: true
+                       color: Style.Color.textMain
+                       Layout.fillWidth: true
+                       elide: Text.ElideRight
+                   }
+
+                   RowLayout {
+                       spacing: Style.Space.xs
+
+                       // 在线状态圆点：与会话列表中的表达保持一致
+                       Rectangle {
+                           Layout.preferredWidth: 7
+                           Layout.preferredHeight: 7
+                           radius: 3.5
+                           color: deviceSessionView.isOnline
+                                  ? Style.Color.success : Style.Color.textWeak
+                       }
+
+                       Label {
+                           // 与设备卡副行同口径：备注生效时"原名 · IP"并存，
+                           // 无备注维持纯 IP
+                           text: deviceSessionView.remoteName.length > 0
+                                 && deviceSessionView.remoteName !== deviceSessionView.deviceName
+                                 ? deviceSessionView.remoteName + " · "
+                                   + deviceSessionView.ipAddress
+                                 : deviceSessionView.ipAddress
+                           color: Style.Color.textMuted
+                           font.pixelSize: 12
+                           elide: Text.ElideRight
+                           Layout.fillWidth: true
+                       }
+                   }
+               }
+
+               Label {
+                   text: deviceSessionView.isOnline ? qsTr("在线") : qsTr("离线")
+                   color: deviceSessionView.isOnline ? Style.Color.success : Style.Color.textWeak
+                   font.pixelSize: 12
+                   font.bold: true
+               }
+
+              // 历史记录入口：查看跨重启保留的聊天与传输历史
+              ToolButton {
+                  text: qsTr("历史")
+                  Layout.preferredHeight: 32
+                  ToolTip.text: qsTr("查看与该设备的历史记录")
+                  ToolTip.delay: 500
+                  ToolTip.visible: hovered
+                  onClicked: deviceHistoryDialog.open()
+              }
+
+              ToolButton {
+                  text: qsTr("清理")
+                  enabled: deviceSessionView.finishedCount > 0
+                  Layout.preferredHeight: 32
+                  ToolTip.text: deviceSessionView.finishedCount > 0
+                                ? qsTr("清理已结束的传输记录")
+                                : qsTr("当前没有已结束的传输记录")
+                  ToolTip.delay: 500
+                  ToolTip.visible: hovered
+                  onClicked: clearMenu.open()
+
+                   Menu {
+                       id: clearMenu
+
+                       MenuItem {
+                           text: qsTr("清空已结束传输记录")
+                           onTriggered: AppController.transferController.clearFinishedSessions(
+                                            false, deviceSessionView.deviceId)
+                       }
+
+                       MenuItem {
+                           text: qsTr("清空传输记录并删除已接收文件")
+                           onTriggered: clearDeleteConfirmDialog.open()
+                       }
+                   }
+               }
+           }
+       }
+
+       // 分隔线
+       Rectangle {
+           Layout.fillWidth: true
+           Layout.preferredHeight: 1
+           color: Style.Color.border
+       }
+
+       // 离线横幅：说明当前状态和恢复条件
+       Rectangle {
+           Layout.fillWidth: true
+           Layout.preferredHeight: deviceSessionView.isOnline ? 0 : 30
+           color: Style.Color.warningSoft
+           clip: true
+
+           Behavior on Layout.preferredHeight {
+               NumberAnimation { duration: Style.Motion.base }
+           }
+
+           RowLayout {
+               anchors.fill: parent
+               anchors.leftMargin: Style.Space.lg
+               anchors.rightMargin: Style.Space.lg
+               spacing: Style.Space.xs
+               visible: !deviceSessionView.isOnline
+
+               Rectangle {
+                   Layout.preferredWidth: 6
+                   Layout.preferredHeight: 6
+                   radius: 3
+                   color: Style.Color.warning
+               }
+
+               Label {
+                   Layout.fillWidth: true
+                   text: qsTr("设备当前离线，消息和文件暂时无法发送；对方上线后会自动恢复")
+                   font.pixelSize: 12
+                   color: Style.Color.textSecondary
+                   elide: Text.ElideRight
+               }
+           }
+       }
+
+       // ===== 统一会话时间线 =====
+       Item {
+           Layout.fillWidth: true
+           Layout.fillHeight: true
+
+           ConversationTimelineView {
+               anchors.fill: parent
+               deviceId: deviceSessionView.deviceId
+               expandedSessions: deviceSessionView.expandedSessions
+               onExpansionRequested: function(sessionId, expanded) {
+                   deviceSessionView.setSessionExpanded(sessionId, expanded)
+               }
+           }
+
+           DropArea {
+               anchors.fill: parent
+               keys: ["text/uri-list"]  // 接受文件管理器拖入的 URI 列表
+
+               onDropped: function(drop) {
+                   deviceSessionView.filesDropped(drop.urls)
+               }
+           }
+       }
+
+       // 分隔线
+       Rectangle {
+           Layout.fillWidth: true
+           Layout.preferredHeight: 1
+           color: Style.Color.border
+       }
+
+       // ===== 文本输入区 =====
+       Rectangle {
+           Layout.fillWidth: true
+           Layout.preferredHeight: 104
+           color: Style.Color.surface
+
+           RowLayout {
+               anchors.fill: parent
+               anchors.margins: Style.Space.sm
+               spacing: Style.Space.sm
+
+               // 输入框容器：附件入口并入框内左侧，点 + 原位展开胶囊
+               Rectangle {
+                   id: inputBox
+                   Layout.fillWidth: true
+                   Layout.fillHeight: true
+                   radius: Style.Radius.sm
+                   color: deviceSessionView.isOnline ? Style.Color.window : Style.Color.surfaceSoft
+                   border.color: Style.Color.border
+                   border.width: 1
+
+                   // 附件展开状态：展开后在原位显示文件/文件夹胶囊，再点收起
+                   property bool attachExpanded: false
+
+                   // 展开/收起按钮：收起时是 +，展开时是 ×
+                   ToolButton {
+                       id: attachButton
+                       anchors.left: parent.left
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       text: inputBox.attachExpanded ? "×" : "+"
+                       font.pixelSize: 20
+                       font.bold: true
+                       ToolTip.text: !deviceSessionView.isOnline
+                                     ? qsTr("设备离线，无法发送文件")
+                                     : (inputBox.attachExpanded ? qsTr("收起") : qsTr("发送文件或文件夹"))
+                       ToolTip.delay: 500
+                       ToolTip.visible: attachButton.hovered
+                       onClicked: inputBox.attachExpanded = !inputBox.attachExpanded
+                   }
+
+                   // 文件胶囊：蓝底主色字，点击发起文件选择并收起
+                   Button {
+                       id: filePill
+                       anchors.left: attachButton.right
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       visible: opacity > 0
+                       opacity: inputBox.attachExpanded ? 1 : 0
+                       width: inputBox.attachExpanded ? implicitWidth : 0
+                       clip: true
+                       leftPadding: 10
+                       rightPadding: 10
+                       Behavior on width {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+                       Behavior on opacity {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+
+                       contentItem: RowLayout {
+                           spacing: 5
+                           FileTypeIcon {
+                               fileName: ""
+                               isDirectory: false
+                               Layout.preferredWidth: 15
+                               Layout.preferredHeight: 15
+                           }
+                           Label {
+                               text: qsTr("文件")
+                               font.pixelSize: 13
+                               font.bold: true
+                               color: filePill.enabled ? Style.Color.primary : Style.Color.textWeak
+                           }
+                       }
+                       background: Rectangle {
+                           radius: filePill.height / 2
+                           color: !filePill.enabled ? Style.Color.surfaceSoft
+                                  : (filePill.hovered ? Style.Color.primarySoftHover
+                                                      : Style.Color.primarySoft)
+                       }
+                       onClicked: {
+                           inputBox.attachExpanded = false
+                           deviceSessionView.sendFileRequested()
+                       }
+                   }
+
+                   // 文件夹胶囊：紫底紫字，与传输方向的既有配色一致
+                   Button {
+                       id: folderPill
+                       anchors.left: filePill.right
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       visible: opacity > 0
+                       opacity: inputBox.attachExpanded ? 1 : 0
+                       width: inputBox.attachExpanded ? implicitWidth : 0
+                       clip: true
+                       leftPadding: 10
+                       rightPadding: 10
+                       Behavior on width {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+                       Behavior on opacity {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+
+                       contentItem: RowLayout {
+                           spacing: 5
+                           FileTypeIcon {
+                               fileName: ""
+                               isDirectory: true
+                               Layout.preferredWidth: 15
+                               Layout.preferredHeight: 15
+                           }
+                           Label {
+                               text: qsTr("文件夹")
+                               font.pixelSize: 13
+                               font.bold: true
+                               color: folderPill.enabled ? Style.Color.receiveAccent : Style.Color.textWeak
+                           }
+                       }
+                       background: Rectangle {
+                           radius: folderPill.height / 2
+                           color: !folderPill.enabled ? Style.Color.surfaceSoft
+                                  : (folderPill.hovered ? Style.Color.receiveAccentSoftHover
+                                                        : Style.Color.receiveAccentSoft)
+                       }
+                       onClicked: {
+                           inputBox.attachExpanded = false
+                           deviceSessionView.sendFolderRequested()
+                       }
+                   }
+
+                   // 群发胶囊：绿色系（share 语义），与文件/文件夹胶囊并列
+                   Button {
+                       id: multiPill
+                       anchors.left: folderPill.right
+                       anchors.leftMargin: Style.Space.xs
+                       anchors.verticalCenter: parent.verticalCenter
+                       enabled: deviceSessionView.isOnline
+                       visible: opacity > 0
+                       opacity: inputBox.attachExpanded ? 1 : 0
+                       width: inputBox.attachExpanded ? implicitWidth : 0
+                       clip: true
+                       leftPadding: 10
+                       rightPadding: 10
+                       Behavior on width {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+                       Behavior on opacity {
+                           NumberAnimation { duration: Style.Motion.fast }
+                       }
+
+                       contentItem: RowLayout {
+                           spacing: 5
+                           FileTypeIcon {
+                               fileName: ""
+                               isDirectory: true
+                               Layout.preferredWidth: 15
+                               Layout.preferredHeight: 15
+                           }
+                           Label {
+                               text: qsTr("群发")
+                               font.pixelSize: 13
+                               font.bold: true
+                               color: multiPill.enabled ? Style.Color.success : Style.Color.textWeak
+                           }
+                       }
+                       background: Rectangle {
+                           radius: multiPill.height / 2
+                           color: !multiPill.enabled ? Style.Color.surfaceSoft
+                                  : (multiPill.hovered ? Style.Color.successHover
+                                                       : Style.Color.successSoft)
+                       }
+                       onClicked: {
+                           inputBox.attachExpanded = false
+                           deviceSessionView.sendMultiRequested()
+                       }
+                   }
+
+                   TextArea {
+                       id: messageInput
+                       anchors {
+                           top: parent.top
+                           left: multiPill.right
+                           right: parent.right
+                           bottom: parent.bottom
+                           topMargin: Style.Space.sm
+                           leftMargin: Style.Space.sm
+                           rightMargin: Style.Space.sm
+                           // 计数器出现时抬高文本，避免与右下角计数重叠
+                           bottomMargin: deviceSessionView.showCharCounter ? 18 : Style.Space.sm
+                       }
+                       enabled: deviceSessionView.isOnline
+                       placeholderText: ""  // 占位提示由下方 Label 实现，避免 TextArea 默认样式冲突
+                       font.pixelSize: 14
+                       color: Style.Color.textMain
+                       wrapMode: TextEdit.Wrap
+                       selectByMouse: true
+                       leftPadding: 0
+                       rightPadding: 0
+                       topPadding: 0
+                       bottomPadding: 0
+
+                       background: Item {}
+
+                       // 超过协议层上限时截断，与 kMaxChatContentChars 保持一致
+                       onTextChanged: {
+                           const maxChars = AppController.chatController.maxChatContentLength
+                           if (text.length > maxChars) {
+                               text = text.slice(0, maxChars)
+                           }
+                           deviceSessionView.chatError = ""
+                       }
+
+                       // 回车发送（Shift+回车换行），与桌面 IM 习惯一致
+                       Keys.onReturnPressed: function(event) {
+                           if ((event.modifiers & Qt.ShiftModifier) === 0) {
+                               event.accepted = true
+                               deviceSessionView.sendChatMessage()
+                           }
+                       }
+                   }
+
+                   // 输入框占位提示：输入为空时显示，有内容时隐藏
+                   Label {
+                       anchors.left: messageInput.left
+                       anchors.right: messageInput.right
+                       anchors.top: messageInput.top
+                       visible: messageInput.text.length === 0
+                       text: deviceSessionView.isOnline
+                             ? qsTr("输入消息，回车发送") : qsTr("设备离线，无法发送")
+                       color: deviceSessionView.isOnline ? Style.Color.textWeak : Style.Color.error
+                       font.pixelSize: 14
+                       elide: Text.ElideRight
+                   }
+
+                   // 字符计数器：剩余不足 400 字时显示在右下角内侧
+                   Label {
+                       anchors.right: parent.right
+                       anchors.rightMargin: Style.Space.sm
+                       anchors.bottom: parent.bottom
+                       anchors.bottomMargin: 2
+                       text: "%1/%2".arg(messageInput.text.length)
+                              .arg(AppController.chatController.maxChatContentLength)
+                       color: messageInput.text.length >= AppController.chatController.maxChatContentLength
+                              ? Style.Color.error : Style.Color.textWeak
+                       font.pixelSize: 10
+                       visible: deviceSessionView.showCharCounter
+                   }
+               }
+
+               // 发送按钮：文字按钮，主色样式，宽度自适应
+               Button {
+                   id: chatSendButton
+                   text: qsTr("发送")
+                   highlighted: true
+                   enabled: deviceSessionView.canSendChat
+                   Layout.alignment: Qt.AlignVCenter
+                   onClicked: deviceSessionView.sendChatMessage()
+                   ToolTip.text: qsTr("设备离线，无法发送")
+                   ToolTip.delay: 500
+                   ToolTip.visible: chatSendButton.hovered && !deviceSessionView.isOnline
+               }
+           }
+
+           // 聊天发送错误提示：仅当前设备的发送失败才显示
+           Label {
+               anchors.left: parent.left
+               anchors.leftMargin: Style.Space.md
+               anchors.bottom: parent.bottom
+               anchors.bottomMargin: 2
+               text: deviceSessionView.chatError
+               color: Style.Color.error
+               font.pixelSize: 11
+               visible: text.length > 0
+           }
+       }
+   }
+
+   // 监听聊天发送失败信号，仅处理当前设备的错误
+   Connections {
+       target: AppController.chatController
+
+       function onSendFailed(targetDeviceId: string, error: int, errorMessage: string): void {
+           if (targetDeviceId === deviceSessionView.deviceId) {
+               deviceSessionView.chatError = errorMessage  // 在输入框下方显示错误提示
+           }
+       }
+   }
+
+   DeviceHistoryDialog {
+       id: deviceHistoryDialog
+       anchors.centerIn: Overlay.overlay
+       deviceId: deviceSessionView.deviceId
+       deviceName: deviceSessionView.deviceName
+   }
+
+   // ===== 清空确认弹窗（Frame 级别）=====
+   Dialog {
+       id: clearDeleteConfirmDialog
+       title: qsTr("清空传输记录并删除本地文件")
+       modal: true
+       anchors.centerIn: Overlay.overlay
+       standardButtons: Dialog.Yes | Dialog.No
+
+       Label {
+           text: qsTr("确定清空当前设备的已结束传输记录，并删除其中已接收成功的本地文件和文件夹吗？发送源文件不会被删除。")
+           wrapMode: Text.WordWrap
+       }
+
+       onAccepted: AppController.transferController.clearFinishedSessions(true, deviceSessionView.deviceId)
+   }
+}

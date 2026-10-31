@@ -1,13 +1,28 @@
 # shared/ —— 客户端与未来 V2.0 服务端共用的静态库 gy_shared
 # 内含 TLV 协议常量、共用数据类型、帧编解码
+# 该 target 不依赖客户端界面或数据库，供 appGridYard、storage 和测试目标复用。
 
-add_library(gy_shared STATIC
+set(GRIDYARD_SHARED_SOURCES
     protocol.h
     data_types.h
+    chat_message.h
+    chat_message.cpp
     frame_codec.h
     frame_codec.cpp
 )
 
+add_library(gy_shared STATIC
+    ${GRIDYARD_SHARED_SOURCES}
+)
+
+# 协调/中继行协议常量头：header-only 接口目标，服务端与客户端显式链接，
+# 字段名单一来源（ADR-001 的最小落地，全面迁移留待 Phase 2）
+add_library(gy_protocol_contracts INTERFACE)
+target_include_directories(gy_protocol_contracts INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "shared" FILES ${GRIDYARD_SHARED_SOURCES})
+
 target_include_directories(gy_shared PUBLIC .)
 target_compile_features(gy_shared    PUBLIC cxx_std_23)
-target_link_libraries(gy_shared      PUBLIC Qt6::Core Qt6::Network)
+target_link_libraries(gy_shared      PUBLIC Qt6::Core Qt6::Network gy_protocol_contracts)
+set_property(TARGET gy_shared PROPERTY FOLDER "shared")

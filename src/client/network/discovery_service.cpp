@@ -1,0 +1,577 @@
+/**
+* @file    discovery_service.cpp
+* @version 7.19.0
+* @date 2026-10-05
+* @author  GridYard Team
+* @brief   局域网设备发现服务实现
+*/
+
+#include "discovery_service.h"
+#include "config_manager.h"
+#include "data_types.h"
+#include "protocol.h"
+
+#include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkInterface>
+#include <QNetworkProxy>
+
+// 心跳间隔：5 秒，兼顾发现速度和局域网广播噪声
+static constexpr int kBroadcastIntervalSec = 5;
+// 节点超时时间：15 秒，允许丢失两次心跳后再判离线
+static constexpr int kNodeTimeoutSec = 15;
+// 清理检查间隔：3 秒，让离线状态不会长时间滞后
+static constexpr int kPruneIntervalSec = 3;
+
+// 构造函数，初始化 UDP socket、广播定时器和清理定时器
+DiscoveryService::DiscoveryService(ConfigManager *config, QObject *parent)
+    : QObject{parent}
+    , _config{config}
+{
+    // 初始化 UDP Socket
+    _socket = new QUdpSocket(this);
+
+    // 禁用代理（UDP 不支持某些代理类型）
+    QNetworkProxy noProxy;
+    noProxy.setType(QNetworkProxy::NoProxy);
+    _socket->setProxy(noProxy);
+
+    // ShareAddress + ReuseAddressHint 允许多进程共享同一 UDP 端口，
+    // 这样同一台机器上可以同时运行多个 GridYard 实例互相发现；
+    // 开发者实例按实例号偏移绑定确定性端口，正常实例仍是默认端口
+    const quint16 discoveryPort = gy::protocol::instanceDiscoveryPort(_config->instanceNumber());
+    bool bound = _socket->bind(QHostAddress::AnyIPv4, discoveryPort,
+                                QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+
+    if (!bound) {
+        qWarning() << "DiscoveryService: 绑定端口" << discoveryPort
+                    << "失败:" << _socket->errorString();
+        qWarning() << "DiscoveryService: 尝试绑定到任意端口";
+
+        // 绑定到任意可用端口
+        bound = _socket->bind(QHostAddress::AnyIPv4, 0,
+                              QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+
+        if (bound) {
+            qDebug() << "DiscoveryService: 绑定到备用端口:" << _socket->localPort();
+        } else {
+            qCritical() << "DiscoveryService: 无法绑定 UDP socket:"
+                        << _socket->errorString();
+            return;
+        }
+    } else {
+        qDebug() << "DiscoveryService: UDP socket 绑定成功，本地端口:"
+                 << _socket->localPort();
+    }
+
+    connect(_socket, &QUdpSocket::readyRead,
+            this,    &DiscoveryService::onDatagramReceived);
+
+    // 设备名称变化时立即广播，让其他设备尽快更新
+    connect(_config, &ConfigManager::deviceNameChanged,
+            this,    &DiscoveryService::sendHelloPacket);
+
+    _broadcastTimer = new QTimer(this);
+    connect(_broadcastTimer, &QTimer::timeout,
+            this,            &DiscoveryService::sendHelloPacket);
+    _broadcastTimer->start(kBroadcastIntervalSec * 1000);
+
+    _pruneTimer = new QTimer(this);
+    connect(_pruneTimer, &QTimer::timeout,
+            this,        &DiscoveryService::pruneOfflineNodes);
+    _pruneTimer->start(kPruneIntervalSec * 1000);
+
+    // 延迟 200ms 发送第一次 Hello，确保 socket 绑定和事件循环都已就绪。
+    QTimer::singleShot(200, this, &DiscoveryService::sendHelloPacket);
+}
+
+// 获取所有在线设备列表，转换为 QVariantList 供 QML 使用
+QVariantList DiscoveryService::peers() const
+{
+    QVariantList list;
+    list.reserve(_peers.size());
+
+    for (const PeerInfo &info : _peers) {
+        list.append(QVariant::fromValue(info));
+    }
+
+    return list;
+}
+
+// 查询可用于发送传输的对端快照；离线设备返回空 map
+QVariantMap DiscoveryService::transferEndpoint(const QString &deviceId) const
+{
+    auto it = _peers.find(deviceId);
+    // 只返回仍在线的设备，避免向已超时节点发起连接
+    if (it == _peers.end() || !it.value().isOnline) {
+        return {};
+    }
+
+    const PeerInfo &peer = it.value();
+    // 只暴露传输需要的三个字段，不泄露完整 PeerInfo（含 lastSeen 等内部时间戳）
+    return {{gy::keys::kEndpointDeviceName, peer.deviceName},
+            {gy::keys::kEndpointIpAddress, peer.ipAddress},
+            {gy::keys::kEndpointTcpPort, peer.tcpPort}};
+}
+
+// 返回协调节点缓存的对端备用地址（不含当前主端点）
+QStringList DiscoveryService::rendezvousAlternateAddresses(const QString &deviceId,
+                                                           quint16 *tcpPort) const
+{
+    const auto it = _rendezvousCandidates.constFind(deviceId);
+    if (it == _rendezvousCandidates.constEnd()) {
+        if (tcpPort) {
+            *tcpPort = 0;
+        }
+        return {};
+    }
+
+    if (tcpPort) {
+        *tcpPort = it->tcpPort;
+    }
+    return it->addresses;
+}
+
+// 计算本实例的广播目标端口集合：正常实例只发默认端口（历史行为不变）；
+// 开发者实例向全部合法实例端口广播，保证不同偏移端口的实例互相发现，
+// 绑定回退到随机端口时补发实际端口保留既有兜底语义
+static QList<quint16> broadcastTargetPorts(const ConfigManager *config, quint16 localPort)
+{
+    QList<quint16> ports;
+    if (config->instanceNumber() > 0) {
+        for (int n = 0; n <= gy::protocol::kMaxInstanceNumber; ++n) {
+            ports.append(gy::protocol::instanceDiscoveryPort(n));
+        }
+    } else {
+        ports.append(gy::protocol::kDefaultDiscoveryPort);
+    }
+
+    if (localPort != 0 && !ports.contains(localPort)) {
+        ports.append(localPort);
+    }
+    return ports;
+}
+
+// 向所有激活网卡的广播地址发送 Hello 包
+void DiscoveryService::sendHelloPacket()
+{
+    // 检查 socket 是否已绑定
+    if (!_socket || _socket->state() == QAbstractSocket::UnconnectedState) {
+        qDebug() << "DiscoveryService: socket 未绑定，跳过广播";
+        return;
+    }
+
+    const QByteArray data = buildHelloPayload();
+    qDebug() << "DiscoveryService: 发送广播，deviceId:" << _config->deviceId()
+             << "name:" << _config->deviceName()
+             << "本地端口:" << _socket->localPort();
+
+    const QList<quint16> targetPorts = broadcastTargetPorts(_config, _socket->localPort());
+
+    // 遍历所有激活的网络接口，向每个网卡的广播地址发送
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    int sentCount = 0;
+    for (const QNetworkInterface &iface : interfaces) {
+        // 过滤：必须是激活中的、非回环的、支持广播的物理网卡
+        if (!(iface.flags() & QNetworkInterface::IsUp))       continue;
+        if (!(iface.flags() & QNetworkInterface::CanBroadcast)) continue;
+        if (  iface.flags() & QNetworkInterface::IsLoopBack)  continue;
+
+        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
+            // 只处理 IPv4 地址
+            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
+
+            // 向该网卡对应子网的广播地址逐个目标端口发送
+            for (const quint16 targetPort : targetPorts) {
+                qint64 sent = _socket->writeDatagram(data, entry.broadcast(), targetPort);
+                if (sent == -1) {
+                    qWarning() << "DiscoveryService: 广播发送失败到"
+                               << entry.broadcast().toString()
+                               << ":" << _socket->errorString();
+                } else {
+                    sentCount++;
+                }
+            }
+        }
+    }
+    qDebug() << "DiscoveryService: 广播发送完成，共发送到" << sentCount << "个网卡";
+}
+
+// 处理接收到的 UDP 数据报，解析 JSON 后交给 handleHelloPacket
+void DiscoveryService::onDatagramReceived()
+{
+    // 循环读取所有待处理数据报，避免 readyRead 在高频率广播下被合并
+    while (_socket->hasPendingDatagrams()) {
+        QByteArray datagram;
+        datagram.resize(_socket->pendingDatagramSize());
+
+        QHostAddress sender;
+        quint16 senderPort = 0;
+
+        _socket->readDatagram(datagram.data(), datagram.size(),
+                              &sender, &senderPort);
+
+        // 只处理合法 JSON 对象，其他格式静默丢弃
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(datagram, &error);
+        if (error.error != QJsonParseError::NoError || !doc.isObject()) {
+            continue;
+        }
+
+        handleHelloPacket(doc.object(), sender);
+    }
+}
+
+// 调整节点超时秒数
+void DiscoveryService::setNodeTimeoutSec(int seconds)
+{
+    if (seconds > 0) {
+        _nodeTimeoutSec = seconds;
+    }
+}
+
+// 清理超时未响应的离线节点
+void DiscoveryService::pruneOfflineNodes()
+{
+    const QDateTime threshold = QDateTime::currentDateTimeUtc().addSecs(-_nodeTimeoutSec);
+    bool changed = false;
+
+    QMutableHashIterator<QString, PeerInfo> it(_peers);
+    while (it.hasNext()) {
+        it.next();
+
+        if (it.value().lastSeen < threshold) {
+            // 节点超时，标记为离线
+            if (it.value().isOnline) {
+                it.value().isOnline = false;
+                _rendezvousCandidates.remove(it.key());  // 离线设备的备用候选一并作废
+                emit nodeExpired(it.key());
+                changed = true;
+            }
+        }
+    }
+
+    if (changed) {
+        notifyPeersChanged();
+    }
+}
+
+// 构建 Hello 广播的 JSON 负载（设备信息 + 协议版本）
+QByteArray DiscoveryService::buildHelloPayload() const
+{
+    QJsonObject json;
+    // 委托 ConfigManager 填充设备信息（Tell, Don't Ask）
+    _config->fillHelloPayload(json);
+    json["app_version"] = QCoreApplication::applicationVersion();
+    json["version"]     = gy::protocol::kProtocolVersion;
+
+    return QJsonDocument(json).toJson(QJsonDocument::Compact);
+}
+
+// 解析收到的 Hello 包，进行版本兼容性检查后更新在线设备表
+void DiscoveryService::handleHelloPacket(const QJsonObject &json, const QHostAddress &sender)
+{
+    // 提取字段
+    const QString deviceId   = json["device_id"].toString();
+    const QString deviceName = json["device_name"].toString();
+    const quint16 tcpPort    = static_cast<quint16>(json["tcp_port"].toInt());
+    const quint16 version    = static_cast<quint16>(json["version"].toInt());
+
+    // 过滤无效数据
+    if (deviceId.isEmpty()) {
+        qDebug() << "DiscoveryService: 收到无效的 Hello 包（deviceId 为空）";
+        return;
+    }
+
+    // 本机过滤：忽略自己发出的广播（委托 ConfigManager 判断）
+    if (_config->isMyDevice(deviceId)) {
+        qDebug() << "DiscoveryService: 忽略自己的广播，deviceId:" << deviceId;
+        return;
+    }
+
+    // 协议版本兼容性检查：主版本不一致标记不兼容，次版本差异安全降级
+    if (version > 0) {
+        quint8 localMajor = gy::protocol::majorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMajor = gy::protocol::majorVersion(version);
+        quint8 localMinor = gy::protocol::minorVersion(gy::protocol::kProtocolVersion);
+        quint8 senderMinor = gy::protocol::minorVersion(version);
+
+        if (senderMajor != localMajor) {
+            // 主版本不一致，不加入在线列表
+            qWarning() << "DiscoveryService: 设备" << deviceId
+                       << "主版本不兼容，本地:" << localMajor << "对端:" << senderMajor
+                       << "，忽略该设备";
+            return;
+        }
+
+        if (senderMinor != localMinor) {
+            // 次版本差异，安全降级（记录警告但继续）
+            qWarning() << "DiscoveryService: 设备" << deviceId
+                       << "次版本不同，本地:" << localMinor << "对端:" << senderMinor
+                       << "，安全降级处理";
+        }
+    }
+
+    qDebug() << "DiscoveryService: 收到设备广播，deviceId:" << deviceId
+             << "name:" << deviceName
+             << "ip:" << sender.toString()
+             << "tcpPort:" << tcpPort
+             << "version:" << version;
+
+    // 空 deviceName 兜底为"未知设备 (IP)"，避免产生空名卡片且搜索无法命中
+    QString displayName = deviceName;
+    if (displayName.trimmed().isEmpty()) {
+        displayName = tr("未知设备 (%1)").arg(sender.toString());
+    }
+
+    // 构建 PeerInfo
+    PeerInfo info;
+    info.deviceId   = deviceId;
+    info.deviceName = displayName;
+    info.ipAddress  = sender.toString();
+    info.tcpPort    = tcpPort;
+    info.isOnline   = true;
+    info.protocolVersion = version;
+    info.lastSeen   = QDateTime::currentDateTimeUtc();
+    info.source     = QStringLiteral("broadcast");  // UDP 广播来源
+
+    updatePeer(deviceId, info);
+}
+
+// 更新或新增在线设备信息，新设备时发射 nodeDiscovered 信号
+void DiscoveryService::updatePeer(const QString &deviceId, const PeerInfo &info)
+{
+    const bool isNew = !_peers.contains(deviceId);
+
+    // 检查设备名称是否变化
+    if (!isNew) {
+        const PeerInfo &oldInfo = _peers.value(deviceId);
+        if (oldInfo.deviceName != info.deviceName) {
+            qDebug() << "DiscoveryService: 设备名称更新"
+                     << "deviceId:" << deviceId
+                     << "旧名称:" << oldInfo.deviceName
+                     << "新名称:" << info.deviceName;
+        }
+    }
+
+    _peers.insert(deviceId, info);
+
+    // 真实身份已就位时合并同 IP 的离线手动伪条目，避免同一物理设备出现双卡；
+    // 仍在窗口期内的手动条目留给下次真身心跳到达时清理
+    if (info.source != QStringLiteral("manual")) {
+        QMutableHashIterator<QString, PeerInfo> manualIt(_peers);
+        while (manualIt.hasNext()) {
+            manualIt.next();
+            if (manualIt.key() != deviceId
+                    && manualIt.value().source == QStringLiteral("manual")
+                    && manualIt.value().ipAddress == info.ipAddress
+                    && !manualIt.value().isOnline) {
+                qDebug() << "DiscoveryService: 真实身份到达，移除同 IP 的离线手动条目"
+                         << manualIt.key() << "合并至" << deviceId;
+                manualIt.remove();
+            }
+        }
+    }
+
+    // 应用层据此异步更新本地设备目录，发现服务不直接依赖 storage
+    emit peerUpdated(info);
+
+    if (isNew) {
+        qDebug() << "DiscoveryService: 发现新设备" << deviceId << info.deviceName;
+        emit nodeDiscovered(deviceId);
+    }
+
+    notifyPeersChanged();
+}
+
+// 通知 QML 层设备列表已变化
+void DiscoveryService::notifyPeersChanged()
+{
+    emit peersChanged();
+}
+
+// 手动刷新：清空广播与协调来源的在线条目重新探测，保留 manual 与 directed 条目
+void DiscoveryService::refresh()
+{
+    qDebug() << "DiscoveryService: 手动刷新，重新探测广播与协调来源";
+
+    // 手动端点与邀请注入不会因刷新恢复，清掉就找不回来，予以保留
+    QStringList removedIds;
+    QMutableHashIterator<QString, PeerInfo> it(_peers);
+    while (it.hasNext()) {
+        it.next();
+        if (it.value().isOnline
+                && (it.value().source == QStringLiteral("broadcast")
+                    || it.value().source == QStringLiteral("rendezvous"))) {
+            removedIds.append(it.key());
+        }
+    }
+
+    for (const QString &deviceId : removedIds) {
+        _peers.remove(deviceId);
+        _rendezvousCandidates.remove(deviceId);  // 移除条目的协调备用候选一并作废
+        emit nodeExpired(deviceId);
+    }
+
+    if (!removedIds.isEmpty()) {
+        notifyPeersChanged();
+    }
+
+    // 发送广播，让其他设备响应
+    sendHelloPacket();
+}
+
+// 向指定地址发送定向 Hello 包，复用 buildHelloPayload() 构建内容
+void DiscoveryService::sendDirectedHello(const QHostAddress &address, quint16 discoveryPort)
+{
+    if (!_socket || _socket->state() == QAbstractSocket::UnconnectedState) {
+        qDebug() << "DiscoveryService: socket 未绑定，跳过定向 Hello";
+        return;
+    }
+
+    const QByteArray data = buildHelloPayload();
+    qDebug() << "DiscoveryService: 发送定向 Hello 到" << address.toString()
+             << "端口" << discoveryPort;
+
+    qint64 sent = _socket->writeDatagram(data, address, discoveryPort);
+    if (sent == -1) {
+        qWarning() << "DiscoveryService: 定向 Hello 发送失败:"
+                   << address.toString() << ":" << _socket->errorString();
+    } else {
+        qDebug() << "DiscoveryService: 定向 Hello 发送成功，字节数:" << sent;
+    }
+}
+
+// 获取本实例实际绑定的 UDP 发现端口（邀请码端口照实携带用，未绑定时为 0）
+quint16 DiscoveryService::localDiscoveryPort() const
+{
+    return _socket ? _socket->localPort() : 0;
+}
+
+// 添加手动端点（只在没有更高优先级在线来源时才插入）
+void DiscoveryService::addManualPeer(const PeerInfo &peer)
+{
+    const QString deviceId = peer.deviceId;
+    const QString highPrioritySource = QStringLiteral("broadcast");
+    const QString midPrioritySource = QStringLiteral("directed");
+    bool hasHigherPriorityOnline = _peers.contains(deviceId)
+                                    && (_peers[deviceId].source == highPrioritySource
+                                        || _peers[deviceId].source == midPrioritySource)
+                                    && _peers[deviceId].isOnline;
+    if (!hasHigherPriorityOnline) {
+        _peers.insert(deviceId, peer);
+        // 伪 ID 条目也发射 peerUpdated 入设备目录，重启后保留为离线卡
+        emit peerUpdated(peer);
+    }
+    qDebug() << "DiscoveryService: 添加手动端点" << deviceId << peer.ipAddress;
+    notifyPeersChanged();
+}
+
+// 以真实身份注入定向发现的在线条目（邀请导入探测成功后调用）
+void DiscoveryService::addDirectedPeer(const PeerInfo &peer)
+{
+    // 空 deviceId 与本机身份（导入自己的邀请码）都不入表，与广播 Hello 的过滤口径一致
+    if (peer.deviceId.isEmpty() || _config->isMyDevice(peer.deviceId)) {
+        qDebug() << "DiscoveryService: 忽略无效或本机的 directed 注入";
+        return;
+    }
+
+    // 已有在线 broadcast 条目说明广播链路健康，保留广播来源不做覆盖
+    const bool hasOnlineBroadcast = _peers.contains(peer.deviceId)
+                                    && _peers[peer.deviceId].source == QStringLiteral("broadcast")
+                                    && _peers[peer.deviceId].isOnline;
+    if (hasOnlineBroadcast) {
+        qDebug() << "DiscoveryService: 设备已有在线 broadcast 条目，跳过 directed 注入"
+                 << peer.deviceId;
+        return;
+    }
+
+    // 来源与在线状态由本方法归一化，调用方只负责提供真实身份与端点
+    PeerInfo info = peer;
+    info.source   = QStringLiteral("directed");
+    info.isOnline = true;
+    info.lastSeen = QDateTime::currentDateTimeUtc();
+    updatePeer(peer.deviceId, info);
+}
+
+// 从设备表移除指定设备（用户删除设备后调用）
+void DiscoveryService::removePeer(const QString &deviceId)
+{
+    if (!_peers.contains(deviceId)) {
+        return;  // 不在设备表时无需清理，保持幂等
+    }
+
+    _peers.remove(deviceId);
+    _rendezvousCandidates.remove(deviceId);  // 移除条目的协调备用候选一并作废
+    qDebug() << "DiscoveryService: 设备已删除，从设备表移除" << deviceId;
+    notifyPeersChanged();
+}
+
+// 处理协调节点返回的候选端点，将其转换为 PeerInfo 并更新本地设备表
+void DiscoveryService::onRendezvousPeersReceived(const QList<QVariantMap> &peers)
+{
+    for (const QVariantMap &peerData : peers) {
+        const QString deviceId = peerData[QStringLiteral("deviceId")].toString();
+        if (deviceId.isEmpty()) {
+            continue;
+        }
+
+        // 过滤本机
+        if (_config->isMyDevice(deviceId)) {
+            continue;
+        }
+
+        PeerInfo info;
+        info.deviceId = deviceId;
+        info.deviceName = peerData[QStringLiteral("deviceName")].toString();
+        info.tcpPort = static_cast<quint16>(peerData[QStringLiteral("tcpPort")].toInt());
+
+        // 优先使用第一个地址，否则用 deviceId 作为占位
+        const QVariant addressesVar = peerData[QStringLiteral("addresses")];
+        if (addressesVar.canConvert<QVariantList>() && !addressesVar.toList().isEmpty()) {
+            info.ipAddress = addressesVar.toList().first().toString();
+        } else if (addressesVar.canConvert<QString>()) {
+            info.ipAddress = addressesVar.toString();
+        }
+
+        info.isOnline = true;
+        info.lastSeen = QDateTime::currentDateTime();
+        info.source = QStringLiteral("rendezvous");  // 协调节点来源
+
+        // 缓存该设备的全部候选地址（含当前主地址），直连失败后按序轮询；
+        // 即使存在更高优先级的广播条目也照常缓存，广播 IP 仍是第一候选
+        QStringList candidateAddresses;
+        if (addressesVar.canConvert<QVariantList>()) {
+            for (const QVariant &addr : addressesVar.toList()) {
+                const QString address = addr.toString();
+                if (!address.isEmpty()) {
+                    candidateAddresses.append(address);
+                }
+            }
+        } else if (addressesVar.canConvert<QString>() && !addressesVar.toString().isEmpty()) {
+            candidateAddresses.append(addressesVar.toString());
+        }
+        if (!candidateAddresses.isEmpty()) {
+            _rendezvousCandidates.insert(deviceId,
+                                         {candidateAddresses,
+                                          static_cast<quint16>(peerData[QStringLiteral("tcpPort")].toInt())});
+        }
+
+        // 已有更高优先级来源（broadcast/directed）的在线设备时，保留真实直连 IP，
+        // 防止协调节点返回的地址（如 NAT 映射地址）破坏 P2P 直连优先策略。
+        // 只在无现有条目或现有条目优先级不高于 rendezvous 时才插入。
+        const QString highPrioritySource = QStringLiteral("broadcast");
+        const QString midPrioritySource = QStringLiteral("directed");
+        bool isHighPriority = _peers.contains(deviceId)
+                              && (_peers[deviceId].source == highPrioritySource
+                                  || _peers[deviceId].source == midPrioritySource)
+                              && _peers[deviceId].isOnline;
+        if (!isHighPriority) {
+            _peers.insert(deviceId, info);
+        }
+        qDebug() << "DiscoveryService: 从协调节点收到候选设备" << deviceId << info.deviceName;
+    }
+
+    notifyPeersChanged();
+}

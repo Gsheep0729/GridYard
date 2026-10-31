@@ -1,0 +1,147 @@
+/**
+* @file    file_sender_worker.h
+* @version 7.25.0
+* @date 2026-10-08
+* @author  GridYard Team
+* @brief   文件发送 Worker（Worker-Object 模式）
+*
+* 运行在独立后台线程中，负责建立 TCP 连接、发送传输握手请求、
+* 等待响应、以 8MB 分块发送文件数据、处理确认帧等完整发送流程。
+* 支持多文件/目录传输、SHA-256 校验、候选端点轮询、中继握手、
+* 取消操作和超时检测。
+*/
+
+#pragma once
+
+#include <atomic>
+
+#include "dir_serializer.h"
+#include "protocol.h"
+
+#include <QFile>
+#include <QList>
+#include <QObject>
+#include <QPair>
+#include <QStringList>
+#include <QTcpSocket>
+#include <QTimer>
+
+class FrameCodec;
+
+// 分块大小：8MB（优化吞吐量）
+static constexpr qint64 kChunkSize = 8 * 1024 * 1024;
+// 限制 Qt socket 写队列，避免大型文件一次性堆积到内存
+static constexpr qint64 kMaxQueuedBytes = 16 * 1024 * 1024;
+
+class FileSenderWorker : public QObject {
+    Q_OBJECT
+
+public:
+    explicit FileSenderWorker(QObject *parent = nullptr);
+    virtual ~FileSenderWorker() override;
+
+    FileSenderWorker(const FileSenderWorker &)            = delete;
+    FileSenderWorker &operator=(const FileSenderWorker &) = delete;
+
+    // 设置中继握手的访问令牌，须在 moveToThread 之后、startTransfer 之前调用
+    void setRelayToken(const QString &token);
+    // 设置传输超时毫秒数（默认 30 秒，测试注入短超时），须在 startTransfer 之前调用
+    void setTimeoutMs(int timeoutMs);
+    // 请求取消：可在任意线程调用（含阻塞等待期间），只置位原子标志，
+    // 实际终结由工作线程在阻塞等待的轮询间隙检查该标志后完成
+    void requestCancel();
+
+public slots:
+    // 启动传输（在工作线程中调用，支持文件或目录）
+    void startTransfer(const QString &host, quint16 port, const QString &path,
+                       const QString &senderDeviceId, const QString &senderName);
+    // 启动传输：候选端点按序尝试，relayId 非空时先完成中继握手再进入 TLV 流程
+    void startTransfer(const QList<QPair<QString, quint16>> &endpoints, const QString &path,
+                       const QString &senderDeviceId, const QString &senderName,
+                       const QString &relayId = {});
+    // 启动传输：多目标群发场景复用调用方预序列化的文件清单（含 SHA-256），
+    // 避免同一份内容对 N 台设备重复序列化与哈希；清单为空时行为与上一重载一致
+    void startTransfer(const QList<QPair<QString, quint16>> &endpoints, const QString &path,
+                       const QString &senderDeviceId, const QString &senderName,
+                       const QString &relayId, const QList<gy::FileItem> &sharedFileList);
+    // 取消传输
+    void cancel();
+
+signals:
+    // 传输进度更新
+    void progressChanged(qint64 bytesSent, qint64 totalBytes);
+    // 传输完成
+    void transferFinished(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
+
+private slots:
+    // 接收数据
+    void onReadyRead();
+    // 连接断开
+    void onDisconnected();
+    // 处理收到的帧
+    void onFrameReady(quint32 type, const QByteArray &payload);
+    // 超时处理
+    void onTimeout();
+    // socket 写入进度
+    void onBytesWritten(qint64 bytes);
+
+private:
+    // 发送握手请求
+    bool sendTransferRequest();
+    // 发送下一个数据块
+    void sendNextChunk();
+    // 在事件循环中安排下一块发送
+    void scheduleNextChunk();
+    // 打开下一个文件
+    bool openNextFile();
+    // 发送传输完成帧
+    bool sendTransferDone();
+    // 发送取消请求
+    bool sendCancel(const QString &reason);
+    // 写入控制帧并检查 socket 接受的字节数
+    bool writeControlFrame(quint32 type, const QByteArray &payload, const QString &description,
+                           gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::ConnectionLost);
+    // 清理资源
+    void cleanup();
+    // 统一的终结出口：清理资源并发射一次 transferFinished，重复调用被忽略
+    void finish(bool success, gy::protocol::ErrorCode errorCode, const QString &errorMsg);
+    // 成功路径专用：先把 TransferDone 等待写入网络，再以成功终结
+    void finishAfterSend();
+    // 中继握手：发送 relay_create 行并等待 relay_ready，失败时终结会话
+    bool waitForRelayReady();
+    // 解析中继控制行（relay_ready / relay_error），返回 false 表示会话已终结
+    bool processRelayControlData(const QByteArray &data);
+
+    QTcpSocket  *_socket = nullptr;       // 与接收端通信的 TCP 连接
+    FrameCodec  *_codec  = nullptr;       // 接收响应帧的 TLV 解码器
+    QFile        _file;                    // 当前正在读取的源文件
+    QTimer      *_timeoutTimer = nullptr; // 等待响应和传输进度的超时计时器
+    QString      _rootPath;         // 传入的根路径
+    QString      _sessionId;              // 本次传输的唯一标识
+    QString      _senderDeviceId;         // 发送端本机设备标识
+    QString      _senderName;             // 发送端本机显示名称
+    QString      _rootName;               // 文件或目录传输的根名称
+    QStringList  _emptyDirectories;       // 目录传输中需要创建的空目录
+    bool         _isDirectory = false;    // 当前任务是否为目录传输
+    bool         _transferActive = false; // 是否已收到接收端确认并开始发送
+    bool         _waitingForFileAck = false; // 是否等待当前文件校验确认
+    bool         _sendScheduled = false;  // 是否已投递下一块发送任务
+    bool         _finished = false;        // 是否已发射过 transferFinished，防止取消/断开路径重复终结
+    QString      _relayId;                 // 中继会话 ID，非空表示经中继服务器转发
+    QString      _relayToken;              // 中继握手的访问令牌，由会话管理器在启动前注入
+    // 取消请求标志：UI 线程经 requestCancel() 置位，工作线程在阻塞等待间隙轮询。
+    // 跨线程仅约定"置位即请求取消"这一单向语义，依赖原子默认顺序一致性，
+    // 不与其他状态构成复合同步
+    std::atomic_bool _cancelRequested{false};
+    int _timeoutMs = 30000;           // 传输无进展超时（默认 30 秒），可注入短值供测试
+    bool         _relayReady = false;      // 中继两端是否已齐备（收到 relay_ready）
+    QByteArray   _relayLineBuffer;         // 中继控制行的半行缓冲
+    qint64       _totalBytes = 0;         // 本次传输的文件总字节数
+    qint64       _bytesSent  = 0;         // 已成功写入 socket 的总字节数
+
+    // 多文件支持
+    QList<gy::FileItem> _fileList;        // 待发送文件及其校验信息
+    int          _currentFileIndex = 0;   // 当前发送文件在列表中的索引
+    qint64       _currentFileBytesSent = 0; // 当前文件已发送字节数
+    int          _sendChunkCount = 0;     // 用于进度节流的分块计数
+};

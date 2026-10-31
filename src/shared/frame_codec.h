@@ -1,20 +1,19 @@
 /**
 * @file    frame_codec.h
-* @date    2026-05-24
-* @author  GY
+* @version 7.19.0
+* @date 2026-10-05
+* @author  GridYard Team
 * @brief   TLV 帧编解码器（含粘包/半包状态机）
 *
-* encode() 把 type + payload 拼成 8 字节帧头 + 载荷字节流（大端序）。
-* feed() 把 socket 收到的字节流喂进来，内部状态机识别完整帧后通过
-* frameReady 信号交付业务层。状态机实现使粘包与半包都被正确处理。
-* TCP 收发链路所有模块统一使用本类，禁止自行拼字节。
-*
-* Change Log:
-* [v0.1] GY   2026-05-24
-* * Stage 0 占位：仅类声明与空实现；状态机逻辑 Stage 1 任务 1.3 填充
+* encode() 将 type + payload 编码为 8 字节帧头 + 载荷字节流（大端序）。
+* feed() 将 socket 收到的字节流喂入内部状态机，识别完整帧后通过
+* frameReady 信号交付业务层。粘包与半包均被正确处理。
+* TCP 收发链路所有模块统一使用本类，禁止自行拼装字节。
 */
 
 #pragma once
+
+#include "protocol.h"
 
 #include <QByteArray>
 #include <QObject>
@@ -38,8 +37,19 @@ public:
 signals:
     // 一个完整 TLV 帧就绪：type 是帧头 Type 字段，payload 是载荷
     void frameReady(quint32 type, const QByteArray &payload);
+    // 协议错误（帧长超限、格式错误等）
+    void errorOccurred(gy::protocol::ErrorCode errorCode, const QString &errorMsg);
 
 private:
-    // Stage 1 任务 1.3 填充：状态机状态、接收缓冲区、待处理帧头字段
-    QByteArray _buffer;
+    // 状态机状态枚举
+    enum class State {
+        WaitingHeader,   // 等待帧头（8 字节）
+        WaitingPayload   // 等待载荷（length 字节）
+    };
+
+    State _state = State::WaitingHeader;    // 当前状态机状态
+    QByteArray _buffer;                     // 接收缓冲区，累积 socket 数据
+    qint64 _bufferOffset = 0;              // 已读数据偏移量，用于避免 remove(0,n) 的 O(n) 拷贝
+    quint32 _pendingType = 0;              // 待处理帧的 Type 字段
+    quint32 _pendingLength = 0;            // 待处理帧的载荷长度
 };
