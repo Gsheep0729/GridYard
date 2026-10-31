@@ -9,6 +9,7 @@
 #include "rendezvous_coordinator.h"
 #include "config_manager.h"
 #include "discovery_service.h"
+#include "net_interfaces.h"
 #include "p2p_server.h"
 #include "protocol.h"
 #include "rendezvous_client.h"
@@ -132,17 +133,40 @@ void RendezvousCoordinator::stopRendezvous()
     _rendezvous->disconnectFromServer();
 }
 
+// 收集注册要上报的本机 IPv4 候选（C-02）：默认路由地址 localIp 置首，保持
+// 对端"首地址即直连端点"的既有语义；其余非回环地址全部紧随，VPN/多子网场景
+// 下对端候选轮询真正生效。docker/网桥类虚拟网卡按名单剔除（C-04 名单随本项
+// 同批落地），不向对端散播容器网段地址
+static QStringList collectAnnouncedAddresses(const ConfigManager *config)
+{
+    QStringList addresses;
+    if (!config->localIp().isEmpty()) {
+        addresses.append(config->localIp());
+    }
+
+    const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
+    for (const gy::net::NetInterface &interface : interfaces) {
+        if (!interface.isUp || interface.isLoopback || !interface.address.isValid()) {
+            continue;
+        }
+        if (gy::net::isVirtualInterfaceName(interface.name)) {
+            continue;
+        }
+        const QString address = interface.address.toString();
+        if (!addresses.contains(address)) {
+            addresses.append(address);
+        }
+    }
+    return addresses;
+}
+
 // 连接成功后向协调服务器注册本机端点并查询一次在线设备
 void RendezvousCoordinator::registerSelf()
 {
-    QStringList addresses;
-    if (!_config->localIp().isEmpty()) {
-        addresses.append(_config->localIp());
-    }
     _rendezvous->registerDevice(gy::protocol::kDefaultRendezvousRoom,
                                 _config->deviceId(),
                                 _config->deviceName(),
-                                addresses,
+                                collectAnnouncedAddresses(_config),
                                 _config->announcedTcpPort(),
                                 gy::protocol::kDefaultDiscoveryPort);
     _rendezvous->listPeers(gy::protocol::kDefaultRendezvousRoom);

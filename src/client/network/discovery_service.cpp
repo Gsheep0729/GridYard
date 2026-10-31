@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.cpp
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 */
@@ -172,6 +172,11 @@ void DiscoveryService::sendHelloPacket()
     for (const gy::net::NetInterface &interface : interfaces) {
         // 过滤：必须是激活中的、非回环的、支持广播的物理网卡
         if (!interface.isUp || !interface.canBroadcast || interface.isLoopback) {
+            continue;
+        }
+        // 虚拟网卡（docker 网桥/veth/virbr/vmnet/vboxnet）不参与广播（C-04，
+        // 随 C-02 多地址上报同批落地），避免向容器/虚拟化网段空发心跳
+        if (gy::net::isVirtualInterfaceName(interface.name)) {
             continue;
         }
         if (!interface.broadcast.isValid()) {

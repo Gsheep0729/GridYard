@@ -1,7 +1,7 @@
 /**
 * @file    net_interfaces.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   本机网卡与地址枚举实现
 *
@@ -60,6 +60,24 @@ QList<IpAddress> listIpv4Addresses()
         }
     }
     return result;
+}
+
+// 判断接口名是否命中虚拟网卡名单
+bool isVirtualInterfaceName(const QString &name)
+{
+    // 名单保守取常见容器/虚拟化网口前缀（C-04）：docker 网桥与 veth 对、
+    // libvirt 网桥、VMware/VirtualBox 宿主网卡。改名网口或小众平台宁漏勿误，
+    // VPN TUN（Meta、tun*/wg*）刻意不收——那是多子网直连的真实路径
+    static const QStringList kVirtualPrefixes = {
+        QStringLiteral("docker"), QStringLiteral("br-"),    QStringLiteral("veth"),
+        QStringLiteral("virbr"),  QStringLiteral("vmnet"), QStringLiteral("vboxnet"),
+    };
+    for (const QString &prefix : kVirtualPrefixes) {
+        if (name.startsWith(prefix)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace gy::net

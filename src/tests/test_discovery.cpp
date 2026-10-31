@@ -1,11 +1,11 @@
 /**
 * @file    test_discovery.cpp
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
-* 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh()
+* 测试用例：UDP 广播收发 / 节点发现 / 节点过期 / refresh() / 虚拟网卡名过滤
 */
 
 #include <QtTest/QtTest>
@@ -39,6 +39,7 @@ private slots:
     void testDirectedPeerOfflineCarriesExplanationSignal();
     void testPeerInfo();
     void testInstanceBindPortOffset();
+    void testVirtualInterfaceNameFilter();
 
 private:
     void waitForSignal(QSignalSpy &spy, int timeout = 2000);
@@ -498,6 +499,31 @@ void TestDiscovery::testInstanceBindPortOffset()
 
     qunsetenv("GRIDYARD_INSTANCE");
     qunsetenv("GRIDYARD_CONFIG");
+}
+
+// 虚拟网卡名名单（C-04，随 C-02 多地址上报同批落地）：docker 网桥/veth 对/
+// libvirt/VMware/VirtualBox 前缀命中；普通物理口、回环与 VPN TUN 不误伤——
+// VPN 网段恰是多地址上报（C-02）要覆盖的直连路径
+void TestDiscovery::testVirtualInterfaceNameFilter()
+{
+    // 名单前缀命中
+    QVERIFY(gy::net::isVirtualInterfaceName(QStringLiteral("docker0")));
+    QVERIFY(gy::net::isVirtualInterfaceName(QStringLiteral("br-a764ee0f9144")));
+    QVERIFY(gy::net::isVirtualInterfaceName(QStringLiteral("vethcbb86d1@if2")));
+    QVERIFY(gy::net::isVirtualInterfaceName(QStringLiteral("virbr0")));
+    QVERIFY(gy::net::isVirtualInterfaceName(QStringLiteral("vmnet8")));
+    QVERIFY(gy::net::isVirtualInterfaceName(QStringLiteral("vboxnet0")));
+
+    // 物理口/回环/VPN TUN 不在名单
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("eth0")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("wlan0")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("enp0s31f6")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("enxc84d44232250")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("lo")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("Meta")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("tun0")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QStringLiteral("wg0")));
+    QVERIFY(!gy::net::isVirtualInterfaceName(QString()));
 }
 
 QTEST_MAIN(TestDiscovery)

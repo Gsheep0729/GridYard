@@ -1,7 +1,7 @@
 /**
 * @file    net_interfaces.h
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   本机网卡与地址枚举
 *
@@ -32,5 +32,8 @@ struct NetInterface {
 QList<NetInterface> listInterfaces();
 // 枚举全部非回环 IPv4 地址
 QList<IpAddress> listIpv4Addresses();
+// 判断接口名是否命中虚拟网卡名单（docker 网桥/veth 对/libvirt/VMware/VirtualBox）。
+// VPN TUN（如 Meta、tun*/wg*）不在名单——其网段恰是多地址上报要覆盖的可达路径
+bool isVirtualInterfaceName(const QString &name);
 
 }  // namespace gy::net

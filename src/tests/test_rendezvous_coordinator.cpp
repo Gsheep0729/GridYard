@@ -5,12 +5,14 @@
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
 *
-* 测试用例：默认停用不连接、启用后注册并拉取候选、停用后不再自动重连、
-* 修改端口即时切换服务器（修复"改配置需重启"）、本机 IP 变化后重注册。
+* 测试用例：默认停用不连接、启用后注册并拉取候选、注册上报全量地址（C-02，
+* 虚拟网卡剔除）、停用后不再自动重连、修改端口即时切换服务器（修复"改配置
+* 需重启"）、本机 IP 变化后重注册。
 */
 
 #include <QtTest/QtTest>
 #include <QCoreApplication>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QTemporaryDir>
 
@@ -18,6 +20,7 @@
 #include "data_types.h"
 #include "discovery_service.h"
 #include "ip_address.h"
+#include "net_interfaces.h"
 #include "p2p_server.h"
 #include "protocol.h"
 #include "rendezvous_client.h"
@@ -32,6 +35,40 @@
 using gy::test::readJsonLine;
 using gy::test::writeJsonLine;
 
+// 测试侧独立虚拟网卡名单（与 C-04 拍板名单一致，不引用实现函数，
+// 保持断言对实现的独立性）：docker 网桥/veth 对/libvirt/VMware/VirtualBox
+static bool isVirtualNicName(const QString &name)
+{
+    static const QStringList kVirtualPrefixes = {
+        QStringLiteral("docker"), QStringLiteral("br-"), QStringLiteral("veth"),
+        QStringLiteral("virbr"), QStringLiteral("vmnet"), QStringLiteral("vboxnet")};
+    for (const QString &prefix : kVirtualPrefixes) {
+        if (name.startsWith(prefix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 本机应上报的候选地址全集：非回环、已启用、非虚拟网卡的 IPv4
+static QStringList expectedAnnounceAddresses()
+{
+    QStringList expected;
+    const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
+    for (const gy::net::NetInterface &interface : interfaces) {
+        if (!interface.isUp || interface.isLoopback || !interface.address.isValid()) {
+            continue;
+        }
+        if (isVirtualNicName(interface.name)) {
+            continue;
+        }
+        if (!expected.contains(interface.address.toString())) {
+            expected.append(interface.address.toString());
+        }
+    }
+    return expected;
+}
+
 class TestRendezvousCoordinator : public QObject {
     Q_OBJECT
 
@@ -40,6 +77,7 @@ private slots:
     void cleanupTestCase();
     void testDisabledByDefault();
     void testEnableConnectsAndFetchesPeers();
+    void testRegisterAnnouncesAllAddresses();
     void testDisableStaysDisconnected();
     void testPortChangeReconnects();
     void testLocalIpChangeReregisters();
@@ -162,6 +200,80 @@ void TestRendezvousCoordinator::testEnableConnectsAndFetchesPeers()
 
     helper->close();
     helper->deleteLater();
+}
+
+// 注册上报全量地址（C-02）：协调注册的 addresses 应包含本机全部非回环 IPv4，
+// 且不含 docker/网桥类虚拟网卡地址（C-04 名单随本项同批落地）。本机存在
+// UP 状态的 docker 自定义网桥（br-）与 VPN TUN 设备，旧行为只上报 localIp
+// 单地址，多网卡/VPN 场景下本用例对旧行为为红
+void TestRendezvousCoordinator::testRegisterAnnouncesAllAddresses()
+{
+    RendezvousServer server{0, {}};
+    QVERIFY(server.start());
+    _config->setRendezvousPort(static_cast<int>(server.serverPort()));
+    _config->setRendezvousEnabled(true);
+    QTRY_VERIFY_WITH_TIMEOUT(_client->isConnected(), 3000);
+
+    gy::net::PosixTcpSocket *helper = registerHelperDevice(&server, QStringLiteral("device-b"));
+    QVERIFY(helper);
+
+    // helper 视角拉取候选，读本机（device-a）注册上报的 addresses 全集；
+    // 注册与 list_peers 存在先后，未读到本机条目时退避重试
+    QStringList announced;
+    QElapsedTimer deadline;
+    deadline.start();
+    while (announced.isEmpty() && !deadline.hasExpired(3000)) {
+        QJsonObject listPeers;
+        listPeers[QStringLiteral("type")] = QStringLiteral("list_peers");
+        listPeers[QStringLiteral("room")] = QStringLiteral("default");
+        listPeers[QStringLiteral("device_id")] = QStringLiteral("device-b");
+        writeJsonLine(helper, listPeers);
+
+        const QJsonObject response = readJsonLine(helper);
+        const QJsonArray items = response[QStringLiteral("items")].toArray();
+        for (const QJsonValue &item : items) {
+            if (item[QStringLiteral("device_id")].toString() == _config->deviceId()) {
+                const QJsonArray addresses = item[QStringLiteral("addresses")].toArray();
+                for (const QJsonValue &address : addresses) {
+                    announced.append(address.toString());
+                }
+                break;
+            }
+        }
+        if (announced.isEmpty()) {
+            QTest::qWait(100);
+        }
+    }
+    QVERIFY2(!announced.isEmpty(), "未从协调服务器读到本机注册条目");
+
+    // 全量上报：本机全部非回环 IPv4 都在注册载荷里（旧行为只报 localIp，此断言为红）
+    const QStringList expected = expectedAnnounceAddresses();
+    QVERIFY2(!expected.isEmpty(), "本机无非回环 IPv4，用例前提不成立");
+    for (const QString &address : expected) {
+        QVERIFY2(announced.contains(address),
+                 qPrintable(QStringLiteral("注册载荷缺少本机地址: %1（载荷: %2）")
+                                .arg(address, announced.join(QLatin1Char(',')))));
+    }
+
+    // 虚拟网卡剔除：docker/网桥地址不得混入候选
+    const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
+    for (const gy::net::NetInterface &interface : interfaces) {
+        if (!isVirtualNicName(interface.name) || !interface.address.isValid()) {
+            continue;
+        }
+        QVERIFY2(!announced.contains(interface.address.toString()),
+                 qPrintable(QStringLiteral("注册载荷混入虚拟网卡地址: %1 (%2)")
+                                .arg(interface.address.toString(), interface.name)));
+    }
+
+    // 默认路由地址置首，保持对端"首地址即直连端点"的既有语义
+    if (!_config->localIp().isEmpty()) {
+        QCOMPARE(announced.value(0), _config->localIp());
+    }
+
+    helper->close();
+    helper->deleteLater();
+    _config->setRendezvousEnabled(false);
 }
 
 // 停用后立即断开，且不会在重连延迟后自行恢复连接
