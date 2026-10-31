@@ -22,10 +22,13 @@
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <QSysInfo>
 #include <QUrl>
 #include <QUuid>
@@ -141,11 +144,17 @@ ConfigManager::ConfigManager(QObject *parent)
     // 不改变当前实例的任何运行属性
     _developerLaunchEntryEnabled = readConfigBool(store, "developer", "launchEntryEnabled", false);
 
+    // 开机自启意图：仅记录用户选择，桌面项的写/删随开关动作落盘
+    _autostartEnabled = readConfigBool(store, "startup", "autostartEnabled", false);
+
     // 确保设备 ID 存在（首次启动生成 UUID 并持久化）
     ensureDeviceId();
 
     // 初始化本机 IP
     refreshLocalIp();
+
+    // 开机自启对账：意图为开时修复缺失/陈旧桌面项
+    reconcileAutostartEntry();
 }
 
 // 析构函数：清除静态实例指针
@@ -547,6 +556,150 @@ void ConfigManager::setDeveloperLaunchEntryEnabled(bool enabled)
     _developerLaunchEntryEnabled = enabled;
     openConfigStore().setBool("developer", "launchEntryEnabled", enabled);
     emit developerLaunchEntryEnabledChanged();
+}
+
+// 获取开机自启开关（持久化意图）
+bool ConfigManager::autostartEnabled() const
+{
+    return _autostartEnabled;
+}
+
+// 应用开机自启开关：先落桌面项，成功才持久化意图并广播 NOTIFY；
+// 失败返回可直接展示的原因，配置意图保持原值（禁静默假成功）
+QString ConfigManager::setAutostartEnabled(bool enabled)
+{
+    if (_autostartEnabled == enabled) {
+        return QString();
+    }
+
+    const QString error = applyAutostartEntry(enabled);
+    if (!error.isEmpty()) {
+        return error;  // 写失败：意图保持原值，原因交由设置页行内展示
+    }
+
+    _autostartEnabled = enabled;
+    openConfigStore().setBool("startup", "autostartEnabled", enabled);
+    emit autostartEnabledChanged();
+    qDebug() << "ConfigManager: 开机自启已" << (enabled ? "开启" : "关闭");
+    return QString();
+}
+
+// 桌面项文件名：实例 0 为 gridyard.desktop，开发者实例独立命名，
+// 两个实例的自启项互不覆盖（Exec 各自指向同一二进制但实例号不同）
+QString ConfigManager::autostartEntryFileName()
+{
+    const int instance = qBound(0, ApplicationPaths::instanceNumber(),
+                                gy::protocol::kMaxInstanceNumber);
+    if (instance <= 0) {
+        return QStringLiteral("gridyard.desktop");
+    }
+    return QStringLiteral("gridyard-dev%1.desktop").arg(instance);
+}
+
+// 桌面项目录：XDG autostart 标准位置，尊重 XDG_CONFIG_HOME（测试重定向依赖此点）
+QString ConfigManager::autostartDirectory()
+{
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    if (base.isEmpty()) {
+        return QDir::home().filePath(".config/autostart");
+    }
+    return base + "/autostart";
+}
+
+// 桌面项完整路径
+QString ConfigManager::autostartEntryPath()
+{
+    return autostartDirectory() + '/' + autostartEntryFileName();
+}
+
+// 桌面项内容：以 dist/AppDir/gridyard.desktop 为模板，Exec 回填 applicationFilePath
+// 绝对路径（拍板备注：安装位置漂移时自启不得失效），开发者实例追加 --instance=N
+QString ConfigManager::autostartEntryContent()
+{
+    const int instance = qBound(0, ApplicationPaths::instanceNumber(),
+                                gy::protocol::kMaxInstanceNumber);
+    QString exec = QCoreApplication::applicationFilePath();
+    // Desktop Entry 规范：参数可双引号包裹，内嵌引号与反斜杠须转义（路径含空格也安全）
+    exec.replace('\\', QStringLiteral("\\\\"));
+    exec.replace('"', QStringLiteral("\\\""));
+    QString execLine = QStringLiteral("Exec=\"%1\"").arg(exec);
+    if (instance > 0) {
+        execLine += QStringLiteral(" --instance=%1").arg(instance);
+    }
+
+    return QStringLiteral(
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=GridYard\n"
+        "GenericName=LAN P2P File Transfer\n"
+        "Comment=GridYard 局域网 P2P 文件传输、在线聊天与本地历史\n"
+        "Comment[zh_CN]=GridYard 局域网 P2P 文件传输、在线聊天与本地历史\n"
+        "%1\n"
+        "Icon=gridyard\n"
+        "Categories=Network;FileTransfer;P2P;\n"
+        "Terminal=false\n"
+        "StartupWMClass=GridYard\n"
+        "Keywords=gridyard;p2p;lan;file;chat;\n").arg(execLine);
+}
+
+// 写入/移除桌面项（不碰配置意图）：成功返回空串，失败返回可直接展示的原因
+QString ConfigManager::applyAutostartEntry(bool present)
+{
+    const QString path = autostartEntryPath();
+
+    if (!present) {
+        if (QFile::exists(path) && !QFile::remove(path)) {
+            const QString reason = QStringLiteral("无法删除自启项 %1，请检查文件权限").arg(path);
+            qWarning() << "ConfigManager:" << reason;
+            return reason;
+        }
+        return QString();
+    }
+
+    // 目录不存在则创建（首次开启时 ~/.config/autostart 可能还没有）
+    const QString dir = autostartDirectory();
+    if (!QDir().mkpath(dir)) {
+        const QString reason = QStringLiteral("无法创建自启目录 %1，请检查目录权限").arg(dir);
+        qWarning() << "ConfigManager:" << reason;
+        return reason;
+    }
+
+    // QSaveFile 临时文件加原子改名：中断不会留下半截桌面项冒充可用自启
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+        || file.write(autostartEntryContent().toUtf8()) < 0
+        || !file.commit()) {
+        const QString reason = QStringLiteral("无法写入自启项 %1，请检查目录权限").arg(path);
+        qWarning() << "ConfigManager:" << reason << "-" << file.errorString();
+        return reason;
+    }
+    return QString();
+}
+
+// 启动对账：意图为开时确保桌面项存在且内容与当前可执行文件一致——
+// AppImage/deb 更新或安装位置变化后，陈旧 Exec 会在登录时拉起已失效路径；
+// 意图为关时启动期不删除（桌面项可能由外部工具维护），关闭只在开关动作时落盘
+void ConfigManager::reconcileAutostartEntry()
+{
+    if (!_autostartEnabled) {
+        return;
+    }
+
+    const QString path = autostartEntryPath();
+    QString current;
+    QFile existing(path);
+    if (existing.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        current = QString::fromUtf8(existing.readAll());
+    }
+    if (current == autostartEntryContent()) {
+        return;  // 桌面项已是当前形态，避免每次启动无谓重写
+    }
+
+    const QString error = applyAutostartEntry(true);
+    if (!error.isEmpty()) {
+        qWarning() << "ConfigManager: 开机自启桌面项对账失败，自启可能失效:" << path
+                   << "-" << error;
+    }
 }
 
 // 关窗动作决策：ask 弹确认窗，hide 直接隐藏，exit 直接退出；

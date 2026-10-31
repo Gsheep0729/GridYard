@@ -5,8 +5,8 @@
 * @author  GridYard Team
 * @brief   设置对话框
 *
-* 编辑设备名、选择接收路径、修改 TCP 端口、配置协调服务器与关窗行为。
-* 保存时调用 ConfigManager 的 setter 方法。
+ * 编辑设备名、选择接收路径、修改 TCP 端口、配置协调服务器与关窗行为，
+ * 管理开机自启。保存时调用 ConfigManager 的 setter 方法。
  */
 
 import QtQuick
@@ -433,6 +433,63 @@ Dialog {
                         currentIndex: settingsDialog._tempCloseWindowAction
                         onActivated: settingsDialog._tempCloseWindowAction = model[currentIndex].value
                     }
+                }
+            }
+
+            // 开机自启卡片：开关即时写/删 XDG autostart 桌面项并持久化
+            // （不走底部"保存更改"批处理：落盘动作本身即开关语义，无可等待的批量回写）；
+            // Exec 回填 applicationFilePath 绝对路径，安装位置漂移不会让自启失效
+            SettingsCard {
+                id: autostartCard
+
+                property string _hint: ""  // 行内提示：桌面项写入/删除失败原因，空串隐藏
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.Space.lg
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.Space.xs
+
+                        Label {
+                            text: qsTr("开机自启")
+                            font.pixelSize: 15
+                            font.bold: true
+                            color: Style.Color.textMain
+                        }
+
+                        Label {
+                            text: qsTr("登录桌面后自动启动鸽邮并驻留系统托盘，接收端常开场景免手动开启。开关即时生效，按当前程序路径写入 ~/.config/autostart/。")
+                            color: Style.Color.textMuted
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Switch {
+                        checked: ConfigManager.autostartEnabled
+                        onToggled: {
+                            // 即时落盘：失败给出行内原因并回弹开关，禁静默假成功
+                            const error = ConfigManager.setAutostartEnabled(checked)
+                            if (error.length > 0) {
+                                autostartCard._hint = error
+                                checked = Qt.binding(function() { return ConfigManager.autostartEnabled })
+                            } else {
+                                autostartCard._hint = ""
+                            }
+                        }
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: autostartCard._hint.length > 0
+                    text: autostartCard._hint
+                    color: Style.Color.warning
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
                 }
             }
 

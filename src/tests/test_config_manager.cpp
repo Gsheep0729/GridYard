@@ -9,6 +9,7 @@
 */
 
 #include <QtTest/QtTest>
+#include <QCoreApplication>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QSettings>
@@ -52,6 +53,9 @@ private slots:
     void testInstanceTcpPortDefault();
     void testDeveloperLaunchEntry();
     void testNextLaunchInstance();
+    void testAutostartEntryLifecycle();
+    void testAutostartReconcileOnStartup();
+    void testAutostartDevInstanceEntry();
 
 private:
     ConfigManager *_config = nullptr;
@@ -538,6 +542,189 @@ void TestConfigManager::testNextLaunchInstance()
     // 越界输入先夹紧到合法范围再分配
     QCOMPARE(ConfigManager::nextLaunchInstance(15), -1);
     QCOMPARE(ConfigManager::nextLaunchInstance(-2), 1);
+}
+
+// —— O-06 开机自启 ——
+
+// 开机自启开关生命周期：开启写 XDG autostart 桌面项（Exec 为 applicationFilePath
+// 绝对路径，禁相对名），同值重写不重复落盘/广播，关闭移除桌面项；写失败必须
+// 返回原因且意图保持原值，禁静默假成功。测试经 XDG_CONFIG_HOME 重定向，
+// 绝不触碰真实 ~/.config/autostart
+void TestConfigManager::testAutostartEntryLifecycle()
+{
+    QTemporaryDir xdgDir;
+    QVERIFY(xdgDir.isValid());
+    const QByteArray savedXdg = qgetenv("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", xdgDir.path().toUtf8());
+
+    // 干净配置：默认关闭，且不产生任何桌面项
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/autostart_fresh.ini").toUtf8());
+    {
+        ConfigManager fresh;
+        QVERIFY(!fresh.autostartEnabled());
+        QVERIFY(!QFileInfo::exists(ConfigManager::autostartEntryPath()));
+    }
+
+    QSignalSpy spy(_config, &ConfigManager::autostartEnabledChanged);
+
+    // 开启：先落桌面项，成功才持久化意图并广播 NOTIFY
+    const QString enableError = _config->setAutostartEnabled(true);
+    QVERIFY2(enableError.isEmpty(), qPrintable(enableError));
+    QVERIFY(_config->autostartEnabled());
+    QCOMPARE(spy.count(), 1);
+
+    // 桌面项写到 XDG autostart 标准位置，Exec 回填当前可执行文件绝对路径
+    QVERIFY(ConfigManager::autostartEntryFileName()
+                == QLatin1String("gridyard.desktop"));
+    const QString entryPath = ConfigManager::autostartEntryPath();
+    QVERIFY(QFileInfo(entryPath).isFile());
+    QFile entry(entryPath);
+    QVERIFY(entry.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString content = QString::fromUtf8(entry.readAll());
+    entry.close();
+    QVERIFY2(content.contains(QStringLiteral("Exec=\"%1\"\n")
+                                  .arg(QCoreApplication::applicationFilePath())),
+             qPrintable(content));
+    QVERIFY(content.contains(QLatin1String("Type=Application")));
+    QVERIFY(content.contains(QLatin1String("Terminal=false")));
+
+    // 同值重写：不重复广播，桌面项保持存在
+    QVERIFY(_config->setAutostartEnabled(true).isEmpty());
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(QFileInfo::exists(entryPath));
+
+    // 意图持久化：重建实例（重启语义）回读开启状态
+    {
+        ConfigManager reloaded;
+        QVERIFY(reloaded.autostartEnabled());
+        QVERIFY(QFileInfo::exists(ConfigManager::autostartEntryPath()));
+    }
+
+    // 关闭：桌面项删除，意图持久化为关
+    const QString disableError = _config->setAutostartEnabled(false);
+    QVERIFY2(disableError.isEmpty(), qPrintable(disableError));
+    QVERIFY(!_config->autostartEnabled());
+    QCOMPARE(spy.count(), 2);
+    QVERIFY(!QFileInfo::exists(entryPath));
+
+    // 写失败必须反馈原因且不得写入意图（root 下权限位不生效，跳过该例）
+    if (geteuid() != 0) {
+        const QString autoDir = ConfigManager::autostartDirectory();
+        QVERIFY(QFile::setPermissions(autoDir, QFile::ReadUser | QFile::ExeUser));
+        const QString roError = _config->setAutostartEnabled(true);
+        QVERIFY2(!roError.isEmpty(), "只读自启目录下开启自启应失败");
+        QVERIFY(!_config->autostartEnabled());
+        QVERIFY(!QFileInfo::exists(ConfigManager::autostartEntryPath()));
+        // 恢复权限，保证 QTemporaryDir 析构可清理
+        QFile::setPermissions(autoDir, QFile::ReadUser | QFile::WriteUser | QFile::ExeUser);
+    } else {
+        qWarning("以 root 运行，跳过只读目录用例（权限位对 root 不生效）");
+    }
+
+    if (savedXdg.isEmpty()) {
+        qunsetenv("XDG_CONFIG_HOME");
+    } else {
+        qputenv("XDG_CONFIG_HOME", savedXdg);
+    }
+    // 恢复主配置路径，后续用例的读写都落在 test_config.ini
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+}
+
+// 启动对账：意图为开但桌面项缺失或 Exec 指向陈旧路径（AppImage/deb 更新、
+// 安装位置漂移）时，构造期以当前 applicationFilePath 重写，登录不再拉起失效路径
+void TestConfigManager::testAutostartReconcileOnStartup()
+{
+    QTemporaryDir xdgDir;
+    QVERIFY(xdgDir.isValid());
+    const QByteArray savedXdg = qgetenv("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", xdgDir.path().toUtf8());
+
+    // 种一个开启自启的配置，再手放一个 Exec 已失效的陈旧桌面项
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/autostart_reconcile.ini").toUtf8());
+    QSettings seed(_tempDir->path() + "/autostart_reconcile.ini", QSettings::IniFormat);
+    seed.setValue("startup/autostartEnabled", true);
+    seed.sync();
+
+    const QString entryPath = ConfigManager::autostartEntryPath();
+    QVERIFY(QDir().mkpath(QFileInfo(entryPath).absolutePath()));
+    {
+        QFile stale(entryPath);
+        QVERIFY(stale.open(QIODevice::WriteOnly | QIODevice::Text));
+        stale.write("[Desktop Entry]\nExec=/nonexistent/gridyard-old\nTerminal=false\n");
+    }
+
+    {
+        ConfigManager reloaded;
+        QVERIFY(reloaded.autostartEnabled());
+        QFile entry(entryPath);
+        QVERIFY(entry.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QString content = QString::fromUtf8(entry.readAll());
+        entry.close();
+        QVERIFY2(content.contains(QStringLiteral("Exec=\"%1\"\n")
+                                      .arg(QCoreApplication::applicationFilePath())),
+                 qPrintable(content));
+        QVERIFY(!content.contains(QLatin1String("/nonexistent/gridyard-old")));
+    }
+
+    // 意图为关：启动对账不删除既有桌面项（可能由外部工具维护），关闭只在开关动作时落盘
+    QSettings seedOff(_tempDir->path() + "/autostart_off.ini", QSettings::IniFormat);
+    seedOff.setValue("startup/autostartEnabled", false);
+    seedOff.sync();
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/autostart_off.ini").toUtf8());
+    {
+        ConfigManager reloaded;
+        QVERIFY(!reloaded.autostartEnabled());
+        QVERIFY(QFileInfo::exists(entryPath));
+    }
+
+    if (savedXdg.isEmpty()) {
+        qunsetenv("XDG_CONFIG_HOME");
+    } else {
+        qputenv("XDG_CONFIG_HOME", savedXdg);
+    }
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+}
+
+// 开发者实例的桌面项独立命名（gridyard-devN.desktop），Exec 追加 --instance=N：
+// 登录拉起的是同一开发者实例，且不与正常实例的自启项互踩
+void TestConfigManager::testAutostartDevInstanceEntry()
+{
+    QTemporaryDir xdgDir;
+    QVERIFY(xdgDir.isValid());
+    const QByteArray savedXdg = qgetenv("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", xdgDir.path().toUtf8());
+
+    qputenv("GRIDYARD_INSTANCE", "2");
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/autostart_dev2.ini").toUtf8());
+    {
+        ConfigManager dev;
+        QCOMPARE(dev.instanceNumber(), 2);
+        QVERIFY(ConfigManager::autostartEntryPath()
+                    .endsWith(QLatin1String("gridyard-dev2.desktop")));
+
+        const QString error = dev.setAutostartEnabled(true);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(dev.autostartEnabled());
+
+        QFile entry(ConfigManager::autostartEntryPath());
+        QVERIFY(entry.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QString content = QString::fromUtf8(entry.readAll());
+        entry.close();
+        QVERIFY2(content.contains(QStringLiteral("Exec=\"%1\" --instance=2\n")
+                                      .arg(QCoreApplication::applicationFilePath())),
+                 qPrintable(content));
+
+        QVERIFY(dev.setAutostartEnabled(false).isEmpty());
+        QVERIFY(!QFileInfo::exists(ConfigManager::autostartEntryPath()));
+    }
+
+    qunsetenv("GRIDYARD_INSTANCE");
+    if (savedXdg.isEmpty()) {
+        qunsetenv("XDG_CONFIG_HOME");
+    } else {
+        qputenv("XDG_CONFIG_HOME", savedXdg);
+    }
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
 }
 
 QTEST_MAIN(TestConfigManager)

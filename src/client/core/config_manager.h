@@ -54,6 +54,7 @@ class ConfigManager : public QObject {
     Q_PROPERTY(CloseWindowAction closeWindowAction READ closeWindowAction WRITE setCloseWindowAction NOTIFY closeWindowActionChanged)
     Q_PROPERTY(int instanceNumber READ instanceNumber CONSTANT)
     Q_PROPERTY(bool developerLaunchEntryEnabled READ developerLaunchEntryEnabled WRITE setDeveloperLaunchEntryEnabled NOTIFY developerLaunchEntryEnabledChanged)
+    Q_PROPERTY(bool autostartEnabled READ autostartEnabled NOTIFY autostartEnabledChanged)
 
 public:
     static ConfigManager *create(QQmlEngine *engine, QJSEngine *scriptEngine);
@@ -105,6 +106,8 @@ public:
     int instanceNumber() const;
     // 获取开发者模式启动入口开关（仅控制设置页"启动新实例"入口可见性）
     bool developerLaunchEntryEnabled() const;
+    // 获取开机自启开关（持久化的用户意图，实际桌面项随开关动作落盘）
+    bool autostartEnabled() const;
 
     // 设置设备名称
     void setDeviceName(const QString &name);
@@ -132,6 +135,10 @@ public:
     void setCloseWindowAction(CloseWindowAction action);
     // 设置开发者模式启动入口开关
     void setDeveloperLaunchEntryEnabled(bool enabled);
+    // 应用开机自启开关：写/删 XDG autostart 桌面项（Exec 回填 applicationFilePath
+    // 绝对路径），成功后持久化意图并广播 NOTIFY；失败返回可直接展示的原因且
+    // 意图保持原值（禁静默假成功）。即时生效，不走设置页批保存
+    Q_INVOKABLE QString setAutostartEnabled(bool enabled);
 
     // 备份恢复身份：仅写入配置文件，运行期保持当前身份不变，重启后生效
     void restoreDeviceIdentity(const QString &deviceId, const QString &deviceName);
@@ -164,6 +171,7 @@ signals:
     void relayModeChanged();
     void closeWindowActionChanged();
     void developerLaunchEntryEnabledChanged();
+    void autostartEnabledChanged();
 
 private:
     explicit ConfigManager(QObject *parent = nullptr);
@@ -179,6 +187,20 @@ private:
     friend class TestConfigManager;
 
     void ensureDeviceId();
+
+    // —— 开机自启（XDG autostart 桌面项）——
+    // 桌面项文件名：实例 0 为 gridyard.desktop，开发者实例独立命名避免互踩
+    static QString autostartEntryFileName();
+    // 桌面项目录：XDG autostart 标准位置（~/.config/autostart，尊重 XDG_CONFIG_HOME）
+    static QString autostartDirectory();
+    // 桌面项完整路径
+    static QString autostartEntryPath();
+    // 桌面项内容：Exec 回填 applicationFilePath 绝对路径，开发者实例追加 --instance=N
+    static QString autostartEntryContent();
+    // 写入/移除桌面项（不碰配置意图），成功返回空串，失败返回可直接展示的原因
+    static QString applyAutostartEntry(bool present);
+    // 启动对账：意图为开时重写陈旧/缺失桌面项（Exec 随二进制位置自愈）
+    void reconcileAutostartEntry();
 
     // 全局实例指针（用于单例模式）
     static QPointer<ConfigManager> s_instance;
@@ -200,4 +222,5 @@ private:
     CloseWindowAction _closeWindowAction = CloseWindowAction::Ask; // 关窗行为，默认每次询问
     int _instanceNumber = 0;          // 开发者模式实例号，0 表示正常模式（仅影响本机资源隔离）
     bool _developerLaunchEntryEnabled = false; // 设置页"启动新实例"入口开关，仅控制入口可见性
+    bool _autostartEnabled = false;   // 开机自启意图：桌面项随开关动作写/删，启动期对账自愈
 };
