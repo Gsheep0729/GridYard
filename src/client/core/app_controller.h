@@ -60,6 +60,9 @@ private:
     Q_PROPERTY(bool historyDatabaseRebuilt READ historyDatabaseRebuilt CONSTANT)
     Q_PROPERTY(QString rebuiltBackupPath READ rebuiltBackupPath CONSTANT)
     Q_PROPERTY(QString instanceTitleSuffix READ instanceTitleSuffix CONSTANT)
+    // 当前平台是否支持窗口临时置顶：仅 Wayland 合成器无应用自定置顶接口，
+    // 该会话唤回由表现层降级为 show+raise+activate+任务栏提醒
+    Q_PROPERTY(bool staysOnTopSupported READ staysOnTopSupported CONSTANT)
     Q_PROPERTY(bool networkListenFailed READ networkListenFailed CONSTANT)
     Q_PROPERTY(QString rendezvousError READ rendezvousError NOTIFY rendezvousErrorChanged)
 
@@ -92,6 +95,12 @@ public:
     QString rebuiltBackupPath() const;
     // 获取开发者模式窗口标题后缀（如 " #2"），正常实例为空串
     QString instanceTitleSuffix() const;
+    // 判定平台是否支持窗口临时置顶：Wayland 合成器不提供应用自定置顶接口
+    // （WindowStaysOnTopHint 被忽略、无层级控制协议），xcb/Windows/offscreen
+    // 等均支持；平台名未能确定时按支持处理，避免误降级
+    static bool staysOnTopSupportedOnPlatform(const QString &platformName);
+    // 获取当前平台是否支持临时置顶（QML 据此分支唤回置顶策略）
+    bool staysOnTopSupported() const;
     // 获取网络可达性控制器
     ReachabilityController *reachabilityController() const;
     BackupController *backupController() const;

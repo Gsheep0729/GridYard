@@ -8,13 +8,15 @@
 * 测试用例：P2P 监听端口被占时启动失败标记随属性发布，端口空闲时不标记；
 * 协调服务器错误令牌等交互错误随属性发布、注册确认到达后清空；
 * 托盘退出决策与关窗退出分支同判（活动传输拦截不随记忆豁免）；
-* 托盘打开接收目录入口打开当前配置的接收路径，目录缺失时静默不外呼。
+* 托盘打开接收目录入口打开当前配置的接收路径，目录缺失时静默不外呼；
+* 唤回置顶平台判定：仅 Wayland 不支持临时置顶须降级，其余平台保持置顶。
 */
 
 #include <QtTest/QtTest>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QThread>
@@ -66,6 +68,7 @@ private slots:
     void testRendezvousErrorSurfacesAndClearsOnAck();
     void testTrayQuitDecisionMatchesWindowCloseGuard();
     void testTrayOpenReceiveFolderOpensConfiguredPath();
+    void testStaysOnTopSupportedPerPlatform();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -231,6 +234,31 @@ void TestAppController::testTrayOpenReceiveFolderOpensConfiguredPath()
     QVERIFY2(!spy.called(), "接收目录不存在时不应外呼打开任何位置");
 
     QDesktopServices::unsetUrlHandler(QStringLiteral("file"));
+    drainStorageBeforeDestruction(controller);
+}
+
+// 唤回置顶平台判定（C-09 回归锚）：Wayland 合成器不支持应用自定置顶，
+// 该平台唤回必须降级为 show+raise+activate+任务栏提醒，其余平台保持
+// 临时置顶策略；实例属性须与运行时平台名同源同判，QML 唤回分支依赖它
+void TestAppController::testStaysOnTopSupportedPerPlatform()
+{
+    QVERIFY2(!AppController::staysOnTopSupportedOnPlatform(QStringLiteral("wayland")),
+             "Wayland 平台不应支持应用自定置顶，唤回须降级");
+    QVERIFY2(AppController::staysOnTopSupportedOnPlatform(QStringLiteral("xcb")),
+             "X11（xcb）平台应保持临时置顶策略");
+    QVERIFY2(AppController::staysOnTopSupportedOnPlatform(QStringLiteral("offscreen")),
+             "offscreen 等测试平台不应被误降级");
+    QVERIFY2(AppController::staysOnTopSupportedOnPlatform(QStringLiteral("windows")),
+             "Windows 平台应保持临时置顶策略");
+    QVERIFY2(AppController::staysOnTopSupportedOnPlatform(QString()),
+             "平台名未能确定时按支持处理，避免误降级");
+
+    // 实例属性与实际平台一致：不硬编码期望值，测试进程平台随环境变化
+    AppController controller;
+    QVERIFY2(!controller.networkListenFailed(), "端口空闲时组合根应正常监听");
+    QCOMPARE(controller.staysOnTopSupported(),
+             AppController::staysOnTopSupportedOnPlatform(
+                 QGuiApplication::platformName()));
     drainStorageBeforeDestruction(controller);
 }
 

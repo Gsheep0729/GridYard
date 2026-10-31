@@ -14,6 +14,8 @@
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  * 窗口尺寸/位置跨启动记忆：启动先恢复上次几何（C++ 侧已按当前屏幕可用区
  * 夹紧，落屏外位置弃用）再显示，几何变化去抖后落盘，最大化状态一并记忆。
+ * 唤回置顶按平台分支：Wayland 合成器不支持应用自定置顶，降级为
+ * show+raise+activate，激活被拒时经托盘气泡补任务栏提醒；其余平台临时置顶。
 */
 
 import QtQuick
@@ -189,8 +191,16 @@ ApplicationWindow {
         mainWindow.requestActivate()
     }
 
-    // 临时添加置顶标志将窗口拉到最前，配合定时器自动取消置顶
+    // 临时添加置顶标志将窗口拉到最前，配合定时器自动取消置顶。
+    // Wayland 会话降级：合成器不支持应用自定置顶（WindowStaysOnTopHint 被
+    // 忽略，且运行中改 flags 会销毁重建平台窗口），改走 show+raise+activate，
+    // 激活未落地时经托盘气泡补一次任务栏提醒
     function bringMainWindowToFront(): void {
+        if (!AppController.staysOnTopSupported) {
+            showMainWindow()
+            waylandActivateReminderTimer.restart()
+            return
+        }
         mainWindow.flags = _normalWindowFlags | Qt.WindowStaysOnTopHint
         showMainWindow()
         releaseTopMostTimer.restart()
@@ -296,6 +306,22 @@ ApplicationWindow {
         onTriggered: {
             mainWindow.flags = mainWindow._normalWindowFlags
             mainWindow.showMainWindow()
+        }
+    }
+
+    // Wayland 唤回激活确认：requestActivate 受合成器焦点抢占策略约束，可能
+    // 被拒绝且无任何反馈；短延时复查焦点未落到本窗口时经托盘气泡提醒用户
+    // 点击任务栏图标唤回（X11 等平台走临时置顶，不经此路）
+    Timer {
+        id: waylandActivateReminderTimer
+        interval: 600
+        repeat: false
+
+        onTriggered: {
+            if (mainWindow.visible && !mainWindow.active && trayIcon.available) {
+                trayIcon.showMessage(qsTr("GridYard"),
+                                     qsTr("若主窗口未自动置前，请点击任务栏图标唤回"))
+            }
         }
     }
 

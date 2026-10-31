@@ -29,6 +29,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QGuiApplication>
 #include <QPointer>
 #include <QProcess>
 #include <QQmlApplicationEngine>
@@ -118,6 +119,11 @@ void AppController::initializeUi()
     }
     _uiInitialized = true;
 
+    // 唤回置顶策略启动期定型并落日志：Wayland 会话降级为 show+raise+activate
+    // +托盘提醒，其余平台保持临时置顶；供会话类型差异的实机排查定位
+    qDebug() << "AppController: 平台" << QGuiApplication::platformName()
+             << "窗口临时置顶支持" << staysOnTopSupported();
+
     _uiEngine = new QQmlApplicationEngine{this};
     connect(
         _uiEngine, &QQmlApplicationEngine::objectCreationFailed,
@@ -171,6 +177,20 @@ QString AppController::instanceTitleSuffix() const
 {
     const int instance = _config->instanceNumber();
     return instance > 0 ? QStringLiteral(" #%1").arg(instance) : QString();
+}
+
+// 判定平台是否支持窗口临时置顶：Wayland 合成器不支持应用自定置顶（置顶
+// 提示符被忽略且无层级控制协议），仅该平台唤回须降级；空平台名按支持
+// 处理避免误降级，offscreen 等测试平台不受影响
+bool AppController::staysOnTopSupportedOnPlatform(const QString &platformName)
+{
+    return !platformName.startsWith(QStringLiteral("wayland"));
+}
+
+// 获取当前平台是否支持临时置顶
+bool AppController::staysOnTopSupported() const
+{
+    return staysOnTopSupportedOnPlatform(QGuiApplication::platformName());
 }
 
 // 获取设备发现视图模型
