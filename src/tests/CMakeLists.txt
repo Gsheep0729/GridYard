@@ -673,6 +673,22 @@ target_compile_features(test_single_instance_guard PRIVATE cxx_std_23)
 add_test(NAME test_single_instance_guard COMMAND test_single_instance_guard)
 set_tests_properties(test_single_instance_guard PROPERTIES TIMEOUT 60)
 
+# --- 托盘通知点击路由测试（C-17：以桩上下文属性加载 TrayIcon.qml，
+#     验证 notify* 判空收敛与 messageClicked 类别路由，不弹真气泡） ---
+qt_add_executable(test_tray_notification test_tray_notification.cpp)
+target_link_libraries(test_tray_notification PRIVATE
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+)
+target_compile_definitions(test_tray_notification PRIVATE
+    GRIDYARD_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_compile_features(test_tray_notification PRIVATE cxx_std_23)
+add_test(NAME test_tray_notification COMMAND test_tray_notification)
+set_tests_properties(test_tray_notification PROPERTIES TIMEOUT 60)
+
 # --- Golden 基线对拍套件：以当前 Qt 实现为参考实现固化行为，供纯 C++ 替代实现对拍 ---
 qt_add_executable(test_golden_baseline test_golden_baseline.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp

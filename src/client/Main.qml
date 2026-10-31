@@ -10,6 +10,9 @@
  * 常规询问附"记住我的选择"复选框，有传输进行中时弹窗附警示行。
  * 托盘退出复用关窗退出分支的同一决策与警示弹窗，两条退出路径防护一致；
  * 托盘菜单另提供打开接收目录（经 AppController 打开配置路径）与设置入口。
+ * 托盘通知统一经 TrayIcon 的 notify* 入口送达（托盘缺席时入口统一跳过），
+ * 通知点击按类别路由：聊天通知选中发送方设备并唤回主窗口，
+ * 传输完成通知直达接收目录，其余类别无点击动作。
  * 左侧显示在线设备列表，右侧显示设备会话页。
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
  * 窗口尺寸/位置跨启动记忆：启动先恢复上次几何（C++ 侧已按当前屏幕可用区
@@ -208,9 +211,7 @@ ApplicationWindow {
 
     function hideToTray(): void {
         mainWindow.hide()
-        if (trayIcon.available) {
-            trayIcon.showMessage(qsTr("GridYard"), qsTr("应用仍在后台运行"))
-        }
+        trayIcon.notifyInfo(qsTr("GridYard"), qsTr("应用仍在后台运行"))
     }
 
     function requestApplicationQuit(): void {
@@ -318,9 +319,10 @@ ApplicationWindow {
         repeat: false
 
         onTriggered: {
-            if (mainWindow.visible && !mainWindow.active && trayIcon.available) {
-                trayIcon.showMessage(qsTr("GridYard"),
-                                     qsTr("若主窗口未自动置前，请点击任务栏图标唤回"))
+            if (mainWindow.visible && !mainWindow.active) {
+                // 托盘缺席时 notifyInfo 入口统一跳过气泡，与原判 available 等效
+                trayIcon.notifyInfo(qsTr("GridYard"),
+                                    qsTr("若主窗口未自动置前，请点击任务栏图标唤回"))
             }
         }
     }
@@ -335,6 +337,13 @@ ApplicationWindow {
         onSettingsRequested: mainWindow.openTraySettings()
         // 发送剪贴板：回显与发送链在主窗口（Toast 实例在此）
         onSendClipboardRequested: (deviceId) => mainWindow.sendClipboardToDevice(deviceId)
+        // 通知点击（C-17）：聊天通知点击唤回主窗口并选中发送方设备，
+        // 传输完成通知点击直达接收目录；其余类别与后端不回调时均无动作
+        onChatMessageClicked: (deviceId) => {
+            mainWindow.showMainWindow()
+            mainWindow.selectDevice(deviceId)
+        }
+        onTransferCompletedClicked: AppController.openReceiveFolder()
     }
 
     // 选中设备：设备名、IP 与在线状态由视图模型按选中 ID 自动解析
@@ -676,15 +685,15 @@ ApplicationWindow {
             } else {
                 acceptDialog.openWith(info)
             }
-            // 通知里的设备名同样备注优先
-            trayIcon.showMessage(qsTr("传输请求"),
-                                 qsTr("%1 想发送 %2 个文件")
-                                 .arg(FormatUtils.displayName(peerInfo.alias, senderName))
-                                 .arg(totalFiles))
+            // 通知里的设备名同样备注优先；传输请求无点击语义，走普通提示
+            trayIcon.notifyInfo(qsTr("传输请求"),
+                                qsTr("%1 想发送 %2 个文件")
+                                .arg(FormatUtils.displayName(peerInfo.alias, senderName))
+                                .arg(totalFiles))
         }
         function onTransferCompleted(sessionId: string, fileName: string, filePath: string): void {
             completeToast.openWith(fileName, filePath)
-            trayIcon.showMessage(qsTr("传输完成"), qsTr("已完成一项文件传输"))
+            trayIcon.notifyTransferCompleted(qsTr("传输完成"), qsTr("已完成一项文件传输"))
         }
         function onErrorOccurred(message: string): void { mainWindow.showErrorToast(message) }
         function onMessageOccurred(message: string): void { mainWindow.showSuccessToast(message) }
@@ -697,9 +706,12 @@ ApplicationWindow {
     Connections {
         target: AppController.chatController
         function onIncomingMessageReceived(deviceId: string, senderName: string, preview: string): void {
-            // 通知里的设备名同样备注优先（设备不在列表时回落广播名）
+            // 通知里的设备名同样备注优先（设备不在列表时回落广播名）；
+            // 载荷记录 deviceId，通知点击时选中发送方设备（C-17）
             const peerInfo = AppController.peerDiscoveryViewModel.deviceById(deviceId)
-            trayIcon.showMessage(FormatUtils.displayName(peerInfo.alias, senderName), preview)
+            trayIcon.notifyChatMessage(deviceId,
+                                       FormatUtils.displayName(peerInfo.alias, senderName),
+                                       preview)
         }
     }
 
@@ -726,7 +738,7 @@ ApplicationWindow {
         target: AppController
         function onLocalHistoryOperationFailed(): void {
             mainWindow.showErrorToast(qsTr("本地保存失败，历史可能缺失"))
-            trayIcon.showMessage(qsTr("本地历史"), qsTr("本地保存失败，历史可能缺失"))
+            trayIcon.notifyInfo(qsTr("本地历史"), qsTr("本地保存失败，历史可能缺失"))
         }
         function onWindowActivationRequested(): void {
             // 再次启动应用时的唤回请求：本实例还在运行，恢复窗口并置顶
