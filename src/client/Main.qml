@@ -8,7 +8,8 @@
  * 标题通过 AppController.applicationName/Version 绑定，
  * 关窗行为由 C++ 决策分发：弹窗询问、隐藏到后台或直接退出，
  * 常规询问附"记住我的选择"复选框，有传输进行中时弹窗附警示行。
- * 托盘退出复用关窗退出分支的同一决策与警示弹窗，两条退出路径防护一致。
+ * 托盘退出复用关窗退出分支的同一决策与警示弹窗，两条退出路径防护一致；
+ * 托盘菜单另提供打开接收目录（经 AppController 打开配置路径）与设置入口。
  * 左侧显示在线设备列表，右侧显示设备会话页。
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
 */
@@ -126,6 +127,13 @@ ApplicationWindow {
         }
     }
 
+    // 托盘设置入口并入显示主窗口链：先唤回主窗口再打开设置弹窗，
+    // 主窗口隐藏时也能改配置（如改接收路径），不必先进设置抄路径
+    function openTraySettings(): void {
+        showMainWindow()
+        settingsDialog.open()
+    }
+
     // 底部 Toast 包装：错误停留更久，成功短暂反馈
     function showErrorToast(message: string): void {
         toastPopup.show(message, true)
@@ -182,6 +190,9 @@ ApplicationWindow {
         onShowRequested: mainWindow.showMainWindow()
         onHideRequested: mainWindow.hideToTray()
         onQuitRequested: mainWindow.requestTrayQuit()
+        // 打开接收目录不唤回主窗口：直达系统文件管理器里的配置接收路径
+        onOpenReceiveFolderRequested: AppController.openReceiveFolder()
+        onSettingsRequested: mainWindow.openTraySettings()
     }
 
     // 选中设备：设备名、IP 与在线状态由视图模型按选中 ID 自动解析

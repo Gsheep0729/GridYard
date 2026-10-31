@@ -7,14 +7,18 @@
 *
 * 测试用例：P2P 监听端口被占时启动失败标记随属性发布，端口空闲时不标记；
 * 协调服务器错误令牌等交互错误随属性发布、注册确认到达后清空；
-* 托盘退出决策与关窗退出分支同判（活动传输拦截不随记忆豁免）。
+* 托盘退出决策与关窗退出分支同判（活动传输拦截不随记忆豁免）；
+* 托盘打开接收目录入口打开当前配置的接收路径，目录缺失时静默不外呼。
 */
 
 #include <QtTest/QtTest>
+#include <QDesktopServices>
+#include <QDir>
 #include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QUrl>
 
 #include "app_controller.h"
 #include "application_paths.h"
@@ -29,6 +33,28 @@
 
 #include "test_utils/wait.h"
 
+// file scheme 打开请求拦截器：QDesktopServices::setUrlHandler 把"打开目录"的
+// 外呼改道到这里，既能断言打开的目标路径，也避免测试真的拉起文件管理器
+class FileUrlSpy : public QObject {
+    Q_OBJECT
+
+public slots:
+    void handle(const QUrl &url)
+    {
+        _called = true;
+        _lastUrl = url;
+    }
+
+public:
+    bool called() const { return _called; }
+    QUrl lastUrl() const { return _lastUrl; }
+    void reset() { _called = false; _lastUrl = QUrl(); }
+
+private:
+    bool _called = false;
+    QUrl _lastUrl;
+};
+
 class TestAppController : public QObject {
     Q_OBJECT
 
@@ -39,6 +65,7 @@ private slots:
     void testListenSuccessMarkedWhenPortFree();
     void testRendezvousErrorSurfacesAndClearsOnAck();
     void testTrayQuitDecisionMatchesWindowCloseGuard();
+    void testTrayOpenReceiveFolderOpensConfiguredPath();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -176,6 +203,34 @@ void TestAppController::testTrayQuitDecisionMatchesWindowCloseGuard()
 
     senderThread.quit();
     QVERIFY(senderThread.wait(3000));
+    drainStorageBeforeDestruction(controller);
+}
+
+// 托盘打开接收目录入口打开配置的接收路径（O-02 回归锚）：托盘菜单项的 C++
+// 落点必须打开当前配置的接收目录（完成提示仅存续 6 秒，错过提示后托盘是唯一
+// 直达入口）；目录已不存在时保持 openFolder 既有语义静默不外呼，不得误开任意位置
+void TestAppController::testTrayOpenReceiveFolderOpensConfiguredPath()
+{
+    AppController controller;
+    QVERIFY2(!controller.networkListenFailed(), "端口空闲时组合根应正常监听");
+
+    const QString recvDir = _tempDir->path() + "/tray-open-recv";
+    controller._config->setReceivePath(recvDir);  // setReceivePath 会确保目录存在
+
+    FileUrlSpy spy;
+    QDesktopServices::setUrlHandler(QStringLiteral("file"), &spy, "handle");
+
+    controller.openReceiveFolder();
+    QVERIFY2(spy.called(), "打开接收目录应外呼一次");
+    QCOMPARE(spy.lastUrl(), QUrl::fromLocalFile(recvDir));
+
+    // 接收目录随后被删除：静默无外呼（openFolder 对非目录非文件不动作）
+    spy.reset();
+    QVERIFY(QDir(recvDir).removeRecursively());
+    controller.openReceiveFolder();
+    QVERIFY2(!spy.called(), "接收目录不存在时不应外呼打开任何位置");
+
+    QDesktopServices::unsetUrlHandler(QStringLiteral("file"));
     drainStorageBeforeDestruction(controller);
 }
 

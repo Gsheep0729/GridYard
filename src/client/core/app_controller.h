@@ -108,6 +108,9 @@ public:
     Q_INVOKABLE void quit();
     // 清除本地缓存并退出应用
     Q_INVOKABLE void clearLocalCache();
+    // 打开接收目录（托盘菜单入口）：打开当前配置的接收路径，复用
+    // ConfigManager::openFolder 语义（目录不存在时静默不动作）
+    Q_INVOKABLE void openReceiveFolder();
     // 关窗动作决策：读取关窗行为配置与活动传输数，返回 ask / hide / exit / confirm
     Q_INVOKABLE QString resolveWindowCloseAction() const;
     // 托盘退出决策：托盘菜单"退出"是显式退出意图，不读关窗行为记忆（hide/ask

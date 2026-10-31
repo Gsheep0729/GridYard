@@ -267,6 +267,14 @@ void AppController::clearLocalCache()
     _shutdownController->requestClearCacheAndQuit();
 }
 
+// 打开接收目录（托盘菜单「打开接收目录」入口）：打开当前配置的接收路径。
+// 完成提示卡仅存续数秒，错过提示后托盘是直达接收目录的唯一入口；路径复用
+// ConfigManager::openFolder 既有语义——目录不存在时静默不动作，不误开任意位置
+void AppController::openReceiveFolder()
+{
+    _config->openFolder(_config->receivePath());
+}
+
 // 关窗动作决策：配置与活动传输数的读取都留在 C++ 侧，表现层只按结果分发
 QString AppController::resolveWindowCloseAction() const
 {
