@@ -1,7 +1,7 @@
 /**
 * @file    test_config_manager.cpp
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
@@ -13,7 +13,13 @@
 #include <QTemporaryDir>
 #include <QSettings>
 #include <QSysInfo>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonObject>
+
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "application_paths.h"
 #include "config_manager.h"
@@ -29,6 +35,7 @@ private slots:
     void testDefaultValue();
     void testDeviceName();
     void testReceivePath();
+    void testReceivePathError();
     void testAutoAcceptFiles();
     void testTcpPort();
     void testAnnouncedTcpPortFrozenAtStartup();
@@ -126,6 +133,46 @@ void TestConfigManager::testReceivePath()
     // 设置相同路径不应触发信号
     _config->setReceivePath(dir.path());
     QCOMPARE(spy.count(), 1);
+}
+
+// O-11 回归：接收路径保存前校验存在/可写，失败必须给出原因供行内反馈，
+// 禁止无效路径静默写入配置、延后到接受传输时才失败
+void TestConfigManager::testReceivePathError()
+{
+    // 空路径（含纯空白）：直接拒绝
+    QVERIFY(!_config->receivePathError(QString()).isEmpty());
+    QVERIFY(!_config->receivePathError("   ").isEmpty());
+
+    QTemporaryDir base;
+    QVERIFY(base.isValid());
+
+    // 不存在的新路径：可创建即通过，且目录被实际创建（与 setReceivePath 的 mkpath 对齐）
+    const QString nested = base.path() + "/auto/recv";
+    QVERIFY(_config->receivePathError(nested).isEmpty());
+    QVERIFY(QFileInfo(nested).isDir());
+
+    // 已存在的目录：通过
+    QVERIFY(_config->receivePathError(base.path()).isEmpty());
+
+    // 路径已被普通文件占用：mkpath 必失败，必须报错
+    const QString occupied = base.path() + "/occupied";
+    QFile file(occupied);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.close();
+    QVERIFY(!_config->receivePathError(occupied).isEmpty());
+
+    // 不可写目录：必须报错（root 下权限位不生效，跳过该例）
+    if (geteuid() != 0) {
+        const QString roDir = base.path() + "/readonly";
+        QVERIFY(QDir().mkpath(roDir));
+        QVERIFY(QFile::setPermissions(roDir, QFile::ReadUser | QFile::ExeUser));
+        QVERIFY(!QFileInfo(roDir).isWritable());
+        QVERIFY(!_config->receivePathError(roDir).isEmpty());
+        // 恢复权限，保证 QTemporaryDir 析构可清理
+        QFile::setPermissions(roDir, QFile::ReadUser | QFile::WriteUser | QFile::ExeUser);
+    } else {
+        qWarning("以 root 运行，跳过不可写目录用例（权限位对 root 不生效）");
+    }
 }
 
 void TestConfigManager::testTcpPort()

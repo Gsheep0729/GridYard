@@ -1,7 +1,7 @@
 /**
 * @file    SettingsDialog.qml
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   设置对话框
 *
@@ -39,6 +39,8 @@ Dialog {
     property string _tempRendezvousToken: ConfigManager.rendezvousToken
     property int    _tempRelayMode: ConfigManager.relayMode
     property int    _tempCloseWindowAction: ConfigManager.closeWindowAction
+    // 接收路径保存前校验失败原因：非空时行内红字展示并阻止保存（禁静默假成功）
+    property string _receivePathError: ""
 
     // 表单校验：设备名非空、接收路径非空、端口在合法范围内
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
@@ -273,7 +275,10 @@ Dialog {
                         selectByMouse: true
                         font.pixelSize: 13
                         // 支持直接粘贴或手输路径；编辑实时同步临时值，与更改目录按钮等价
-                        onTextEdited: settingsDialog._tempReceivePath = text
+                        onTextEdited: {
+                            settingsDialog._tempReceivePath = text
+                            settingsDialog._receivePathError = ""
+                        }
                         onEditingFinished: {
                             text = text.trim()
                             settingsDialog._tempReceivePath = text
@@ -283,8 +288,11 @@ Dialog {
                             radius: Style.Radius.sm
                             color: Style.Color.window
                             border.width: receivePathField.activeFocus ? 1.5 : 1
+                            // 校验失败红边提示（行内红字同源），重新编辑即清除
                             border.color: receivePathField.activeFocus
-                                          ? Style.Color.primary : Style.Color.border
+                                          ? Style.Color.primary
+                                          : (settingsDialog._receivePathError.length > 0
+                                             ? Style.Color.error : Style.Color.border)
 
                             Label {
                                 visible: receivePathField.text.length === 0
@@ -306,6 +314,16 @@ Dialog {
                         text: qsTr("更改目录")
                         onClicked: folderDialog.open()
                     }
+                }
+
+                // 接收路径校验失败行内反馈：保存前校验存在/可写，失败红字并阻止保存
+                Label {
+                    Layout.fillWidth: true
+                    visible: settingsDialog._receivePathError.length > 0
+                    text: settingsDialog._receivePathError
+                    color: Style.Color.error
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
                 }
 
                 Rectangle {
@@ -922,6 +940,13 @@ Dialog {
                 enabled: settingsDialog._isDirty && settingsDialog._isValid
                 highlighted: true
                 onClicked: {
+                    // 接收路径保存前先校验存在/可写：失败行内红字并阻止保存，
+                    // 禁止静默写配置把失败延后到接受传输时（自动接收时用户不在场）
+                    settingsDialog._receivePathError =
+                        ConfigManager.receivePathError(settingsDialog._tempReceivePath)
+                    if (settingsDialog._receivePathError.length > 0)
+                        return
+
                     // 批量写回 ConfigManager，触发各属性的 NOTIFY 信号
                     ConfigManager.deviceName = settingsDialog._tempDeviceName.trim()
                     ConfigManager.receivePath = settingsDialog._tempReceivePath
@@ -956,6 +981,7 @@ Dialog {
         onAccepted: {
             settingsDialog._tempReceivePath = settingsDialog.localPathFromUrl(selectedFolder)
             receivePathField.text = settingsDialog._tempReceivePath
+            settingsDialog._receivePathError = ""
         }
     }
 

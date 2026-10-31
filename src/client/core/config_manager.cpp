@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
 * @version 8.2.1
-* @date    2026-10-31
+* @date    2026-11-01
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -307,6 +307,40 @@ void ConfigManager::setReceivePath(const QString &path)
     openConfigStore().set("device", "receivePath", path.toStdString());
 
     emit receivePathChanged();
+}
+
+// 校验接收路径是否可用：可创建/已存在且可写返回空串，否则返回可直接展示的
+// 原因；供设置页保存前行内反馈，避免无效路径静默写入配置、延后到接受传输时
+// 才以「无法创建接收目录」失败（自动接收模式下用户甚至不在场）
+QString ConfigManager::receivePathError(const QString &path) const
+{
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty()) {
+        return tr("接收路径不能为空");
+    }
+
+    // 路径已被普通文件占用：mkpath 必失败，提前给出可读原因
+    if (QFileInfo::exists(trimmed) && !QFileInfo(trimmed).isDir()) {
+        const QString reason = tr("该路径已被文件占用，无法用作接收目录");
+        qWarning() << "ConfigManager: 接收路径校验失败:" << trimmed << "-" << reason;
+        return reason;
+    }
+
+    // 与 setReceivePath 的落盘前准备一致：尝试创建目录（已存在时 mkpath 直接成功）
+    if (!QDir().mkpath(trimmed)) {
+        const QString reason = tr("无法创建接收目录，请检查路径是否正确");
+        qWarning() << "ConfigManager: 接收路径校验失败:" << trimmed << "-" << reason;
+        return reason;
+    }
+
+    // 目录已存在但不可写（如只读挂载、权限收紧）：接收时必然写失败
+    if (!QFileInfo(trimmed).isWritable()) {
+        const QString reason = tr("接收目录不可写，请检查目录权限");
+        qWarning() << "ConfigManager: 接收路径校验失败:" << trimmed << "-" << reason;
+        return reason;
+    }
+
+    return QString();
 }
 
 // 设置自动接收文件开关并持久化

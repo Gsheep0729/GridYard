@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.h
  * @version 8.2.1
- * @date    2026-10-31
+ * @date    2026-11-01
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
@@ -132,6 +132,9 @@ public:
     void restoreDeviceIdentity(const QString &deviceId, const QString &deviceName);
     Q_INVOKABLE void refreshLocalIp();
     Q_INVOKABLE void openFolder(const QString &path);
+    // 校验接收路径：可创建/已存在且可写返回空串，否则返回可直接展示的原因；
+    // 供设置页保存前行内反馈，阻止无效路径静默写入配置延后到接收时才失败
+    Q_INVOKABLE QString receivePathError(const QString &path) const;
 
     // 语义化方法：判断是否是本机设备
     bool isMyDevice(const QString &deviceId) const;
