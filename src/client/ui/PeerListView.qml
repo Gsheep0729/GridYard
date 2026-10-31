@@ -1,7 +1,7 @@
 /**
  * @file    PeerListView.qml
  * @version 8.2.1
- * @date 2026-10-30
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   设备列表组件
  *
@@ -418,6 +418,17 @@ Rectangle {
                 Label {
                     Layout.alignment: Qt.AlignHCenter
                     text: qsTr("请确认对方已打开 GridYard 并连接同一网络；\n跨网段可通过邀请码添加")
+                    color: Style.Color.textMuted
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.fillWidth: true
+                }
+
+                // 防火墙拦截无套接字级征兆（UDP 绑定成功、入向被丢），只能在空态引导自查
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("若长期无结果，检查系统防火墙是否放行 GridYard（UDP 45678 / TCP 35100）")
                     color: Style.Color.textMuted
                     font.pixelSize: 12
                     wrapMode: Text.Wrap

@@ -1,7 +1,7 @@
 /**
 * @file    endpoint_probe.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   网络端点探测实现
 *
@@ -71,7 +71,9 @@ void EndpointProbe::probeTcp(const QString &ip, quint16 port, int timeoutMs)
                     result.tcpConnected = false;
                     result.elapsedMs = effectiveTimeout;
                     result.errorCode = QStringLiteral("TcpTimeout");
-                    result.errorMessage = QStringLiteral("连接超时");
+                    // 与 errorMessageFromSocketError 的超时文案保持一致，两路超时同提示
+                    result.errorMessage =
+                        QStringLiteral("连接超时，对方可能不在线或防火墙拦截了连接");
                     emit probeFinished(result);
                     socket->deleteLater();
                 }
@@ -128,6 +130,10 @@ QString EndpointProbe::errorCodeFromSocketError(gy::net::SocketError socketError
         return QStringLiteral("HostNotFound");
     case gy::net::SocketError::ConnectionRefusedError:
         return QStringLiteral("TcpConnectionRefused");
+    case gy::net::SocketError::SocketTimeoutError:
+        return QStringLiteral("TcpTimeout");
+    case gy::net::SocketError::NetworkError:
+        return QStringLiteral("NetUnreachable");
     default:
         return QStringLiteral("UnknownError");
     }
@@ -138,9 +144,15 @@ QString EndpointProbe::errorMessageFromSocketError(gy::net::SocketError socketEr
 {
     switch (socketError) {
     case gy::net::SocketError::HostNotFoundError:
-        return QStringLiteral("主机未找到，请检查 IP 地址是否正确");
+        // errno 侧 EHOSTUNREACH/EHOSTDOWN 归入本类：主机不回应常因离线或防火墙拦截
+        return QStringLiteral("主机不可达，请检查 IP 地址是否正确、是否与对方同一网络");
     case gy::net::SocketError::ConnectionRefusedError:
         return QStringLiteral("连接被拒绝，目标端口可能未开启服务");
+    case gy::net::SocketError::SocketTimeoutError:
+        // 与超时计时器路径文案保持一致：两条超时路径用户看到同一段提示
+        return QStringLiteral("连接超时，对方可能不在线或防火墙拦截了连接");
+    case gy::net::SocketError::NetworkError:
+        return QStringLiteral("网络不可达，请检查本机网络连接是否正常");
     default:
         return QStringLiteral("未知错误：%1").arg(static_cast<int>(socketError));
     }

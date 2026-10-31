@@ -1,7 +1,7 @@
 /**
 * @file    endpoint_probe.h
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   网络端点探测
 *
@@ -39,12 +39,11 @@ public:
     // 异步 TCP 探测，探测完成后发射 probeFinished 信号
     Q_INVOKABLE void probeTcp(const QString &ip, quint16 port, int timeoutMs = 5000);
 
+    // 生成错误码和错误信息（纯映射，公开供回归测试逐类锁定文案）
+    static QString errorCodeFromSocketError(gy::net::SocketError socketError);
+    static QString errorMessageFromSocketError(gy::net::SocketError socketError);
+
 signals:
     // 探测完成信号，携带完整探测结果
     void probeFinished(const EndpointProbe::ProbeResult &result);
-
-private:
-    // 生成错误码和错误信息
-    static QString errorCodeFromSocketError(gy::net::SocketError socketError);
-    static QString errorMessageFromSocketError(gy::net::SocketError socketError);
 };

@@ -1,7 +1,7 @@
 /**
 * @file    test_endpoint_probe.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   EndpointProbe 单元测试
 *
@@ -29,6 +29,8 @@ private slots:
     void testLocalPortConnected();
     // 测试连接超时
     void testConnectionTimeout();
+    // C-06 回归：超时/不可达错误码与文案逐类独立，不再吞进 UnknownError
+    void testErrorMappingTexts();
 };
 
 void TestEndpointProbe::testInvalidIp()
@@ -150,6 +152,42 @@ void TestEndpointProbe::testConnectionTimeout()
     QVERIFY(finished);
     QVERIFY(!result.tcpConnected);
     QVERIFY(result.errorCode == "TcpConnectionRefused");
+}
+
+void TestEndpointProbe::testErrorMappingTexts()
+{
+    // C-06：防火墙拦截场景下用户拿到的不能是"未知错误：N"。
+    // 超时（ETIMEDOUT）与网络不可达（ENETUNREACH）各自给出独立错误码
+    QVERIFY(EndpointProbe::errorCodeFromSocketError(
+                gy::net::SocketError::SocketTimeoutError) == "TcpTimeout");
+    QVERIFY(EndpointProbe::errorCodeFromSocketError(
+                gy::net::SocketError::NetworkError) == "NetUnreachable");
+    // 既有分类保持稳定，防止下游按错误码分支的展示被意外改写
+    QVERIFY(EndpointProbe::errorCodeFromSocketError(
+                gy::net::SocketError::HostNotFoundError) == "HostNotFound");
+    QVERIFY(EndpointProbe::errorCodeFromSocketError(
+                gy::net::SocketError::ConnectionRefusedError) == "TcpConnectionRefused");
+    // 真正未分类的错误仍归 UnknownError，兜底语义不变
+    QVERIFY(EndpointProbe::errorCodeFromSocketError(
+                gy::net::SocketError::UnknownSocketError) == "UnknownError");
+
+    // 文案：三类网络失败各自独立可读，一律不落"未知错误：N"
+    const QString timeoutText = EndpointProbe::errorMessageFromSocketError(
+        gy::net::SocketError::SocketTimeoutError);
+    const QString hostUnreachableText = EndpointProbe::errorMessageFromSocketError(
+        gy::net::SocketError::HostNotFoundError);
+    const QString netUnreachableText = EndpointProbe::errorMessageFromSocketError(
+        gy::net::SocketError::NetworkError);
+    QVERIFY(!timeoutText.startsWith("未知错误"));
+    QVERIFY(!hostUnreachableText.startsWith("未知错误"));
+    QVERIFY(!netUnreachableText.startsWith("未知错误"));
+    // 三类文案互不相同，避免同一段提示掩盖不同失败形态
+    QVERIFY(timeoutText != hostUnreachableText);
+    QVERIFY(timeoutText != netUnreachableText);
+    QVERIFY(hostUnreachableText != netUnreachableText);
+    // 连接拒绝文案维持既有语义
+    QVERIFY(!EndpointProbe::errorMessageFromSocketError(
+                gy::net::SocketError::ConnectionRefusedError).startsWith("未知错误"));
 }
 
 QTEST_GUILESS_MAIN(TestEndpointProbe)
