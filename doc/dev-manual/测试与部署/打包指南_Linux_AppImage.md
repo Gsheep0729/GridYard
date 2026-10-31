@@ -1,7 +1,7 @@
 # GridYard 打包指南：Linux AppImage
 
 **作者**：GY 团队
-**最后更新**：2026-06-29
+**最后更新**：2026-11-01
 **适用版本**：v6.8.1（含在线聊天与 SQLite 本地数据层）
 
 ---
@@ -70,6 +70,33 @@ Stage 6 的 storage 单元测试通过即可认为 SQLite 链路可用：
 
 ```bash
 ctest --test-dir src/build-ninja --output-on-failure -R storage
+```
+
+### 2.4 构建机 GLIBC 基线检查（C-08，必查项）
+
+**规则：构建机的 glibc 必须 ≤ 目标发行版的 glibc。** 目标基线为 Ubuntu 24.04
+（glibc 2.39），Qt 依赖来自 `/opt/QT` 官方安装（GCC 11.5.0 构建，基线
+GLIBC 2.34）。
+
+背景事故（兼容勘察 C-08）：`dist/AppDir` 曾由外部环境（GCC 16.1.1 自建
+Qt 6.11.1、ICU 78）拼装，其 `libQt6Gui.so.6`、`libglib-2.0.so.0` 等 6 个
+工件依赖 `GLIBC_2.43`，在本机（glibc 2.39）与目标发行版上 `ldd` 直接报
+`GLIBC_2.43 not found`，AppImage 启动即失败。此类损坏从文件外观无法察觉，
+必须在打包链路里机械化拦截。
+
+检查项（已固化为脚本，无需手工执行）：
+
+- `src/scripts/check_appimage_glibc.py <AppDir>`：扫描全部 ELF 的
+  `GLIBC_2.x` 版本依赖，超过 `--max`（默认 2.39）即列出 offending 文件
+  并以退出码 1 结束；
+- `src/scripts/build_appimage.sh`：组装 AppDir 后、产出 AppImage 前强制
+  调用上述守卫，并对构建机 glibc 做同规则预检，超基线直接拒绝打包。
+
+手工复查（等价于守卫的核心动作）：
+
+```bash
+ldd --version | head -1                      # 构建机 glibc ≤ 2.39
+objdump -T <工件.so> | grep -oE "GLIBC_2\.[0-9]+" | sort -Vu | tail -1
 ```
 
 ---
@@ -331,7 +358,22 @@ cp /usr/share/fonts/noto/*.ttf "$APPDIR/usr/share/fonts/" 2>/dev/null
 
 ## 6. 自动化脚本
 
-把 §3 流程封装为 `src/scripts/build_appimage.sh`：
+> **C-08 后更新（2026-11-01）**：打包自动化已落库为
+> `src/scripts/build_appimage.sh`（AppDir 默认组装到仓库根 `dist/AppDir`，
+> Qt 源自 CMakeCache 同源的 `/opt/QT` 官方安装，系统依赖以 ldd 定点迭代
+> 递归收集并排除 glibc 核心），并在产出 AppImage 前强制执行
+> `src/scripts/check_appimage_glibc.py` 的 GLIBC 基线守卫（§2.4）。
+> 日常打包直接：
+>
+> ```bash
+> bash src/scripts/build_appimage.sh
+> # 可选补打包：APPIMAGETOOL=/path/to/appimagetool bash src/scripts/build_appimage.sh
+> ```
+>
+> 下述内联脚本是 v6.8.1 时代的手工流程存档（linuxdeploy + 系统 Qt 路径），
+> 已被上面的落库脚本取代，仅供追溯。
+
+历史内联版本（v6.8.1）：
 
 ```bash
 #!/bin/bash
