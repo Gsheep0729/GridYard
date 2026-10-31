@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_coordinator.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   协调节点编排器实现
 */
@@ -134,7 +134,7 @@ void RendezvousCoordinator::registerSelf()
                                 _config->deviceId(),
                                 _config->deviceName(),
                                 addresses,
-                                _config->tcpPort(),
+                                _config->announcedTcpPort(),
                                 gy::protocol::kDefaultDiscoveryPort);
     _rendezvous->listPeers(gy::protocol::kDefaultRendezvousRoom);
 }

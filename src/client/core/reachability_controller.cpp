@@ -260,7 +260,9 @@ QString ReachabilityController::generateInvite()
     invite.deviceId = _config->deviceId();
     invite.deviceName = _config->deviceName();
     invite.ipAddress = _config->localIp();
-    invite.tcpPort = _config->tcpPort();
+    // 邀请码指向的必须是真正监听中的端口：改端口保存后未重启时监听器
+    // 仍在旧端口，把新端口写进邀请码等于让对端来连一个无人监听的地址
+    invite.tcpPort = _config->announcedTcpPort();
 
     // 邀请码端口照实携带：开发者实例的发现端口按实例号偏移绑定，取实际值；
     // 正常模式维持默认端口（bind 回退随机端口时的既有问题单独立项处理）

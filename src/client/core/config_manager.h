@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.h
-* @version 7.26.1
-* @date    2026-10-24
+ * @version 8.2.1
+ * @date    2026-10-31
 * @author  GridYard Team
 * @brief   应用配置管理器（QML 单例）
 *
@@ -82,6 +82,8 @@ public:
     bool     autoAcceptFiles() const;
     // 获取 TCP 端口
     quint16  tcpPort()     const;
+    // 获取身份播报用 TCP 端口（启动期定型快照，与监听器实际端口同源）
+    quint16  announcedTcpPort() const;
     // 获取历史保留天数
     int retentionDays() const;
     // 获取协调服务器启用状态
@@ -178,6 +180,7 @@ private:
     QString _receivePath;             // 接收文件的本地保存目录
     bool    _autoAcceptFiles = false; // 是否跳过接收确认直接保存
     quint16 _tcpPort = 0;             // TCP P2P 服务监听端口
+    quint16 _announcedTcpPort = 0;    // 身份播报用端口快照：监听器不随保存切换，播报也不得先行
     int _retentionDays = 0;           // 本地历史保留天数，0 表示永久保留
     bool _rendezvousEnabled = false;   // 是否启用协调服务器
     QString _rendezvousHost = "127.0.0.1"; // 协调服务器地址

@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.2.1
+* @date    2026-10-31
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -117,6 +117,10 @@ ConfigManager::ConfigManager(QObject *parent)
         ? static_cast<quint16>(readConfigInt(store, "network", "tcpPort",
                                              gy::protocol::instanceP2pPort(_instanceNumber)))
         : envPort.toUInt();
+    // 身份播报端口在启动期定型：P2P 监听器只在启动时按配置端口绑定一次，
+    // 运行期保存的新端口要等重启才真正生效，播报必须与监听器同源同刻，
+    // 否则保存后每 5 秒的 Hello 都在向全网宣告一个无人监听的端口
+    _announcedTcpPort = _tcpPort;
 
     // Reachability 配置：协调服务器
     _rendezvousEnabled = readConfigBool(store, "reachability", "rendezvousEnabled", false);
@@ -192,6 +196,12 @@ bool ConfigManager::autoAcceptFiles() const
 quint16 ConfigManager::tcpPort() const
 {
     return _tcpPort;
+}
+
+// 获取身份播报用 TCP 端口（启动期定型快照）
+quint16 ConfigManager::announcedTcpPort() const
+{
+    return _announcedTcpPort;
 }
 
 // 获取历史保留天数
@@ -362,7 +372,8 @@ void ConfigManager::fillHelloPayload(QJsonObject &json) const
 {
     json["device_id"]   = _deviceId;
     json["device_name"] = _deviceName;
-    json["tcp_port"]    = _tcpPort;
+    // 播报启动期定型的端口：监听器未随保存切换前，宣告新端口即宣告无人监听
+    json["tcp_port"]    = _announcedTcpPort;
 }
 
 // 填充发送方信息到会话（设备 ID、名称）

@@ -1,7 +1,7 @@
 /**
 * @file    test_config_manager.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
@@ -13,6 +13,7 @@
 #include <QTemporaryDir>
 #include <QSettings>
 #include <QSysInfo>
+#include <QJsonObject>
 
 #include "application_paths.h"
 #include "config_manager.h"
@@ -30,6 +31,7 @@ private slots:
     void testReceivePath();
     void testAutoAcceptFiles();
     void testTcpPort();
+    void testAnnouncedTcpPortFrozenAtStartup();
     void testDeviceIdPersistence();
     void testSignalEmission();
     void testLocalIp();
@@ -139,6 +141,34 @@ void TestConfigManager::testTcpPort()
     // 设置相同端口不应触发信号
     _config->setTcpPort(newPort);
     QCOMPARE(spy.count(), 1);
+}
+
+// 身份播报端口应在启动期定型：运行期保存的新端口不得立即进入 Hello 载荷，
+// 否则监听器仍在旧端口而播报已切换，保存后到重启前对端按新端口连入必失败
+void TestConfigManager::testAnnouncedTcpPortFrozenAtStartup()
+{
+    // 快照取构造期定型的播报端口（前序用例可能已改动 tcpPort 运行值）
+    const quint16 frozenPort = _config->announcedTcpPort();
+    const quint16 portBefore = _config->tcpPort();
+
+    // 运行期改端口：配置值立即更新（重启生效），播报快照保持启动值
+    quint16 runtimePort = static_cast<quint16>(frozenPort + 100 > 65535
+                                                    ? frozenPort - 100 : frozenPort + 100);
+    if (runtimePort == portBefore) {
+        runtimePort = static_cast<quint16>(frozenPort + 200 > 65535
+                                               ? frozenPort - 200 : frozenPort + 200);
+    }
+    _config->setTcpPort(runtimePort);
+    QCOMPARE(_config->tcpPort(), runtimePort);
+    QCOMPARE(_config->announcedTcpPort(), frozenPort);
+
+    // Hello 载荷播报的是监听器真正使用的启动端口
+    QJsonObject payload;
+    _config->fillHelloPayload(payload);
+    QCOMPARE(payload["tcp_port"].toInt(), static_cast<int>(frozenPort));
+
+    // 恢复进入本用例前的端口值，避免影响后续用例
+    _config->setTcpPort(portBefore);
 }
 
 void TestConfigManager::testAutoAcceptFiles()
