@@ -1,7 +1,7 @@
 /**
  * @file    AcceptDialog.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-10-31
  * @author  GridYard Team
  * @brief   接收确认弹窗
  *
@@ -36,6 +36,10 @@ Dialog {
 
     // 会话已过期（发送方取消或超时）时通知主窗口提示
     signal transferStale()
+
+    // 直接关闭（Esc 等）不作为答复：会话保持等待确认，由主窗口提示
+    // 可从任务卡重新唤起确认弹窗
+    signal requestPostponed(string sessionId)
 
     // 用接收请求的字段装配弹窗并打开（info 为请求信号的字段集合）
     function openWith(info: var): void {
@@ -202,10 +206,15 @@ Dialog {
         bottomPadding: 16
         rightPadding: 16
 
+        // 拒绝按钮不挂 RejectRole：Dialog 的 rejected 信号同时承载 Esc 等
+        // 直接关闭路径，两者语义必须分开（直接关闭按"稍后再说"处理）
         Button {
             text: qsTr("拒绝")
-            DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             flat: true
+            onClicked: {
+                AppController.transferController.rejectReceiveSession(acceptDialog.sessionId)
+                acceptDialog.close()
+            }
         }
 
         Button {
@@ -222,8 +231,9 @@ Dialog {
     }
 
     onRejected: {
-        // 用户拒绝
-        AppController.transferController.rejectReceiveSession(sessionId)
+        // 直接关闭（Esc/宿主窗口隐藏）不算答复：会话保持等待确认，
+        // 任务卡上的确认入口可重新唤起弹窗，避免误按直接拒绝对端
+        acceptDialog.requestPostponed(acceptDialog.sessionId)
     }
 
     // 会话过期感知：等待确认的会话被后端终结（对方取消/超时/断连）时，

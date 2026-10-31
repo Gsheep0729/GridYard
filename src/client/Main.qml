@@ -139,6 +139,18 @@ ApplicationWindow {
         }
     }
 
+    // 从任务卡重新唤起等待确认的接收请求：确认弹窗被直接关闭（Esc 等）后
+    // 请求并不消失，会话保持等待确认状态，由任务卡上的确认入口找回
+    function reopenReceiveConfirm(sessionId: string): void {
+        const waiting = AppController.transferController.waitingConfirmReceiveSessions()
+        for (let i = 0; i < waiting.length; i++) {
+            if (waiting[i].sessionId === sessionId) {
+                acceptDialog.openWith(waiting[i])
+                return
+            }
+        }
+    }
+
     // 置顶释放定时器：短暂置顶后恢复常规窗口标志，避免窗口永远悬浮
     Timer {
         id: releaseTopMostTimer
@@ -354,6 +366,7 @@ ApplicationWindow {
                 multiTargetDialog.openFor("")
             }
             onFilesDropped: (urls) => mainWindow.handleDroppedFiles(mainWindow._selId, urls)
+            onReceiveConfirmRequested: (sessionId) => mainWindow.reopenReceiveConfirm(sessionId)
         }
     }
 
@@ -363,6 +376,9 @@ ApplicationWindow {
         id: acceptDialog
         // 发送方取消传输：弹窗已自动关闭，这里补一条提示说明原因
         onTransferStale: mainWindow.showErrorToast(qsTr("对方已取消本次传输"))
+        // 直接关闭（Esc 等）不算答复：会话保持等待确认，提示用户去任务卡找回
+        onRequestPostponed: (sessionId) =>
+            mainWindow.showErrorToast(qsTr("传输请求已暂时收起，可在任务卡上重新打开确认"))
         // 接受/拒绝/关窗都汇入 closed：串行弹出下一个仍待确认的请求
         onClosed: mainWindow.showNextReceiveRequest()
     }

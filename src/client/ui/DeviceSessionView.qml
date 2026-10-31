@@ -79,6 +79,7 @@ Frame {
    signal sendFolderRequested()
    signal sendMultiRequested()
    signal filesDropped(var urls)  // 拖拽内容原样冒泡，由 Main.qml 统一裁决
+   signal receiveConfirmRequested(string sessionId)  // 任务卡确认入口冒泡到主窗口
 
    ColumnLayout {
        anchors.fill: parent
@@ -241,6 +242,9 @@ Frame {
                expandedSessions: deviceSessionView.expandedSessions
                onExpansionRequested: function(sessionId, expanded) {
                    deviceSessionView.setSessionExpanded(sessionId, expanded)
+               }
+               onReceiveConfirmRequested: (sessionId) => {
+                   deviceSessionView.receiveConfirmRequested(sessionId)
                }
            }
 

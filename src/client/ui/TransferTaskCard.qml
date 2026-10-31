@@ -1,7 +1,7 @@
 /**
  * @file    TransferTaskCard.qml
  * @version 8.2.1
- * @date 2026-10-30
+ * @date 2026-10-31
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
@@ -34,6 +34,8 @@ Frame {
 
     property bool expanded: false  // 文件夹内容是否展开
     signal expansionRequested(bool expanded)
+    // 重新唤起接收确认弹窗：确认弹窗被直接关闭后请求从任务卡找回入口
+    signal confirmRequested(string sessionId)
 
     // 状态颜色映射：不同阶段使用不同底色引导用户注意力
     readonly property color kRunningColor: Style.Color.primary
@@ -285,6 +287,15 @@ Frame {
                 font.bold: true
                 color: taskCard.kRunningColor
                 visible: taskCard.status === "transferring"
+            }
+
+            // 确认入口：等待确认的接收卡可重新唤起确认弹窗（弹窗被 Esc 等
+            // 直接关闭后请求不消失，任务卡是找回它的入口）
+            Button {
+                text: qsTr("去确认")
+                flat: true
+                visible: taskCard.status === "waiting_confirm" && taskCard.taskType === "receive"
+                onClicked: taskCard.confirmRequested(taskCard.sessionId)
             }
 
             // 取消按钮：传输中、等待确认或等待中继决策时可用

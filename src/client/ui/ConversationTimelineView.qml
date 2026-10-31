@@ -1,7 +1,7 @@
 /**
  * @file    ConversationTimelineView.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-10-31
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
  *
@@ -25,6 +25,8 @@ Item {
     property bool followLatest: true      // 用户在底部附近时自动跟随最新内容
 
     signal expansionRequested(string sessionId, bool expanded)
+    // 等待确认的接收卡请求唤起确认弹窗（卡片信号逐层上抛到主窗口）
+    signal receiveConfirmRequested(string sessionId)
 
     // 聊天消息与传输任务按时间合并，行级增量通知由 C++ 模型负责
     ConversationTimelineModel {
@@ -289,6 +291,9 @@ Item {
                     expanded: timelineView.expandedSessions[timelineDelegate.sessionId] === true
                     onExpansionRequested: function(expanded) {
                         timelineView.expansionRequested(timelineDelegate.sessionId, expanded)
+                    }
+                    onConfirmRequested: (sessionId) => {
+                        timelineView.receiveConfirmRequested(sessionId)
                     }
                 }
             }
