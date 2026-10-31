@@ -1,7 +1,7 @@
 /**
 * @file    reachability_controller.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   网络可达性控制器实现
 *
@@ -186,6 +186,16 @@ QStringList ReachabilityController::collectLocalAddresses() const
 // 处理探测完成结果
 void ReachabilityController::onProbeFinished(const EndpointProbe::ProbeResult &result)
 {
+    // 手动添加路径的探测在此收口：成败统一走 manualEndpointTestResult，
+    // 失败时携带伪条目标识通知组合根清理；与邀请导入的 pending 注入互斥
+    if (_manualProbeActive) {
+        const QString manualDeviceId = _manualProbeDeviceId;
+        _manualProbeActive = false;
+        _manualProbeDeviceId.clear();
+        onManualEndpointProbeFinished(result, manualDeviceId);
+        return;
+    }
+
     _isProbing = false;
     emit isProbingChanged();
 
@@ -314,24 +324,35 @@ void ReachabilityController::addManualEndpoint(const QString &ip, quint16 tcpPor
         return;
     }
 
+    if (!_discovery) {
+        emit manualEndpointTestResult(false, QStringLiteral("设备发现服务未就绪"));
+        return;
+    }
+
     _inviteError.clear();
     emit inviteErrorChanged();
 
     // 直接添加到设备列表，标记为 manual 来源
-    if (_discovery) {
-        PeerInfo info;
-        info.deviceId = gy::domain::manualPseudoDeviceId(ip);  // 真身合并前的占位 ID
-        info.deviceName = QStringLiteral("手动端点 (%1)").arg(ip);
-        info.ipAddress = ip;
-        info.tcpPort = tcpPort;
-        info.isOnline = true;
-        info.lastSeen = QDateTime::currentDateTimeUtc();
-        info.source = QStringLiteral("manual");
-        _discovery->addManualPeer(info);
-    }
+    PeerInfo info;
+    info.deviceId = gy::domain::manualPseudoDeviceId(ip);  // 真身合并前的占位 ID
+    info.deviceName = QStringLiteral("手动端点 (%1)").arg(ip);
+    info.ipAddress = ip;
+    info.tcpPort = tcpPort;
+    info.isOnline = true;
+    info.lastSeen = QDateTime::currentDateTimeUtc();
+    info.source = QStringLiteral("manual");
+    _discovery->addManualPeer(info);
 
     // 发送定向 Hello 尝试建立连接
     sendDirectedHello(ip, 45678);
+
+    // 转入与测试端点一致的探测链：结果经 manualEndpointTestResult 反馈，
+    // 弹窗据此关闭或给行内错误，失败后伪条目由组合根连库清理
+    _manualProbeActive = true;
+    _manualProbeDeviceId = info.deviceId;
+    _isProbing = true;
+    emit isProbingChanged();
+    _probe->probeTcp(ip, tcpPort, 3000);
 }
 
 // 测试手动端点
@@ -355,20 +376,19 @@ void ReachabilityController::testManualEndpoint(const QString &ip, quint16 tcpPo
 
 // 处理手动端点探测完成
 void ReachabilityController::onManualEndpointProbeFinished(const EndpointProbe::ProbeResult &result,
-                                                            const QString &deviceId,
-                                                            const QString &deviceName,
-                                                            quint16 discoveryPort)
+                                                            const QString &deviceId)
 {
-    Q_UNUSED(deviceId);
-    Q_UNUSED(deviceName);
-    Q_UNUSED(discoveryPort);
-
     _isProbing = false;
     emit isProbingChanged();
 
     if (result.tcpConnected) {
         emit manualEndpointTestResult(true, QString());
-    } else {
-        emit manualEndpointTestResult(false, result.errorMessage);
+        return;
+    }
+
+    emit manualEndpointTestResult(false, result.errorMessage);
+    // 刚加的手动伪条目探测不可达：通知组合根把它连库清掉，最近见过不留死数据
+    if (!deviceId.isEmpty()) {
+        emit manualEntryProbeFailed(deviceId);
     }
 }

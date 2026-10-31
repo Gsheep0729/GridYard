@@ -1,7 +1,7 @@
 /**
 * @file    test_reachability_controller.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GY
 * @brief   网络可达性控制器测试
 *
@@ -16,6 +16,7 @@
 #include "config_manager.h"
 #include "data_types.h"
 #include "discovery_service.h"
+#include "history_records.h"
 #include "ip_address.h"
 #include "posix_tcp_server.h"
 #include "reachability_controller.h"
@@ -37,6 +38,8 @@ private slots:
     void testImportInviteProbeFailureDoesNotInject();
     void testAddManualEndpointValidation();
     void testAddManualEndpointAddsPeer();
+    void testAddManualEndpointProbeFailureEmitsResult();
+    void testAddManualEndpointProbeSuccessKeepsPeer();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -290,6 +293,63 @@ void TestReachabilityController::testAddManualEndpointAddsPeer()
     }
     QVERIFY2(found, "手动端点应出现在发现列表并带 manual 来源");
     QVERIFY2(!updatedSpy.isEmpty(), "手动端点入列应发射 peerUpdated 供设备目录持久化");
+}
+
+// 手动添加的探测不可达时必须发射结果信号（弹窗行内报错与弹窗不关的依据）
+void TestReachabilityController::testAddManualEndpointProbeFailureEmitsResult()
+{
+    quint16 closedPort = 0;
+    {
+        gy::net::PosixTcpServer probe;
+        QVERIFY(probe.listen(gy::net::IpAddress::localHost(), 0));
+        closedPort = probe.serverPort();
+        probe.close();
+    }
+
+    ReachabilityController controller;
+    controller.setConfigManager(_config);
+    controller.setDiscoveryService(_discovery);
+
+    QSignalSpy resultSpy(&controller, &ReachabilityController::manualEndpointTestResult);
+    QSignalSpy removedSpy(&controller, &ReachabilityController::manualEntryProbeFailed);
+    controller.addManualEndpoint(QStringLiteral("127.0.0.1"), closedPort);
+
+    QTRY_COMPARE_WITH_TIMEOUT(resultSpy.count(), 1, 6000);
+    QCOMPARE(resultSpy.first().at(0).toBool(), false);
+    QVERIFY2(!resultSpy.first().at(1).toString().isEmpty(), "失败结果应携带可展示的错误说明");
+    // 失败要携带伪条目标识，组合根据此把刚加的手动条目连库清理
+    QTRY_COMPARE_WITH_TIMEOUT(removedSpy.count(), 1, 3000);
+    QCOMPARE(removedSpy.first().at(0).toString(),
+             gy::domain::manualPseudoDeviceId(QStringLiteral("127.0.0.1")));
+}
+
+// 手动添加的探测可达时发射成功信号，伪条目保留在发现列表等待真身合并
+void TestReachabilityController::testAddManualEndpointProbeSuccessKeepsPeer()
+{
+    gy::net::PosixTcpServer listener;
+    QVERIFY(listener.listen(gy::net::IpAddress::localHost(), 0));
+
+    ReachabilityController controller;
+    controller.setConfigManager(_config);
+    controller.setDiscoveryService(_discovery);
+
+    QSignalSpy resultSpy(&controller, &ReachabilityController::manualEndpointTestResult);
+    controller.addManualEndpoint(QStringLiteral("127.0.0.1"), listener.serverPort());
+
+    QTRY_COMPARE_WITH_TIMEOUT(resultSpy.count(), 1, 6000);
+    QCOMPARE(resultSpy.first().at(0).toBool(), true);
+
+    bool found = false;
+    const QVariantList peers = _discovery->peers();
+    for (const QVariant &entry : peers) {
+        const PeerInfo peer = entry.value<PeerInfo>();
+        if (peer.source == QStringLiteral("manual")
+                && peer.ipAddress == QStringLiteral("127.0.0.1")) {
+            found = true;
+            break;
+        }
+    }
+    QVERIFY2(found, "探测成功的伪条目应保留在发现列表");
 }
 
 QTEST_MAIN(TestReachabilityController)

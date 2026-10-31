@@ -1,7 +1,7 @@
 /**
  * @file    reachability_controller.h
- * @version 7.26.1
- * @date    2026-10-23
+ * @version 8.2.1
+ * @date    2026-10-31
  * @author  GridYard Team
  * @brief   网络可达性控制器（QML 单例）
  *
@@ -95,6 +95,8 @@ signals:
     void inviteErrorChanged();
     void rendezvousEnabledChanged();
     void manualEndpointTestResult(bool success, const QString &errorString);
+    // 手动添加的伪条目探测不可达时发出，供组合根把该条目连库一起清理
+    void manualEntryProbeFailed(const QString &deviceId);
     void inviteImported(bool success, const QString &deviceId, const QString &errorString);
     // 邀请目标探测可达并注入设备目录后发出，供界面把该设备标记为好友
     void invitePeerInjected(const QString &deviceId);
@@ -108,8 +110,8 @@ private:
     void onProbeFinished(const EndpointProbe::ProbeResult &result);
     // 邀请导入探测成功后，以邀请文本携带的真实身份注入设备表
     void injectDirectedPeerFromInvite(const QVariantMap &invite);
-    // 处理手动端点探测完成
-    void onManualEndpointProbeFinished(const EndpointProbe::ProbeResult &result, const QString &deviceId, const QString &deviceName, quint16 discoveryPort);
+    // 处理手动端点探测完成，成败统一经 manualEndpointTestResult 反馈
+    void onManualEndpointProbeFinished(const EndpointProbe::ProbeResult &result, const QString &deviceId);
 
     static QPointer<ReachabilityController> s_instance;  // 单例实例
 
@@ -122,4 +124,6 @@ private:
     bool _isProbing = false;            // 是否正在探测
     QString _lastInviteText;           // 最近生成的邀请文本
     QString _inviteError;              // 最近邀请操作错误
+    bool _manualProbeActive = false;   // 手动添加的探测是否在途
+    QString _manualProbeDeviceId;      // 在途探测对应的手动伪条目标识
 };

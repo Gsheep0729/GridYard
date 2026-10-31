@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.cpp
-* @version 7.23.0
-* @date 2026-10-07
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 */
@@ -64,6 +64,10 @@ AppController::AppController(QObject *parent)
     _reachability->setDiscoveryService(_discovery);
     _reachability->setConfigManager(_config);
     _reachability->setRendezvousClient(_rendezvousClient);
+
+    // 手动添加的伪条目探测不可达：经删除设备链路连库清理，最近见过不留死数据
+    connect(_reachability, &ReachabilityController::manualEntryProbeFailed,
+            _peerDiscoveryViewModel, &PeerDiscoveryViewModel::deleteDeviceWithHistory);
 
     // 打开本地历史库并完成持久化装配；失败时记录降级状态，供 QML 判断是否展示历史入口
     _localHistoryAvailable = _historyWiring->initialize();
