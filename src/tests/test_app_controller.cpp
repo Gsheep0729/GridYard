@@ -5,7 +5,8 @@
 * @author  GY
 * @brief   组合根启动路径测试
 *
-* 测试用例：P2P 监听端口被占时启动失败标记随属性发布，端口空闲时不标记。
+* 测试用例：P2P 监听端口被占时启动失败标记随属性发布，端口空闲时不标记；
+* 协调服务器错误令牌等交互错误随属性发布、注册确认到达后清空。
 */
 
 #include <QtTest/QtTest>
@@ -16,6 +17,7 @@
 #include "ip_address.h"
 #include "local_data_broker.h"
 #include "posix_tcp_server.h"
+#include "rendezvous_client.h"
 
 class TestAppController : public QObject {
     Q_OBJECT
@@ -25,6 +27,7 @@ private slots:
     void cleanup();
     void testListenFailureMarkedWhenPortOccupied();
     void testListenSuccessMarkedWhenPortFree();
+    void testRendezvousErrorSurfacesAndClearsOnAck();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -78,6 +81,20 @@ void TestAppController::testListenSuccessMarkedWhenPortFree()
 {
     AppController controller;
     QVERIFY2(!controller.networkListenFailed(), "端口空闲时不应标记网络监听失败");
+    drainStorageBeforeDestruction(controller);
+}
+
+// 协调服务器错误令牌拒绝应随组合根属性发布，注册确认到达后清空
+void TestAppController::testRendezvousErrorSurfacesAndClearsOnAck()
+{
+    AppController controller;
+    QVERIFY2(controller.rendezvousError().isEmpty(), "初始不应有协调错误");
+
+    emit controller._rendezvousClient->errorOccurred(QStringLiteral("无效的访问口令"));
+    QCOMPARE(controller.rendezvousError(), QStringLiteral("无效的访问口令"));
+
+    emit controller._rendezvousClient->registerAckReceived(30);
+    QVERIFY2(controller.rendezvousError().isEmpty(), "注册确认到达后应清空错误");
     drainStorageBeforeDestruction(controller);
 }
 

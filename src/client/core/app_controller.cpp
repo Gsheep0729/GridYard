@@ -81,6 +81,13 @@ AppController::AppController(QObject *parent)
     // 常驻警示，应用以不可收发状态运行时用户必须有明确感知
     _networkListenFailed = !_p2pServer->start();
 
+    // 协调服务器的错误令牌拒绝与连接失败原先进了日志就到头，首配用户无从得知；
+    // 错误经组合根属性发布给设置页内联提示，注册确认到达即视为服务端认可并清空
+    connect(_rendezvousClient, &RendezvousClient::errorOccurred,
+            this, [this](const QString &message) { setRendezvousError(message); });
+    connect(_rendezvousClient, &RendezvousClient::registerAckReceived,
+            this, [this](int) { setRendezvousError(QString()); });
+
     // 传入协调客户端，直连失败后可发起中继降级
     _transfer->init(_config, _discovery, _p2pServer, _rendezvousClient);
 
@@ -222,6 +229,22 @@ bool AppController::uiReady() const
 bool AppController::networkListenFailed() const
 {
     return _networkListenFailed;
+}
+
+// 获取协调服务器最近一次交互错误
+QString AppController::rendezvousError() const
+{
+    return _rendezvousError;
+}
+
+// 记录协调服务器交互错误并通知表现层
+void AppController::setRendezvousError(const QString &message)
+{
+    if (_rendezvousError == message) {
+        return;
+    }
+    _rendezvousError = message;
+    emit rendezvousErrorChanged();
 }
 
 // 请求退出应用（排空与兜底策略由 ShutdownController 承担）

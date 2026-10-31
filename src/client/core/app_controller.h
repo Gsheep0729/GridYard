@@ -60,6 +60,7 @@ private:
     Q_PROPERTY(QString rebuiltBackupPath READ rebuiltBackupPath CONSTANT)
     Q_PROPERTY(QString instanceTitleSuffix READ instanceTitleSuffix CONSTANT)
     Q_PROPERTY(bool networkListenFailed READ networkListenFailed CONSTANT)
+    Q_PROPERTY(QString rendezvousError READ rendezvousError NOTIFY rendezvousErrorChanged)
 
 public:
     virtual ~AppController() override;
@@ -99,6 +100,9 @@ public:
     // 获取 P2P 监听是否启动失败（启动期定型，供表现层常驻警示）
     bool networkListenFailed() const;
 
+    // 获取协调服务器最近一次交互错误（空串表示无错误，供设置页内联提示）
+    QString rendezvousError() const;
+
     // 退出应用
     Q_INVOKABLE void quit();
     // 清除本地缓存并退出应用
@@ -116,6 +120,8 @@ public:
 signals:
     void appReady();
     void localHistoryOperationFailed();
+    // 协调服务器最近一次交互错误变化（错误令牌、连接失败等）
+    void rendezvousErrorChanged();
     // 第二实例请求唤回窗口时发出（单实例守卫转交），窗口恢复由表现层完成
     void windowActivationRequested();
 
@@ -127,6 +133,9 @@ private:
 
     // 初始化 QML UI 层
     void initializeUi();
+
+    // 记录协调服务器交互错误并通知表现层（注册确认到达时清空）
+    void setRendezvousError(const QString &message);
 
     // 停机契约：这些 QObject 子对象按创建序析构。发现、P2P 与传输等先于
     // 存储成员创建的网络成员，退出时先于存储 Worker 删除而停止；协调客户端
@@ -156,4 +165,5 @@ private:
     bool _uiInitialized = false;  // 防止 QML 单例回调期间重复加载界面
     bool _uiReady = false;  // QML 根对象是否已成功创建
     bool _networkListenFailed = false;  // P2P 监听是否启动失败（启动期定型）
+    QString _rendezvousError;  // 协调服务器最近一次交互错误（空串表示无错误）
 };

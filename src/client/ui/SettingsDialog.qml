@@ -1,7 +1,7 @@
 /**
 * @file    SettingsDialog.qml
 * @version 8.2.1
-* @date 2026-10-30
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   设置对话框
 *
@@ -627,6 +627,18 @@ Dialog {
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                     visible: settingsDialog._tempRendezvousEnabled && settingsDialog._tempRelayMode !== 2
+                }
+
+                // 协调服务器最近一次交互错误：错误令牌、连不上等原先只进日志，
+                // 首配用户令牌填错时全部候选发现静默失效，这里内联明示原因
+                Label {
+                    text: qsTr("协调服务器返回错误：") + AppController.rendezvousError
+                    font.pixelSize: 12
+                    color: Style.Color.error
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    visible: settingsDialog._tempRendezvousEnabled
+                             && AppController.rendezvousError.length > 0
                 }
             }
 
