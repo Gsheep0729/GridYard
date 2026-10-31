@@ -231,15 +231,56 @@ ApplicationWindow {
         }
     }
 
-    // 文件夹选择弹窗：选中后转换为本地路径再创建发送会话
+    // 文件夹选择弹窗：选中后先回显绝对路径供确认，再创建发送会话
     FolderDialog {
         id: folderDialog
         title: qsTr("选择要发送的文件夹")
         onAccepted: {
             // selectedFolder 也是 URL 格式，需要转成本地路径
-            AppController.transferController.createSendSession(
-                        mainWindow._selId, FormatUtils.localPathFromUrl(selectedFolder))
+            folderSendDialog.openWith(FormatUtils.localPathFromUrl(selectedFolder))
         }
+    }
+
+    // 文件夹发送确认：GTK portal 选择器的"打开"语义是选中高亮条目而非所在目录，
+    // 导航进目录后点"打开"可能实际选中的是里面的子目录。回显所选绝对路径供
+    // 用户核对，确认后才创建发送会话，避免错发子集而不自知
+    Dialog {
+        id: folderSendDialog
+        title: qsTr("确认发送文件夹")
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(480, parent ? parent.width - 48 : 480)
+        standardButtons: Dialog.Yes | Dialog.No
+
+        property string folderPath: ""
+
+        function openWith(path: string): void {
+            folderPath = path
+            open()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Style.Space.sm
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("将向「%1」发送所选文件夹内的全部内容：")
+                      .arg(FormatUtils.displayName(mainWindow._selInfo.alias,
+                                                   mainWindow._selInfo.deviceName))
+                wrapMode: Text.Wrap
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: folderSendDialog.folderPath
+                color: Style.Color.textSecondary
+                font.pixelSize: 12
+                wrapMode: Text.WrapAnywhere
+            }
+        }
+
+        onAccepted: AppController.transferController.createSendSession(
+                        mainWindow._selId, folderSendDialog.folderPath)
     }
 
     SettingsDialog { id: settingsDialog }
