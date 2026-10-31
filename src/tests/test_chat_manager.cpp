@@ -1,11 +1,12 @@
 /**
 * @file    test_chat_manager.cpp
-* @version 8.1.0
-* @date 2026-10-28
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GY
 * @brief   在线聊天连接与内存会话测试
 *
-* 覆盖在线发送、离线拒绝、入站去重、按需重连和消息持久化。
+* 覆盖在线发送、离线拒绝、入站去重、按需重连和消息持久化，
+* 以及托盘发送剪贴板的外发门槛与回显评估。
 */
 
 #include <QtTest/QtTest>
@@ -16,6 +17,7 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
+#include "chat_controller.h"
 #include "chat_manager.h"
 #include "chat_message.h"
 #include "chat_message_model.h"
@@ -50,6 +52,7 @@ private slots:
     void cleanupTestCase();
     void testOfflinePeerRejected();
     void testSendTextReturnMatchesAcceptance();
+    void testClipboardSendGate();
     void testOnlineSendAndReconnect();
     void testIncomingMessageDeduplicated();
     void testGlareIncomingMessagePreserved();
@@ -143,6 +146,47 @@ void TestChatManager::testSendTextReturnMatchesAcceptance()
     QVERIFY(peerSocket != nullptr);
     peerSocket->disconnectFromHost();
     peerSocket->deleteLater();
+}
+
+// 托盘发送剪贴板的门槛与回显评估（O-05 回归锚）：无可发送文本（空白）与
+// 超过单条消息上限的文本必须拒绝外发并给出可直接展示的原因；可发送文本的
+// 回显仅取压平换行后的前 20 字符（截断补省略号），敏感内容不整段示人
+void TestChatManager::testClipboardSendGate()
+{
+    // 门槛评估为纯内容逻辑，不依赖 ChatManager（离线拒绝由 sendText 兜底）
+    ChatController controller(nullptr);
+
+    // 空白剪贴板：拒绝外发，原因可直接展示
+    const QVariantMap blank = controller.evaluateClipboardSend(QStringLiteral("  \n\t "));
+    QCOMPARE(blank.value("ok").toBool(), false);
+    QVERIFY2(!blank.value("reason").toString().isEmpty(), "空白文本应给出拒绝原因");
+    QVERIFY(blank.value("echo").toString().isEmpty());
+
+    // 恰好 20 字符：可发送且回显即全文（无省略号）
+    const QString exact = QStringLiteral("01234567890123456789");
+    const QVariantMap exactVerdict = controller.evaluateClipboardSend(exact);
+    QCOMPARE(exactVerdict.value("ok").toBool(), true);
+    QVERIFY(exactVerdict.value("reason").toString().isEmpty());
+    QCOMPARE(exactVerdict.value("echo").toString(), exact);
+
+    // 超过 20 字符：回显只露前 20 字符并补省略号，尾部不示人
+    const QVariantMap longVerdict = controller.evaluateClipboardSend(
+        exact + QStringLiteral("XYZ机密尾巴不回显"));
+    QCOMPARE(longVerdict.value("ok").toBool(), true);
+    QCOMPARE(longVerdict.value("echo").toString(), exact + QStringLiteral("…"));
+
+    // 超过单条消息上限：拒绝外发，原因可直接展示
+    const QString tooLong = QString(controller.maxChatContentLength() + 1, QLatin1Char('a'));
+    const QVariantMap overVerdict = controller.evaluateClipboardSend(tooLong);
+    QCOMPARE(overVerdict.value("ok").toBool(), false);
+    QVERIFY2(!overVerdict.value("reason").toString().isEmpty(), "超长文本应给出拒绝原因");
+
+    // 多行内容：回显压平换行为空格后取头部
+    const QVariantMap multiline = controller.evaluateClipboardSend(
+        QStringLiteral("第一行\n第二行还有内容"));
+    QCOMPARE(multiline.value("ok").toBool(), true);
+    QVERIFY2(!multiline.value("echo").toString().contains(QLatin1Char('\n')),
+             "回显应压平换行");
 }
 
 // 验证在线设备可发送并在断线后按需重连

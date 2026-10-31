@@ -9,11 +9,13 @@
  * 打开设置或退出；通知消息仍由主窗口经 showMessage 发出。
  * 勿扰接收为纯数据开关，菜单项直写 ConfigManager，不经窗口动作链。
  * tooltip 反映传输活动：有活动会话时追加「传输中 N 项」，勿扰开启时追加「勿扰中」。
+ * 发送剪贴板为二级菜单列出在线设备，触发经信号上抛由主窗口评估回显后发送。
  * 从 Main.qml 拆出。
  */
 
 import QtQuick
 import Qt.labs.platform as Platform
+import "../utils/FormatUtils.js" as FormatUtils
 
 Platform.SystemTrayIcon {
     id: tray
@@ -23,6 +25,20 @@ Platform.SystemTrayIcon {
     signal quitRequested()
     signal openReceiveFolderRequested()
     signal settingsRequested()
+    signal sendClipboardRequested(string deviceId)
+
+    // 在线设备快照：发送剪贴板子菜单的数据源，发现列表刷新时自动重算；
+    // 离线设备不可作为剪贴板外发目标（聊天链路对离线目标同步拒绝）
+    readonly property var onlinePeers: {
+        const peers = AppController.peerDiscoveryViewModel.peers
+        const online = []
+        for (let i = 0; i < peers.length; i++) {
+            if (peers[i].isOnline === true) {
+                online.push(peers[i])
+            }
+        }
+        return online
+    }
 
     visible: true
     // 开发者模式实例的托盘提示带 " #N" 标识，正常实例后缀为空串；
@@ -60,6 +76,30 @@ Platform.SystemTrayIcon {
             checkable: true
             checked: ConfigManager.doNotDisturb
             onTriggered: ConfigManager.doNotDisturb = checked
+        }
+        // 发送剪贴板文本：二级菜单逐台列出在线设备（显示名备注优先），
+        // 点击经信号上抛，主窗口读取剪贴板、门槛评估后回显外发；
+        // 无在线设备时禁用占位，避免误选不可达目标
+        Platform.Menu {
+            id: clipboardMenu
+            title: qsTr("发送剪贴板")
+
+            Instantiator {
+                model: tray.onlinePeers
+                delegate: Platform.MenuItem {
+                    required property var modelData
+                    text: FormatUtils.displayName(modelData.alias, modelData.deviceName)
+                    onTriggered: tray.sendClipboardRequested(modelData.deviceId)
+                }
+                onObjectAdded: (index, object) => clipboardMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => clipboardMenu.removeItem(object)
+            }
+
+            Platform.MenuItem {
+                text: qsTr("无在线设备")
+                enabled: false
+                visible: tray.onlinePeers.length === 0
+            }
         }
         Platform.MenuItem {
             text: qsTr("设置")

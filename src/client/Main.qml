@@ -134,6 +134,26 @@ ApplicationWindow {
         settingsDialog.open()
     }
 
+    // 托盘发送剪贴板文本：先按门槛评估（无文本形态/超单条上限不予外发并给原因），
+    // 发送动作前 Toast 回显内容前 20 字符防敏感内容静默外发；发送被拒（目标
+    // 恰好离线等）时以失败提示覆盖回显提示，内容不会无反馈丢失
+    function sendClipboardToDevice(deviceId: string): void {
+        const text = AppController.chatController.clipboardText()
+        const verdict = AppController.chatController.evaluateClipboardSend(text)
+        if (!verdict.ok) {
+            mainWindow.showErrorToast(verdict.reason)
+            return
+        }
+        const info = AppController.peerDiscoveryViewModel.deviceById(deviceId)
+        const deviceLabel = Object.keys(info).length > 0
+                ? FormatUtils.displayName(info.alias, info.deviceName) : deviceId
+        toastPopup.show(qsTr("将向「%1」发送剪贴板文本：%2")
+                            .arg(deviceLabel).arg(verdict.echo), false)
+        if (!AppController.chatController.sendText(deviceId, text)) {
+            mainWindow.showErrorToast(qsTr("剪贴板发送失败，目标设备可能已离线"))
+        }
+    }
+
     // 底部 Toast 包装：错误停留更久，成功短暂反馈
     function showErrorToast(message: string): void {
         toastPopup.show(message, true)
@@ -193,6 +213,8 @@ ApplicationWindow {
         // 打开接收目录不唤回主窗口：直达系统文件管理器里的配置接收路径
         onOpenReceiveFolderRequested: AppController.openReceiveFolder()
         onSettingsRequested: mainWindow.openTraySettings()
+        // 发送剪贴板：回显与发送链在主窗口（Toast 实例在此）
+        onSendClipboardRequested: (deviceId) => mainWindow.sendClipboardToDevice(deviceId)
     }
 
     // 选中设备：设备名、IP 与在线状态由视图模型按选中 ID 自动解析

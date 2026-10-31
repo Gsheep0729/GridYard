@@ -1,7 +1,7 @@
 /**
 * @file    chat_controller.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   面向 QML 的聊天控制器实现
 */
@@ -9,6 +9,9 @@
 #include "chat_controller.h"
 
 #include "chat_manager.h"
+
+#include <QClipboard>
+#include <QGuiApplication>
 
 // 构造函数
 ChatController::ChatController(ChatManager *manager, QObject *parent)
@@ -53,6 +56,46 @@ QObject *ChatController::messageModelForDevice(const QString &deviceId)
 bool ChatController::sendText(const QString &deviceId, const QString &content)
 {
     return _manager && _manager->sendText(deviceId, content);
+}
+
+// 剪贴板回显长度：Toast 只露内容前 20 字符，口令等敏感内容不整段示人
+namespace {
+constexpr int kClipboardEchoChars = 20;
+}
+
+// 读取系统剪贴板纯文本；图片/文件型剪贴板无文本形态返回空串
+QString ChatController::clipboardText() const
+{
+    return QGuiApplication::clipboard()->text();
+}
+
+// 剪贴板外发评估：托盘发送剪贴板没有输入框兜底校验，空白与超长文本在
+// 此处一并拦下，避免静默发出空消息或被协议层截断的半截内容
+QVariantMap ChatController::evaluateClipboardSend(const QString &text) const
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("reason"), tr("剪贴板中没有可发送的文本")},
+                {QStringLiteral("echo"), QString{}}};
+    }
+    if (trimmed.length() > maxChatContentLength()) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("reason"),
+                 tr("剪贴板内容超过单条消息上限（%1 字），未发送").arg(maxChatContentLength())},
+                {QStringLiteral("echo"), QString{}}};
+    }
+    // 回显压平换行为空格后取前 20 字符：多行内容在 Toast 中单行展示可读，
+    // 且只露开头片段
+    QString flat = trimmed;
+    flat.replace(QLatin1Char('\n'), QLatin1Char(' '))
+            .replace(QLatin1Char('\r'), QLatin1Char(' '));
+    const QString echo = flat.left(kClipboardEchoChars)
+                         + (flat.length() > kClipboardEchoChars
+                                ? QStringLiteral("…") : QString{});
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("reason"), QString{}},
+            {QStringLiteral("echo"), echo}};
 }
 
 // 清理指定设备或全部设备的运行期消息
