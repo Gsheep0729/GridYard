@@ -310,8 +310,10 @@ Frame {
                        text: inputBox.attachExpanded ? "×" : "+"
                        font.pixelSize: 20
                        font.bold: true
+                       // 离线说明与发送按钮同词：相邻两个入口对同一阻塞态的
+                       // 悬停解释保持一致（禁用按钮的悬停提示实测可达）
                        ToolTip.text: !deviceSessionView.isOnline
-                                     ? qsTr("设备离线，无法发送文件")
+                                     ? qsTr("设备离线，无法发送")
                                      : (inputBox.attachExpanded ? qsTr("收起") : qsTr("发送文件或文件夹"))
                        ToolTip.delay: 500
                        ToolTip.visible: attachButton.hovered
