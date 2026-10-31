@@ -28,11 +28,30 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStorageInfo>
 
 // 接收超时时间：30 秒，超过该时间没有网络进展则判定失败
 static constexpr int kTimeoutMs = 30000;
 
 namespace {
+
+// 人类可读容量：与 QML 侧 FormatUtils.formatBytes 同口径（1024 进制、
+// 一位小数、B/KB/MB/GB），用于磁盘空间预检的拒绝原因文案
+QString humanReadableBytes(qint64 bytes)
+{
+    if (bytes < 1024) {
+        return QStringLiteral("%1 B").arg(bytes);
+    }
+    const double kb = static_cast<double>(bytes) / 1024.0;
+    if (kb < 1024.0) {
+        return QStringLiteral("%1 KB").arg(kb, 0, 'f', 1);
+    }
+    const double mb = kb / 1024.0;
+    if (mb < 1024.0) {
+        return QStringLiteral("%1 MB").arg(mb, 0, 'f', 1);
+    }
+    return QStringLiteral("%1 GB").arg(mb / 1024.0, 0, 'f', 1);
+}
 
 // 检查相对路径是否安全（无路径穿越风险）
 bool isSafeRelativePath(const QString &path)
@@ -200,6 +219,30 @@ void FileReceiverWorker::acceptTransfer()
     }
     if (!QDir().mkpath(_receivePath)) {
         failPreparation(gy::protocol::ErrorCode::DiskWriteFailed, tr("无法创建接收目录"));
+        return;
+    }
+
+    // 接受前磁盘剩余空间预检：目标盘剩余空间不足以容纳声明的全部字节时
+    // 直接拒绝，避免发送方白白传完全量数据才在写盘阶段失败。空间经
+    // QStorageInfo 即时查询；查询失效（拿不到剩余空间）时跳过预检，仍由
+    // 逐块写盘的既有失败路径兜底。响应 reason 面向发送方措辞，本地会话
+    // 按接收端自身视角描述，两者分开成文。
+    const QStorageInfo storage(_receivePath);
+    const qint64 availableBytes = storage.isValid() ? storage.bytesAvailable() : -1;
+    if (availableBytes >= 0 && _totalBytes > availableBytes) {
+        qWarning() << "[FileReceiver] 磁盘剩余空间不足，需要:" << _totalBytes
+                   << "剩余:" << availableBytes;
+        if (!sendTransferResponse(false, gy::protocol::ErrorCode::DiskSpaceInsufficient,
+                                  tr("对方磁盘空间不足，需要 %1，仅剩 %2")
+                                      .arg(humanReadableBytes(_totalBytes),
+                                           humanReadableBytes(availableBytes)))) {
+            return;
+        }
+        _socket->disconnectFromHost();
+        finish(false, gy::protocol::ErrorCode::DiskSpaceInsufficient,
+               tr("磁盘空间不足，需要 %1，仅剩 %2")
+                   .arg(humanReadableBytes(_totalBytes),
+                        humanReadableBytes(availableBytes)));
         return;
     }
 

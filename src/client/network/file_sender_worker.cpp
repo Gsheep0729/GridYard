@@ -1,7 +1,7 @@
 /**
 * @file    file_sender_worker.cpp
-* @version 8.1.0
-* @date    2026-10-28
+* @version 8.2.1
+* @date    2026-11-01
 * @author  GridYard Team
 * @brief   文件发送 Worker 实现
 *
@@ -424,12 +424,18 @@ void FileSenderWorker::onFrameReady(quint32 type, const QByteArray &payload)
             if (errorCode == gy::protocol::ErrorCode::Success) {
                 errorCode = gy::protocol::ErrorCode::UserRejected;
             }
-            // 磁盘类失败并非对方主动拒绝，标题按错误码区分避免误导排查方向
-            const bool diskFailure = errorCode == gy::protocol::ErrorCode::DiskWriteFailed
-                                     || errorCode == gy::protocol::ErrorCode::DiskSpaceInsufficient;
-            finish(false, errorCode,
-                   diskFailure ? tr("接收端写入失败（磁盘空间或权限）: %1").arg(reason)
-                               : tr("请求被拒绝: %1").arg(reason));
+            // 磁盘类失败并非对方主动拒绝，按错误码区分文案避免误导排查方向：
+            // 空间不足是对方接受前预检拒绝，未发生写盘，reason 已是发送方
+            // 视角的完整描述直接呈现；写失败才归入"接收端写入失败"
+            QString rejectMessage;
+            if (errorCode == gy::protocol::ErrorCode::DiskSpaceInsufficient) {
+                rejectMessage = reason.isEmpty() ? tr("对方磁盘空间不足") : reason;
+            } else if (errorCode == gy::protocol::ErrorCode::DiskWriteFailed) {
+                rejectMessage = tr("接收端写入失败（磁盘空间或权限）: %1").arg(reason);
+            } else {
+                rejectMessage = tr("请求被拒绝: %1").arg(reason);
+            }
+            finish(false, errorCode, rejectMessage);
         }
         break;
     }

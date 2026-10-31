@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QMutex>
 #include <QSignalSpy>
+#include <QStorageInfo>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QFile>
@@ -100,6 +101,7 @@ private slots:
     void testProtocolVersionMismatch();
     void testMalformedTransferRequest();
     void testInvalidFilePath();
+    void testDiskSpacePreCheckRejectsTransfer();
     void testChatConnectionRouting();
     void testUnsupportedFirstFrameRejected();
 
@@ -1733,6 +1735,112 @@ void TestFileTransfer::testInvalidFilePath()
 
     // 验证从未收到请求
     QVERIFY(!rejected);
+}
+
+// 验证接受前磁盘剩余空间预检：请求声明的总字节超过目标盘剩余空间时，
+// acceptTransfer 应直接拒绝并回传协议预留的 DiskSpaceInsufficient（4002），
+// 而不是先接受再在写盘阶段失败——发送方因此不必白白传完全量数据。
+// 构造合法但声明超大的传输请求（文件列表与总字节自洽，sha256 在请求
+// 阶段不参与校验），同时核对响应 reason 面向发送方可读、本地终结错误码
+// 一致，且拒绝发生在建文件之前不残留半成品。
+void TestFileTransfer::testDiskSpacePreCheckRejectsTransfer()
+{
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    // 声明总大小 = 目标盘剩余空间 + 10 GiB，必然触发预检不足
+    const QStorageInfo storage(_recvDir->path());
+    QVERIFY(storage.isValid());
+    const qint64 availableBytes = storage.bytesAvailable();
+    QVERIFY(availableBytes > 0);
+    const qint64 declaredBytes = availableBytes + (qint64(10) << 30);
+
+    QJsonObject fileObj;
+    fileObj["relative_path"] = "huge.bin";
+    fileObj["size_bytes"] = static_cast<double>(declaredBytes);
+    fileObj["sha256"] = QString(64, QLatin1Char('0'));
+
+    QJsonObject json;
+    json["session_id"] = "test-disk-space";
+    json["sender_device_id"] = "disk-test-sender";
+    json["sender_name"] = "DiskSender";
+    json["is_directory"] = false;
+    json["root_name"] = "huge.bin";
+    json["total_files"] = 1;
+    json["total_bytes"] = static_cast<double>(declaredBytes);
+    json["protocol_version"] = gy::protocol::kProtocolVersion;
+    json["files"] = QJsonArray{fileObj};
+    json["empty_directories"] = QJsonArray();
+
+    bool requestReceived = false;
+    bool receiverFinished = false;
+    gy::protocol::ErrorCode finishCode = gy::protocol::ErrorCode::Success;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [this, &requestReceived, &receiverFinished, &finishCode](
+                FileReceiverWorker *worker, const QVariantMap &) {
+        requestReceived = true;
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&receiverFinished, &finishCode](bool success, gy::protocol::ErrorCode code,
+                                                const QString &, const QString &) {
+            receiverFinished = true;
+            finishCode = code;
+        });
+        // 使用 QMetaObject::invokeMethod 在 worker 的线程中调用
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
+    });
+
+    // 原始套接字直发请求帧（请求合法，能走到用户确认环节）
+    gy::net::PosixTcpSocket socket;
+    socket.connectToHost(gy::net::IpAddress::localHost(), _testPort);
+    QVERIFY(socket.waitForConnected(5000));
+    const QByteArray frame = gy::bridge::encodeFrame(
+        gy::protocol::kTypeTransferReq,
+        QJsonDocument(json).toJson(QJsonDocument::Compact));
+    socket.write(frame);
+    socket.flush();
+
+    QTRY_VERIFY_WITH_TIMEOUT(requestReceived, 5000);
+
+    // 读取传输响应帧：断开后缓冲数据仍可读，轮询累积直到解码出响应
+    QByteArray rspPayload;
+    QByteArray buffered;
+    for (int attempt = 0; attempt < 50 && rspPayload.isEmpty(); ++attempt) {
+        buffered += socket.readAll();
+        gy::core::FrameCodecCore codec(
+            [&rspPayload](uint32_t type, std::vector<uint8_t> payload) {
+                if (type == gy::protocol::kTypeTransferRsp) {
+                    rspPayload = gy::bridge::fromBytes(payload);
+                }
+            },
+            [](std::string) {});
+        gy::bridge::feedFrame(codec, buffered);
+        if (rspPayload.isEmpty()) {
+            if (!socket.waitForReadyRead(200)) {
+                QTest::qWait(50);
+            }
+        }
+    }
+    QVERIFY(!rspPayload.isEmpty());
+
+    // 拒绝、错误码 4002、原因含磁盘空间不足描述
+    const QJsonObject rsp = QJsonDocument::fromJson(rspPayload).object();
+    QCOMPARE(rsp["accepted"].toBool(), false);
+    QCOMPARE(rsp["error_code"].toInt(),
+             static_cast<int>(gy::protocol::ErrorCode::DiskSpaceInsufficient));
+    QVERIFY(rsp["reason"].toString().contains(QStringLiteral("磁盘空间不足")));
+
+    // 本地终结走同一错误码
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 5000);
+    QCOMPARE(finishCode, gy::protocol::ErrorCode::DiskSpaceInsufficient);
+
+    // 预检拒绝发生在建文件之前，接收目录不残留目标文件或半成品
+    QVERIFY(!QFileInfo::exists(_recvDir->path() + "/huge.bin"));
+    QVERIFY(!QFileInfo::exists(_recvDir->path() + "/huge.bin.part"));
 }
 
 void TestFileTransfer::testChatConnectionRouting()
