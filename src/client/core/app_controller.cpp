@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.cpp
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   应用全局控制器实现
 */
@@ -16,6 +16,7 @@
 #include "history_controller.h"
 #include "history_wiring.h"
 #include "local_data_broker.h"
+#include "local_ip_monitor.h"
 #include "p2p_server.h"
 #include "peer_discovery_view_model.h"
 #include "reachability_controller.h"
@@ -59,6 +60,7 @@ AppController::AppController(QObject *parent)
                                        _history, _dataBroker, this}}
     , _backupController{new BackupController{_dataBroker, _config, this}}
     , _shutdownController{new ShutdownController{_dataBroker, this}}
+    , _localIpMonitor{new LocalIpMonitor{_config, this}}
 {
     // 初始化 ReachabilityController 的引用
     _reachability->setDiscoveryService(_discovery);

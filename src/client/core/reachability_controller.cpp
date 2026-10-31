@@ -1,7 +1,7 @@
 /**
 * @file    reachability_controller.cpp
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   网络可达性控制器实现
 *
@@ -255,6 +255,10 @@ QString ReachabilityController::generateInvite()
         emit inviteErrorChanged();
         return {};
     }
+
+    // 邀请码生成前强制刷新本机 IP：网络变化监听未覆盖的窗口（如同网段
+    // DHCP 换址无链路状态变化）也在这里兜住，邀请码不携带陈旧地址
+    _config->refreshLocalIp();
 
     InviteCodec::Invite invite;
     invite.deviceId = _config->deviceId();

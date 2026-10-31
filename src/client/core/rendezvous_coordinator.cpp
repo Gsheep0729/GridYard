@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_coordinator.cpp
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   协调节点编排器实现
 */
@@ -52,6 +52,15 @@ RendezvousCoordinator::RendezvousCoordinator(ConfigManager *config, DiscoverySer
     // 连接成功后注册本机端点并查询一次在线设备
     connect(_rendezvous, &RendezvousClient::connected, this, [this]() {
         registerSelf();
+    });
+
+    // 换网/IP 变化自愈：本机地址实际变化即以新地址重注册，不等断线重连。
+    // localIpChanged 只在 refreshLocalIp 解析出不同地址时发出，同刻多次网络
+    // 回调已被合并，重注册天然节流；未连接时由重连后的注册带回新地址
+    connect(_config, &ConfigManager::localIpChanged, this, [this]() {
+        if (_active && _rendezvous->isConnected()) {
+            registerSelf();
+        }
     });
 
     // 协调节点返回的候选端点加入设备列表

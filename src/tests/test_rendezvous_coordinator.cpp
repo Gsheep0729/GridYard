@@ -1,12 +1,12 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.2.1
+* @date    2026-11-01
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
 *
 * 测试用例：默认停用不连接、启用后注册并拉取候选、停用后不再自动重连、
-* 修改端口即时切换服务器（修复"改配置需重启"）。
+* 修改端口即时切换服务器（修复"改配置需重启"）、本机 IP 变化后重注册。
 */
 
 #include <QtTest/QtTest>
@@ -19,6 +19,7 @@
 #include "discovery_service.h"
 #include "ip_address.h"
 #include "p2p_server.h"
+#include "protocol.h"
 #include "rendezvous_client.h"
 #include "rendezvous_coordinator.h"
 #include "rendezvous_server.h"
@@ -41,6 +42,7 @@ private slots:
     void testEnableConnectsAndFetchesPeers();
     void testDisableStaysDisconnected();
     void testPortChangeReconnects();
+    void testLocalIpChangeReregisters();
 
 private:
     // 在指定协调服务器上注册一台辅助设备
@@ -194,6 +196,32 @@ void TestRendezvousCoordinator::testPortChangeReconnects()
 
     helper->close();
     helper->deleteLater();
+    _config->setRendezvousEnabled(false);
+}
+
+// 换网/IP 变化后重注册：本机地址实际变化（refreshLocalIp 检出并发 localIpChanged）
+// 时，已连接的编排器应立即以新地址重注册，不必等断线重连才恢复正确候选地址。
+// 网络变化监听与邀请码生成前强制刷新两路最终都汇入 refreshLocalIp → localIpChanged，
+// 这里直接发该信号验证重注册接线。可观测面选 peersReceived：registerSelf 在注册后
+// 必拉一次候选，而客户端 5 秒心跳只重注册加中继轮询、不拉候选，不会污染计数
+void TestRendezvousCoordinator::testLocalIpChangeReregisters()
+{
+    RendezvousServer server{0, {}};
+    QVERIFY(server.start());
+    _config->setRendezvousPort(static_cast<int>(server.serverPort()));
+    _config->setRendezvousEnabled(true);
+    QTRY_VERIFY_WITH_TIMEOUT(_client->isConnected(), 3000);
+
+    QSignalSpy peersSpy(_client, &RendezvousClient::peersReceived);
+    QVERIFY(peersSpy.isValid());
+    // 先手动拉取一次建立基线，避免初次注册的应答落在建 spy 前后造成计数歧义
+    _client->listPeers(gy::protocol::kDefaultRendezvousRoom);
+    QTRY_VERIFY_WITH_TIMEOUT(peersSpy.count() >= 1, 3000);
+    const int baseline = peersSpy.count();
+
+    emit _config->localIpChanged();
+    QTRY_VERIFY_WITH_TIMEOUT(peersSpy.count() > baseline, 3000);
+
     _config->setRendezvousEnabled(false);
 }
 

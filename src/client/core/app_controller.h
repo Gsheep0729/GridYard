@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -35,6 +35,7 @@ class DiscoveryService;
 class BackupController;
 class HistoryWiring;
 class LocalDataBroker;
+class LocalIpMonitor;
 class P2pServer;
 class ReachabilityController;
 class RendezvousClient;
@@ -159,6 +160,8 @@ private:
     HistoryWiring *_historyWiring = nullptr;  // 本地历史持久化装配
     BackupController *_backupController = nullptr;  // 备份与迁移控制器
     ShutdownController *_shutdownController = nullptr;  // 退出排空与缓存清理
+    // 本机 IP 网络变化监听（只读无套接字，最后创建最先析构，析构时配置仍存活）
+    LocalIpMonitor *_localIpMonitor = nullptr;
     bool _localHistoryAvailable = false;  // SQLite 历史功能是否可用
     bool _historyDatabaseRebuilt = false;  // 启动时是否因库损坏重建本地历史库
     QString _rebuiltBackupPath;  // 重建前损坏库的备份文件路径
