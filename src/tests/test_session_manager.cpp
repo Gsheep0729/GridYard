@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
-* @version 8.2.0
-* @date    2026-10-28
+* @version 8.2.1
+* @date    2026-10-31
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -25,6 +25,8 @@
 #include "config_manager.h"
 #include "discovery_service.h"
 #include "file_sender_worker.h"
+#include "ip_address.h"
+#include "posix_tcp_server.h"
 #include "p2p_server.h"
 #include "relay_server.h"
 #include "transfer_session_model.h"
@@ -70,6 +72,7 @@ private slots:
     void testIncomingConnectionLimit();
     void testIncomingRequestEntrySignal();
     void testMultiSendSharesSerializedList();
+    void testMultiSendRetainsSharedListForRelayRetry();
     void testMultiTargetsPersistence();
     void testMultiSendRejectsReentryWhileSerializing();
     void testMultiSendInvalidPathNoSuccessMessage();
@@ -1062,6 +1065,61 @@ void TestSessionManager::testMultiSendSharesSerializedList()
             _manager->cancelSession(session.value(gy::session::kSessionId).toString());
         }
     }
+}
+
+// 群发共享清单应随会话保留、会话终结后随之清理：中继降级重建 worker 原先
+// 四参调用 startSendWorker，对源目录重新序列化+哈希，与其他目标的清单失去同源
+void TestSessionManager::testMultiSendRetainsSharedListForRelayRetry()
+{
+    const QString dirPath = _tempDir->path() + "/multisend-relay-src";
+    QDir().mkpath(dirPath);
+    QFile file{dirPath + "/relay-keep.txt"};
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("multisend-relay-keep-body");
+    file.close();
+
+    // 目标端点指向本机会接受的挂起端口：TCP 握手成功但无协议响应，
+    // 会话停留在 connecting，为保留态断言留出稳定窗口
+    gy::net::PosixTcpServer hold;
+    QVERIFY(hold.listen(gy::net::IpAddress::localHost(), 0));
+    const QString id = addTargetDevice("multi-relay-keep", hold.serverPort());
+
+    QSignalSpy startedSpy(_manager, &TransferSessionManager::multiSendStarted);
+    _manager->createMultiSendSessions({id}, dirPath);
+    QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);
+
+    QString sessionId;
+    int sessionCount = 0;
+    for (const QVariant &entry : _manager->sessions()) {
+        const QVariantMap session = entry.toMap();
+        if (session.value(gy::session::kDeviceId).toString() == id) {
+            sessionId = session.value(gy::session::kSessionId).toString();
+            ++sessionCount;
+        }
+    }
+    QCOMPARE(sessionCount, 1);
+    QVERIFY2(_manager->_sessionSharedFiles.contains(sessionId),
+             "群发会话应保留共享清单供中继降级复用");
+
+    // 保留的清单与直接序列化同源：条数、字节与哈希一致
+    const QList<gy::FileItem> direct = gy::DirSerializer::serialize(dirPath);
+    const QList<gy::FileItem> kept = _manager->_sessionSharedFiles.value(sessionId);
+    QCOMPARE(kept.size(), direct.size());
+    qint64 keptBytes = 0;
+    for (const auto &item : kept) {
+        keptBytes += item.sizeBytes;
+    }
+    qint64 directBytes = 0;
+    for (const auto &item : direct) {
+        directBytes += item.sizeBytes;
+    }
+    QCOMPARE(keptBytes, directBytes);
+    QVERIFY2(!kept.isEmpty() && kept.first().sha256 == direct.first().sha256,
+             "保留清单的文件哈希应与直接序列化一致");
+
+    // 会话终结后保留应随之清理，不得跨会话悬挂内存
+    _manager->cancelSession(sessionId);
+    QTRY_VERIFY_WITH_TIMEOUT(_manager->_sessionSharedFiles.isEmpty(), 5000);
 }
 
 // 群发前置校验失败只报错误，不得出现"已发起"成功提示：旧界面在调用前抢跑

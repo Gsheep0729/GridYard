@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_manager.cpp
-* @version 8.2.0
-* @date 2026-10-28
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 */
@@ -422,6 +422,9 @@ void TransferSessionManager::finishMultiSendStart(const QList<gy::FileItem> &fil
         _config->fillSenderInfo(session);
 
         _model->appendSession(session);
+        // 共享清单随会话保留：该目标直连失败降级中继时（onRelayInviteAck）
+        // 重建 worker 直接复用这份清单，不对源目录重新序列化+哈希
+        _sessionSharedFiles.insert(sessionId, fileList);
         startSendWorker(session, target.endpoints, QString(), true, fileList);
     }
     emit sessionsChanged();
@@ -697,7 +700,9 @@ void TransferSessionManager::onRelayInviteAck(const QString &relayId)
                       static_cast<quint16>(_config->rendezvousPort())});
 
     qDebug() << "[TransferSession] 中继邀请已受理，建立中继发送" << sessionId;
-    startSendWorker(snapshot, endpoints, relayId, false);
+    // 群发会话的共享清单在此交给中继 worker：降级路径与首发路径共用同一份
+    // 序列化结果，N 台目标的清单与哈希保持同源；单发会话无保留即回退自序列化
+    startSendWorker(snapshot, endpoints, relayId, false, _sessionSharedFiles.take(sessionId));
 }
 
 // 中继邀请未在期限内得到协调服务器受理
@@ -1059,6 +1064,9 @@ void TransferSessionManager::finalizeSession(const QString &sessionId, const QSt
                                              const QString &errorMessage,
                                              const QString &savedPath)
 {
+    // 会话终结后不再有降级重建，保留的群发共享清单随之释放
+    _sessionSharedFiles.remove(sessionId);
+
     bool found = false;
     QString previousStatus;
     QVariantMap updated;

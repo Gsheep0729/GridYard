@@ -1,7 +1,7 @@
 /**
  * @file    transfer_session_manager.h
- * @version 8.1.0
- * @date    2026-10-28
+ * @version 8.2.1
+ * @date    2026-10-31
  * @author  GridYard Team
  * @brief   传输会话管理器
  *
@@ -22,6 +22,7 @@
 
 #include "history_records.h"
 #include "file_receiver_worker.h"
+#include "dir_serializer.h"
 
 class QQmlEngine;
 class QJSEngine;
@@ -32,6 +33,7 @@ class P2pServer;
 class QTimer;
 class RendezvousClient;
 class TransferSessionModel;
+class TestSessionManager;
 
 class TransferSessionManager : public QObject {
 private:
@@ -130,6 +132,8 @@ public:
     TransferSessionManager &operator=(const TransferSessionManager &) = delete;
 
 private:
+    friend class TestSessionManager;  // 群发共享清单保留语义的回归测试直接构造
+
     // 将运行期会话收敛为可持久化的最终快照
     void finalizeSession(const QString &sessionId, const QString &finalStatus,
                          gy::protocol::ErrorCode errorCode, const QString &errorMessage,
@@ -182,5 +186,8 @@ private:
     QHash<QString, QTimer*> _relayDecisionTimers;        // awaiting_relay 决策超时（sessionId -> timer）
     QHash<QString, QString> _pendingRelayInvites;        // 等待受理的中继邀请（relayId -> sessionId）
     QHash<QString, QTimer*> _relayInviteTimers;          // 中继邀请受理超时（relayId -> timer）
+    // 群发会话的共享文件清单：中继降级重建 worker 时复用同一份序列化结果，
+    // 不对源目录重复哈希；会话终结（finalizeSession）时随之清理
+    QHash<QString, QList<gy::FileItem>> _sessionSharedFiles;
     int _activeSessionCount = 0;                          // 最近一次统计的活动会话数，变化时发 NOTIFY
 };
