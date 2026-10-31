@@ -1,6 +1,6 @@
 /**
 * @file    backup_controller.cpp
-* @version 8.1.0
+* @version 8.2.1
 * @date 2026-10-28
 * @author  GridYard Team
 * @brief   用户数据备份与迁移控制器实现
@@ -116,7 +116,14 @@ void BackupController::prepareExport()
 void BackupController::writeExportFile(const QString &path, bool includeIdentity, bool includeDevices,
                                        bool includeChat, bool includeTransfers)
 {
+    // 写盘期间与既有导出/导入任务互斥：busy 门与 prepareExport/performImport
+    // 同款，重入请求直接忽略，避免同一路径被并发写出
+    if (_busy) {
+        return;
+    }
+    setBusy(true);
     if (path.trimmed().isEmpty()) {
+        setBusy(false);
         emit exportFinished(false, path, QStringLiteral("请选择保存位置"));
         return;
     }
@@ -160,16 +167,19 @@ void BackupController::writeExportFile(const QString &path, bool includeIdentity
     // 默认路径的父目录可能尚不存在（如全新系统的文档目录），写出前先补建
     const QFileInfo info(path);
     if (!QDir().mkpath(info.absolutePath())) {
+        setBusy(false);
         emit exportFinished(false, path, QStringLiteral("无法创建保存目录：%1").arg(info.absolutePath()));
         return;
     }
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        setBusy(false);
         emit exportFinished(false, path, QStringLiteral("无法写入文件：%1").arg(file.errorString()));
         return;
     }
     file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
     file.close();
+    setBusy(false);
     emit exportFinished(true, path, QString());
 }
 

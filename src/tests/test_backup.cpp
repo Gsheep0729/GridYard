@@ -1,6 +1,6 @@
 /**
 * @file    test_backup.cpp
-* @version 8.1.0
+* @version 8.2.1
 * @date    2026-10-28
 * @author  GY
 * @brief   用户数据备份与迁移测试
@@ -36,6 +36,7 @@ private slots:
     void testIdentityRejectedWhenLibraryHasData();
     void testTransactionRollbackOnForeignKey();
     void testFailedAnalysisInvalidatesCache();
+    void testExportWriteBusyGate();
 
 private:
     // 在临时目录打开一份本地历史库
@@ -580,6 +581,40 @@ void TestBackup::testExportDevicesLayerToggle()
     const QVariantMap analyzed = analyzedSpy.first().first().toMap();
     QCOMPARE(analyzed.value("error"), QVariant());
     QCOMPARE(analyzed.value("devices").toInt(), 0);
+}
+
+// 写盘路径补 busy 门：导出数据装载未完成期间的写盘请求被静默拒绝，
+// 装载完成后同一路径照常写盘（门不得卡死后续导出）
+void TestBackup::testExportWriteBusyGate()
+{
+    const QDateTime base = QDateTime::fromString("2026-10-31T08:00:00.000Z", Qt::ISODateWithMs);
+    seedDatabase("busy-gate.sqlite", {makeDevice("busy-dev", "忙碌设备", base)});
+
+    auto broker = openBroker("busy-gate.sqlite");
+    QVERIFY(broker);
+
+    BackupController exporter(broker.get(), _config, this);
+
+    // 先挂 exportPrepared 监听再触发装载：装载回调经存储线程异步回投，
+    // prepareExport 返回后到回调执行前控制器保持 busy
+    QSignalSpy preparedSpy(&exporter, &BackupController::exportPrepared);
+    exporter.prepareExport();
+    QCOMPARE(exporter.busy(), true);
+
+    // busy 期间的写盘重入应被静默拒绝：不落文件、不发 exportFinished
+    const QString blockedPath = _tempDir->path() + "/blocked.json";
+    QSignalSpy exportSpy(&exporter, &BackupController::exportFinished);
+    exporter.writeExportFile(blockedPath, true, true, true, true);
+    QCOMPARE(exportSpy.count(), 0);
+    QVERIFY(!QFile::exists(blockedPath));
+
+    // 装载完成后 busy 释放，同一路径照常写盘
+    QVERIFY2(!preparedSpy.isEmpty() || preparedSpy.wait(5000), "导出数据装载应完成");
+    QCOMPARE(exporter.busy(), false);
+    exporter.writeExportFile(blockedPath, true, true, true, true);
+    QCOMPARE(exportSpy.count(), 1);
+    QVERIFY(exportSpy.first().first().toBool());
+    QVERIFY(QFile::exists(blockedPath));
 }
 
 QTEST_MAIN(TestBackup)
