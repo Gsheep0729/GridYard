@@ -1,7 +1,7 @@
 /**
 * @file    test_peer_discovery_view_model.cpp
-* @version 8.2.0
-* @date    2026-10-29
+* @version 8.2.1
+* @date    2026-10-31
 * @author  GY
 * @brief   设备发现视图模型测试
 *
@@ -55,6 +55,7 @@ private slots:
     void testFavoriteSurvivesRecentTruncation();
     void testPseudoPeerMarkersMigrateToRealPeer();
     void testMergeDeviceFollowsSelection();
+    void testMergeKeepsRealTcpPort();
     void testHiddenFilteredAcrossSegments();
     void testSegmentFavoritePriorityAndFallback();
     void testCandidateOrderStableUnderBeaconRefresh();
@@ -1107,6 +1108,56 @@ void TestPeerDiscoveryViewModel::testMergeDeviceFollowsSelection()
     QCOMPARE(newCountedSpy.first().at(1).toInt(), 2);
 }
 
+// 合并后的真身行必须保留合并时读到的真实 TCP 端口，不得被构造器缺键产生的 0 覆盖
+void TestPeerDiscoveryViewModel::testMergeKeepsRealTcpPort()
+{
+    auto database = gy::test::openDatabase(_tempDir->path(), "merge-keep-port.sqlite");
+    QVERIFY(database);
+    gy::storage::DeviceRepositoryCore repository(database.get());
+
+    const QDateTime base = QDateTime::fromString("2026-10-06T08:00:00.000Z", Qt::ISODateWithMs);
+    PeerRecord oldRecord;
+    oldRecord.deviceId = QStringLiteral("vm-port-old");
+    oldRecord.deviceName = QStringLiteral("旧设备");
+    oldRecord.lastIpAddress = QStringLiteral("10.91.0.1");
+    oldRecord.lastTcpPort = 35101;
+    oldRecord.firstSeenAt = base;
+    oldRecord.lastSeenAt = base;
+    std::string dbError;
+    QVERIFY(repository.upsertPeer(gy::test::toCoreRecord(oldRecord), &dbError));
+
+    // 真身重新出现：在线快照带真实 TCP 端口入内存与库
+    auto broker = openBroker("merge-keep-port.sqlite");
+    QVERIFY(broker);
+    PeerInfo newPeer = makePeerInfo(QStringLiteral("vm-port-new"), QStringLiteral("新设备"),
+                                    QStringLiteral("10.91.0.2"));
+    newPeer.tcpPort = 35107;
+    seedPeer(*broker, newPeer);
+
+    PeerDiscoveryViewModel viewModel(_discovery);
+    viewModel.initDataBroker(broker.get());
+    QTRY_VERIFY_WITH_TIMEOUT(!viewModel.deviceById(QStringLiteral("vm-port-new")).isEmpty(), 3000);
+
+    QSignalSpy mergedSpy(&viewModel, &PeerDiscoveryViewModel::deviceMerged);
+    viewModel.mergeDevice(QStringLiteral("vm-port-new"), QStringLiteral("vm-port-old"), false);
+    QTRY_VERIFY_WITH_TIMEOUT(!mergedSpy.isEmpty(), 5000);
+    QCOMPARE(mergedSpy.first().at(0).toBool(), true);
+
+    // 合并读路径：真身信息应带出真实端口，合并展示映射不得缺键
+    QCOMPARE(viewModel.deviceById(QStringLiteral("vm-port-new")).value("tcpPort").toUInt(), 35107u);
+
+    // 落库断言：合并提交的真身行 last_tcp_port 必须是真实值，不得被写成 0
+    const auto peers = repository.allPeers(&dbError);
+    QVERIFY(bool(dbError.empty()));
+    bool portChecked = false;
+    for (const auto &record : peers) {
+        if (record.deviceId == "vm-port-new") {
+            QCOMPARE(static_cast<quint16>(record.lastTcpPort), quint16(35107));
+            portChecked = true;
+        }
+    }
+    QVERIFY2(portChecked, "合并后真身行应存在于设备目录");
+}
 // 隐藏设备在所有段中被一体过滤：在线段的隐藏条目与最近见过段的隐藏条目都不进列表
 void TestPeerDiscoveryViewModel::testHiddenFilteredAcrossSegments()
 {

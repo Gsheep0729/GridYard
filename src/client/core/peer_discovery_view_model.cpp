@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.cpp
-* @version 8.2.0
-* @date 2026-10-29
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型实现
 */
@@ -610,6 +610,7 @@ QVariantMap PeerDiscoveryViewModel::peerRecordToVariant(const PeerRecord &record
         {"deviceId", record.deviceId},
         {"deviceName", record.deviceName},
         {"ipAddress", record.lastIpAddress},
+        {"tcpPort", record.lastTcpPort},
         {"isOnline", false},
         {"lastSeenAt", timeToString(record.lastSeenAt)},
         {"lastChatAt", timeToString(record.lastChatAt)},
@@ -630,6 +631,7 @@ QVariantMap PeerDiscoveryViewModel::peerInfoToVariant(const PeerInfo &info) cons
         {"deviceId", info.deviceId},
         {"deviceName", info.deviceName},
         {"ipAddress", info.ipAddress},
+        {"tcpPort", info.tcpPort},
         {"isOnline", info.isOnline},
         {"source", info.source},
         {"lastSeenAt", timeToString(info.lastSeen)},
