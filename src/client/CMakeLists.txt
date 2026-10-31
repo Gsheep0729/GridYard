@@ -197,7 +197,6 @@ target_link_libraries(appGridYard PRIVATE
     Qt6::QuickControls2
     Qt6::QuickDialogs2  # 原生文件/文件夹选择对话框
     Qt6::Widgets        # SystemTrayIcon / Menu 等需要 Widgets
-    Qt6::Network        # QNetworkInformation 本机 IP 网络变化监听（LocalIpMonitor）
     gy_shared
     gy_net_core         # 网络适配器引用的事件泵核心（core/ 前缀头与符号）
     gy_storage_core
