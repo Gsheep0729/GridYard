@@ -242,7 +242,18 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
         port = _config->tcpPort();
     }
     const QString peerName = endpoint[gy::keys::kEndpointDeviceName].toString();
-    const auto [fileCount, totalBytes] = transferStatsForPath(filePath);
+
+    // 目录的体量统计与根目录预览依赖全量遍历（serializeNoHash），万级文件会把
+    // UI 线程冻结到卡片出现之后（O-12），故移入后台线程，会话卡先以"统计中…"出现；
+    // 普通文件只需单次 stat，开销可忽略，保持同步填充
+    const QFileInfo sourceInfo{filePath};
+    const bool isDirectory = sourceInfo.isDir();
+    int fileCount = 0;
+    qint64 totalBytes = 0;
+    if (!isDirectory && sourceInfo.exists()) {
+        fileCount = 1;
+        totalBytes = sourceInfo.size();
+    }
 
     qDebug() << "[TransferSession] 目标设备信息:";
     qDebug() << "  设备名:" << peerName;
@@ -272,8 +283,8 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session[kDeviceId]  = deviceId;
     session[kPeerDeviceName] = peerName;
     session[kFilePath]  = filePath;
-    session[kFileName]  = QFileInfo{filePath}.fileName();
-    session[kIsDirectory] = QFileInfo{filePath}.isDir();
+    session[kFileName]  = sourceInfo.fileName();
+    session[kIsDirectory] = isDirectory;
     session[kFileCount] = fileCount;
     session[kStatus]    = kStatusConnecting;
     session[kProgress]  = 0;
@@ -283,19 +294,11 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     session[kFileList]  = QVariantList{};
     session[kLocalPath] = "";
     session[kCanDeleteLocalFile] = false;
+    // 目录统计在途标志：卡片显示"统计中…"，后台统计完成后回填并清除
+    session[kStatsPending] = isDirectory;
 
     // 委托 ConfigManager 填充发送方信息（Tell, Don't Ask）
     _config->fillSenderInfo(session);
-
-    // 如果是文件夹，获取文件列表
-    if (QFileInfo{filePath}.isDir()) {
-        auto fileList = gy::DirSerializer::serializeNoHash(filePath);
-        QStringList paths;
-        for (const auto &item : fileList) {
-            paths.append(item.relativePath);
-        }
-        session[kFileList] = buildRootPreview(paths);
-    }
 
     _model->appendSession(session);
     emit sessionsChanged();
@@ -304,6 +307,62 @@ void TransferSessionManager::createSendSession(const QString &deviceId, const QS
     qDebug() << "[TransferSession] 会话已创建，ID:" << sessionId;
 
     startSendWorker(session, endpoints, QString(), true);
+
+    if (!isDirectory) {
+        return;
+    }
+
+    // 目录统计后台化（O-12）：对齐群发的后台序列化模式，一次性线程只遍历一次，
+    // 文件数/总字节数与根目录预览同源生成，完成后回投 UI 线程回填会话行
+    auto *statsThread = new QThread{this};
+    auto *counter = new QObject{};
+    counter->moveToThread(statsThread);
+    connect(statsThread, &QThread::finished, counter, &QObject::deleteLater);
+    connect(statsThread, &QThread::finished, statsThread, &QObject::deleteLater);
+    connect(statsThread, &QThread::started, counter,
+            [this, counter, statsThread, sessionId, filePath] {
+        const QList<gy::FileItem> items = gy::DirSerializer::serializeNoHash(filePath);
+        int counted = 0;
+        qint64 bytes = 0;
+        QStringList paths;
+        for (const auto &item : items) {
+            // 目录占位项只用于恢复层级，不计入实际文件数量和传输字节数
+            if (item.relativePath.endsWith('/')) {
+                continue;
+            }
+            ++counted;
+            bytes += item.sizeBytes;
+            paths.append(item.relativePath);
+        }
+        const QVariantList preview = buildRootPreview(paths);
+        counter->deleteLater();
+        statsThread->quit();  // 一次性线程：任务完成即退出，销毁走 finished 链
+        gy::bridge::postToUiThread(this, [this, sessionId, counted, bytes, preview] {
+            // 会话行可能已被用户移除（失败记录清理等），无处回填则静默放弃
+            bool updated = false;
+            _model->updateSession(sessionId,
+                                  [&updated, counted, bytes, preview](QVariantMap &session) {
+                session[kFileCount] = counted;
+                session[kTotalBytes] = bytes;
+                session[kFileList] = preview;
+                session[kStatsPending] = false;
+                updated = true;
+            });
+            if (!updated) {
+                return;
+            }
+            emit sessionsChanged();
+
+            // 统计晚于终态到达（如直连秒失败已落终态）：此前持久化的快照里
+            // 体量还是占位 0，按幂等 session_id 重发一次持久化，历史行拿全口径
+            const QVariantMap snapshot = _model->sessionById(sessionId);
+            if (isFinishedStatus(snapshot.value(kStatus).toString())
+                && !snapshot.value(kRecordId).toString().isEmpty()) {
+                emit transferToPersist(TransferSessionMapper::recordFromSession(snapshot));
+            }
+        });
+    });
+    statsThread->start();
 }
 
 // 多选群发：后台线程对源路径只做一次 DirSerializer::serialize（含 SHA-256），

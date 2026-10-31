@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_model.cpp
-* @version 7.19.0
-* @date 2026-10-05
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   传输会话列表模型实现
 */
@@ -47,7 +47,7 @@ QVariant TransferSessionModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> TransferSessionModel::roleNames() const
 {
     QHash<int, QByteArray> roles;
-    for (int role = SessionIdRole; role <= TotalFilesRole; ++role) {
+    for (int role = SessionIdRole; role <= StatsPendingRole; ++role) {
         if (const char *key = keyForRole(role)) {
             roles.insert(role, key);
         }
@@ -161,6 +161,7 @@ const char *TransferSessionModel::keyForRole(int role)
     case RelayIdRole:            return kRelayId;
     case FileSizeRole:           return kFileSize;
     case TotalFilesRole:         return kTotalFiles;
+    case StatsPendingRole:       return kStatsPending;
     default:                     return nullptr;
     }
 }

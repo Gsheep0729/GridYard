@@ -1,7 +1,7 @@
 /**
 * @file    conversation_timeline_model.h
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型
 *
@@ -52,6 +52,7 @@ public:
         FileListRole,
         CanDeleteLocalFileRole,
         ErrorMsgRole,
+        StatsPendingRole,
     };
     Q_ENUM(Role)
 

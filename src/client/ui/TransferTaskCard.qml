@@ -1,7 +1,7 @@
 /**
  * @file    TransferTaskCard.qml
  * @version 8.2.1
- * @date 2026-10-31
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
@@ -31,6 +31,9 @@ Frame {
     property string createdAt: ""
     property string peerDeviceName: ""
     property string errorMsg: ""  // 失败/取消时的具体原因，由会话数据透传
+    // 目录体量统计在途（后台统计，O-12）：卡片先以"统计中…"出现，字节数后补；
+    // 普通文件与历史恢复行无此标志，默认 false 不影响既有展示
+    property bool statsPending: false
 
     property bool expanded: false  // 文件夹内容是否展开
     signal expansionRequested(bool expanded)
@@ -243,7 +246,17 @@ Frame {
                 text: FormatUtils.formatBytes(taskCard.totalBytes)
                 font.pixelSize: 12
                 color: Style.Color.textMuted
-                visible: taskCard.totalBytes > 0
+                // 统计在途期间体量还是占位值：只在统计回填（或 worker 进度先行
+                // 报出真实总量）后显示，避免"0 B"闪现
+                visible: taskCard.totalBytes > 0 && !taskCard.statsPending
+            }
+
+            Label {
+                text: qsTr("统计中…")
+                font.pixelSize: 12
+                color: Style.Color.textMuted
+                // 后台统计完成前体量未知：占位提示代替字节数，卡片本身即时出现
+                visible: taskCard.statsPending && taskCard.totalBytes <= 0
             }
         }
 

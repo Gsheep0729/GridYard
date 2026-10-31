@@ -1,7 +1,7 @@
 /**
 * @file    conversation_timeline_model.cpp
-* @version 8.1.0
-* @date 2026-10-28
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型实现
 *
@@ -81,6 +81,7 @@ QVariant ConversationTimelineModel::data(const QModelIndex &index, int role) con
     case FileListRole:           return entry.data.value(kFileList);
     case CanDeleteLocalFileRole: return entry.data.value(kCanDeleteLocalFile);
     case ErrorMsgRole:           return entry.data.value(kErrorMsg);
+    case StatsPendingRole:       return entry.data.value(kStatsPending);
     default:                     return {};
     }
 }
@@ -109,6 +110,7 @@ QHash<int, QByteArray> ConversationTimelineModel::roleNames() const
         {FileListRole, "fileList"},
         {CanDeleteLocalFileRole, "canDeleteLocalFile"},
         {ErrorMsgRole, "errorMsg"},
+        {StatsPendingRole, "statsPending"},
     };
 }
 
@@ -474,6 +476,7 @@ QVariantMap ConversationTimelineModel::readSessionRow(int row) const
         {kFileList,           _transferSource->data(modelIndex, TransferSessionModel::FileListRole)},
         {kCanDeleteLocalFile, _transferSource->data(modelIndex, TransferSessionModel::CanDeleteLocalFileRole)},
         {kErrorMsg,           _transferSource->data(modelIndex, TransferSessionModel::ErrorMsgRole)},
+        {kStatsPending,       _transferSource->data(modelIndex, TransferSessionModel::StatsPendingRole)},
     };
 }
 

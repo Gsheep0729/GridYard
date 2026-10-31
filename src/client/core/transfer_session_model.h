@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_model.h
-* @version 7.19.0
-* @date 2026-10-05
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   传输会话列表模型
 *
@@ -47,6 +47,9 @@ inline constexpr const char *kRecordId          = "recordId";
 inline constexpr const char *kRelayId           = "relayId";
 inline constexpr const char *kFileSize          = "fileSize";
 inline constexpr const char *kTotalFiles        = "totalFiles";
+// 发送目录的体量统计在途标志：统计已移后台线程（避免大目录遍历冻结 UI），
+// 统计回填前置 true，卡片据此显示"统计中…"占位
+inline constexpr const char *kStatsPending      = "statsPending";
 
 // 会话方向
 inline constexpr const char *kTypeSend    = "send";
@@ -94,6 +97,7 @@ public:
         RelayIdRole,
         FileSizeRole,
         TotalFilesRole,
+        StatsPendingRole,
     };
     Q_ENUM(Role)
 

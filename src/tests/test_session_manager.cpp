@@ -8,7 +8,8 @@
  * 测试用例：会话创建 / 接受 / 拒绝 / 取消 / 信号通知 / 历史恢复 /
  * Relay 降级策略（从不中继、询问后中继、自动中继端到端、协调服务器离线时重试）/
  * waiting_confirm 会话过期信号 / 并发请求的等待确认快照队列化 / 活动会话计数增减 /
- * 拖拽发送确认的分流判定（目录识别与文件体量统计）
+ * 拖拽发送确认的分流判定（目录识别与文件体量统计）/
+ * 大目录发送统计后台化（卡片即时出现、统计后补，O-12）
 */
 
 #include <QtTest/QtTest>
@@ -88,6 +89,7 @@ private slots:
     void testDuplicateReceiveSessionIdRejected();
     void testDoNotDisturbAutoReject();
     void testRelayJoinFailureSurfacesLocally();
+    void testSendDirectoryStatsDeferred();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -1574,6 +1576,90 @@ void TestSessionManager::testRelayJoinFailureSurfacesLocally()
     const QString message = errorSpy.first().first().toString();
     QVERIFY2(message.contains(QStringLiteral("中继")), "提示应指明中继语义:" + message.toUtf8());
     QVERIFY2(message.contains(QStringLiteral("中继连接超时")), "提示应携带失败原因:" + message.toUtf8());
+}
+
+// 大目录发送统计后台化（O-12）：createSendSession 不再在 UI 线程同步遍历目录，
+// 会话卡在调用返回时即已出现（statsPending 置位、体量占位 0），事件循环空转后
+// 后台统计回填文件数/总字节/根目录预览并清除标志；普通文件保持同步统计不变
+void TestSessionManager::testSendDirectoryStatsDeferred()
+{
+    // 造已知口径的目录：3 个顶层文件 + 1 个含 2 文件的子目录，每文件 100 字节
+    const QString dirPath = _tempDir->path() + "/stats-dir";
+    QVERIFY(QDir().mkpath(dirPath));
+    QVERIFY(QDir().mkpath(dirPath + "/sub"));
+    const QByteArray payload(100, 'x');
+    for (int i = 0; i < 3; ++i) {
+        QFile f(dirPath + QString("/file%1.bin").arg(i));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(payload);
+        f.close();
+    }
+    for (int i = 0; i < 2; ++i) {
+        QFile f(dirPath + QString("/sub/inner%1.bin").arg(i));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(payload);
+        f.close();
+    }
+    const qint64 expectedBytes = 500;
+
+    addDeadTargetDevice(QStringLiteral("stats-target"));
+    _manager->createSendSession(QStringLiteral("stats-target"), dirPath);
+    const QString sessionId = _manager->sessions().last().toMap()["sessionId"].toString();
+
+    // 关键断言 1：调用返回即有会话卡，不等统计完成才建行
+    const QVariantMap immediate = _manager->sessionModel()->sessionById(sessionId);
+    QVERIFY2(!immediate.isEmpty(), "createSendSession 返回时会话卡应已存在");
+    // 关键断言 2：统计在途标志置位、体量占位 0（旧实现同步统计后才有会话行）
+    QCOMPARE(immediate.value("statsPending").toBool(), true);
+    QCOMPARE(immediate.value("totalBytes").toLongLong(), qint64(0));
+    QCOMPARE(immediate.value("fileCount").toInt(), 0);
+
+    // 事件循环空转：后台统计回填，标志清除，口径与磁盘一致
+    QVERIFY2(gy::test::waitFor([this, &sessionId]() {
+        return !_manager->sessionModel()->sessionById(sessionId)
+                    .value("statsPending").toBool();
+    }, 5000), "目录统计应在后台完成后回填并清除 statsPending");
+    const QVariantMap settled = _manager->sessionModel()->sessionById(sessionId);
+    QCOMPARE(settled.value("fileCount").toInt(), 5);
+    QCOMPARE(settled.value("totalBytes").toLongLong(), expectedBytes);
+
+    // 根目录预览只含顶层条目：3 个文件 + 1 个子目录（带斜杠占位）
+    const QVariantList preview = settled.value("fileList").toList();
+    QCOMPARE(preview.size(), 4);
+    bool hasSubDir = false;
+    for (const QVariant &entry : preview) {
+        if (entry.toString() == QStringLiteral("sub/")) {
+            hasSubDir = true;
+        }
+    }
+    QVERIFY2(hasSubDir, "根目录预览应包含子目录占位条目 sub/");
+
+    // 模型角色管线同样携带该字段：时间线 delegate 按角色名取值
+    TransferSessionModel *model = _manager->sessionModel();
+    const int statsRole = model->roleNames().key("statsPending");
+    QVERIFY2(statsRole != 0, "模型应注册 statsPending 角色");
+    const QModelIndex lastRow = model->index(model->rowCount() - 1, 0);
+    QCOMPARE(model->data(lastRow, statsRole).toBool(), false);
+    QCOMPARE(model->data(lastRow, TransferSessionModel::FileCountRole).toInt(), 5);
+
+    // 普通文件保持同步统计：无在途标志，体量即时可得
+    const QString singlePath = _tempDir->path() + "/stats-single.bin";
+    QFile single(singlePath);
+    QVERIFY(single.open(QIODevice::WriteOnly));
+    single.write(payload);
+    single.close();
+
+    _manager->createSendSession(QStringLiteral("stats-target"), singlePath);
+    const QString singleId = _manager->sessions().last().toMap()["sessionId"].toString();
+    const QVariantMap singleSession = _manager->sessionModel()->sessionById(singleId);
+    QCOMPARE(singleSession.value("statsPending").toBool(), false);
+    QCOMPARE(singleSession.value("totalBytes").toLongLong(), qint64(100));
+    QCOMPARE(singleSession.value("fileCount").toInt(), 1);
+
+    // 收尾等待两个会话以直连失败收敛（本夹具无协调客户端，不会降级中继），
+    // worker 线程随之退出，避免 cleanupTestCase 删除管理器时线程仍在运行
+    QVERIFY(waitForStatus(sessionId, "failed"));
+    QVERIFY(waitForStatus(singleId, "failed"));
 }
 
 QTEST_MAIN(TestSessionManager)

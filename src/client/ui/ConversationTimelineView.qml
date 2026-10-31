@@ -1,7 +1,7 @@
 /**
  * @file    ConversationTimelineView.qml
  * @version 8.2.1
- * @date 2026-10-31
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
  *
@@ -138,6 +138,7 @@ Item {
             required property var fileList
             required property var canDeleteLocalFile
             required property var errorMsg
+            required property var statsPending  // 目录体量统计在途（后台统计，O-12）
 
             readonly property bool isMessage: kind === "message"  // 区分消息和传输两种卡片
             readonly property bool isOutgoingMessage: isMessage && isOutgoing
@@ -288,6 +289,7 @@ Item {
                     fileList: timelineDelegate.fileList || []
                     canDeleteLocalFile: Boolean(timelineDelegate.canDeleteLocalFile)
                     errorMsg: String(timelineDelegate.errorMsg || "")
+                    statsPending: Boolean(timelineDelegate.statsPending)
                     expanded: timelineView.expandedSessions[timelineDelegate.sessionId] === true
                     onExpansionRequested: function(expanded) {
                         timelineView.expansionRequested(timelineDelegate.sessionId, expanded)
