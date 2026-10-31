@@ -1,6 +1,6 @@
 # tests/ —— Qt Test 单元测试与集成测试入口。
 # 每个测试保持独立可执行文件，按需链接 shared、storage 或客户端实现文件，避免测试之间共享状态。
-find_package(Qt6 REQUIRED COMPONENTS Test Gui)
+find_package(Qt6 REQUIRED COMPONENTS Test Gui Qml Quick)
 
 # 通用 include 路径
 set(CLIENT_CORE_DIR ${CMAKE_SOURCE_DIR}/client/core)
@@ -688,6 +688,24 @@ target_compile_definitions(test_tray_notification PRIVATE
 target_compile_features(test_tray_notification PRIVATE cxx_std_23)
 add_test(NAME test_tray_notification COMMAND test_tray_notification)
 set_tests_properties(test_tray_notification PROPERTIES TIMEOUT 60)
+
+# --- 键盘可达性回归测试（O-23：以桩上下文属性与桩 QML 模块加载
+#     DeviceCard.qml/Sidebar.qml，离屏窗口驱动真实按键，验证 Tab 聚焦、
+#     Return/Enter/Space 激活与焦点视觉驱动条件） ---
+qt_add_executable(test_keyboard_access test_keyboard_access.cpp)
+target_link_libraries(test_keyboard_access PRIVATE
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+)
+target_compile_definitions(test_keyboard_access PRIVATE
+    GRIDYARD_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_compile_features(test_keyboard_access PRIVATE cxx_std_23)
+add_test(NAME test_keyboard_access COMMAND test_keyboard_access)
+set_tests_properties(test_keyboard_access PROPERTIES TIMEOUT 60)
 
 # --- Golden 基线对拍套件：以当前 Qt 实现为参考实现固化行为，供纯 C++ 替代实现对拍 ---
 qt_add_executable(test_golden_baseline test_golden_baseline.cpp

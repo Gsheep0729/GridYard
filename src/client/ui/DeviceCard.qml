@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
- * @version 8.1.0
- * @date 2026-10-26
+ * @version 8.2.1
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -23,6 +23,9 @@ import "../utils/Style.js" as Style
 ItemDelegate {
     id: deviceCard
     hoverEnabled: true
+    // 键盘可达：ItemDelegate 默认 focusPolicy 为 NoFocus，Tab 遍历到不了，
+    // 显式开 Tab 聚焦后 Return/Enter/Space 激活与焦点环才成立（O-23）
+    activeFocusOnTab: true
     // 以下 required property 与视图模型条目的字段名一一对应，QML 引擎会
     // 根据名字自动从 model 项里填值，无需手动绑定。
     required property string deviceId
@@ -65,6 +68,11 @@ ItemDelegate {
         // 选中态与悬停底色都即时切换：切换设备时颜色动画会被会话页重建卡出中间帧，观感是闪烁
         color: deviceCard.isSelected ? Style.Color.primarySoft
              : (deviceCard.hovered ? Style.Color.hoverSoft : Style.Color.transparent)
+        // 键盘焦点环：Tab 落点的可见反馈，沿用搜索框 primary 描边约定
+        // （PeerListView 搜索框 activeFocus 同款 1.5px）；仅 visualFocus
+        // （键盘/程序聚焦）出现，悬停与左键点击不显示
+        border.width: deviceCard.visualFocus ? 1.5 : 0
+        border.color: Style.Color.primary
 
         // 左侧选中指示条：明确标识当前会话设备
         Rectangle {
@@ -115,10 +123,25 @@ ItemDelegate {
     }
 
     // 点击卡片时向父级传递完整设备信息，由 PeerListView 再向上冒泡到 Main.qml
-    onClicked: deviceCard.cardClicked(deviceCard.deviceId,
-                                         deviceCard.deviceName,
-                                         deviceCard.ipAddress,
-                                         deviceCard.isOnline)
+    onClicked: deviceCard.activate()
+
+    // 键盘激活与左键点击共用同一条 cardClicked 路径；Space 由 AbstractButton
+    // 原生处理，Return/Enter（主键盘与小键盘）在 AbstractButton 无默认处理，
+    // 需在此显式接线
+    function activate() {
+        deviceCard.cardClicked(deviceCard.deviceId,
+                               deviceCard.deviceName,
+                               deviceCard.ipAddress,
+                               deviceCard.isOnline)
+    }
+    Keys.onReturnPressed: function(event) {
+        event.accepted = true
+        deviceCard.activate()
+    }
+    Keys.onEnterPressed: function(event) {
+        event.accepted = true
+        deviceCard.activate()
+    }
 
     // 拖拽接收区域：拖拽内容原样向上冒泡，由 Main.qml 统一裁决
     DropArea {

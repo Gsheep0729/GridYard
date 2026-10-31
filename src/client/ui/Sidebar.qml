@@ -1,7 +1,7 @@
 /**
  * @file    Sidebar.qml
- * @version 7.24.0
- * @date 2026-10-08
+ * @version 8.2.1
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   左侧设备栏
  *
@@ -50,12 +50,23 @@ Rectangle {
         // 本机头像
         Rectangle {
             id: avatarBtn
+            objectName: "avatarButton"
             anchors.top: parent.top
             anchors.topMargin: 16
             anchors.horizontalCenter: parent.horizontalCenter
             width: 36; height: 36
             radius: 18
             color: Style.Color.primary
+            // 键盘可达：自绘 Rectangle 默认不在焦点链，显式开 Tab 聚焦，
+            // Return/Enter/Space 与点击同路打开本机信息弹窗（O-23）
+            activeFocusOnTab: true
+            Keys.onReturnPressed: function(event) { event.accepted = true; deviceInfoPopup.open() }
+            Keys.onEnterPressed: function(event) { event.accepted = true; deviceInfoPopup.open() }
+            Keys.onSpacePressed: function(event) { event.accepted = true; deviceInfoPopup.open() }
+            // 键盘焦点环：primary 底上用白描边才可辨（同 textOnAccent 语义）
+            border.color: avatarBtn.activeFocus ? Style.Color.textOnAccent
+                                                : Style.Color.transparent
+            border.width: avatarBtn.activeFocus ? 2 : 0
 
             property bool _hovered: false
 
@@ -92,11 +103,21 @@ Rectangle {
         // 菜单按钮（底部）
         Rectangle {
             id: menuBtn
+            objectName: "menuButton"
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 16
             anchors.horizontalCenter: parent.horizontalCenter
             width: 41; height: 41
             radius: 3
+            // 键盘可达：与本机头像同款 Tab 聚焦 + Return/Enter/Space 打开菜单弹窗
+            activeFocusOnTab: true
+            Keys.onReturnPressed: function(event) { event.accepted = true; menuPopup.open() }
+            Keys.onEnterPressed: function(event) { event.accepted = true; menuPopup.open() }
+            Keys.onSpacePressed: function(event) { event.accepted = true; menuPopup.open() }
+            // 键盘焦点环：primary 描边，与搜索框聚焦色一致
+            border.color: menuBtn.activeFocus ? Style.Color.primary
+                                              : Style.Color.transparent
+            border.width: menuBtn.activeFocus ? 1.5 : 0
 
             property bool _hovered: false
             property bool _pressed: false
@@ -378,6 +399,7 @@ Rectangle {
     // 本机信息弹出窗口(FCL)
     Popup {
         id: deviceInfoPopup
+        objectName: "deviceInfoPopup"
         x: 70; y: 10
         width: 282; height: 110
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -464,6 +486,7 @@ Rectangle {
     // 菜单弹出窗口
     Popup {
         id: menuPopup
+        objectName: "menuPopup"
         x: 70
         y: sidebar.height - height - 10
         width: 160
