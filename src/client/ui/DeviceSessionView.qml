@@ -38,6 +38,16 @@ Frame {
    // 输入区逻辑最大宽度：大窗下输入盒不再无限拉长，整行居中收敛
    readonly property int kComposerMaxWidth: 860
 
+   // 切换设备即重置输入语境：设备 A 的发送错误条与未发送草稿不得残留到
+   // 设备 B——错误语境错位，草稿更可能被误发给另一台设备。草稿不做
+   // 按设备保留（属产品决策，如需保留另立需求）
+   onDeviceIdChanged: {
+       deviceSessionView.chatError = ""
+       if (messageInput) {
+           messageInput.clear()
+       }
+   }
+
    // 校验输入后发送文本消息；返回 false 表示消息未被接受，保留输入与错误提示等待重试
    function sendChatMessage(): void {
        if (!canSendChat) {
