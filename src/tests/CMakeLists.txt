@@ -608,6 +608,7 @@ qt_add_executable(test_app_controller test_app_controller.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp
     ${CLIENT_CORE_DIR}/history_controller.cpp
     ${CLIENT_CORE_DIR}/history_wiring.cpp
+    ${CLIENT_CORE_DIR}/local_ip_monitor.cpp
     ${CLIENT_CORE_DIR}/logger.cpp
     ${CLIENT_CORE_DIR}/peer_discovery_view_model.cpp
     ${CLIENT_CORE_DIR}/reachability_controller.cpp

@@ -268,6 +268,15 @@ QString AppController::resolveWindowCloseAction() const
                                                    _transfer->activeSessionCount());
 }
 
+// 托盘退出决策：托盘菜单"退出"是显式退出意图，不读关窗行为记忆（记住隐藏或
+// 每次询问只约束关窗动作），只复用关窗退出分支的同一活动传输防护——有活动
+// 传输时与关窗路径同判 confirm 弹警示确认，无活动传输时直接退出
+QString AppController::resolveTrayQuitAction() const
+{
+    return ConfigManager::resolveWindowCloseAction(CloseWindowAction::Exit,
+                                                   _transfer->activeSessionCount());
+}
+
 // 记录关窗行为：把关窗确认弹窗"记住我的选择"上报的动作写入配置，
 // 取值与 resolveWindowCloseAction 的决策词表一致，非法取值忽略
 void AppController::setCloseWindowAction(const QString &action)

@@ -1,13 +1,14 @@
 /**
  * @file    Main.qml
  * @version 8.2.1
- * @date 2026-10-31
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
  * 标题通过 AppController.applicationName/Version 绑定，
  * 关窗行为由 C++ 决策分发：弹窗询问、隐藏到后台或直接退出，
  * 常规询问附"记住我的选择"复选框，有传输进行中时弹窗附警示行。
+ * 托盘退出复用关窗退出分支的同一决策与警示弹窗，两条退出路径防护一致。
  * 左侧显示在线设备列表，右侧显示设备会话页。
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
 */
@@ -112,6 +113,19 @@ ApplicationWindow {
         AppController.quit()
     }
 
+    // 托盘退出与关窗退出分支同源决策：有活动传输时弹同款警示确认（不提供记忆，
+    // 与关窗 A6 拦截一致），无活动传输直接退出，两条退出路径防护保持一致
+    function requestTrayQuit(): void {
+        const action = AppController.resolveTrayQuitAction()
+        if (action === "confirm") {
+            closeChoiceDialog.rememberAllowed = false
+            bringMainWindowToFront()
+            closeChoiceDialog.open()
+        } else {
+            requestApplicationQuit()
+        }
+    }
+
     // 底部 Toast 包装：错误停留更久，成功短暂反馈
     function showErrorToast(message: string): void {
         toastPopup.show(message, true)
@@ -167,7 +181,7 @@ ApplicationWindow {
         id: trayIcon
         onShowRequested: mainWindow.showMainWindow()
         onHideRequested: mainWindow.hideToTray()
-        onQuitRequested: mainWindow.requestApplicationQuit()
+        onQuitRequested: mainWindow.requestTrayQuit()
     }
 
     // 选中设备：设备名、IP 与在线状态由视图模型按选中 ID 自动解析

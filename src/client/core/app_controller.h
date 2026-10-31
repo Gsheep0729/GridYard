@@ -110,6 +110,9 @@ public:
     Q_INVOKABLE void clearLocalCache();
     // 关窗动作决策：读取关窗行为配置与活动传输数，返回 ask / hide / exit / confirm
     Q_INVOKABLE QString resolveWindowCloseAction() const;
+    // 托盘退出决策：托盘菜单"退出"是显式退出意图，不读关窗行为记忆（hide/ask
+    // 只约束关窗动作），仅复用关窗退出分支的同一活动传输防护，返回 exit / confirm
+    Q_INVOKABLE QString resolveTrayQuitAction() const;
     // 记录关窗行为：写入"记住我的选择"上报的动作，action 取 ask / hide / exit
     Q_INVOKABLE void setCloseWindowAction(const QString &action);
     // 设置页"启动新实例"入口：startDetached 异步拉起下一开发者实例，
