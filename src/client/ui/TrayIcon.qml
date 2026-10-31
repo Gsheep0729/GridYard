@@ -7,6 +7,7 @@
  *
  * 托盘菜单与激活行为经信号上抛，主窗口决定显示、隐藏、打开接收目录、
  * 打开设置或退出；通知消息仍由主窗口经 showMessage 发出。
+ * tooltip 反映传输活动：有活动会话时追加「传输中 N 项」。
  * 从 Main.qml 拆出。
  */
 
@@ -23,8 +24,13 @@ Platform.SystemTrayIcon {
     signal settingsRequested()
 
     visible: true
-    // 开发者模式实例的托盘提示带 " #N" 标识，正常实例后缀为空串
-    tooltip: qsTr("GridYard") + AppController.instanceTitleSuffix
+    // 开发者模式实例的托盘提示带 " #N" 标识，正常实例后缀为空串；
+    // 有活动传输时追加「传输中 N 项」，随 activeSessionCount 变化自动刷新
+    tooltip: {
+        const base = qsTr("GridYard") + AppController.instanceTitleSuffix
+        const count = AppController.transferController.activeSessionCount
+        return count > 0 ? base + qsTr(" · 传输中 %1 项").arg(count) : base
+    }
     icon.source: "qrc:/qt/qml/cqnu/gridyard/client/icons/gridyard.png"
 
     menu: Platform.Menu {
