@@ -35,9 +35,10 @@ Dialog {
         relayConfirmDialog.open()
     }
 
+    // contentItem 的几何由弹窗管理：不得再锚定 parent，否则与弹窗布局冲突，
+    // 说明文字会逃逸内容区压到按钮行并左端裁切（审批 C-J03 A/B 定案）
     contentItem: ColumnLayout {
         spacing: 14
-        anchors.fill: parent
 
         Label {
             text: qsTr("与目标设备直连失败，是否通过中继服务器转发本次传输？转发速度可能受限于服务器带宽。")
