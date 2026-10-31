@@ -453,6 +453,15 @@ ApplicationWindow {
     }
 
     Connections {
+        target: AppController.historyController
+        function onOperationFailed(message: string): void {
+            // 历史加载/删除/清空失败的统一出口：失败原先只发信号无人听，
+            // 滚到顶部的翻页查询静默失败会被误读成"已到底没有更早消息"
+            mainWindow.showErrorToast(message)
+        }
+    }
+
+    Connections {
         target: AppController
         function onLocalHistoryOperationFailed(): void {
             mainWindow.showErrorToast(qsTr("本地保存失败，历史可能缺失"))
