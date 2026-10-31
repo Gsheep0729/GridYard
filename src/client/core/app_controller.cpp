@@ -77,7 +77,9 @@ AppController::AppController(QObject *parent)
     connect(_historyWiring, &HistoryWiring::operationFailed,
             this,           &AppController::localHistoryOperationFailed);
 
-    _p2pServer->start();
+    // 监听端口是收发能力的底线：失败不再静默，标记经属性发布给表现层
+    // 常驻警示，应用以不可收发状态运行时用户必须有明确感知
+    _networkListenFailed = !_p2pServer->start();
 
     // 传入协调客户端，直连失败后可发起中继降级
     _transfer->init(_config, _discovery, _p2pServer, _rendezvousClient);
@@ -214,6 +216,12 @@ BackupController *AppController::backupController() const
 bool AppController::uiReady() const
 {
     return _uiReady;
+}
+
+// 获取 P2P 监听是否启动失败
+bool AppController::networkListenFailed() const
+{
+    return _networkListenFailed;
 }
 
 // 请求退出应用（排空与兜底策略由 ShutdownController 承担）

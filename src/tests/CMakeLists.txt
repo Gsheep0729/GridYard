@@ -595,6 +595,64 @@ set_tests_properties(test_frame_codec test_chat_message test_chat_manager test_h
     test_conversation_timeline_model test_posix_socket
     PROPERTIES TIMEOUT 300)
 
+# --- 组合根启动路径测试（AppController 全量依赖闭包直编） ---
+qt_add_executable(test_app_controller test_app_controller.cpp
+    ${CLIENT_CORE_DIR}/app_controller.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+    ${CLIENT_CORE_DIR}/backup_controller.cpp
+    ${CLIENT_CORE_DIR}/chat_controller.cpp
+    ${CLIENT_CORE_DIR}/chat_manager.cpp
+    ${CLIENT_CORE_DIR}/chat_message_model.cpp
+    ${CLIENT_CORE_DIR}/config_manager.cpp
+    ${CLIENT_CORE_DIR}/conversation_timeline_model.cpp
+    ${CLIENT_CORE_DIR}/dir_serializer.cpp
+    ${CLIENT_CORE_DIR}/history_controller.cpp
+    ${CLIENT_CORE_DIR}/history_wiring.cpp
+    ${CLIENT_CORE_DIR}/logger.cpp
+    ${CLIENT_CORE_DIR}/peer_discovery_view_model.cpp
+    ${CLIENT_CORE_DIR}/reachability_controller.cpp
+    ${CLIENT_CORE_DIR}/rendezvous_coordinator.cpp
+    ${CLIENT_CORE_DIR}/shutdown_controller.cpp
+    ${CLIENT_CORE_DIR}/transfer_controller.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_manager.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_mapper.cpp
+    ${CLIENT_CORE_DIR}/transfer_session_model.cpp
+    ${CLIENT_NET_DIR}/chat_connection.cpp
+    ${CLIENT_NET_DIR}/discovery_service.cpp
+    ${CLIENT_NET_DIR}/endpoint_probe.cpp
+    ${CLIENT_NET_DIR}/file_receiver_worker.cpp
+    ${CLIENT_NET_DIR}/file_sender_worker.cpp
+    ${CLIENT_NET_DIR}/invite_codec.cpp
+    ${CLIENT_NET_DIR}/p2p_server.cpp
+    ${CLIENT_NET_DIR}/rendezvous_client.cpp
+    ${CLIENT_CORE_DIR}/data_types.h
+    ${CLIENT_STORAGE_DIR}/local_data_broker.cpp
+    ${CLIENT_STORAGE_DIR}/database_worker.cpp
+    ${NET_ADAPTER_ALL}
+)
+target_link_libraries(test_app_controller PRIVATE
+    gy_shared
+    gy_rendezvous
+    gy_storage_core
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    gy_core
+    gy_net_core
+)
+target_include_directories(test_app_controller PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CLIENT_NET_DIR}
+    ${CLIENT_STORAGE_DIR}
+    ${CMAKE_SOURCE_DIR}/client
+    ${CMAKE_SOURCE_DIR}/client/domain
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_app_controller PRIVATE cxx_std_23)
+add_test(NAME test_app_controller COMMAND test_app_controller)
+set_tests_properties(test_app_controller PROPERTIES TIMEOUT 300)
+
 # --- 单实例守卫测试 ---
 qt_add_executable(test_single_instance_guard test_single_instance_guard.cpp
     ${CLIENT_CORE_DIR}/single_instance_guard.cpp

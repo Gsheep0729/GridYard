@@ -40,8 +40,13 @@ ApplicationWindow {
     Material.primary: Style.Color.primary
     Material.accent: Style.Color.primary
 
-    // 窗口首次显示后记录常规标志位，供临时置顶后恢复使用
-    Component.onCompleted: _normalWindowFlags = mainWindow.flags
+    // 窗口首次显示后记录常规标志位，供临时置顶后恢复使用；监听失败即刻提示
+    Component.onCompleted: {
+        _normalWindowFlags = mainWindow.flags
+        if (AppController.networkListenFailed) {
+            mainWindow.showErrorToast(qsTr("网络监听失败，无法收发"))
+        }
+    }
 
     onClosing: function(close) {
         if (_allowWindowClose) {
@@ -262,6 +267,24 @@ ApplicationWindow {
     }
 
     // ======== 三栏主体 ========
+
+    // 网络监听失败常驻横幅：监听端口不可用时应用无法收发，全程保持可见
+    Rectangle {
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        z: 20
+        visible: AppController.networkListenFailed
+        height: visible ? 30 : 0
+        color: Style.Color.errorSoft
+
+        Label {
+            anchors.centerIn: parent
+            text: qsTr("网络监听失败，无法收发；请检查端口占用后重启应用")
+            color: Style.Color.error
+            font.pixelSize: 12
+        }
+    }
 
     // 左侧：工具栏 + 设备列表（设备选择/拖拽/设置入口经信号上抛）
     Sidebar {

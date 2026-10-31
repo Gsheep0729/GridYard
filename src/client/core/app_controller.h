@@ -59,6 +59,7 @@ private:
     Q_PROPERTY(bool historyDatabaseRebuilt READ historyDatabaseRebuilt CONSTANT)
     Q_PROPERTY(QString rebuiltBackupPath READ rebuiltBackupPath CONSTANT)
     Q_PROPERTY(QString instanceTitleSuffix READ instanceTitleSuffix CONSTANT)
+    Q_PROPERTY(bool networkListenFailed READ networkListenFailed CONSTANT)
 
 public:
     virtual ~AppController() override;
@@ -95,6 +96,9 @@ public:
     // 获取 UI 根对象是否创建成功
     bool uiReady() const;
 
+    // 获取 P2P 监听是否启动失败（启动期定型，供表现层常驻警示）
+    bool networkListenFailed() const;
+
     // 退出应用
     Q_INVOKABLE void quit();
     // 清除本地缓存并退出应用
@@ -116,6 +120,7 @@ signals:
     void windowActivationRequested();
 
 private:
+    friend class TestAppController;  // 组合根启动失败路径的回归测试直接构造
     explicit AppController(QObject *parent = nullptr);
     AppController(const AppController &)            = delete;
     AppController &operator=(const AppController &) = delete;
@@ -150,4 +155,5 @@ private:
     QString _rebuiltBackupPath;  // 重建前损坏库的备份文件路径
     bool _uiInitialized = false;  // 防止 QML 单例回调期间重复加载界面
     bool _uiReady = false;  // QML 根对象是否已成功创建
+    bool _networkListenFailed = false;  // P2P 监听是否启动失败（启动期定型）
 };
