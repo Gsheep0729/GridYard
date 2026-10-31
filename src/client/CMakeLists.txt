@@ -49,6 +49,8 @@ set(GRIDYARD_CLIENT_CORE_SOURCES
     core/history_wiring.cpp
     core/shutdown_controller.h
     core/shutdown_controller.cpp
+    core/single_instance_guard.h
+    core/single_instance_guard.cpp
 )
 
 set(GRIDYARD_CLIENT_NETWORK_SOURCES

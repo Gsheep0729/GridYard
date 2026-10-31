@@ -1,7 +1,7 @@
 /**
  * @file    Main.qml
- * @version 7.25.0
- * @date 2026-10-08
+ * @version 8.2.1
+ * @date 2026-10-31
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
@@ -408,6 +408,10 @@ ApplicationWindow {
         function onLocalHistoryOperationFailed(): void {
             mainWindow.showErrorToast(qsTr("本地保存失败，历史可能缺失"))
             trayIcon.showMessage(qsTr("本地历史"), qsTr("本地保存失败，历史可能缺失"))
+        }
+        function onWindowActivationRequested(): void {
+            // 再次启动应用时的唤回请求：本实例还在运行，恢复窗口并置顶
+            mainWindow.bringMainWindowToFront()
         }
     }
 

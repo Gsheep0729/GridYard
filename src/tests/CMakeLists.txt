@@ -595,6 +595,24 @@ set_tests_properties(test_frame_codec test_chat_message test_chat_manager test_h
     test_conversation_timeline_model test_posix_socket
     PROPERTIES TIMEOUT 300)
 
+# --- 单实例守卫测试 ---
+qt_add_executable(test_single_instance_guard test_single_instance_guard.cpp
+    ${CLIENT_CORE_DIR}/single_instance_guard.cpp
+    ${CLIENT_CORE_DIR}/application_paths.cpp
+)
+target_link_libraries(test_single_instance_guard PRIVATE
+    gy_shared
+    Qt6::Test
+    Qt6::Core
+)
+target_include_directories(test_single_instance_guard PRIVATE
+    ${CLIENT_CORE_DIR}
+    ${CMAKE_SOURCE_DIR}/shared
+)
+target_compile_features(test_single_instance_guard PRIVATE cxx_std_23)
+add_test(NAME test_single_instance_guard COMMAND test_single_instance_guard)
+set_tests_properties(test_single_instance_guard PROPERTIES TIMEOUT 60)
+
 # --- Golden 基线对拍套件：以当前 Qt 实现为参考实现固化行为，供纯 C++ 替代实现对拍 ---
 qt_add_executable(test_golden_baseline test_golden_baseline.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp

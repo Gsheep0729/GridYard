@@ -1,7 +1,7 @@
 /**
 * @file    app_controller.h
-* @version 8.2.0
-* @date 2026-10-29
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   应用全局控制器（QML 单例）
 *
@@ -112,6 +112,8 @@ public:
 signals:
     void appReady();
     void localHistoryOperationFailed();
+    // 第二实例请求唤回窗口时发出（单实例守卫转交），窗口恢复由表现层完成
+    void windowActivationRequested();
 
 private:
     explicit AppController(QObject *parent = nullptr);

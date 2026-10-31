@@ -1,7 +1,7 @@
 /**
  * @file    main.cpp
  * @version 8.2.1
- * @date    2026-10-29
+ * @date    2026-10-31
  * @author  GridYard Team
  * @brief   GridYard 客户端程序入口
 *
@@ -21,6 +21,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QIcon>
+#include <QMessageBox>
 #include <QQuickStyle>
 #include <QSocketNotifier>
 #include <QStringList>
@@ -35,6 +36,7 @@
 #include "app_controller.h"
 #include "data_types.h"
 #include "logger.h"
+#include "single_instance_guard.h"
 
 namespace {
 
@@ -149,6 +151,16 @@ int main(int argc, char *argv[]) {
     // 初始化日志系统
     Logger::instance()->init();
 
+    // 单实例守卫按实例配置目录互斥：第二实例投递唤回请求后立即退出，
+    // 不再创建窗口与网络服务，避免同身份双进程争夺监听与发现端口
+    SingleInstanceGuard instanceGuard;
+    if (!instanceGuard.tryAcquire()) {
+        instanceGuard.notifyExistingInstance();
+        QMessageBox::information(nullptr, QStringLiteral("GridYard"),
+                                 QStringLiteral("鸽邮已在运行"));
+        return 0;
+    }
+
     qRegisterMetaType<PeerInfo>("PeerInfo");
 
     AppController *controller = AppController::singleton();
@@ -156,6 +168,10 @@ int main(int argc, char *argv[]) {
     if (!controller->uiReady()) {
         return -1;
     }
+
+    // 第二实例的唤回请求经组合根信号交给表现层，完成隐藏窗口的恢复与置顶
+    QObject::connect(&instanceGuard, &SingleInstanceGuard::activationRequested,
+                     controller, &AppController::windowActivationRequested);
 
     // 信号读端注册进主线程：读空管道后调用 AppController::quit() 既有排空链，
     // requestQuit 内部防重入、重复信号安全；普通关窗路径不受影响
