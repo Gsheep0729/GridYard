@@ -466,11 +466,17 @@ quint16 DiscoveryService::localDiscoveryPort() const
 void DiscoveryService::addManualPeer(const PeerInfo &peer)
 {
     const QString deviceId = peer.deviceId;
-    const QString highPrioritySource = QStringLiteral("broadcast");
-    const QString midPrioritySource = QStringLiteral("directed");
+    // 高优先级集合与视图模型排序口径（peer_discovery_view_model 的
+    // broadcast(0) > directed(1) > rendezvous(2) > manual(3)）一致：
+    // 排序把在线协调条目排在手动之前，插入守卫同样不得让手动端点
+    // 覆盖在线协调条目，防止手填的 NAT 映射地址顶掉仍在工作的路径
+    static const QStringList higherPrioritySources = {
+        QStringLiteral("broadcast"),
+        QStringLiteral("directed"),
+        QStringLiteral("rendezvous"),
+    };
     bool hasHigherPriorityOnline = _peers.contains(deviceId)
-                                    && (_peers[deviceId].source == highPrioritySource
-                                        || _peers[deviceId].source == midPrioritySource)
+                                    && higherPrioritySources.contains(_peers[deviceId].source)
                                     && _peers[deviceId].isOnline;
     if (!hasHigherPriorityOnline) {
         _peers.insert(deviceId, peer);

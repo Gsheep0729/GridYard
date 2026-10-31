@@ -32,6 +32,7 @@ private slots:
     void testMultipleNodes();
     void testAddDirectedPeerInjectsEntry();
     void testAddDirectedPeerRespectsBroadcastGuard();
+    void testAddManualPeerRespectsRendezvousGuard();
     void testManualPeerEmitsPeerUpdated();
     void testRefreshKeepsManualAndDirected();
     void testRealArrivalMergesOfflineManualEntry();
@@ -255,6 +256,42 @@ void TestDiscovery::testAddDirectedPeerRespectsBroadcastGuard()
         break;
     }
     QVERIFY2(found, "broadcast 条目应保留");
+}
+
+// 已有在线协调条目时，手动端点不得覆盖之（插入守卫与排序优先级同口径）
+void TestDiscovery::testAddManualPeerRespectsRendezvousGuard()
+{
+    PeerInfo rendezvous;
+    rendezvous.deviceId = QStringLiteral("rendezvous-guard-dev");
+    rendezvous.deviceName = QStringLiteral("协调名");
+    rendezvous.ipAddress = QStringLiteral("192.168.77.100");
+    rendezvous.tcpPort = 35207;
+    rendezvous.isOnline = true;
+    rendezvous.lastSeen = QDateTime::currentDateTimeUtc();
+    rendezvous.source = QStringLiteral("rendezvous");
+    _discovery1->addManualPeer(rendezvous);  // 借道手动入口注入协调来源条目
+
+    PeerInfo manual = rendezvous;
+    manual.deviceName = QStringLiteral("手动名");
+    manual.ipAddress = QStringLiteral("10.254.254.254");
+    manual.tcpPort = 35299;
+    manual.source = QStringLiteral("manual");
+    _discovery1->addManualPeer(manual);
+
+    bool found = false;
+    const QVariantList peers = _discovery1->peers();
+    for (const QVariant &entry : peers) {
+        const PeerInfo peer = entry.value<PeerInfo>();
+        if (peer.deviceId != rendezvous.deviceId) {
+            continue;
+        }
+        found = true;
+        QCOMPARE(peer.source, QStringLiteral("rendezvous"));
+        QCOMPARE(peer.deviceName, QStringLiteral("协调名"));
+        QCOMPARE(peer.ipAddress, QStringLiteral("192.168.77.100"));
+        break;
+    }
+    QVERIFY2(found, "在线协调条目应保留");
 }
 
 // 手动端点入列时应发射 peerUpdated，伪 ID 条目借此进入设备目录持久化链路
