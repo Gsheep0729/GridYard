@@ -119,6 +119,9 @@ PeerDiscoveryViewModel::PeerDiscoveryViewModel(DiscoveryService *discovery, QObj
     // 设备离线时通知表现层更新在线状态指示
     connect(_discovery, &DiscoveryService::nodeExpired,
             this, &PeerDiscoveryViewModel::nodeExpired);
+    // 邀请码导入的定向条目回落离线时通知表现层给出解释性提示
+    connect(_discovery, &DiscoveryService::directedPeerWentOffline,
+            this, &PeerDiscoveryViewModel::directedPeerWentOffline);
     // 设备离线后重新加载设备目录，确保刚连接过的设备仍保留在列表中
     connect(_discovery, &DiscoveryService::nodeExpired,
             this, [this] {

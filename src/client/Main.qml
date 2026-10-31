@@ -427,6 +427,16 @@ ApplicationWindow {
     }
 
     Connections {
+        target: AppController.peerDiscoveryViewModel
+        function onDirectedPeerWentOffline(deviceId: string): void {
+            // 邀请码导入的设备约 15 秒无回应即回落离线（定向心跳在跨 AP 环境
+            // 不可达），给用户一句解释，避免被误读成导入失败
+            mainWindow.showErrorToast(
+                        qsTr("邀请添加的设备暂未回应，已转入最近见过；可重新导入其邀请码再次探测"))
+        }
+    }
+
+    Connections {
         target: AppController
         function onLocalHistoryOperationFailed(): void {
             mainWindow.showErrorToast(qsTr("本地保存失败，历史可能缺失"))

@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.cpp
-* @version 8.1.0
-* @date 2026-10-28
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 */
@@ -242,9 +242,15 @@ void DiscoveryService::pruneOfflineNodes()
         if (it.value().lastSeen < threshold) {
             // 节点超时，标记为离线
             if (it.value().isOnline) {
+                const bool wasDirected = it.value().source == QStringLiteral("directed");
                 it.value().isOnline = false;
                 _rendezvousCandidates.remove(it.key());  // 离线设备的备用候选一并作废
                 emit nodeExpired(it.key());
+                // 定向条目回落离线单独上抛：它来自邀请码导入且探测时可达，
+                // 15 秒无解释变灰会被用户误读成导入失败
+                if (wasDirected) {
+                    emit directedPeerWentOffline(it.key());
+                }
                 changed = true;
             }
         }

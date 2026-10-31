@@ -1,7 +1,7 @@
 /**
 * @file    peer_discovery_view_model.h
-* @version 7.24.0
-* @date 2026-10-08
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GridYard Team
 * @brief   面向 QML 的设备发现视图模型
 *
@@ -110,6 +110,8 @@ signals:
     void selectedDeviceIdChanged();
     void nodeDiscovered(const QString &deviceId);
     void nodeExpired(const QString &deviceId);
+    // 邀请码导入的定向条目超时回落离线（发现服务信号转发，供表现层提示）
+    void directedPeerWentOffline(const QString &deviceId);
     void deviceHistoryCounted(QString deviceId, int messages, int transfers);
     void deviceMerged(bool success, QString newDeviceId, QString oldDeviceId);
 

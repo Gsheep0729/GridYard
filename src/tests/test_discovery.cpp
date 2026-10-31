@@ -1,7 +1,7 @@
 /**
 * @file    test_discovery.cpp
-* @version 8.1.0
-* @date 2026-10-28
+* @version 8.2.1
+* @date 2026-10-31
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
@@ -35,6 +35,7 @@ private slots:
     void testManualPeerEmitsPeerUpdated();
     void testRefreshKeepsManualAndDirected();
     void testRealArrivalMergesOfflineManualEntry();
+    void testDirectedPeerOfflineCarriesExplanationSignal();
     void testPeerInfo();
     void testInstanceBindPortOffset();
 
@@ -375,6 +376,58 @@ void TestDiscovery::testRealArrivalMergesOfflineManualEntry()
         }
     }
     QVERIFY2(pseudoExpired, "伪条目被合并移除时应发 nodeExpired");
+}
+
+// 邀请码导入的定向条目回落离线时应单独发出解释性信号：
+// 定向心跳在跨 AP 环境不可达，回落是链路必然，表现层需要借此提示"暂未回应"
+void TestDiscovery::testDirectedPeerOfflineCarriesExplanationSignal()
+{
+    PeerInfo directed;
+    directed.deviceId = QStringLiteral("directed-offline-note");
+    directed.deviceName = QStringLiteral("邀请注入设备");
+    directed.ipAddress = QStringLiteral("10.252.252.253");
+    directed.tcpPort = 35206;
+    _discovery1->addDirectedPeer(directed);
+    QVERIFY(!_discovery1->transferEndpoint(directed.deviceId).isEmpty());
+
+    QSignalSpy offlineSpy(_discovery1, &DiscoveryService::directedPeerWentOffline);
+    QSignalSpy expiredSpy(_discovery1, &DiscoveryService::nodeExpired);
+
+    // 1 秒超时 + prune 定时器 3 秒一轮，数秒内必然回落离线
+    _discovery1->setNodeTimeoutSec(1);
+
+    const auto directedReported = [&offlineSpy, &directed]() {
+        for (const QList<QVariant> &arguments : offlineSpy) {
+            if (arguments.at(0).toString() == directed.deviceId) {
+                return true;
+            }
+        }
+        return false;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(directedReported(), 10000);
+
+    // 既有离线语义不回退：nodeExpired 仍要发，条目转入最近见过
+    bool expiredReported = false;
+    for (const QList<QVariant> &arguments : expiredSpy) {
+        if (arguments.at(0).toString() == directed.deviceId) {
+            expiredReported = true;
+        }
+    }
+    QVERIFY2(expiredReported, "定向条目回落离线仍应发 nodeExpired");
+    QVERIFY2(_discovery1->transferEndpoint(directed.deviceId).isEmpty(),
+             "回落后端点快照应为空");
+
+    // 回落只报一次：再等两轮 prune 不得重复上抛
+    QTest::qWait(6500);
+    int reported = 0;
+    for (const QList<QVariant> &arguments : offlineSpy) {
+        if (arguments.at(0).toString() == directed.deviceId) {
+            ++reported;
+        }
+    }
+    QCOMPARE(reported, 1);
+
+    _discovery1->setNodeTimeoutSec(15);  // 恢复默认超时，不影响后续用例
 }
 
 void TestDiscovery::testPeerInfo()

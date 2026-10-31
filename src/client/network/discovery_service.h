@@ -1,7 +1,7 @@
 /**
  * @file    discovery_service.h
- * @version 7.26.1
- * @date    2026-10-23
+* @version 8.2.1
+* @date    2026-10-31
  * @author  GridYard Team
  * @brief   局域网设备发现服务
  *
@@ -79,6 +79,9 @@ signals:
     void peerUpdated(const PeerInfo &peer);
     // 节点离线
     void nodeExpired(const QString &deviceId);
+    // 邀请码导入的定向条目超时回落离线：定向心跳在跨 AP 环境不可达，回落是
+    // 链路必然而非导入失败，单独上抛供表现层给用户一句"暂未回应"的解释
+    void directedPeerWentOffline(const QString &deviceId);
 
 private slots:
     // 发送 Hello 广播包
