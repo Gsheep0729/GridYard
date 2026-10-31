@@ -84,6 +84,7 @@ private slots:
     void testMultiSendInvalidPathNoSuccessMessage();
     void testMultiSendPartialFailureVisible();
     void testDuplicateReceiveSessionIdRejected();
+    void testRelayJoinFailureSurfacesLocally();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -1413,6 +1414,21 @@ void TestSessionManager::testDuplicateReceiveSessionIdRejected()
     first->disconnectFromHost();
     second->disconnectFromHost();
     _p2pServer->stop();
+}
+
+// 接收侧中继加入失败必须进本地提示链：会话尚未建立，失败原先只发信号无人听
+void TestSessionManager::testRelayJoinFailureSurfacesLocally()
+{
+    QSignalSpy errorSpy(_manager, &TransferSessionManager::errorOccurred);
+
+    // 失败由 P2pServer 发出（连接超时/断开/socket 错误三路汇入），
+    // 此处直接发信号模拟：发射同步完成，断言走"先判空"口径
+    emit _p2pServer->relayJoinFailed(QStringLiteral("relay-dead"), QStringLiteral("中继连接超时"));
+
+    QVERIFY2(!errorSpy.isEmpty(), "中继加入失败应转化为本地错误提示");
+    const QString message = errorSpy.first().first().toString();
+    QVERIFY2(message.contains(QStringLiteral("中继")), "提示应指明中继语义:" + message.toUtf8());
+    QVERIFY2(message.contains(QStringLiteral("中继连接超时")), "提示应携带失败原因:" + message.toUtf8());
 }
 
 QTEST_MAIN(TestSessionManager)

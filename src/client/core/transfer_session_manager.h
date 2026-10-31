@@ -125,6 +125,8 @@ signals:
 private slots:
     // 处理新的传输请求
     void onTransferRequestReceived(FileReceiverWorker *worker, const QVariantMap &request);
+    // 接收侧中继加入失败转本地提示（会话尚未建立，无会话行可挂）
+    void onRelayJoinFailed(const QString &relayId, const QString &reason);
 
 public:
     explicit TransferSessionManager(QObject *parent = nullptr);

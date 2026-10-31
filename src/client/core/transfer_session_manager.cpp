@@ -207,6 +207,12 @@ void TransferSessionManager::init(ConfigManager *config, DiscoveryService *disco
             this,       &TransferSessionManager::onTransferRequestReceived,
             static_cast<Qt::ConnectionType>(Qt::AutoConnection | Qt::UniqueConnection));
 
+    // 接收侧被邀请加入中继失败时全程无会话行可挂：此刻会话尚未建立，
+    // 直接进本地错误提示链（主窗口 Toast），否则接收方对失败毫无感知
+    connect(_p2pServer, &P2pServer::relayJoinFailed,
+            this,       &TransferSessionManager::onRelayJoinFailed,
+            static_cast<Qt::ConnectionType>(Qt::AutoConnection | Qt::UniqueConnection));
+
     if (_rendezvous) {
         // 中继邀请受理后建立中继发送链路（同样防重复连接）
         connect(_rendezvous, &RendezvousClient::relayInviteAckReceived,
@@ -938,6 +944,14 @@ void TransferSessionManager::clearFinishedSessions(bool deleteReceivedFiles, con
                          ? tr("已清理 %1 条记录并删除 %2 个本地项目")
                                .arg(removedCount).arg(deletedCount)
                          : tr("已清理 %1 条传输记录").arg(removedCount));
+}
+
+// 接收侧中继加入失败转本地提示：此刻会话尚未建立，无会话行可挂，
+// 失败原先只发信号无人听，接收方对失败毫无感知
+void TransferSessionManager::onRelayJoinFailed(const QString &relayId, const QString &reason)
+{
+    qDebug() << "[TransferSession] 中继加入失败进提示链" << relayId << ":" << reason;
+    emit errorOccurred(tr("经中继接收传输失败：%1").arg(reason));
 }
 
 // 处理新的传输请求（创建接收会话，通知 UI 弹窗确认）
