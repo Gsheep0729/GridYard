@@ -1,14 +1,15 @@
 /**
  * @file    relay_server.h
-* @version 8.2.0
-* @date    2026-10-29
+* @version 8.2.1
+* @date    2026-10-31
  * @author  GridYard Team
  * @brief   流式中继服务器
  *
  * 处理最严格的校园网隔离场景，两个客户端可都无法直连时通过中继转发。
  * 中继只转发在线字节流，不落盘文件内容。
  * 两端齐备后向发送端回一行 relay_ready 门控传输开始，任一端离开立即
- * 通知并关闭对端，未完成会话超时回收。
+ * 以 TLV 取消帧通知存活端并关闭对端，未完成会话超时回收（等待期的超时
+ * 回收仍走 JSON relay_error 行，此时对端还停在行式握手阶段）。
  * 握手等待复用 LineSession（行上限 + 超时），转发带写队列背压，
  * 会话数与积压均有上限；全部回调在事件泵线程触发。
  */
@@ -55,8 +56,10 @@ public:
     bool addReceiver(gy::net::TcpSocketCore *socket, const std::vector<uint8_t> &pendingData = {});
     // 两端齐备后向发送端写 relay_ready，门控其开始 TLV 传输
     void notifyReady();
-    // 向两端广播错误消息
+    // 向两端广播错误消息（行式握手阶段专用）
     void broadcastError(const std::string &code, const std::string &message);
+    // 向存活端写取消帧：对端离开后传输方按既有 TLV 控制帧收尾，不污染字节流
+    void sendPeerLeftFrame(gy::net::TcpSocketCore *peer);
     // 主动结束会话：向两端广播错误并关闭连接
     void abort(const std::string &code, const std::string &message);
     // 发出会话关闭通知（正常关闭与测试注入的迟到重复通知共用入口）

@@ -1,7 +1,7 @@
 /**
 * @file    test_relay_chain.cpp
-* @version 8.0.0
-* @date    2026-10-24
+* @version 8.2.1
+* @date    2026-10-31
 * @author  GY
 * @brief   Relay 降级链路测试
 *
@@ -13,6 +13,7 @@
 
 #include <QtTest/QtTest>
 #include <QElapsedTimer>
+#include <QtEndian>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
@@ -74,6 +75,7 @@ private slots:
     void testCancelDuringRelayWait();
     void testRelayInviteRegistryLimit();
     void testRelayHandshakeRejectsInvalidRelayId();
+    void testRelayPeerLeftSendsCancelFrame();
 
 private:
     QTemporaryDir *_tempDir = nullptr;
@@ -941,6 +943,71 @@ void TestRelayChain::testRelayHandshakeRejectsInvalidRelayId()
 
     // 两次非法握手都不应建立会话
     QTRY_COMPARE(relay.sessionCount(), 0);
+}
+
+// 对端断开后存活端收到的是 TLV 取消帧：握手后的流保持纯 TLV 契约，
+// 写 JSON 控制行会被纯 TLV 解码器误读成超长帧头（FrameTooLarge 假错误）
+void TestRelayChain::testRelayPeerLeftSendsCancelFrame()
+{
+    RelayServer relay{0, {}};
+    QVERIFY(relay.start());
+
+    // 本地馈送服务器造可控 socket 对（与 relay_id 复用用例同一套法）
+    const auto makePair = [&relay](gy::net::TcpSocketCore **coreEnd, gy::net::PosixTcpSocket **peerEnd) {
+        int pairFd[2] = {-1, -1};
+        QVERIFY(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pairFd) == 0);
+        auto *core = new gy::net::TcpSocketCore{*relay.reactor()};
+        QVERIFY(core->adopt(pairFd[0]));
+        auto *peer = new gy::net::PosixTcpSocket;
+        QVERIFY(peer->adoptDescriptor(pairFd[1]));
+        *coreEnd = core;
+        *peerEnd = peer;
+    };
+
+    gy::net::TcpSocketCore *senderCore = nullptr;
+    gy::net::PosixTcpSocket *senderPeer = nullptr;
+    gy::net::TcpSocketCore *receiverCore = nullptr;
+    gy::net::PosixTcpSocket *receiverPeer = nullptr;
+    makePair(&senderCore, &senderPeer);
+    makePair(&receiverCore, &receiverPeer);
+
+    relay.adoptConnection(senderCore,
+                          nlohmann::json{{"type", "relay_create"}, {"relay_id", "peer-left-frame"}}, {});
+    relay.adoptConnection(receiverCore,
+                          nlohmann::json{{"type", "relay_join"}, {"relay_id", "peer-left-frame"}}, {});
+
+    // 发送端先收到门控行，随后发送端断开
+    QJsonObject readyJson;
+    readyJson[QStringLiteral("type")] = QStringLiteral("relay_ready");
+    const QByteArray readyLine = QJsonDocument(readyJson).toJson(QJsonDocument::Compact) + '\n';
+    QCOMPARE(waitBytes(senderPeer, static_cast<int>(readyLine.size())), readyLine);
+
+    senderPeer->abort();
+
+    // 存活的接收端应收到帧类型为取消帧的 TLV 帧，而不是 JSON 控制行；
+    // waitBytes 可能一次读走帧头加载荷，从同一段流上切片断言
+    const QByteArray stream = waitBytes(receiverPeer, 8);
+    QVERIFY2(stream.size() >= 8, "取消帧帧头应完整到达");
+    QVERIFY2(stream.at(0) != '{', "存活端不得再收到 JSON 控制行");
+    QCOMPARE(static_cast<quint8>(stream.at(0)), quint8(0x00));
+    QCOMPARE(static_cast<quint8>(stream.at(1)), quint8(0x00));
+    QCOMPARE(static_cast<quint8>(stream.at(2)), quint8(0x04));
+    QCOMPARE(static_cast<quint8>(stream.at(3)), quint8(0x01));  // kTypeCancel = 0x0401 大端
+    const auto payloadLength = qFromBigEndian<quint32>(stream.constData() + 4);
+    QVERIFY(payloadLength > 0);
+    QVERIFY(payloadLength <= 1024);
+    QVERIFY2(stream.size() >= 8 + static_cast<int>(payloadLength), "取消帧载荷应完整到达");
+
+    const QByteArray payload = stream.mid(8, static_cast<int>(payloadLength));
+    const QJsonDocument doc = QJsonDocument::fromJson(payload);
+    QVERIFY(doc.isObject());
+    QCOMPARE(doc.object().value("reason").toString(), QStringLiteral("对端已断开"));
+
+    receiverPeer->abort();
+    senderPeer->abort();
+    senderPeer->deleteLater();
+    receiverPeer->deleteLater();
+    QTRY_VERIFY_WITH_TIMEOUT(relay.sessionCount() == 0, 3000);
 }
 
 QTEST_MAIN(TestRelayChain)

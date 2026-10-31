@@ -1,13 +1,14 @@
 /**
 * @file    relay_server.cpp
-* @version 8.1.0
-* @date    2026-10-28
+* @version 8.2.1
+* @date    2026-10-31
 * @author  GridYard Team
 * @brief   流式中继服务器实现
 */
 
 #include <algorithm>
 #include "relay_server.h"
+#include "protocol.h"
 #include "rendezvous_limits.h"
 #include "rendezvous_log.h"
 #include "rendezvous_protocol_keys.h"
@@ -202,6 +203,36 @@ void RelaySession::broadcastError(const std::string &code, const std::string &me
     }
 }
 
+// 向存活端写取消帧：对端离开后传输方按既有 TLV 控制帧收尾，不污染字节流
+void RelaySession::sendPeerLeftFrame(gy::net::TcpSocketCore *peer)
+{
+    if (!peer || !peer->isConnected()) {
+        return;
+    }
+
+    // 载荷沿用取消帧的 reason 字段，两端 worker 均按既有取消语义收尾；
+    // 帧头手工拼装（4 字节大端类型 + 4 字节大端长度），中继侧不引编解码器
+    nlohmann::json payload;
+    payload["reason"] = "对端已断开";
+    const std::string body = payload.dump();
+
+    std::vector<uint8_t> frame;
+    frame.reserve(8 + body.size());
+    const auto type = static_cast<uint32_t>(gy::protocol::kTypeCancel);
+    frame.push_back(static_cast<uint8_t>((type >> 24) & 0xFFu));
+    frame.push_back(static_cast<uint8_t>((type >> 16) & 0xFFu));
+    frame.push_back(static_cast<uint8_t>((type >> 8) & 0xFFu));
+    frame.push_back(static_cast<uint8_t>(type & 0xFFu));
+    const auto length = static_cast<uint32_t>(body.size());
+    frame.push_back(static_cast<uint8_t>((length >> 24) & 0xFFu));
+    frame.push_back(static_cast<uint8_t>((length >> 16) & 0xFFu));
+    frame.push_back(static_cast<uint8_t>((length >> 8) & 0xFFu));
+    frame.push_back(static_cast<uint8_t>(length & 0xFFu));
+    frame.insert(frame.end(), body.begin(), body.end());
+
+    peer->write(frame);
+}
+
 // 处理发送端可读事件，向接收端方向转发
 void RelaySession::onSenderRead()
 {
@@ -239,9 +270,10 @@ void RelaySession::onSenderClosed()
     logInfo("[RelaySession] " + _relayId + " 发送端断开");
     _sender = nullptr;
 
-    // 关闭对端让传输方立刻感知断连，而不是等到超时
+    // 关闭对端让传输方立刻感知断连，而不是等到超时；
+    // 会话已齐备说明两端都在 TLV 流阶段，通知走取消帧而非 JSON 行
     if (_receiver) {
-        broadcastError("peer_left", "对端已断开");
+        sendPeerLeftFrame(_receiver);
         gy::net::TcpSocketCore *receiver = _receiver;
         _receiver = nullptr;
         if (_closeDelegator) {
@@ -258,8 +290,10 @@ void RelaySession::onReceiverClosed()
     logInfo("[RelaySession] " + _relayId + " 接收端断开");
     _receiver = nullptr;
 
+    // 会话已齐备说明发送端已收到 relay_ready、进入 TLV 流阶段，
+    // 对端离开的通知走取消帧，JSON 行会被纯 TLV 解码器误读成超长帧头
     if (_sender) {
-        broadcastError("peer_left", "对端已断开");
+        sendPeerLeftFrame(_sender);
         gy::net::TcpSocketCore *sender = _sender;
         _sender = nullptr;
         if (_closeDelegator) {
