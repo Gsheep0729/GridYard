@@ -14,7 +14,9 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QRect>
 #include <QString>
+#include <QVariant>
 #include <QtQml/qqmlregistration.h>
 
 class QQmlEngine;
@@ -68,6 +70,27 @@ public:
     // 实例号推导，不做运行中实例探测，避免端口试探的竞态与权限差异），
     // 越界输入先夹紧到合法范围；到达上限 9 返回 -1，供表现层给出行内提示，纯函数便于单测
     static int nextLaunchInstance(int currentInstance);
+
+    // 持久化窗口几何（O-18）：QML 侧在几何稳定后上报（普通态取当前几何，
+    // 最大化取最近普通态几何），写 window 组键 x/y/width/height/maximized
+    Q_INVOKABLE void saveWindowGeometry(int x, int y, int width, int height,
+                                        bool maximized);
+    // 读取保存的窗口几何并按屏幕可用区夹紧后返回：x/y/width/height/maximized/
+    // hasPosition（位置判为落屏外时无 x/y 键）。availableScreens 为空列表时
+    // 自动取当前全部屏幕可用区（仅 QGuiApplication 环境有效）；测试显式传入
+    // 以保证结果确定性
+    Q_INVOKABLE QVariantMap restoreWindowGeometry(int defaultWidth, int defaultHeight,
+                                                  int minimumWidth, int minimumHeight,
+                                                  const QVariantList &availableScreens = {});
+
+    // 窗口几何夹紧（纯函数便于单测）：尺寸抬到最小尺寸、压到所有屏幕可用区
+    // 能容纳的最大宽高；保存位置与任一屏幕可用区相交不足窗口面积三成视为
+    // 落屏外（多显示器拔插的典型残留），放弃位置交由窗口管理器自选；
+    // 可用区列表为空（无 GUI 环境）时不做夹紧原样返回
+    static QVariantMap clampWindowGeometry(const QVariantMap &saved,
+                                           int defaultWidth, int defaultHeight,
+                                           int minimumWidth, int minimumHeight,
+                                           const QList<QRect> &availableScreens);
 
     // 析构函数
     virtual ~ConfigManager() override;

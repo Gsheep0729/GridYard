@@ -56,6 +56,8 @@ private slots:
     void testAutostartEntryLifecycle();
     void testAutostartReconcileOnStartup();
     void testAutostartDevInstanceEntry();
+    void testWindowGeometryPersistence();
+    void testWindowGeometryClamp();
 
 private:
     ConfigManager *_config = nullptr;
@@ -725,6 +727,131 @@ void TestConfigManager::testAutostartDevInstanceEntry()
         qputenv("XDG_CONFIG_HOME", savedXdg);
     }
     qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+}
+
+void TestConfigManager::testWindowGeometryPersistence()
+{
+    // 独立配置文件，先写后读模拟跨启动；不依赖运行环境真实屏幕，恢复一律
+    // 显式传入屏幕可用区，结果确定性
+    const QString geometryPath = _tempDir->path() + "/window_geometry.ini";
+    QFile::remove(geometryPath);
+    qputenv("GRIDYARD_CONFIG", geometryPath.toUtf8());
+
+    {
+        ConfigManager writer;
+        writer.saveWindowGeometry(112, 84, 1234, 768, true);
+    }
+
+    // 写入即落盘：window 组键逐键可查（QSettings 与 ConfigStore 文件语义兼容）
+    QSettings ini(geometryPath, QSettings::IniFormat);
+    QCOMPARE(ini.value("window/x").toInt(), 112);
+    QCOMPARE(ini.value("window/y").toInt(), 84);
+    QCOMPARE(ini.value("window/width").toInt(), 1234);
+    QCOMPARE(ini.value("window/height").toInt(), 768);
+    QCOMPARE(ini.value("window/maximized").toBool(), true);
+
+    const QVariantList screens{QVariant::fromValue(QRect(0, 0, 1920, 1040))};
+    {
+        ConfigManager reloaded;
+        const QVariantMap geo = reloaded.restoreWindowGeometry(980, 725, 860, 620, screens);
+        QCOMPARE(geo.value("width").toInt(), 1234);
+        QCOMPARE(geo.value("height").toInt(), 768);
+        QCOMPARE(geo.value("x").toInt(), 112);
+        QCOMPARE(geo.value("y").toInt(), 84);
+        QCOMPARE(geo.value("maximized").toBool(), true);
+        QCOMPARE(geo.value("hasPosition").toBool(), true);
+    }
+
+    // 首次启动无保存几何：回落默认尺寸且不指定位置（交窗口管理器自选）
+    const QString freshPath = _tempDir->path() + "/window_geometry_fresh.ini";
+    QFile::remove(freshPath);
+    qputenv("GRIDYARD_CONFIG", freshPath.toUtf8());
+    {
+        ConfigManager fresh;
+        const QVariantMap geo = fresh.restoreWindowGeometry(980, 725, 860, 620, screens);
+        QCOMPARE(geo.value("width").toInt(), 980);
+        QCOMPARE(geo.value("height").toInt(), 725);
+        QCOMPARE(geo.value("hasPosition").toBool(), false);
+        QCOMPARE(geo.value("maximized").toBool(), false);
+    }
+
+    qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+}
+
+void TestConfigManager::testWindowGeometryClamp()
+{
+    const QList<QRect> dualScreens = {QRect(0, 0, 1920, 1040), QRect(1920, 0, 1366, 768)};
+
+    // 屏内几何原样保留
+    QVariantMap geo = ConfigManager::clampWindowGeometry(
+        {{QStringLiteral("x"), 100}, {QStringLiteral("y"), 50},
+         {QStringLiteral("width"), 1200}, {QStringLiteral("height"), 800},
+         {QStringLiteral("maximized"), false}},
+        980, 725, 860, 620, dualScreens);
+    QCOMPARE(geo.value("hasPosition").toBool(), true);
+    QCOMPARE(geo.value("x").toInt(), 100);
+    QCOMPARE(geo.value("y").toInt(), 50);
+    QCOMPARE(geo.value("width").toInt(), 1200);
+    QCOMPARE(geo.value("height").toInt(), 800);
+
+    // 超宽超大（如多显示器撤掉一台后残留）：尺寸夹到最大屏幕可用区，
+    // 缩小后仍与屏相交，位置保留
+    geo = ConfigManager::clampWindowGeometry(
+        {{QStringLiteral("x"), 0}, {QStringLiteral("y"), 0},
+         {QStringLiteral("width"), 4000}, {QStringLiteral("height"), 2000},
+         {QStringLiteral("maximized"), false}},
+        980, 725, 860, 620, dualScreens);
+    QCOMPARE(geo.value("width").toInt(), 1920);
+    QCOMPARE(geo.value("height").toInt(), 1040);
+    QCOMPARE(geo.value("hasPosition").toBool(), true);
+
+    // 保存尺寸小于最小尺寸：抬到最小
+    geo = ConfigManager::clampWindowGeometry(
+        {{QStringLiteral("x"), 10}, {QStringLiteral("y"), 10},
+         {QStringLiteral("width"), 400}, {QStringLiteral("height"), 300},
+         {QStringLiteral("maximized"), false}},
+        980, 725, 860, 620, dualScreens);
+    QCOMPARE(geo.value("width").toInt(), 860);
+    QCOMPARE(geo.value("height").toInt(), 620);
+
+    // 整窗落屏外（多显示器拔插的典型残留）：放弃位置，尺寸仍夹紧保留
+    geo = ConfigManager::clampWindowGeometry(
+        {{QStringLiteral("x"), 5000}, {QStringLiteral("y"), 3000},
+         {QStringLiteral("width"), 1200}, {QStringLiteral("height"), 800},
+         {QStringLiteral("maximized"), false}},
+        980, 725, 860, 620, dualScreens);
+    QCOMPARE(geo.value("hasPosition").toBool(), false);
+    QVERIFY(!geo.contains(QStringLiteral("x")));
+    QVERIFY(!geo.contains(QStringLiteral("y")));
+    QCOMPARE(geo.value("width").toInt(), 1200);
+    QCOMPARE(geo.value("height").toInt(), 800);
+
+    // 大部分悬出屏幕（相交不足窗口面积三成，仅露一条边）：同样判为不可见
+    geo = ConfigManager::clampWindowGeometry(
+        {{QStringLiteral("x"), 1700}, {QStringLiteral("y"), 900},
+         {QStringLiteral("width"), 1200}, {QStringLiteral("height"), 800},
+         {QStringLiteral("maximized"), false}},
+        980, 725, 860, 620, dualScreens);
+    QCOMPARE(geo.value("hasPosition").toBool(), false);
+
+    // 屏幕信息不可得（无 GUI 环境）：不做夹紧原样返回，位置以保存为准
+    geo = ConfigManager::clampWindowGeometry(
+        {{QStringLiteral("x"), 5000}, {QStringLiteral("y"), 3000},
+         {QStringLiteral("width"), 4000}, {QStringLiteral("height"), 2000},
+         {QStringLiteral("maximized"), true}},
+        980, 725, 860, 620, {});
+    QCOMPARE(geo.value("width").toInt(), 4000);
+    QCOMPARE(geo.value("height").toInt(), 2000);
+    QCOMPARE(geo.value("hasPosition").toBool(), true);
+    QCOMPARE(geo.value("x").toInt(), 5000);
+    QCOMPARE(geo.value("maximized").toBool(), true);
+
+    // 无保存尺寸（首次启动）：默认尺寸，不指定位置
+    geo = ConfigManager::clampWindowGeometry({}, 980, 725, 860, 620, dualScreens);
+    QCOMPARE(geo.value("width").toInt(), 980);
+    QCOMPARE(geo.value("height").toInt(), 725);
+    QCOMPARE(geo.value("hasPosition").toBool(), false);
+    QCOMPARE(geo.value("maximized").toBool(), false);
 }
 
 QTEST_MAIN(TestConfigManager)

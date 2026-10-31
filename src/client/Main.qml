@@ -12,6 +12,8 @@
  * 托盘菜单另提供打开接收目录（经 AppController 打开配置路径）与设置入口。
  * 左侧显示在线设备列表，右侧显示设备会话页。
  * 拖拽发送统一在本文件解码和裁决，弹窗与提示分层反馈。
+ * 窗口尺寸/位置跨启动记忆：启动先恢复上次几何（C++ 侧已按当前屏幕可用区
+ * 夹紧，落屏外位置弃用）再显示，几何变化去抖后落盘，最大化状态一并记忆。
 */
 
 import QtQuick
@@ -26,11 +28,18 @@ import "utils/Style.js" as Style
 ApplicationWindow {
     id: mainWindow
 
-    width:   980
-    height:  725
-    minimumWidth: 860
-    minimumHeight: 620
-    visible: true
+    // 默认与最小尺寸：首次启动回落值；最小尺寸同时作为启动恢复的夹紧下限
+    readonly property int _defaultWidth:   980
+    readonly property int _defaultHeight:  725
+    readonly property int _minimumWidth:   860
+    readonly property int _minimumHeight:  620
+
+    // 启动先隐藏：恢复上次几何（已按屏幕可用区夹紧）后再显示，避免可见跳变
+    width:   _defaultWidth
+    height:  _defaultHeight
+    minimumWidth:  _minimumWidth
+    minimumHeight: _minimumHeight
+    visible: false
     // 开发者模式实例在名称后追加 " #N" 标识，正常实例后缀为空串
     title:   "%1%2 v%3".arg(AppController.applicationName)
                      .arg(AppController.instanceTitleSuffix)
@@ -42,12 +51,67 @@ ApplicationWindow {
     Material.primary: Style.Color.primary
     Material.accent: Style.Color.primary
 
-    // 窗口首次显示后记录常规标志位，供临时置顶后恢复使用；监听失败即刻提示
+    // 窗口首次显示后记录常规标志位，供临时置顶后恢复使用；恢复上次几何后
+    // 再显示；监听失败即刻提示
     Component.onCompleted: {
         _normalWindowFlags = mainWindow.flags
+        restoreSavedGeometry()
         if (AppController.networkListenFailed) {
             mainWindow.showErrorToast(qsTr("网络监听失败，无法收发"))
         }
+    }
+
+    // 启动恢复：C++ 侧读取上次保存的几何并按当前屏幕可用区夹紧（多显示器
+    // 拔插后落屏外的位置被放弃，交由窗口管理器自选），显示前应用避免跳变；
+    // 最大化状态以记忆的普通态几何打底，显示后短延时再 showMaximized
+    // （实测 mutter/Xwayland + xcb 下显示前设 visibility、显示后同步或
+    // Qt.callLater 调用都会被 WM 丢弃，窗口仍以普通态出现），取消最大化
+    // 即回到记忆尺寸
+    function restoreSavedGeometry(): void {
+        const geo = ConfigManager.restoreWindowGeometry(
+            _defaultWidth, _defaultHeight, _minimumWidth, _minimumHeight)
+        mainWindow.width = geo.width
+        mainWindow.height = geo.height
+        if (geo.hasPosition) {
+            mainWindow.x = geo.x
+            mainWindow.y = geo.y
+        }
+        mainWindow._windowedGeometry = Qt.rect(mainWindow.x, mainWindow.y,
+                                               mainWindow.width, mainWindow.height)
+        mainWindow._geometryRestoreDone = true
+        mainWindow.visible = true
+        if (geo.maximized) {
+            maximizeRestoreTimer.restart()
+        }
+    }
+
+    // 记录普通态几何并安排落盘：最大化期间几何来自 WM 的最大化布局不作记忆，
+    // 保存时以冻结的最近普通态几何为准；几何变化去抖写入，SIGTERM/托盘退出/
+    // 关窗退出等任一退出路径都不丢
+    function noteWindowedGeometry(): void {
+        if (mainWindow.visibility !== Window.Maximized
+                && mainWindow.visibility !== Window.FullScreen) {
+            mainWindow._windowedGeometry = Qt.rect(mainWindow.x, mainWindow.y,
+                                                   mainWindow.width, mainWindow.height)
+        }
+        if (mainWindow._geometryRestoreDone) {
+            geometrySaveTimer.restart()
+        }
+    }
+
+    // 去抖落盘：普通态取当前几何，最大化取最近普通态几何 + maximized 标记；
+    // 全屏布局不落盘，退出全屏后的几何再记
+    function saveWindowGeometry(): void {
+        if (mainWindow.visibility === Window.FullScreen) {
+            return
+        }
+        const maximized = mainWindow.visibility === Window.Maximized
+        const g = maximized ? mainWindow._windowedGeometry
+                            : Qt.rect(mainWindow.x, mainWindow.y,
+                                      mainWindow.width, mainWindow.height)
+        ConfigManager.saveWindowGeometry(Math.round(g.x), Math.round(g.y),
+                                         Math.round(g.width), Math.round(g.height),
+                                         maximized)
     }
 
     onClosing: function(close) {
@@ -82,6 +146,36 @@ ApplicationWindow {
     property int _normalWindowFlags: 0
     // 待显接收请求队列：确认弹窗一次只展示一个请求，其余按到达序排队
     property var _pendingReceiveRequests: []
+    // —— 窗口几何跨启动记忆（O-18）——
+    // 启动恢复完成后才允许落盘，恢复过程中的赋值不触发写配置
+    property bool _geometryRestoreDone: false
+    // 最近一次普通态几何：最大化期间冻结，保存时随 maximized 标记一并落盘
+    property rect _windowedGeometry: Qt.rect(x, y, width, height)
+
+    // 几何变化即记录并去抖落盘（拖拽/缩放停止 0.8s 后才写配置，不逐帧刷盘）
+    onXChanged: mainWindow.noteWindowedGeometry()
+    onYChanged: mainWindow.noteWindowedGeometry()
+    onWidthChanged: mainWindow.noteWindowedGeometry()
+    onHeightChanged: mainWindow.noteWindowedGeometry()
+    onVisibilityChanged: mainWindow.noteWindowedGeometry()
+
+    Timer {
+        id: geometrySaveTimer
+        interval: 800
+        repeat: false
+
+        onTriggered: mainWindow.saveWindowGeometry()
+    }
+
+    // 最大化恢复延一刀：显示后同步/Qt.callLater 调用 showMaximized 实测被
+    // WM 丢弃（详见 restoreSavedGeometry 注释），短延时重发即生效
+    Timer {
+        id: maximizeRestoreTimer
+        interval: 150
+        repeat: false
+
+        onTriggered: mainWindow.showMaximized()
+    }
 
     // 最小化或隐藏状态下恢复到普通窗口并激活到前台
     function showMainWindow(): void {

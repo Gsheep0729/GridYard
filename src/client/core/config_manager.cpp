@@ -24,10 +24,12 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QUrl>
@@ -729,4 +731,138 @@ int ConfigManager::nextLaunchInstance(int currentInstance)
         return -1;
     }
     return current + 1;
+}
+
+// 持久化窗口几何：window 组键随写随原子落盘（ConfigStore 每次 set 即刷盘），
+// QML 侧去抖后调用，SIGTERM/托盘退出/关窗退出等任一退出路径都不丢
+void ConfigManager::saveWindowGeometry(int x, int y, int width, int height, bool maximized)
+{
+    gy::config::ConfigStore store = openConfigStore();
+    store.setInt("window", "x", x);
+    store.setInt("window", "y", y);
+    store.setInt("window", "width", width);
+    store.setInt("window", "height", height);
+    store.setBool("window", "maximized", maximized);
+}
+
+// 窗口几何夹紧：尺寸抬到最小尺寸、压到所有屏幕可用区能容纳的最大宽高；
+// 位置与任一屏幕可用区相交达窗口面积三成才算可见（阈值保证标题栏与主体
+// 在屏，只露一条边仍判为屏外），不满足即放弃位置交由窗口管理器自选；
+// 可用区列表为空（无 GUI 环境）时不做夹紧原样返回，位置以保存为准
+QVariantMap ConfigManager::clampWindowGeometry(const QVariantMap &saved,
+                                               int defaultWidth, int defaultHeight,
+                                               int minimumWidth, int minimumHeight,
+                                               const QList<QRect> &availableScreens)
+{
+    QVariantMap result;
+    result.insert(QStringLiteral("maximized"),
+                  saved.value(QStringLiteral("maximized")).toBool());
+
+    QList<QRect> screens;
+    for (const QRect &rect : availableScreens) {
+        if (rect.isValid()) {
+            screens.append(rect);
+        }
+    }
+
+    const int savedWidth = saved.value(QStringLiteral("width")).toInt();
+    const int savedHeight = saved.value(QStringLiteral("height")).toInt();
+
+    // 无有效保存尺寸（首次启动或配置缺键）：默认尺寸且不指定位置
+    if (savedWidth <= 0 || savedHeight <= 0) {
+        result.insert(QStringLiteral("width"), defaultWidth);
+        result.insert(QStringLiteral("height"), defaultHeight);
+        result.insert(QStringLiteral("hasPosition"), false);
+        return result;
+    }
+
+    // 屏幕信息不可得（无 GUI 环境）：不做夹紧原样返回，交由上层处置
+    if (screens.isEmpty()) {
+        result.insert(QStringLiteral("width"), savedWidth);
+        result.insert(QStringLiteral("height"), savedHeight);
+        const bool hasSavedPosition = saved.contains(QStringLiteral("x"))
+                && saved.contains(QStringLiteral("y"));
+        if (hasSavedPosition) {
+            result.insert(QStringLiteral("x"), saved.value(QStringLiteral("x")));
+            result.insert(QStringLiteral("y"), saved.value(QStringLiteral("y")));
+        }
+        result.insert(QStringLiteral("hasPosition"), hasSavedPosition);
+        return result;
+    }
+
+    // 尺寸夹紧：不小于最小尺寸，不大于所有屏幕可用区的最大可容纳宽高
+    int maxWidth = minimumWidth;
+    int maxHeight = minimumHeight;
+    for (const QRect &screen : screens) {
+        maxWidth = qMax(maxWidth, screen.width());
+        maxHeight = qMax(maxHeight, screen.height());
+    }
+    const int width = qBound(minimumWidth, savedWidth, maxWidth);
+    const int height = qBound(minimumHeight, savedHeight, maxHeight);
+    result.insert(QStringLiteral("width"), width);
+    result.insert(QStringLiteral("height"), height);
+
+    // 位置可用性：保存矩形与某屏幕可用区的相交面积须达窗口面积三成，
+    // 否则视为落屏外（多显示器拔插的典型残留），不给出位置键
+    const bool hasSavedPosition = saved.contains(QStringLiteral("x"))
+            && saved.contains(QStringLiteral("y"));
+    bool hasPosition = false;
+    if (hasSavedPosition) {
+        const QRect savedRect(saved.value(QStringLiteral("x")).toInt(),
+                              saved.value(QStringLiteral("y")).toInt(), width, height);
+        const qint64 windowArea = qint64(width) * height;
+        qint64 bestOverlap = 0;
+        for (const QRect &screen : screens) {
+            const QRect intersection = savedRect.intersected(screen);
+            bestOverlap = qMax(bestOverlap,
+                               qint64(intersection.width()) * intersection.height());
+        }
+        hasPosition = bestOverlap * 10 >= windowArea * 3;
+    }
+    if (hasPosition) {
+        result.insert(QStringLiteral("x"), saved.value(QStringLiteral("x")));
+        result.insert(QStringLiteral("y"), saved.value(QStringLiteral("y")));
+    }
+    result.insert(QStringLiteral("hasPosition"), hasPosition);
+    return result;
+}
+
+// 读取保存的窗口几何并按屏幕可用区夹紧：availableScreens 缺省为空列表时取
+// 当前全部屏幕的可用区（QGuiApplication 环境；纯 Core 测试环境屏幕列表为空，
+// 夹紧自动退化为原样返回），传入非空列表则以传入为准（测试确定性）
+QVariantMap ConfigManager::restoreWindowGeometry(int defaultWidth, int defaultHeight,
+                                                 int minimumWidth, int minimumHeight,
+                                                 const QVariantList &availableScreens)
+{
+    gy::config::ConfigStore store = openConfigStore();
+    QVariantMap saved;
+    const auto readInt = [&store, &saved](const char *key) {
+        if (const auto value = store.getInt("window", key)) {
+            saved.insert(QLatin1String(key), static_cast<int>(*value));
+        }
+    };
+    readInt("x");
+    readInt("y");
+    readInt("width");
+    readInt("height");
+    if (const auto value = store.getBool("window", "maximized")) {
+        saved.insert(QStringLiteral("maximized"), *value);
+    }
+
+    QList<QRect> screens;
+    if (availableScreens.isEmpty()) {
+        const QList<QScreen *> screenList = QGuiApplication::screens();
+        for (const QScreen *screen : screenList) {
+            if (screen) {
+                screens.append(screen->availableGeometry());
+            }
+        }
+    } else {
+        for (const QVariant &entry : availableScreens) {
+            screens.append(entry.toRect());
+        }
+    }
+
+    return clampWindowGeometry(saved, defaultWidth, defaultHeight,
+                               minimumWidth, minimumHeight, screens);
 }
