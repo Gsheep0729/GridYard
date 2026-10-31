@@ -945,6 +945,21 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
                                                         const QVariantMap &request)
 {
     const QString sessionId = request.value(kSessionId).toString();
+
+    // 对端自报的 session_id 不能不查重就当唯一键用：重复 ID 会覆盖既有 worker
+    // 映射并追加同名会话行，接受/取消可能打到新 worker。正常发送端每个会话
+    // 生成新 UUID，任何 ID 复用都是异常重放——拒绝第二个请求并保住旧会话，
+    // 对端经拒绝响应得知原因（协议防线同 B3-R30 来源校验一族）
+    if (!sessionId.isEmpty()
+            && (_receiveWorkers.contains(sessionId)
+                || !_model->sessionById(sessionId).isEmpty())) {
+        qWarning() << "[TransferSession] 拒绝重复 session_id 的传输请求:" << sessionId;
+        QMetaObject::invokeMethod(worker, [worker]() {
+            worker->rejectTransfer(QObject::tr("重复的传输请求"));
+        }, Qt::QueuedConnection);
+        return;
+    }
+
     const QString senderDeviceId = request.value(kSenderDeviceId).toString();
     const QString senderName = request.value(kSenderName).toString();
     const QString fileName = request.value(kFileName).toString();

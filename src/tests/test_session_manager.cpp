@@ -14,6 +14,9 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QThread>
@@ -31,6 +34,8 @@
 #include "relay_server.h"
 #include "transfer_session_model.h"
 #include "rendezvous_client.h"
+#include "protocol.h"
+#include "codec_bridge.h"
 
 #include <nlohmann/json.hpp>
 
@@ -78,6 +83,7 @@ private slots:
     void testMultiSendRejectsReentryWhileSerializing();
     void testMultiSendInvalidPathNoSuccessMessage();
     void testMultiSendPartialFailureVisible();
+    void testDuplicateReceiveSessionIdRejected();
 
 private:
     // 将测试设备注入发现服务，指向本机必然拒绝连接的端口
@@ -1321,6 +1327,92 @@ void TestSessionManager::testMultiSendRejectsReentryWhileSerializing()
     _manager->createMultiSendSessions({id3}, dirPath);
     QTRY_COMPARE_WITH_TIMEOUT(secondRoundSpy.count(), 1, 8000);
     QCOMPARE(secondRoundSpy.first().first().toInt(), 1);
+}
+
+// 接收端对重放的 session_id 必须拒绝：不得覆盖既有 worker 映射、
+// 不得追加同名会话行，重放连接收到拒绝响应并被关闭
+void TestSessionManager::testDuplicateReceiveSessionIdRejected()
+{
+    _config->setReceivePath(_tempDir->path() + "/dup-recv");
+    _config->setTcpPort(0);
+    _p2pServer->stop();  // 上一用例可能仍占用监听，先停再取新端口
+    QVERIFY(_p2pServer->start());
+    const quint16 port = _p2pServer->serverPort();
+
+    // 构造固定 session_id 的 TransferReq 帧：正常发送端每会话生成新 UUID，
+    // 同 ID 的第二次请求只会来自异常或恶意对端的重放
+    QJsonObject request;
+    request[QStringLiteral("session_id")] = QStringLiteral("dup-session-0001");
+    request[QStringLiteral("sender_device_id")] = QStringLiteral("dup-sender");
+    request[QStringLiteral("sender_name")] = QStringLiteral("重放设备");
+    request[QStringLiteral("is_directory")] = false;
+    request[QStringLiteral("root_name")] = QStringLiteral("hello.txt");
+    request[QStringLiteral("total_files")] = 1;
+    request[QStringLiteral("total_bytes")] = 9;
+    request[QStringLiteral("protocol_version")] = gy::protocol::kProtocolVersion;
+    QJsonArray files;
+    QJsonObject fileObj;
+    fileObj[QStringLiteral("file_index")] = 0;
+    fileObj[QStringLiteral("relative_path")] = QStringLiteral("hello.txt");
+    fileObj[QStringLiteral("size_bytes")] = 9;
+    fileObj[QStringLiteral("sha256")] =
+            QStringLiteral("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    files.append(fileObj);
+    request[QStringLiteral("files")] = files;
+    const QByteArray frame = gy::bridge::encodeFrame(
+        gy::protocol::kTypeTransferReq,
+        QJsonDocument(request).toJson(QJsonDocument::Compact));
+    QVERIFY2(!frame.isEmpty(), "传输请求帧应编码成功");
+
+    // 第一条连接：请求照常入列，会话进入等待确认
+    auto *first = new gy::net::PosixTcpSocket(this);
+    first->connectToHost(QStringLiteral("127.0.0.1"), port);
+    QVERIFY(gy::test::waitConnected(first));
+    first->write(frame);
+
+    QSignalSpy requestSpy(_manager, &TransferSessionManager::receiveRequestReceived);
+    QVERIFY2(gy::test::waitFor([&requestSpy]() { return requestSpy.count() >= 1; }, 5000),
+             "首个传输请求应在 5 秒内到达");
+    QCOMPARE(requestSpy.first().at(0).toString(), QStringLiteral("dup-session-0001"));
+
+    // 第二条连接重放同 session_id：应被拒绝——请求不再入列，
+    // 且重放连接收到 TransferRsp 失败帧后被对端关闭
+    auto *second = new gy::net::PosixTcpSocket(this);
+    QSignalSpy disconnectedSpy(second, &gy::net::PosixTcpSocket::disconnected);
+    second->connectToHost(QStringLiteral("127.0.0.1"), port);
+    QVERIFY(gy::test::waitConnected(second));
+    second->write(frame);
+
+    // 拒绝响应帧（0x0102）应先于断连到达重放连接
+    const QByteArray rsp = gy::test::waitBytes(second, 9, 5000);
+    QVERIFY2(rsp.size() >= 9, "重放连接应收到拒绝响应帧");
+    QCOMPARE(quint8(rsp.at(3)), 0x02);  // 帧类型低字节：kTypeTransferRsp
+    QCOMPARE(quint8(rsp.at(4)), 0x00);  // 帧长最高字节（载荷远小于 64KiB）
+    const QJsonObject rspJson = QJsonDocument::fromJson(rsp.mid(8)).object();
+    QCOMPARE(rspJson.value(QStringLiteral("accepted")).toBool(), false);
+    QVERIFY2(gy::test::waitFor([&disconnectedSpy]() { return disconnectedSpy.count() >= 1; },
+                               5000),
+             "被拒绝的重放连接应被对端关闭");
+
+    // 同 ID 请求只入列一次，模型中该 ID 只有等待确认的一行
+    QCOMPARE(requestSpy.count(), 1);
+    int dupRows = 0;
+    QString rowStatus;
+    const QVariantList sessions = _manager->sessions();
+    for (const QVariant &entry : sessions) {
+        const QVariantMap session = entry.toMap();
+        if (session.value(gy::session::kSessionId).toString()
+                == QStringLiteral("dup-session-0001")) {
+            ++dupRows;
+            rowStatus = session.value(gy::session::kStatus).toString();
+        }
+    }
+    QCOMPARE(dupRows, 1);
+    QCOMPARE(rowStatus, QStringLiteral("waiting_confirm"));
+
+    first->disconnectFromHost();
+    second->disconnectFromHost();
+    _p2pServer->stop();
 }
 
 QTEST_MAIN(TestSessionManager)
