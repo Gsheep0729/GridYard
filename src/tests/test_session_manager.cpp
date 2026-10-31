@@ -73,6 +73,7 @@ private slots:
     void testIncomingRequestEntrySignal();
     void testMultiSendSharesSerializedList();
     void testMultiSendRetainsSharedListForRelayRetry();
+    void testMultiSendDisclosesOfflineExclusion();
     void testMultiTargetsPersistence();
     void testMultiSendRejectsReentryWhileSerializing();
     void testMultiSendInvalidPathNoSuccessMessage();
@@ -1120,6 +1121,50 @@ void TestSessionManager::testMultiSendRetainsSharedListForRelayRetry()
     // 会话终结后保留应随之清理，不得跨会话悬挂内存
     _manager->cancelSession(sessionId);
     QTRY_VERIFY_WITH_TIMEOUT(_manager->_sessionSharedFiles.isEmpty(), 5000);
+}
+
+// 部分目标离线时的聚合提示应披露剔除台数：被静默缩编的群发
+// 原先只报发起台数，用户无从得知"勾了 5 台只见 3 台"的原因
+void TestSessionManager::testMultiSendDisclosesOfflineExclusion()
+{
+    const QString filePath = _tempDir->path() + "/multisend-offline.txt";
+    QFile file{filePath};
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("multisend-offline-body");
+    file.close();
+
+    // 一台在线目标指向挂起端口，另一台不在发现表中（端点快照为空即剔除）
+    gy::net::PosixTcpServer hold;
+    QVERIFY(hold.listen(gy::net::IpAddress::localHost(), 0));
+    const QString onlineId = addTargetDevice("multi-offline-online", hold.serverPort());
+    const QString ghostId = QStringLiteral("multi-offline-ghost");
+
+    QSignalSpy startedSpy(_manager, &TransferSessionManager::multiSendStarted);
+    QSignalSpy messageSpy(_manager, &TransferSessionManager::messageOccurred);
+    _manager->createMultiSendSessions({onlineId, ghostId}, filePath);
+    QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 8000);
+    QCOMPARE(startedSpy.first().first().toInt(), 1);
+
+    // 聚合提示同时包含真实发起台数与剔除的离线台数
+    QString aggregate;
+    for (const QList<QVariant> &entry : messageSpy) {
+        const QString text = entry.value(0).toString();
+        if (text.contains(QStringLiteral("台设备"))) {
+            aggregate = text;
+        }
+    }
+    QVERIFY2(aggregate.contains(QStringLiteral("已提交向 1 台设备发送")),
+             "聚合提示应报真实发起台数");
+    QVERIFY2(aggregate.contains(QStringLiteral("1 台离线未纳入")),
+             "聚合提示应披露被剔除的离线台数");
+
+    // 清理会话，避免影响后续用例
+    for (const QVariant &entry : _manager->sessions()) {
+        const QVariantMap session = entry.toMap();
+        if (session.value(gy::session::kDeviceId).toString() == onlineId) {
+            _manager->cancelSession(session.value(gy::session::kSessionId).toString());
+        }
+    }
 }
 
 // 群发前置校验失败只报错误，不得出现"已发起"成功提示：旧界面在调用前抢跑

@@ -431,13 +431,20 @@ void TransferSessionManager::finishMultiSendStart(const QList<gy::FileItem> &fil
     refreshActiveSessionCount();
 
     const int started = _multiTargets.size();
+    const int offlineExcluded = _multiOfflineCount;
     _multiTargets.clear();
     emit multiSendStarted(started);
     // 真实发起台数以本处为准：界面不再在调用前抢跑成功提示，校验失败时
     // 只剩错误提示。提示只陈述"已提交"这一事实，不宣称传输已发起或已成功：
-    // 建连与传输结果由各会话卡和失败提示分别呈现，提交时刻结果尚不存在
+    // 建连与传输结果由各会话卡和失败提示分别呈现，提交时刻结果尚不存在。
+    // 有离线目标被剔除时并入披露，避免"勾了 5 台只见 3 台"无从解释
     if (started > 0) {
-        emit messageOccurred(tr("已提交向 %1 台设备发送，正在连接…").arg(started));
+        if (offlineExcluded > 0) {
+            emit messageOccurred(tr("已提交向 %1 台设备发送（%2 台离线未纳入），正在连接…")
+                                     .arg(started).arg(offlineExcluded));
+        } else {
+            emit messageOccurred(tr("已提交向 %1 台设备发送，正在连接…").arg(started));
+        }
     }
 }
 
