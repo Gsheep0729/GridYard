@@ -1,7 +1,7 @@
 /**
 * @file    test_file_transfer.cpp
-* @version 8.1.0
-* @date 2026-10-28
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GY
 * @brief   文件传输完整流程测试
 *
@@ -9,6 +9,8 @@
 */
 
 #include <QtTest/QtTest>
+#include <QDateTime>
+#include <QMutex>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
@@ -79,6 +81,9 @@ private slots:
     void testLargeFileTransferEndToEnd();
     void testAutoAcceptAndSave();
     void testDuplicateNameReceiveRenamesWithSuffix();
+    void testReceiveUsesPartIntermediateName();
+    void testRenameConflictFallsBackToSuffixName();
+    void testResidualPartFilesCleanedAtStartup();
     void testPersistFinishedReceiveSession();
     void testPersistCancelledReceiveSession();
     void testReceiveFolderPreview();
@@ -619,6 +624,205 @@ void TestFileTransfer::testDuplicateNameReceiveRenamesWithSuffix()
 
     stopSenderThread(secondSender, secondThread);
     _config->setAutoAcceptFiles(false);
+}
+
+// 防呆回归（O-09）：接收中必须以 "<最终名>.part" 中间名落盘，全部完成并经
+// SHA 校验后才改名为最终名——SIGKILL/断电等无清理路径的残留只会留下可识别
+// 的 .part，不会以正式名冒充完整文件
+void TestFileTransfer::testReceiveUsesPartIntermediateName()
+{
+    // 3 个分块（8MB/块），保证接收存在可观测的中间态
+    const QString sendPath = _sendDir->path() + "/part_scheme.bin";
+    QFile sourceFile(sendPath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.write(QByteArray(24 * 1024 * 1024, 'P'));
+    sourceFile.close();
+
+    _config->setReceivePath(_recvDir->path());
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    // 接收中间态快照：progressChanged 在写盘完成后、close/rename 之前同步发射，
+    // 用直连在发射点抓取接收目录快照，不会与改名竞态
+    QMutex snapshotMutex;
+    QString midReceivePartFile;
+    QString midReceiveFinalFile;
+    bool receiverFinished = false;
+    bool receiverSuccess = false;
+
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&](FileReceiverWorker *worker, const QVariantMap &) {
+        connect(worker, &FileReceiverWorker::progressChanged, this,
+                [&](qint64, qint64) {
+                    QMutexLocker locker{&snapshotMutex};
+                    if (!midReceivePartFile.isEmpty()) {
+                        return;
+                    }
+                    const QFileInfoList entries =
+                        QDir(_recvDir->path()).entryInfoList(QDir::Files);
+                    for (const QFileInfo &entry : entries) {
+                        if (!entry.fileName().startsWith(QStringLiteral("part_scheme.bin"))) {
+                            continue;
+                        }
+                        if (entry.fileName().endsWith(QStringLiteral(".part"))) {
+                            midReceivePartFile = entry.fileName();
+                        } else {
+                            midReceiveFinalFile = entry.fileName();
+                        }
+                    }
+                }, Qt::DirectConnection);
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&](bool success, gy::protocol::ErrorCode, const QString &, const QString &) {
+            receiverFinished = true;
+            receiverSuccess = success;
+        });
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    SenderThreadGuard senderGuard{sender, senderThread};
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "part-scheme-sender-id"),
+                              Q_ARG(QString, "PartSchemeSender"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 30000);
+    stopSenderThread(sender, senderThread);
+    QVERIFY(receiverSuccess);
+
+    // 接收中间态：只有 .part 中间名，正式名绝不出现
+    {
+        QMutexLocker locker{&snapshotMutex};
+        QVERIFY2(!midReceivePartFile.isEmpty(), "接收中未观测到 .part 中间名文件");
+        QVERIFY2(midReceiveFinalFile.isEmpty(), "接收中正式名文件已出现，残留会冒充完整文件");
+    }
+
+    // 完成后：正式名出现且内容完整，.part 中间名不残留
+    const QString finalPath = _recvDir->path() + "/part_scheme.bin";
+    QVERIFY(QFile::exists(finalPath));
+    QCOMPARE(QFileInfo(finalPath).size(), QFileInfo(sendPath).size());
+    QVERIFY(!QFile::exists(finalPath + ".part"));
+}
+
+// 风险回归（O-09）：正式名在接收期间被并发占用时，完成 rename 必须回落
+// "name (n)" 改名——绝不覆盖占用者，也不残留 .part 中间名
+void TestFileTransfer::testRenameConflictFallsBackToSuffixName()
+{
+    const QString sendPath = _sendDir->path() + "/conflict_name.bin";
+    createTestFile(sendPath, "conflict fallback content");
+
+    _config->setReceivePath(_recvDir->path());
+    _testPort = gy::test::allocateEphemeralPort();
+    _config->setTcpPort(_testPort);
+    P2pServer server(_config);
+    QVERIFY(server.start());
+
+    bool receiverFinished = false;
+    bool receiverSuccess = false;
+    QString receiverSavedPath;
+    connect(&server, &P2pServer::transferRequestReceived, this,
+            [&](FileReceiverWorker *worker, const QVariantMap &) {
+        // 接收中把正式名占住（模拟其他进程并发创建），完成 rename 必须绕开它；
+        // 直连在 worker 线程执行，不用 QTest 宏
+        connect(worker, &FileReceiverWorker::progressChanged, this,
+                [this](qint64, qint64) {
+            QFile occupant(_recvDir->path() + "/conflict_name.bin");
+            if (occupant.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+                occupant.write("concurrent occupant");
+                occupant.close();
+            }
+        }, Qt::DirectConnection);
+        connect(worker, &FileReceiverWorker::transferFinished, this,
+                [&](bool success, gy::protocol::ErrorCode, const QString &,
+                    const QString &savedPath) {
+            receiverFinished = true;
+            receiverSuccess = success;
+            receiverSavedPath = savedPath;
+        });
+        QMetaObject::invokeMethod(worker, [worker, this]() {
+            worker->setReceivePath(_recvDir->path());
+            worker->acceptTransfer();
+        }, Qt::QueuedConnection);
+    });
+
+    FileSenderWorker sender;
+    QSignalSpy senderSpy(&sender, &FileSenderWorker::transferFinished);
+    QThread senderThread;
+    SenderThreadGuard senderGuard{sender, senderThread};
+    sender.moveToThread(&senderThread);
+    senderThread.start();
+    QMetaObject::invokeMethod(&sender, "startTransfer", Qt::QueuedConnection,
+                              Q_ARG(QString, "127.0.0.1"),
+                              Q_ARG(quint16, _testPort),
+                              Q_ARG(QString, sendPath),
+                              Q_ARG(QString, "conflict-sender-id"),
+                              Q_ARG(QString, "ConflictSender"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(receiverFinished, 30000);
+    stopSenderThread(sender, senderThread);
+    QVERIFY(receiverSuccess);
+
+    // 落盘路径必须回落到 "name (1)"，完成通知指向真实文件
+    const QString fallbackPath = _recvDir->path() + "/conflict_name (1).bin";
+    QCOMPARE(receiverSavedPath, fallbackPath);
+    QVERIFY(QFile::exists(fallbackPath));
+    QFile fallbackFile(fallbackPath);
+    QVERIFY(fallbackFile.open(QIODevice::ReadOnly));
+    QCOMPARE(fallbackFile.readAll(), QByteArray("conflict fallback content"));
+    fallbackFile.close();
+
+    // 占用者的内容原封不动，绝不覆盖
+    QFile occupantFile(_recvDir->path() + "/conflict_name.bin");
+    QVERIFY(occupantFile.open(QIODevice::ReadOnly));
+    QCOMPARE(occupantFile.readAll(), QByteArray("concurrent occupant"));
+    occupantFile.close();
+
+    QVERIFY(!QFile::exists(_recvDir->path() + "/conflict_name.bin.part"));
+    QVERIFY(!QFile::exists(fallbackPath + ".part"));
+}
+
+// 防呆回归（O-09）：启动清理必须递归清走接收目录残留的陈旧 .part 中间名，
+// 同时不得动到正常文件与仍在写入的新鲜中间名
+void TestFileTransfer::testResidualPartFilesCleanedAtStartup()
+{
+    const QString rootPath = _recvDir->path() + "/part_residue_scan";
+    QVERIFY(QDir().mkpath(rootPath + "/nested/deep"));
+
+    // 残留的判定是陈旧（修改时间早于阈值），把模拟残留的修改时间回拨 1 小时
+    const QDateTime stale = QDateTime::currentDateTime().addSecs(-3600);
+    const auto createStaleFile = [&rootPath, &stale](const QString &relativePath) {
+        QFile file(rootPath + "/" + relativePath);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::NewOnly));
+        file.write("crash residue");
+        file.close();
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        QVERIFY(file.setFileTime(stale, QFileDevice::FileModificationTime));
+        file.close();
+    };
+
+    createStaleFile("stale.pdf.part");
+    createStaleFile("nested/deep/old.bin.part");
+    createTestFile(rootPath + "/keep.txt", "keep me");
+    createTestFile(rootPath + "/fresh.pdf.part", "still receiving elsewhere");
+
+    QCOMPARE(FileReceiverWorker::cleanupResidualPartFiles(rootPath), 2);
+
+    QVERIFY(!QFile::exists(rootPath + "/stale.pdf.part"));
+    QVERIFY(!QFile::exists(rootPath + "/nested/deep/old.bin.part"));
+    QVERIFY(QFile::exists(rootPath + "/fresh.pdf.part"));
+    QVERIFY(QFile::exists(rootPath + "/keep.txt"));
+    QVERIFY(QDir(rootPath + "/nested/deep").exists());
 }
 
 void TestFileTransfer::testPersistFinishedReceiveSession()

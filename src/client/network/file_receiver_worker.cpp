@@ -1,13 +1,15 @@
 /**
 * @file    file_receiver_worker.cpp
-* @version 8.1.0
-* @date 2026-10-28
+* @version 8.2.1
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   文件接收 Worker 实现
 *
 * 实现完整的文件接收流程：解析传输请求、通知 UI 确认、接收数据块、
 * 写入磁盘、SHA-256 校验、发送确认帧。支持多文件/目录传输、
 * 超时检测、取消操作和协议错误处理。
+* 接收中一律落盘为 "<最终名>.part" 中间名，全部完成并经 SHA 校验后才
+* 改名为最终名，崩溃/断电残留因此不可能冒充完整文件。
 */
 
 #include "file_receiver_worker.h"
@@ -19,7 +21,9 @@
 #include <QCryptographicHash>
 #include <QThread>
 #include <QDataStream>
+#include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -41,28 +45,58 @@ bool isSafeRelativePath(const QString &path)
     return cleanPath != ".." && !cleanPath.startsWith("../");
 }
 
-// 生成不与已有文件冲突的唯一目标路径
-QString uniqueTargetPath(const QString &path, bool directory)
+// .part 中间名路径：接收中一律落盘为 "<最终名>.part"，全部完成并经
+// SHA 校验后才改名为最终名（见 openCurrentFile / finalizeCurrentFile）
+QString partFilePath(const QString &finalPath)
 {
-    if (!QFileInfo::exists(path)) {
+    return finalPath + QStringLiteral(".part");
+}
+
+// 生成不与已有文件冲突的唯一文件目标路径；占用判定同时覆盖正式名与对应
+// .part 中间名——并发同名接收或崩溃残留都会占住中间名，只避让正式名会在
+// rename 时再撞一次。目录候选不含中间名语义，仍走原判定
+QString uniqueFileTargetPath(const QString &path)
+{
+    if (!QFileInfo::exists(path) && !QFileInfo::exists(partFilePath(path))) {
         return path;
     }
 
     const QFileInfo info{path};
-    const QString parentPath = info.path();
-    const QString suffix = directory || info.suffix().isEmpty()
-        ? QString()
-        : "." + info.suffix();
-    const QString baseName = directory || info.suffix().isEmpty()
+    const QString suffix = info.suffix().isEmpty() ? QString() : "." + info.suffix();
+    const QString baseName = info.suffix().isEmpty()
         ? info.fileName()
         : info.completeBaseName();
 
     for (int index = 1; ; ++index) {
         // 使用桌面常见的 "name (n)" 形式，避免覆盖已有接收文件。
         const QString candidate = QString("%1/%2 (%3)%4")
-                                      .arg(parentPath, baseName)
+                                      .arg(info.path(), baseName)
                                       .arg(index)
                                       .arg(suffix);
+        if (!QFileInfo::exists(candidate) && !QFileInfo::exists(partFilePath(candidate))) {
+            return candidate;
+        }
+    }
+}
+
+// 生成不与已有文件冲突的唯一目标路径
+QString uniqueTargetPath(const QString &path, bool directory)
+{
+    if (!directory) {
+        return uniqueFileTargetPath(path);
+    }
+    if (!QFileInfo::exists(path)) {
+        return path;
+    }
+
+    const QFileInfo info{path};
+    const QString parentPath = info.path();
+
+    for (int index = 1; ; ++index) {
+        // 使用桌面常见的 "name (n)" 形式，避免覆盖已有接收文件。
+        const QString candidate = QString("%1/%2 (%3)")
+                                      .arg(parentPath, info.fileName())
+                                      .arg(index);
         if (!QFileInfo::exists(candidate)) {
             return candidate;
         }
@@ -216,6 +250,44 @@ void FileReceiverWorker::requestCancel()
     _cancelRequested.store(true);
 }
 
+// 启动期清理：递归删除接收目录中崩溃/断电残留的陈旧 .part 中间名文件。
+// 正式名只会经 finalizeCurrentFile() 的 rename 产生，残留 .part 不可能
+// 冒充完整文件；启动时统一清走，也避免残留占住中间名挤占后续接收的落盘名。
+// 只清理修改时间早于阈值的文件——活动接收的中间名随每个数据块刷新修改
+// 时间（传输无进展 30 秒即超时收尾），阈值远大于该上限，不会清掉并行
+// 实例正在写入的中间名。旧版本崩溃残留的无后缀半成品无法识别，属一次性
+// 历史遗留，不在本清理范围。
+int FileReceiverWorker::cleanupResidualPartFiles(const QString &rootPath)
+{
+    // 残留判定阈值：修改时间早于 10 分钟前才算残留
+    static constexpr qint64 kStalePartThresholdMs = 10 * 60 * 1000;
+
+    if (rootPath.isEmpty()) {
+        return 0;
+    }
+
+    const QDateTime staleBefore =
+        QDateTime::currentDateTime().addMSecs(-kStalePartThresholdMs);
+    int removedCount = 0;
+
+    QDirIterator it(rootPath, {QStringLiteral("*.part")},
+                    QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString partPath = it.next();
+        if (QFileInfo{partPath}.lastModified() >= staleBefore) {
+            // 新鲜中间名，可能是并行实例仍在写入的活动接收，不动
+            continue;
+        }
+        if (QFile::remove(partPath)) {
+            ++removedCount;
+            qDebug() << "[FileReceiver] 已清理残留的 .part 中间名文件:" << partPath;
+        } else {
+            qWarning() << "[FileReceiver] 清理残留 .part 中间名文件失败:" << partPath;
+        }
+    }
+    return removedCount;
+}
+
 // 用户拒绝传输，发送拒绝响应并关闭连接
 void FileReceiverWorker::rejectTransfer(const QString &reason)
 {
@@ -281,18 +353,21 @@ void FileReceiverWorker::onTimeout()
     finish(false, gy::protocol::ErrorCode::TransferTimeout, tr("传输超时"));
 }
 
-// 清理传输资源：停止定时器、关闭文件、删除不完整文件、重置哈希
+// 清理传输资源：停止定时器、关闭文件、删除不完整的 .part 中间名文件、重置哈希
 void FileReceiverWorker::cleanup()
 {
     // 停止超时定时器
     _timeoutTimer->stop();
 
-    // 关闭文件并删除不完整文件
+    // 关闭文件并删除不完整的 .part 中间名文件；文件已 close 的失败路径
+    // （如最后确认帧写入失败）也要清走中间名，避免留残
     if (_file.isOpen()) {
-        QString filePath = _file.fileName();
         _file.close();
-        QFile::remove(filePath);
-        qDebug() << "FileReceiverWorker: 已删除不完整文件" << filePath;
+    }
+    const QString partPath = _file.fileName();
+    if (!partPath.isEmpty() && QFileInfo::exists(partPath)) {
+        QFile::remove(partPath);
+        qDebug() << "FileReceiverWorker: 已删除不完整文件" << partPath;
     }
 
     // 重置 SHA-256 计算
@@ -619,14 +694,22 @@ void FileReceiverWorker::handleDataChunk(const QByteArray &payload)
         }
 
         if (!verified) {
-            // 校验失败的文件不能保留到接收目录，避免用户误用损坏内容。
+            // 校验失败的文件不能保留到接收目录，避免用户误用损坏内容；
+            // 此时落盘的是 .part 中间名，删除它即可
             QFile::remove(_file.fileName());
             finish(false, gy::protocol::ErrorCode::Sha256Mismatch, errorMsg);
             return;
         }
 
-        // 当前文件校验通过
+        // 当前文件校验通过，先把 .part 中间名改名为最终名再继续收下一个；
+        // 改名失败说明无法交付该文件，按磁盘错误终结
         qDebug() << "[FileReceiver] 文件接收完成:" << _fileName;
+        if (!finalizeCurrentFile()) {
+            _socket->disconnectFromHost();
+            finish(false, gy::protocol::ErrorCode::DiskWriteFailed,
+                   tr("文件保存失败: %1").arg(_fileName));
+            return;
+        }
 
         // 切换到下一个文件
         _currentFileIndex++;
@@ -662,7 +745,10 @@ void FileReceiverWorker::handleTransferDone()
            _isDirectory ? _destinationRoot : _singleFilePath);
 }
 
-// 打开当前待接收的文件，目录模式下自动创建父目录
+// 打开当前待接收的文件，目录模式下自动创建父目录。
+// 接收中一律落盘到 "<最终名>.part" 中间名，全部完成并经 SHA 校验后由
+// finalizeCurrentFile() 改名回最终名——SIGKILL/断电等无清理路径的残留
+// 只会留下可识别的 .part，不会以正式名冒充完整文件。
 bool FileReceiverWorker::openCurrentFile()
 {
     QString filePath = _singleFilePath;
@@ -675,18 +761,22 @@ bool FileReceiverWorker::openCurrentFile()
 
     // NewOnly 要求目标不存在才创建，把"改名校验"与"打开"合并为一个原子动作，
     // 封死检查与打开之间并发同名接收抢先创建、随后 WriteOnly 截断对方的窗口；
-    // 占位失败说明窗口内出现了同名文件，重新改名后重试。
+    // 占位失败说明 .part 中间名被占（并发同名接收或崩溃残留），换下一个
+    // 候选最终名重试（候选判定同时避让正式名与中间名）。
     for (int attempt = 0; attempt < 16; ++attempt) {
-        _file.setFileName(filePath);
+        const QString partPath = partFilePath(filePath);
+        _file.setFileName(partPath);
         if (_file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+            // 记录校验通过后要改名到的最终路径；单文件模式下该路径要回写，
+            // 完成通知与历史记录才能指向真实文件
+            _currentTargetPath = filePath;
             if (!_isDirectory) {
-                // 改名后的实际落盘路径要回写，完成通知与历史记录才能指向真实文件
                 _singleFilePath = filePath;
             }
-            qDebug() << "[FileReceiver] 开始接收文件:" << filePath;
+            qDebug() << "[FileReceiver] 开始接收文件:" << partPath;
             return true;
         }
-        if (!QFileInfo::exists(filePath)) {
+        if (!QFileInfo::exists(partPath)) {
             // 打开失败但目标并不存在，属于权限等真实错误，不再改名重试
             qWarning() << "[FileReceiver] 无法创建文件:" << _file.errorString();
             return false;
@@ -695,6 +785,36 @@ bool FileReceiverWorker::openCurrentFile()
     }
 
     qWarning() << "[FileReceiver] 同名冲突改名重试次数用尽:" << filePath;
+    return false;
+}
+
+// 将 .part 中间名改名为最终名；目标在接收期间被并发创建时（QFile::rename
+// 不覆盖已存在目标）回落 "name (n)" 改名。全部失败则删除中间名残留并
+// 返回 false，由调用方按磁盘错误终结会话
+bool FileReceiverWorker::finalizeCurrentFile()
+{
+    const QString partPath = _file.fileName();
+    QString finalPath = _currentTargetPath;
+
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        if (QFile::rename(partPath, finalPath)) {
+            if (!_isDirectory) {
+                // 回退改名会改变实际落盘路径，完成通知与历史记录必须跟着回写
+                _singleFilePath = finalPath;
+            }
+            qDebug() << "[FileReceiver] 文件落盘完成:" << finalPath;
+            return true;
+        }
+        if (!QFileInfo::exists(finalPath)) {
+            // 目标不存在还改名失败，属于权限等真实错误，不再改名重试
+            break;
+        }
+        finalPath = uniqueTargetPath(finalPath, false);
+    }
+
+    qWarning() << "[FileReceiver] .part 中间名改名为最终名失败:"
+               << partPath << "->" << finalPath;
+    QFile::remove(partPath);
     return false;
 }
 

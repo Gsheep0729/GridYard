@@ -1,7 +1,7 @@
 /**
  * @file    file_receiver_worker.h
- * @version 7.26.1
- * @date    2026-10-25
+ * @version 8.2.1
+ * @date    2026-11-01
  * @author  GridYard Team
  * @brief   文件接收 Worker（Worker-Object 模式）
  *
@@ -10,6 +10,8 @@
  * 喂入该帧；后续到达的字节仍从 socket 缓冲区读取。
  * 负责接收传输请求、通知 UI 弹窗确认、接收文件数据并写入磁盘、
  * SHA-256 校验、发送确认帧等完整接收流程。
+ * 接收中一律落盘为 "<最终名>.part" 中间名，全部完成并经 SHA 校验后才
+ * 改名为最终名，崩溃/断电残留因此不可能冒充完整文件。
  * 提供 fillReceiveSession() 方法将会话信息填充到 QVariantMap。
  */
 
@@ -55,6 +57,11 @@ public:
     // 实际终结由工作线程在分块处理边界检查该标志后完成
     void requestCancel();
 
+    // 启动期清理：递归删除接收目录中崩溃/断电残留的陈旧 .part 中间名文件，
+    // 返回删除的文件数。正式名只会经 rename 产生，残留 .part 不可能冒充
+    // 完整文件；只清理修改时间早于阈值的文件，不清并行实例正在写入的中间名
+    static int cleanupResidualPartFiles(const QString &rootPath);
+
 public slots:
     // 初始化（在后台线程中调用，创建 QTimer 并连接 socket 信号）
     void initialize();
@@ -93,8 +100,11 @@ private:
     void handleLocalCancel();
     // 处理传输完成请求
     void handleTransferDone();
-    // 打开当前文件
+    // 打开当前文件（落盘到 .part 中间名）
     bool openCurrentFile();
+    // 当前文件校验通过后把 .part 中间名改名为最终名；
+    // 目标被并发占用时回落 "name (n)" 改名
+    bool finalizeCurrentFile();
     // 发送握手响应
     bool sendTransferResponse(bool accepted, gy::protocol::ErrorCode errorCode = gy::protocol::ErrorCode::Success, const QString &reason = "");
     // 发送块确认
@@ -131,6 +141,7 @@ private:
     // 当前文件信息
     int     _currentFileIndex = 0;      // 当前接收文件在列表中的索引
     QString _fileName;                  // 当前接收文件的相对路径
+    QString _currentTargetPath;         // 当前文件校验通过后要改名到的最终路径
     qint64  _fileSize = 0;              // 当前接收文件的总大小
     qint64  _bytesReceived = 0;         // 当前文件已写入的字节数
     qint64  _totalBytesReceived = 0;    // 本次任务累计已写入的字节数

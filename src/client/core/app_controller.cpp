@@ -24,6 +24,7 @@
 #include "shutdown_controller.h"
 #include "transfer_controller.h"
 #include "transfer_session_manager.h"
+#include "network/file_receiver_worker.h"
 #include "network/rendezvous_client.h"
 
 #include <QCoreApplication>
@@ -62,6 +63,11 @@ AppController::AppController(QObject *parent)
     , _shutdownController{new ShutdownController{_dataBroker, this}}
     , _localIpMonitor{new LocalIpMonitor{_config, this}}
 {
+    // 接收目录残留清理：崩溃/断电留下的陈旧 .part 中间名在启动时统一清走，
+    // 也避免残留占住中间名挤占后续接收的落盘名。必须先于 P2P 监听启动，
+    // 此时尚无入站接收任务，不会与活动接收的 .part 写入并发扫描
+    FileReceiverWorker::cleanupResidualPartFiles(_config->receivePath());
+
     // 初始化 ReachabilityController 的引用
     _reachability->setDiscoveryService(_discovery);
     _reachability->setConfigManager(_config);

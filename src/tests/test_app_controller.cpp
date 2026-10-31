@@ -62,6 +62,14 @@ void TestAppController::init()
     qunsetenv("GRIDYARD_PORT");
     qunsetenv("GRIDYARD_INSTANCE");
     ApplicationPaths::coverForTest(_tempDir->path());
+
+    // 接收路径预置到临时目录：组合根启动时会清理接收目录的陈旧 .part 残留，
+    // 不预置就会扫到真实用户主目录下的默认接收目录
+    QFile configFile(_tempDir->path() + "/config.ini");
+    QVERIFY(configFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    configFile.write(QString("[device]\nreceivePath=%1/recv\n")
+                         .arg(_tempDir->path()).toUtf8());
+    configFile.close();
 }
 
 void TestAppController::cleanup()
