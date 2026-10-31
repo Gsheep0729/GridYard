@@ -37,6 +37,7 @@ private slots:
     void testReceivePath();
     void testReceivePathError();
     void testAutoAcceptFiles();
+    void testDoNotDisturb();
     void testTcpPort();
     void testAnnouncedTcpPortFrozenAtStartup();
     void testDeviceIdPersistence();
@@ -232,6 +233,30 @@ void TestConfigManager::testAutoAcceptFiles()
     _config->setAutoAcceptFiles(false);
     QVERIFY(!_config->autoAcceptFiles());
     QCOMPARE(spy.count(), 2);
+}
+
+// 勿扰接收开关：setter 翻转运行值并发 NOTIFY，同值重写不重发；
+// 键持久化进 device 组，重建实例（重启语义）后回读不丢
+void TestConfigManager::testDoNotDisturb()
+{
+    const bool saved = _config->doNotDisturb();
+
+    QSignalSpy spy(_config, &ConfigManager::doNotDisturbChanged);
+    _config->setDoNotDisturb(true);
+    QVERIFY(_config->doNotDisturb());
+    QCOMPARE(spy.count(), 1);
+
+    _config->setDoNotDisturb(true);  // 同值重写：不重发 NOTIFY
+    QCOMPARE(spy.count(), 1);
+
+    // 键已落配置文件（device/doNotDisturb），重建实例验证持久化回读
+    ConfigManager *reloaded = ConfigManager::create(nullptr, nullptr);
+    QVERIFY(reloaded->doNotDisturb());
+
+    _config->setDoNotDisturb(false);
+    QVERIFY(!_config->doNotDisturb());
+    QCOMPARE(spy.count(), 2);
+    _config->setDoNotDisturb(saved);  // 还原进入本用例前的值
 }
 
 void TestConfigManager::testDeviceIdPersistence()

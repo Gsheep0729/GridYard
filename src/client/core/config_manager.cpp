@@ -105,6 +105,8 @@ ConfigManager::ConfigManager(QObject *parent)
     _receivePath = readConfigString(store, "device", "receivePath", defaultPath);
     QDir().mkpath(_receivePath);
     _autoAcceptFiles = readConfigBool(store, "device", "autoAcceptFiles", false);
+    // 勿扰接收：默认关闭，开启期间新传输请求走自动拒绝
+    _doNotDisturb = readConfigBool(store, "device", "doNotDisturb", false);
     _retentionDays = std::max(0, readConfigInt(store, "history", "retentionDays", 0));
 
     // 开发者模式实例号：正常模式为 0，仅用于本机资源隔离（目录后缀与端口偏移）
@@ -353,6 +355,24 @@ void ConfigManager::setAutoAcceptFiles(bool enabled)
     openConfigStore().setBool("device", "autoAcceptFiles", enabled);
 
     emit autoAcceptFilesChanged();
+}
+
+// 获取勿扰接收配置
+bool ConfigManager::doNotDisturb() const
+{
+    return _doNotDisturb;
+}
+
+// 设置勿扰接收开关并持久化
+void ConfigManager::setDoNotDisturb(bool enabled)
+{
+    if (_doNotDisturb == enabled) return;
+
+    _doNotDisturb = enabled;
+
+    openConfigStore().setBool("device", "doNotDisturb", enabled);
+
+    emit doNotDisturbChanged();
 }
 
 // 设置 TCP 端口并持久化

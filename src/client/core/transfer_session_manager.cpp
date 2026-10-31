@@ -1,7 +1,7 @@
 /**
 * @file    transfer_session_manager.cpp
 * @version 8.2.1
-* @date 2026-10-31
+* @date 2026-11-01
 * @author  GridYard Team
 * @brief   传输会话管理器实现
 */
@@ -991,6 +991,18 @@ void TransferSessionManager::onTransferRequestReceived(FileReceiverWorker *worke
     qDebug() << "[TransferSession] 文件大小:" << fileSize;
     qDebug() << "[TransferSession] 总文件数:" << totalFiles;
     qDebug() << "[TransferSession] 总大小:" << totalBytes;
+
+    // 勿扰门控（拍板语义：自动拒绝并明示勿扰中）：勿扰开启期间不建会话、不弹窗、
+    // 不发系统通知，直接按协议 UserRejected 拒绝并附原因，发送方立即收到明示
+    // 而非排队等到超时；本机经 messageOccurred 同步提示，避免静默无感知
+    if (_config && _config->doNotDisturb()) {
+        qDebug() << "[TransferSession] 勿扰中，自动拒绝传输请求:" << sessionId;
+        QMetaObject::invokeMethod(worker, [worker]() {
+            worker->rejectTransfer(QObject::tr("对方勿扰中，已自动拒绝"));
+        }, Qt::QueuedConnection);
+        emit messageOccurred(tr("勿扰中，已自动拒绝来自 %1 的传输请求").arg(senderName));
+        return;
+    }
 
     // 设置接收路径（使用 QMetaObject::invokeMethod 在 worker 的线程中调用）
     if (_config) {

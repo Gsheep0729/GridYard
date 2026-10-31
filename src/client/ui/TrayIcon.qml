@@ -7,7 +7,8 @@
  *
  * 托盘菜单与激活行为经信号上抛，主窗口决定显示、隐藏、打开接收目录、
  * 打开设置或退出；通知消息仍由主窗口经 showMessage 发出。
- * tooltip 反映传输活动：有活动会话时追加「传输中 N 项」。
+ * 勿扰接收为纯数据开关，菜单项直写 ConfigManager，不经窗口动作链。
+ * tooltip 反映传输活动：有活动会话时追加「传输中 N 项」，勿扰开启时追加「勿扰中」。
  * 从 Main.qml 拆出。
  */
 
@@ -25,11 +26,16 @@ Platform.SystemTrayIcon {
 
     visible: true
     // 开发者模式实例的托盘提示带 " #N" 标识，正常实例后缀为空串；
-    // 有活动传输时追加「传输中 N 项」，随 activeSessionCount 变化自动刷新
+    // 有活动传输时追加「传输中 N 项」，随 activeSessionCount 变化自动刷新；
+    // 勿扰开启时追加「勿扰中」，不开菜单也能确认当前接收档位
     tooltip: {
         const base = qsTr("GridYard") + AppController.instanceTitleSuffix
         const count = AppController.transferController.activeSessionCount
-        return count > 0 ? base + qsTr(" · 传输中 %1 项").arg(count) : base
+        let tip = count > 0 ? base + qsTr(" · 传输中 %1 项").arg(count) : base
+        if (ConfigManager.doNotDisturb) {
+            tip += qsTr(" · 勿扰中")
+        }
+        return tip
     }
     icon.source: "qrc:/qt/qml/cqnu/gridyard/client/icons/gridyard.png"
 
@@ -46,6 +52,14 @@ Platform.SystemTrayIcon {
         Platform.MenuItem {
             text: qsTr("打开接收目录")
             onTriggered: tray.openReceiveFolderRequested()
+        }
+        // 勿扰接收开关：直写 ConfigManager（数据开关不经主窗口动作链），
+        // 开启期间新传输请求由 C++ 按 UserRejected 自动拒绝并明示勿扰中
+        Platform.MenuItem {
+            text: qsTr("勿扰接收")
+            checkable: true
+            checked: ConfigManager.doNotDisturb
+            onTriggered: ConfigManager.doNotDisturb = checked
         }
         Platform.MenuItem {
             text: qsTr("设置")

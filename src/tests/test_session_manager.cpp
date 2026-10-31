@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
 * @version 8.2.1
-* @date    2026-10-31
+* @date    2026-11-01
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -84,6 +84,7 @@ private slots:
     void testMultiSendInvalidPathNoSuccessMessage();
     void testMultiSendPartialFailureVisible();
     void testDuplicateReceiveSessionIdRejected();
+    void testDoNotDisturbAutoReject();
     void testRelayJoinFailureSurfacesLocally();
 
 private:
@@ -1413,6 +1414,117 @@ void TestSessionManager::testDuplicateReceiveSessionIdRejected()
 
     first->disconnectFromHost();
     second->disconnectFromHost();
+    _p2pServer->stop();
+}
+
+// 勿扰接收（拍板语义：自动拒绝并明示勿扰中，走协议 UserRejected）：勿扰开启期间
+// 新传输请求不建会话、不弹窗（receiveRequestReceived 不发射），发送方立即收到
+// error_code=5001 的拒绝响应帧且原因指明勿扰，本机 messageOccurred 同步明示；
+// 关闭勿扰后请求照常入列，门控不粘滞
+void TestSessionManager::testDoNotDisturbAutoReject()
+{
+    _config->setReceivePath(_tempDir->path() + "/dnd-recv");
+    _config->setTcpPort(0);
+    _p2pServer->stop();  // 上一用例可能仍占用监听，先停再取新端口
+    QVERIFY(_p2pServer->start());
+    const quint16 port = _p2pServer->serverPort();
+
+    // 构造固定 session_id 的 TransferReq 帧（构造同 testDuplicateReceiveSessionIdRejected）
+    QJsonObject request;
+    request[QStringLiteral("session_id")] = QStringLiteral("dnd-session-0001");
+    request[QStringLiteral("sender_device_id")] = QStringLiteral("dnd-sender");
+    request[QStringLiteral("sender_name")] = QStringLiteral("勿扰探测设备");
+    request[QStringLiteral("is_directory")] = false;
+    request[QStringLiteral("root_name")] = QStringLiteral("dnd.txt");
+    request[QStringLiteral("total_files")] = 1;
+    request[QStringLiteral("total_bytes")] = 6;
+    request[QStringLiteral("protocol_version")] = gy::protocol::kProtocolVersion;
+    QJsonArray files;
+    QJsonObject fileObj;
+    fileObj[QStringLiteral("file_index")] = 0;
+    fileObj[QStringLiteral("relative_path")] = QStringLiteral("dnd.txt");
+    fileObj[QStringLiteral("size_bytes")] = 6;
+    fileObj[QStringLiteral("sha256")] =
+            QStringLiteral("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    files.append(fileObj);
+    request[QStringLiteral("files")] = files;
+    const QByteArray frame = gy::bridge::encodeFrame(
+        gy::protocol::kTypeTransferReq,
+        QJsonDocument(request).toJson(QJsonDocument::Compact));
+    QVERIFY2(!frame.isEmpty(), "传输请求帧应编码成功");
+
+    // 开启勿扰：请求不得入列弹窗，连接应立即收到 UserRejected 拒绝响应
+    const bool dndSaved = _config->doNotDisturb();
+    _config->setDoNotDisturb(true);
+
+    QSignalSpy requestSpy(_manager, &TransferSessionManager::receiveRequestReceived);
+    QSignalSpy messageSpy(_manager, &TransferSessionManager::messageOccurred);
+
+    auto *conn = new gy::net::PosixTcpSocket(this);
+    QSignalSpy disconnectedSpy(conn, &gy::net::PosixTcpSocket::disconnected);
+    conn->connectToHost(QStringLiteral("127.0.0.1"), port);
+    QVERIFY(gy::test::waitConnected(conn));
+    conn->write(frame);
+
+    // 拒绝响应帧（0x0102）应先于断连到达
+    const QByteArray rsp = gy::test::waitBytes(conn, 9, 5000);
+    QVERIFY2(rsp.size() >= 9, "勿扰期间连接应立即收到拒绝响应帧");
+    QCOMPARE(quint8(rsp.at(3)), 0x02);  // 帧类型低字节：kTypeTransferRsp
+    QCOMPARE(quint8(rsp.at(4)), 0x00);  // 帧长最高字节（载荷远小于 64KiB）
+    const QJsonObject rspJson = QJsonDocument::fromJson(rsp.mid(8)).object();
+    QCOMPARE(rspJson.value(QStringLiteral("accepted")).toBool(), false);
+    QCOMPARE(rspJson.value(QStringLiteral("error_code")).toInt(),
+             static_cast<int>(gy::protocol::ErrorCode::UserRejected));  // 拍板：走 UserRejected
+    QVERIFY2(rspJson.value(QStringLiteral("reason")).toString()
+                 .contains(QStringLiteral("勿扰")),
+             "拒绝原因应明示勿扰中:" + rspJson.value(QStringLiteral("reason"))
+                 .toString().toUtf8());
+    QVERIFY2(gy::test::waitFor([&disconnectedSpy]() { return disconnectedSpy.count() >= 1; },
+                               5000),
+             "勿扰拒绝后连接应被对端关闭");
+
+    // 本机明示：不弹窗、不建会话行，但要有勿扰提示
+    QTest::qWait(200);  // 给排队信号留时间，确认没有迟到入列
+    QCOMPARE(requestSpy.count(), 0);  // 勿扰路径不得触发确认弹窗
+    int dndRows = 0;
+    const QVariantList sessions = _manager->sessions();
+    for (const QVariant &entry : sessions) {
+        if (entry.toMap().value(gy::session::kSessionId).toString()
+                == QStringLiteral("dnd-session-0001")) {
+            ++dndRows;
+        }
+    }
+    QCOMPARE(dndRows, 0);  // 勿扰自动拒绝不建会话行（请求未入列即终结）
+    bool dndNotified = false;
+    for (const QList<QVariant> &entry : messageSpy) {
+        if (entry.value(0).toString().contains(QStringLiteral("勿扰"))) {
+            dndNotified = true;
+        }
+    }
+    QVERIFY2(dndNotified, "勿扰自动拒绝应经 messageOccurred 本机明示");
+
+    // 关闭勿扰：同一请求语义换新 session_id 应照常入列，门控不粘滞
+    _config->setDoNotDisturb(false);
+    request[QStringLiteral("session_id")] = QStringLiteral("dnd-session-0002");
+    const QByteArray frame2 = gy::bridge::encodeFrame(
+        gy::protocol::kTypeTransferReq,
+        QJsonDocument(request).toJson(QJsonDocument::Compact));
+    QVERIFY2(!frame2.isEmpty(), "第二条传输请求帧应编码成功");
+
+    auto *conn2 = new gy::net::PosixTcpSocket(this);
+    conn2->connectToHost(QStringLiteral("127.0.0.1"), port);
+    QVERIFY(gy::test::waitConnected(conn2));
+    conn2->write(frame2);
+    QVERIFY2(gy::test::waitFor([&requestSpy]() { return requestSpy.count() >= 1; }, 5000),
+             "关闭勿扰后请求应照常入列");
+    QCOMPARE(requestSpy.first().at(0).toString(), QStringLiteral("dnd-session-0002"));
+    QVERIFY(waitForStatus(QStringLiteral("dnd-session-0002"), "waiting_confirm"));
+    _manager->rejectReceiveSession(QStringLiteral("dnd-session-0002"));
+    QVERIFY(waitForStatus(QStringLiteral("dnd-session-0002"), "rejected"));
+
+    conn->disconnectFromHost();
+    conn2->disconnectFromHost();
+    _config->setDoNotDisturb(dndSaved);
     _p2pServer->stop();
 }
 

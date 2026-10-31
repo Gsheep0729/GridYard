@@ -43,6 +43,7 @@ class ConfigManager : public QObject {
     Q_PROPERTY(QString  localIp     READ localIp     NOTIFY localIpChanged)
     Q_PROPERTY(QString  receivePath READ receivePath WRITE setReceivePath NOTIFY receivePathChanged)
     Q_PROPERTY(bool     autoAcceptFiles READ autoAcceptFiles WRITE setAutoAcceptFiles NOTIFY autoAcceptFilesChanged)
+    Q_PROPERTY(bool     doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
     Q_PROPERTY(quint16  tcpPort     READ tcpPort     WRITE setTcpPort     NOTIFY tcpPortChanged)
     Q_PROPERTY(int retentionDays READ retentionDays WRITE setRetentionDays NOTIFY retentionDaysChanged)
     Q_PROPERTY(bool     rendezvousEnabled READ rendezvousEnabled WRITE setRendezvousEnabled NOTIFY rendezvousEnabledChanged)
@@ -80,6 +81,8 @@ public:
     QString  receivePath() const;
     // 获取自动接收文件配置
     bool     autoAcceptFiles() const;
+    // 获取勿扰接收开关
+    bool     doNotDisturb() const;
     // 获取 TCP 端口
     quint16  tcpPort()     const;
     // 获取身份播报用 TCP 端口（启动期定型快照，与监听器实际端口同源）
@@ -109,6 +112,8 @@ public:
     void setReceivePath(const QString &path);
     // 设置自动接收文件开关
     void setAutoAcceptFiles(bool enabled);
+    // 设置勿扰接收开关
+    void setDoNotDisturb(bool enabled);
     // 设置 TCP 端口
     void setTcpPort(quint16 port);
     // 设置历史保留天数
@@ -149,6 +154,7 @@ signals:
     void localIpChanged();
     void receivePathChanged();
     void autoAcceptFilesChanged();
+    void doNotDisturbChanged();
     void tcpPortChanged();
     void retentionDaysChanged();
     void rendezvousEnabledChanged();
@@ -182,6 +188,7 @@ private:
     QString _localIp;                 // 当前选取的本机 IPv4 地址
     QString _receivePath;             // 接收文件的本地保存目录
     bool    _autoAcceptFiles = false; // 是否跳过接收确认直接保存
+    bool    _doNotDisturb = false;    // 勿扰接收：开启期间新传输请求按 UserRejected 自动拒绝
     quint16 _tcpPort = 0;             // TCP P2P 服务监听端口
     quint16 _announcedTcpPort = 0;    // 身份播报用端口快照：监听器不随保存切换，播报也不得先行
     int _retentionDays = 0;           // 本地历史保留天数，0 表示永久保留
