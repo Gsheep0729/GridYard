@@ -1,7 +1,7 @@
 /**
  * @file    DeviceSessionView.qml
  * @version 8.2.1
- * @date 2026-10-30
+ * @date 2026-10-31
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
  *
@@ -176,8 +176,7 @@ Frame {
 
                        MenuItem {
                            text: qsTr("清空已结束传输记录")
-                           onTriggered: AppController.transferController.clearFinishedSessions(
-                                            false, deviceSessionView.deviceId)
+                           onTriggered: clearConfirmDialog.open()
                        }
 
                        MenuItem {
@@ -587,6 +586,22 @@ Frame {
    }
 
    // ===== 清空确认弹窗（Frame 级别）=====
+   Dialog {
+       id: clearConfirmDialog
+       title: qsTr("清空已结束传输记录")
+       modal: true
+       anchors.centerIn: Overlay.overlay
+       standardButtons: Dialog.Yes | Dialog.No
+
+       Label {
+           text: qsTr("确定清空当前设备的已结束传输记录吗？仅删除记录，不会删除任何本地文件。")
+           wrapMode: Text.WordWrap
+       }
+
+       onAccepted: AppController.transferController.clearFinishedSessions(
+                       false, deviceSessionView.deviceId)
+   }
+
    Dialog {
        id: clearDeleteConfirmDialog
        title: qsTr("清空传输记录并删除本地文件")
