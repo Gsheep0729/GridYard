@@ -6,7 +6,7 @@
 
 **局域网 P2P 文件传输与即时通讯桌面应用，全程零公网流量。**
 
-[![CI](https://github.com/Gsheep0729/GridYard/actions/workflows/ci.yml/badge.svg)](https://github.com/Gsheep0729/GridYard/actions/workflows/ci.yml)
+[![CI](https://github.com/Gsheep0729/GridYard/actions/workflows/ci.yml/badge.svg?branch=gy)](https://github.com/Gsheep0729/GridYard/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Gsheep0729/GridYard)](https://github.com/Gsheep0729/GridYard/releases)
 [![License: Custom](https://img.shields.io/badge/License-Custom-blue)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%E2%9C%93%20%7C%20Windows%20%E8%AE%A1%E5%88%92%E4%B8%AD-blue)](#下载安装)
