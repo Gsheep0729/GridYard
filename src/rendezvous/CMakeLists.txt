@@ -48,6 +48,12 @@ set_property(TARGET gy_rendezvous PROPERTY FOLDER "rendezvous")
 
 add_executable(gridyard_rendezvous WIN32 main.cpp)
 target_link_libraries(gridyard_rendezvous PRIVATE gy_rendezvous)
+
+# Windows：WinSock2 / IP Helper 系统库；win_* 实现文件为占位，待后续里程碑落位
+#（本里程碑不新建 win 实现文件）
+if(WIN32)
+    target_link_libraries(gridyard_rendezvous PRIVATE ws2_32 iphlpapi)
+endif()
 # 可执行目标同样不经过任何 Qt 代码生成工具
 set_target_properties(gridyard_rendezvous PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
 

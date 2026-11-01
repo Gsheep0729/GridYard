@@ -203,6 +203,12 @@ target_link_libraries(appGridYard PRIVATE
     gy_core
 )
 
+# Windows：WinSock2 / IP Helper 系统库；client/network 的 win_* 套接字适配层为占位，
+# 待后续里程碑落位后在此分支追加 target_sources（本里程碑不新建 win 实现文件）
+if(WIN32)
+    target_link_libraries(appGridYard PRIVATE ws2_32 iphlpapi)
+endif()
+
 target_include_directories(appGridYard PRIVATE core network domain storage)
 set_property(TARGET appGridYard PROPERTY FOLDER "client")
 

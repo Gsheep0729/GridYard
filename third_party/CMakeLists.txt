@@ -25,6 +25,11 @@ add_library(gy_asio INTERFACE)
 target_include_directories(gy_asio SYSTEM INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/asio/include
 )
+# Windows：asio IOCP 后端与未来 win_* 代码所需的 WinSock2 / IP Helper 系统库，
+# 经 INTERFACE 链接传递给 gy_net_core 及全部消费者；非 WIN32 平台零改动
+if(WIN32)
+    target_link_libraries(gy_asio INTERFACE ws2_32 iphlpapi)
+endif()
 
 # SQLite 3.45.0 amalgamation（Public Domain）——编译为静态库 sqlite3_vendor，
 # 供 src/core/storage 的纯 C++ RAII 封装直接使用，替代 QSqlDatabase 执行引擎
