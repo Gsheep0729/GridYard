@@ -183,19 +183,6 @@ Dialog {
                     }
                 }
             }
-
-            SecondaryButton {
-                id: confirmContentButton
-                Layout.alignment: Qt.AlignRight
-                enabled: manualPathInput.text.trim().length > 0
-                text: qsTr("确定内容")
-                onClicked: {
-                    const raw = manualPathInput.text.trim()
-                    const path = raw.indexOf("file://") === 0
-                                 ? decodeURIComponent(raw.substring(7)) : raw
-                    multiDialog._filePath = path
-                }
-            }
         }
 
         // ===== 已确定内容：文件名 + 目标列表 =====
@@ -335,6 +322,9 @@ Dialog {
             wrapMode: Text.Wrap
         }
 
+        // 动作行合并（U2-20）：第二步的"确定内容"与"完成"（发送）并入同一底部
+        // 动作行，按 _filePath.length 联动显隐——未确定内容时 [取消][确定内容]，
+        // 确定后切换为 [取消][发送 (N)]，两阶段共用一个视觉落点
         RowLayout {
             Layout.alignment: Qt.AlignRight
             spacing: Style.Space.sm
@@ -344,12 +334,25 @@ Dialog {
                 onClicked: multiDialog.close()
             }
 
+            SecondaryButton {
+                visible: multiDialog._filePath.length === 0
+                enabled: manualPathInput.text.trim().length > 0
+                text: qsTr("确定内容")
+                onClicked: {
+                    const raw = manualPathInput.text.trim()
+                    const path = raw.indexOf("file://") === 0
+                                 ? decodeURIComponent(raw.substring(7)) : raw
+                    multiDialog._filePath = path
+                }
+            }
+
             // 主操作恢复主按钮强调（批 1 验收遗留第 2 条）：品牌蓝实底白字与
             // 次操作的白底细边分层，白字压 U2-44 主色 5.17:1；高度随族 32px
             Button {
                 highlighted: true
                 implicitHeight: 32
                 font.pixelSize: Style.Type.body
+                visible: multiDialog._filePath.length > 0
                 enabled: multiDialog._filePath.length > 0 && multiDialog._checkedCount > 0
                 // 被搜索隐藏的已勾设备仍参与发送：计数文案在此披露，用户可据此清理过滤词核对名单
                 text: multiDialog._hiddenCheckedCount > 0

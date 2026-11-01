@@ -85,6 +85,9 @@ Dialog {
         width: parent.width
         spacing: Style.Space.md
 
+        // 动作合并（U2-19）：浏览与解析预览同为路径行的附属次操作，不再独占
+        // 一行与底部终局动作抢位；enabled 时序三级——浏览恒可点 → 解析预览需
+        // 有路径且控制器空闲 → 确认导入需预览成功解析（无 error）且控制器空闲
         RowLayout {
             Layout.fillWidth: true
             spacing: Style.Space.sm
@@ -105,15 +108,14 @@ Dialog {
                 text: qsTr("浏览…")
                 onClicked: openFileDialog.open()
             }
-        }
 
-        SecondaryButton {
-            Layout.alignment: Qt.AlignRight
-            enabled: importDialog._filePath.trim().length > 0
-                     && !AppController.backupController.busy
-            text: qsTr("解析预览")
-            onClicked: AppController.backupController.analyzeImportFile(
-                           importDialog._filePath.trim())
+            SecondaryButton {
+                enabled: importDialog._filePath.trim().length > 0
+                         && !AppController.backupController.busy
+                text: qsTr("解析预览")
+                onClicked: AppController.backupController.analyzeImportFile(
+                               importDialog._filePath.trim())
+            }
         }
 
         // 预览区：各层条目数、冲突数与身份层动作
@@ -212,7 +214,7 @@ Dialog {
             spacing: Style.Space.sm
 
             SecondaryButton {
-                text: qsTr("关闭")
+                text: qsTr("取消")
                 onClicked: importDialog.close()
             }
 

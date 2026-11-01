@@ -846,11 +846,20 @@ Dialog {
                         }
 
                         Label {
-                            text: qsTr("本机多实例联调：开启后可在此直接拉起一个隔离的开发者实例，数据、配置、日志目录独立，端口偏移，窗口标题带 #N 标识。开关只控制此入口，不会把当前实例切换为开发者实例；命令行 --instance=N 是等价快捷入口，详细说明见项目 README 的《本机多实例测试（开发者模式）》。")
+                            // 文案收敛（U2-23）：正文压成两行工程概括，--instance=N
+                            // 参数与 README 指针移入悬停 ToolTip；手工断行落在句间
+                            // 语义停顿处，窄卡宽由 wrapMode 兜底，不产生孤字行
+                            text: qsTr("开启后可直接拉起一个隔离实例，数据与端口互不影响。\n开关只控制本入口，不改变当前实例。")
                             color: Style.Color.textMuted
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
+
+                            HoverHandler { id: developerDescHover }
+
+                            ToolTip.text: qsTr("等价命令行参数：--instance=N（N 为实例号，端口偏移，窗口标题带 #N 标识）。详细说明见项目 README 的《本机多实例测试（开发者模式）》。")
+                            ToolTip.delay: 500
+                            ToolTip.visible: developerDescHover.hovered
                         }
                     }
 
