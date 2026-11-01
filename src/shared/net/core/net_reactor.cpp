@@ -15,8 +15,19 @@
 
 #include "core/net_reactor.h"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX  // windows.h 经 asio 传入时不携带 min/max 宏，保住 std::max 调用点
+#endif
+#include <winsock2.h>
+#endif
+
 #include <boost/asio/io_context.hpp>
+#ifdef _WIN32
+#include <boost/asio/windows/object_handle.hpp>
+#else
 #include <boost/asio/posix/stream_descriptor.hpp>
+#endif
 #include <boost/asio/post.hpp>
 #include <boost/asio/steady_timer.hpp>
 
@@ -37,9 +48,57 @@ uint64_t threadIdValue(std::thread::id id)
     return static_cast<uint64_t>(std::hash<std::thread::id>{}(id));
 }
 
+#ifdef _WIN32
+
+// Windows 分支：进程级一次性 WSAStartup（引用计数持有至进程退出，事件对象与
+// 网络事件注册的前置条件由此保证；与调用方套接字层的初始化解耦）
+void startupWinsockOnce()
+{
+    static const bool started = [] {
+        WSADATA data{};
+        return ::WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }();
+    (void)started;
+}
+
+#endif  // _WIN32
+
 }  // namespace
 
 // 监听条目：fd 的引擎描述符与回调（仅 Reactor 线程访问，无锁）
+#ifdef _WIN32
+
+// Windows 分支：WSAEventSelect 把套接字网络事件折进自建 WSAEVENT，asio
+// object_handle 挂其单一合并等待——读/写两向共用一次就绪交付，方向掩码由
+// WSAEnumNetworkEvents 枚举（带事件调用即原子复位）得出。事件对象由 handle
+// 托管（service destroy 负责 CloseHandle），条目析构只解除套接字关联。
+struct NetReactor::WatchEntry {
+    explicit WatchEntry(boost::asio::io_context &context)
+        : handle(context)
+    {
+    }
+
+    ~WatchEntry()
+    {
+        // 先解除套接字与事件对象的关联再析构 handle，避免 Winsock 在条目
+        // 存续期外仍指向已关闭事件；原生 socket 归调用方关闭，此处只撤关联
+        if (sock != INVALID_SOCKET) {
+            ::WSAEventSelect(sock, nullptr, 0);
+        }
+    }
+
+    uint64_t generation = 0;  // 代际计数（调用方维护，注销校验用）
+    uint32_t events = 0;      // 当前监听的 Event 掩码
+    EventCallback cb;         // 事件回调
+    SOCKET sock = INVALID_SOCKET;        // 受监听套接字（不拥有，int 通道承载）
+    WSAEVENT event = WSA_INVALID_EVENT;  // 自建事件对象（handle 析构关闭）
+    boost::asio::windows::object_handle handle;  // 引擎侧等待对象（包装 event）
+    uint64_t waitSerial = 0;      // 在途合并等待序号（0=无在途）
+    long armedNetworkEvents = 0;  // WSAEventSelect 当前注册的网络事件集
+};
+
+#else
+
 struct NetReactor::WatchEntry {
     explicit WatchEntry(boost::asio::io_context &context)
         : descriptor(context)
@@ -53,6 +112,8 @@ struct NetReactor::WatchEntry {
     uint64_t readSerial = 0;  // 在途读等待序号（0=无在途）
     uint64_t writeSerial = 0; // 在途写等待序号（0=无在途）
 };
+
+#endif  // _WIN32
 
 // 定时任务条目：asio 稳定时钟定时器与到期回调（仅 Reactor 线程访问）
 struct NetReactor::TimerEntry {
@@ -72,6 +133,9 @@ struct NetReactor::BarrierTask {
 NetReactor::NetReactor()
     : _ioContext{std::make_unique<boost::asio::io_context>()}
 {
+#ifdef _WIN32
+    startupWinsockOnce();
+#endif
 }
 
 // 析构函数：确保线程退出并丢弃引擎（未执行的投递任务随上下文销毁）
@@ -250,12 +314,26 @@ void NetReactor::applyWatch(int fd, uint32_t events, uint64_t generation, EventC
 {
     auto it = _watches.find(fd);
     if (it == _watches.end()) {
+#ifdef _WIN32
+        // Windows 分支：新建条目自建事件对象并交 handle 托管，原生 socket
+        // 不包装不关闭；事件创建/接管失败时仍登记条目：等待不会触发，
+        // 由调用方 close 前的摘除纪律统一回收
+        auto entry = std::make_unique<WatchEntry>(*_ioContext);
+        entry->sock = static_cast<SOCKET>(fd);
+        entry->event = ::WSACreateEvent();
+        if (entry->event != WSA_INVALID_EVENT) {
+            boost::system::error_code ec;
+            entry->handle.assign(entry->event, ec);
+        }
+        it = _watches.emplace(fd, std::move(entry)).first;
+#else
         auto entry = std::make_unique<WatchEntry>(*_ioContext);
         boost::system::error_code ec;
         entry->descriptor.assign(fd, ec);
         // 接管失败（fd 已失效）时仍登记条目：等待不会触发，
         // 由调用方 close 前的摘除纪律统一回收
         it = _watches.emplace(fd, std::move(entry)).first;
+#endif
     }
     WatchEntry &entry = *it->second;
     entry.generation = generation;
@@ -271,8 +349,13 @@ void NetReactor::removeWatch(int fd, uint64_t generation)
     if (it == _watches.end() || it->second->generation != generation) {
         return;  // 代际不匹配的注销请求静默忽略（已被更新的监听接管）
     }
+#ifdef _WIN32
+    // Windows 分支：条目析构解除套接字关联并以取消落地在途等待，原生 socket 不关闭
+    _watches.erase(it);
+#else
     it->second->descriptor.release();
     _watches.erase(it);
+#endif
 }
 
 // 按条目的监听意愿调整读/写两类在途等待：意愿不变时保持现有等待，
@@ -280,6 +363,39 @@ void NetReactor::removeWatch(int fd, uint64_t generation)
 // 重挂经引擎重新登记，内核对就绪中的 fd 会重新交付事件）
 void NetReactor::refreshWatch(int fd, WatchEntry &entry)
 {
+#ifdef _WIN32
+    const bool wantRead = (entry.events & static_cast<uint32_t>(Event::kReadable)) != 0;
+    const bool wantWrite = (entry.events & static_cast<uint32_t>(Event::kWritable)) != 0;
+    if (!wantRead && !wantWrite) {
+        // 两向都不再需要：撤掉在途合并等待（取消完成带旧序号落地即弃）
+        if (entry.waitSerial != 0) {
+            boost::system::error_code ec;
+            entry.handle.cancel(ec);
+            entry.waitSerial = 0;
+        }
+        return;
+    }
+    if (entry.event == WSA_INVALID_EVENT) {
+        return;  // 事件对象创建失败（fd 已失效等）：等待无从挂起，条目仍由摘除纪律回收
+    }
+    // 按当前意愿整体重登记网络事件（重复调用即替换注册，幂等）；FD_CLOSE
+    // 归入可读意愿，与 POSIX「挂断以 EOF 可读形态到达」的交付口径对齐
+    const long desired = (wantRead ? FD_READ | FD_CLOSE : 0L) | (wantWrite ? FD_WRITE : 0L);
+    if (entry.waitSerial != 0 && entry.armedNetworkEvents == desired) {
+        return;  // 意愿未变且等待在途：保持现有等待（同 POSIX 快路径）
+    }
+    if (::WSAEventSelect(entry.sock, entry.event, desired) != 0) {
+        return;  // 注册失败：本条目等待静默失效，交由 close 前的摘除纪律回收
+    }
+    entry.armedNetworkEvents = desired;
+    if (entry.waitSerial == 0) {
+        const uint64_t serial = _nextWaitSerial.fetch_add(1);
+        entry.waitSerial = serial;
+        entry.handle.async_wait([this, fd, serial](const boost::system::error_code &ec) {
+            onWatchReady(fd, serial, 1, ec);
+        });
+    }
+#else
     const bool wantRead = (entry.events & static_cast<uint32_t>(Event::kReadable)) != 0;
     const bool wantWrite = (entry.events & static_cast<uint32_t>(Event::kWritable)) != 0;
     if (wantRead == (entry.readSerial != 0) && wantWrite == (entry.writeSerial != 0)) {
@@ -295,34 +411,108 @@ void NetReactor::refreshWatch(int fd, WatchEntry &entry)
     if (wantWrite) {
         armWriteWait(fd, entry);
     }
+#endif
 }
 
 // 挂读就绪等待
 void NetReactor::armReadWait(int fd, WatchEntry &entry)
 {
+#ifdef _WIN32
+    // Windows 分支：读/写共用单事件合并等待，方向入口退化为意愿刷新落实
+    refreshWatch(fd, entry);
+#else
     const uint64_t serial = _nextWaitSerial.fetch_add(1);
     entry.readSerial = serial;
     entry.descriptor.async_wait(boost::asio::posix::descriptor_base::wait_read,
                                 [this, fd, serial](const boost::system::error_code &ec) {
                                     onWatchReady(fd, serial, 1, ec);
                                 });
+#endif
 }
 
 // 挂写就绪等待
 void NetReactor::armWriteWait(int fd, WatchEntry &entry)
 {
+#ifdef _WIN32
+    // Windows 分支：读/写共用单事件合并等待，方向入口退化为意愿刷新落实
+    refreshWatch(fd, entry);
+#else
     const uint64_t serial = _nextWaitSerial.fetch_add(1);
     entry.writeSerial = serial;
     entry.descriptor.async_wait(boost::asio::posix::descriptor_base::wait_write,
                                 [this, fd, serial](const boost::system::error_code &ec) {
                                     onWatchReady(fd, serial, 2, ec);
                                 });
+#endif
 }
 
 // 就绪等待完成入口：陈旧完成按序号与查表失配丢弃
 void NetReactor::onWatchReady(int fd, uint64_t serial, int waitType,
                               const boost::system::error_code &ec)
 {
+#ifdef _WIN32
+    (void)waitType;  // Windows 分支：合并等待不分方向，掩码由网络事件枚举决定
+    auto it = _watches.find(fd);
+    if (it == _watches.end() || !it->second) {
+        return;  // 已摘除，陈旧完成直接丢弃
+    }
+    WatchEntry &entry = *it->second;
+    if (entry.waitSerial != serial) {
+        return;  // 已被更新的等待取代
+    }
+    entry.waitSerial = 0;
+    if (ec == boost::asio::error::operation_aborted) {
+        return;  // 取消路径：不再续挂，由意愿刷新方接管
+    }
+
+    uint32_t mask = 0;
+    if (ec) {
+        mask = static_cast<uint32_t>(Event::kError);
+    } else {
+        // 枚举网络事件并原子复位事件对象，陈旧信号不残留到下一轮等待
+        WSANETWORKEVENTS network{};
+        if (::WSAEnumNetworkEvents(entry.sock, entry.event, &network) != 0) {
+            mask = static_cast<uint32_t>(Event::kError);
+        } else {
+            // FD_CLOSE 以可读形态交付（对端挂断读得 EOF，与 POSIX 同口径），
+            // 各事件位错误码非零时并报 kError
+            if ((network.lNetworkEvents & (FD_READ | FD_CLOSE)) != 0) {
+                mask |= static_cast<uint32_t>(Event::kReadable);
+            }
+            if ((network.lNetworkEvents & FD_WRITE) != 0) {
+                mask |= static_cast<uint32_t>(Event::kWritable);
+            }
+            if ((network.lNetworkEvents & FD_READ) != 0
+                && network.iErrorCode[FD_READ_BIT] != 0) {
+                mask |= static_cast<uint32_t>(Event::kError);
+            }
+            if ((network.lNetworkEvents & FD_WRITE) != 0
+                && network.iErrorCode[FD_WRITE_BIT] != 0) {
+                mask |= static_cast<uint32_t>(Event::kError);
+            }
+            if ((network.lNetworkEvents & FD_CLOSE) != 0
+                && network.iErrorCode[FD_CLOSE_BIT] != 0) {
+                mask |= static_cast<uint32_t>(Event::kError);
+            }
+        }
+    }
+    // 拷贝出表再调用：回调内自改表（watch/unwatch）不影响本次派发，
+    // 异常被吞以保证引擎线程存活（核心层无日志设施）
+    if (mask != 0) {
+        EventCallback cb = entry.cb;
+        if (cb) {
+            try {
+                cb(fd, mask);
+            } catch (...) {
+            }
+        }
+    }
+    // 回调可能已改表：重新定位后再续挂下一轮等待
+    it = _watches.find(fd);
+    if (it != _watches.end() && it->second) {
+        refreshWatch(fd, *it->second);
+    }
+#else
     auto it = _watches.find(fd);
     if (it == _watches.end() || !it->second) {
         return;  // 已摘除，陈旧完成直接丢弃
@@ -364,6 +554,7 @@ void NetReactor::onWatchReady(int fd, uint64_t serial, int waitType,
     if (it != _watches.end() && it->second) {
         refreshWatch(fd, *it->second);
     }
+#endif
 }
 
 // 创建定时任务（仅 Reactor 线程调用）
@@ -441,6 +632,11 @@ void NetReactor::runBarrier(std::shared_ptr<BarrierTask> state)
 // 停机清理：引擎已停，此刻是监听表与任务表的唯一访问者
 void NetReactor::clearAll()
 {
+#ifdef _WIN32
+    // Windows 分支：条目析构撤销套接字关联、以取消落地在途等待并回收事件
+    // 对象；原生 socket 归调用方关闭
+    _watches.clear();
+#else
     // 监听条目逐个 release：撤销引擎注册且不关闭原生 fd（fd 归调用方 close）
     for (auto &entryPair : _watches) {
         if (entryPair.second) {
@@ -448,6 +644,7 @@ void NetReactor::clearAll()
         }
     }
     _watches.clear();
+#endif
     _timers.clear();
 
     // 未完成的同步任务兜底执行并应答，等待方永不悬死

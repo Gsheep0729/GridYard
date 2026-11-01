@@ -16,11 +16,16 @@
 #include <boost/asio/bind_executor.hpp>
 #include <boost/asio/post.hpp>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <cerrno>
 #include <cstring>
@@ -30,6 +35,11 @@
 namespace gy::net {
 
 namespace {
+
+#ifdef _WIN32
+// Windows 分支：无 socklen_t，Winsock 地址长度参数为 int（尖兵报告 N16）
+using socklen_t = int;
+#endif
 
 // 把套接字地址格式化为文本（IPv4 映射地址归一化为点分十进制）
 std::string formatAddress(const sockaddr *address, socklen_t length)
@@ -57,6 +67,17 @@ std::string formatAddress(const sockaddr *address, socklen_t length)
     }
     return text;
 }
+
+#ifdef _WIN32
+
+// Windows 分支：Winsock 不写 errno，失败文案以错误码数值呈现（文字化转译
+// 留给上层适配；POSIX 侧 strerror(errno) 语义不跨平台，尖兵报告 N6）
+std::string lastNetErrorText()
+{
+    return "winsock error " + std::to_string(::WSAGetLastError());
+}
+
+#endif  // _WIN32
 
 }  // namespace
 
@@ -98,18 +119,46 @@ bool TcpServerCore::listen(uint16_t port, bool dualStack)
 // 创建监听描述符
 bool TcpServerCore::createListener(int family, uint16_t port)
 {
+#ifdef _WIN32
+    const SOCKET rawFd = ::socket(family, SOCK_STREAM, 0);
+    if (rawFd == INVALID_SOCKET) {
+        _errorText = std::string("socket 创建失败: ") + lastNetErrorText();
+        return false;
+    }
+    // Windows 分支：socket() 无 SOCK_NONBLOCK/SOCK_CLOEXEC 创建位——非阻塞以
+    // FIONBIO 补齐，执行时关闭无对应概念可省（尖兵报告 N5/N11）
+    const int fd = static_cast<int>(rawFd);
+    const u_long nonBlocking = 1;
+    ::ioctlsocket(rawFd, FIONBIO, &nonBlocking);
+#else
     const int fd = ::socket(family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (fd < 0) {
         _errorText = std::string("socket 创建失败: ") + std::strerror(errno);
         return false;
     }
+#endif
 
     const int reuse = 1;
+#ifdef _WIN32
+    // Windows 分支：选项指针为 const char*、长度为 int；SO_REUSEADDR 在
+    // Windows 语义更宽（后绑者可抢占共享端口），多实例发现端口目标下可接受
+    //（尖兵报告 N13）
+    ::setsockopt(static_cast<SOCKET>(fd), SOL_SOCKET, SO_REUSEADDR,
+                 reinterpret_cast<const char *>(&reuse), static_cast<int>(sizeof(reuse)));
+#else
     ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
     if (family == AF_INET6) {
         // 双栈监听必须显式关闭 V6ONLY，IPv4 客户端经映射地址接入
         const int v6only = 0;
+#ifdef _WIN32
+        // Windows 分支：默认值为 1，显式置 0 后与 Linux 行为一致（尖兵报告 N16）
+        ::setsockopt(static_cast<SOCKET>(fd), IPPROTO_IPV6, IPV6_V6ONLY,
+                     reinterpret_cast<const char *>(&v6only),
+                     static_cast<int>(sizeof(v6only)));
+#else
         ::setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+#endif
     }
 
     sockaddr_storage address{};
@@ -129,13 +178,23 @@ bool TcpServerCore::createListener(int family, uint16_t port)
     }
 
     if (::bind(fd, reinterpret_cast<const sockaddr *>(&address), addressLength) != 0) {
+#ifdef _WIN32
+        _errorText = std::string("bind 失败: ") + lastNetErrorText();
+        ::closesocket(static_cast<SOCKET>(fd));
+#else
         _errorText = std::string("bind 失败: ") + std::strerror(errno);
         ::close(fd);
+#endif
         return false;
     }
     if (::listen(fd, 128) != 0) {
+#ifdef _WIN32
+        _errorText = std::string("listen 失败: ") + lastNetErrorText();
+        ::closesocket(static_cast<SOCKET>(fd));
+#else
         _errorText = std::string("listen 失败: ") + std::strerror(errno);
         ::close(fd);
+#endif
         return false;
     }
 
@@ -184,7 +243,12 @@ bool TcpServerCore::armAcceptOnEngine()
                      _fd, ec);
     if (ec) {
         _errorText = std::string("监听描述符接管失败: ") + ec.message();
+#ifdef _WIN32
+        // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+        ::closesocket(static_cast<SOCKET>(_fd));
+#else
         ::close(_fd);
+#endif
         _fd = -1;
         _port = 0;
         return false;
@@ -229,7 +293,13 @@ void TcpServerCore::onAcceptCompleted(const boost::system::error_code &ec)
             : std::string();
         ConnectionCallback onConnection = _onConnection;
         if (!onConnection) {
+#ifdef _WIN32
+            // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）；
+            // 无人接管：立即回收，避免无主连接悬挂
+            ::closesocket(static_cast<SOCKET>(client));
+#else
             ::close(client);  // 无人接管：立即回收，避免无主连接悬挂
+#endif
         } else {
             onConnection(client, peerAddress);
         }

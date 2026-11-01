@@ -17,12 +17,17 @@
 #include <boost/asio/bind_executor.hpp>
 #include <boost/asio/post.hpp>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -34,6 +39,11 @@ namespace gy::net {
 namespace {
 
 constexpr size_t kReceiveChunkBytes = 64 * 1024;  // 单次读取块大小
+
+#ifdef _WIN32
+// Windows 分支：无 socklen_t，Winsock 地址长度参数为 int（尖兵报告 N16）
+using socklen_t = int;
+#endif
 
 // 把套接字地址格式化为文本：IPv4 映射的 IPv6 地址归一化为点分十进制
 std::string formatPeerAddress(const sockaddr *address, socklen_t length)
@@ -138,7 +148,12 @@ bool TcpSocketCore::adoptOnEngine(int descriptor)
         _socket.assign(boost::asio::ip::tcp::v6(), descriptor, ec);
     }
     if (ec) {
+#ifdef _WIN32
+        // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+        ::closesocket(static_cast<SOCKET>(descriptor));
+#else
         ::close(descriptor);
+#endif
         return false;
     }
 
@@ -172,10 +187,18 @@ int64_t TcpSocketCore::bytesAvailable() const
 {
     int64_t total = bufferedBytes();
     if (_fd >= 0) {
+#ifdef _WIN32
+        // Windows 分支：FIONREAD 经 ioctlsocket，出参为 u_long*（尖兵报告 N10）
+        u_long pending = 0;
+        if (::ioctlsocket(static_cast<SOCKET>(_fd), FIONREAD, &pending) == 0 && pending > 0) {
+            total += pending;
+        }
+#else
         int pending = 0;
         if (::ioctl(_fd, FIONREAD, &pending) == 0 && pending > 0) {
             total += pending;
         }
+#endif
     }
     return total;
 }

@@ -19,9 +19,12 @@ add_library(gy_net_core STATIC ${GY_NET_CORE_SOURCES})
 target_include_directories(gy_net_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gy_net_core PUBLIC Threads::Threads gy_asio)
 
-# Windows：WinSock2 / IP Helper 系统库；win_* 事件泵与套接字核心实现文件为占位，
-# 待后续里程碑落位后在此分支追加 target_sources（本里程碑不新建 win 实现文件，
-# 见 doc/plan/平台扩展/Windows可行性报告.local.md §6.2 批次 1）
+# Windows：WinSock2 / IP Helper 系统库。事件泵与套接字核心的 Windows 后端已按
+# 同文件 #ifdef _WIN32 分支落位（net_reactor / tcp_socket_core / tcp_server_core
+# 三文件，不新建 win_* 实现文件，原 target_sources 占位方案随之取消）；ws2_32
+# 供三文件的 Winsock 调用（WSAStartup/WSAEventSelect/closesocket 等）链接，
+# iphlpapi 为客户端网络适配层移植（GetAdaptersAddresses，报告 N8）的预留，当前
+# 尚无消费点。见 doc/plan/平台扩展/Windows可行性报告.local.md §6.2 批次 1
 if(WIN32)
     target_link_libraries(gy_net_core PRIVATE ws2_32 iphlpapi)
 endif()
