@@ -175,6 +175,13 @@ jobs:
           set -o pipefail
           # Ninja 预装于 windows runner（报告§3.2 前提3）；万一镜像漂移则 pip 兜底（脚本目录已在 PATH）
           command -v ninja || python -m pip install --user ninja
+          # 第 5 轮兜底（R3/R4 双证 run 41326068384 / 41338043587：Release 9 目标构建 exit 0 而
+          # 测试 exe 全灭，tests 直下完整枚举仅 3 个 CMake 元文件）——"链接后文件被摘除"型死因
+          # 未排除：windows runner 的 Defender 实时扫描隔离新落盘未签名 exe 属已知现象。对
+          # workspace 与 RUNNER_TEMP 加扫描排除；命令失败不致命（::warning:: 留痕），是否真凶
+          # 由本步骤尾部落盘注解与 windeployqt 步全树取证联合判定，不预设结论。
+          powershell.exe -NoProfile -Command 'Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE; Add-MpPreference -ExclusionPath $env:RUNNER_TEMP' \
+            || echo "::warning::Defender 扫描排除未生效，删除型死因的预防性兜底缺席"
           # §5.2 第二跳落地：-G Ninja（import std 在 MSVC 上仅 Ninja 支持，首跑 VS 生成器已在
           # run 41313929185 取证失败）；第 2 轮该配置 64s 通过（run 41320557061）——点 B 取证成功。
           # CMAKE_BUILD_TYPE=Release：aqt 在线 base 包按官方口径 release-only（无 Qt6Cored.dll；
@@ -212,6 +219,21 @@ jobs:
             || { grep -E "error C[0-9]+|fatal error|error:|FAILED:" /tmp/win-build.log | head -8 > /tmp/win-ann2.txt
                  while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann2.txt
                  exit 1; }
+          # 第 5 轮取证升级：把"构建 exit 0 瞬间"的 exe 落盘状态匿名钉死（::notice:: 与失败
+          # 注解分属不同配额）。下一轮与 windeployqt 步的 Linking 行证据联合即可三分死因：
+          # 全树 0 且无 CXX executable Linking 行 → 构建系统层未链接；
+          # 此处计 0（或此后归 0）且有 Linking 行 → 链接后文件被摘除（Defender 型）；
+          # 计 0 但全树搜得 → 落盘他处（windeployqt 步会自动归位）。
+          shopt -s nullglob globstar
+          built=(build-win/tests/*.exe)
+          tree=()
+          for f in build-win/**/*.exe; do case "$f" in *CMakeFiles*) continue ;; esac; tree+=("$f"); done
+          # 恢复垫：立即抄送一份到 workspace 外的 runner 临时盘（RUNNER_TEMP 已加入扫描排除），
+          # windeployqt 步在 tests 直下与全树均搜不到 exe 时从这里回填
+          rescue="$(cygpath -u "${RUNNER_TEMP:-.}" 2>/dev/null || echo "${RUNNER_TEMP:-.}")/gy-exe-rescue"
+          mkdir -p "$rescue"
+          for exe in "${built[@]}"; do cp -f "$exe" "$rescue/"; done
+          echo "::notice::构建 exit 0 后 exe 落盘：tests 直下计 ${#built[@]}（${built[*]:-无}）｜全树计 ${#tree[@]}｜恢复垫抄送 $(ls "$rescue" | wc -l) 个至 $rescue"
           # TODO(尖兵)：POSIX 抽象层落地后放开全量（报告 B3-B7）：
           # cmake --build build-win
 
@@ -219,22 +241,58 @@ jobs:
         shell: bash
         run: |
           # 33 个测试均为 qt_add_executable，Windows 无 rpath：Qt6*.dll 与平台插件需就位（报告 B19）。
-          # 第 3 轮取证（run 41326068384 / 6d519bf）：第 5 步 9 目标构建 exit 0，本步骤自检
-          # `find build-win/tests -name "*.exe"` 计 0 失败。判为 shell 层而非构建层：exe 一直在
-          # build-win/tests/ 直下——全仓 grep 零 OUTPUT_DIRECTORY 搬运、本地 build-ninja/tests/
-          # CTestTestfile.cmake:7 生成期 COMMAND 即 build-ninja/tests/ 直下默认布局、第 2 轮 ctest
-          # 把 6 个 exe 全部拉起跑满 300s（1801s≈6×300s）；而同型 find 循环在第 2 轮 windeployqt
-          # 步骤 0s 空转（静默空跑）。最自洽机制：runner machine PATH 首段 %SystemRoot%\system32
-          # 的 find.exe 与 GNU find 同名遮蔽——本步其余 GNU 工具（grep/tee/tail/cygpath）System32
-          # 均无同名，唯 find 撞名（日志原文 403 凭据墙无法直证，见 ::error:: 布局取证兜底）。
-          # 故弃 find 改 bash glob（nullglob 数组），计 0 时把实际落盘布局注入注解供下轮取证。
-          shopt -s nullglob
+          # 第 3 轮取证（run 41326068384 / 6d519bf）：第 5 步 9 目标构建 exit 0，自检 find 计 0，
+          # 判为 System32 find.exe 同名遮蔽（R2 ctest 曾把 6 exe 全拉起跑满 300s），故改 bash glob。
+          # 第 4 轮取证（run 41338043587 / e748937）：glob 同样计 0——遮蔽说出局；build-win/tests
+          # 完整枚举仅 3 个 CMake 元文件（head -4 只取到 3 条即全列，无 exe 无 Release 子目录），
+          # 而顶层 ls 因 head -4 截断把全部小写条目折叠、证据不完整。Debug（R2）exe 在 tests 直下、
+          # Release（R3/R4）全灭且构建 exit 0，单配置 Ninja 下 BuildType 不应改变布局——三分待判：
+          # 构建系统层未链接 / 链接后文件被摘除 / 落盘他处。本版三管齐下（配第 5 步尾部 ::notice::
+          # 落盘注解与 Defender 扫描排除，见上方构建步）：
+          #  ① 布局自适应：tests 直下不足 6 时全树搜 exe（globstar，不依赖 find——第 2 轮已实证
+          #     System32 find.exe 同名遮蔽）并归位到 CTestTestfile.cmake 生成期路径（全仓 grep 零
+          #     OUTPUT_DIRECTORY 搬运 → 即 build-win/tests 直下），ctest 步零改动；
+          #  ② 恢复垫回填：全树亦 0 时从第 5 步抄送的 RUNNER_TEMP/gy-exe-rescue 回填（摘除型实锤）；
+          #  ③ 归位后仍不足 6 才失败，取证升级：顶层/tests 完整枚举（不再 head 截断）+ 全树 exe +
+          #     /tmp/win-build.log 的 grep -E "Linking|\.exe$|ninja" 行注入（ninja 到底链没链 exe）。
+          shopt -s nullglob globstar
+          rescue="$(cygpath -u "${RUNNER_TEMP:-.}" 2>/dev/null || echo "${RUNNER_TEMP:-.}")/gy-exe-rescue"
           exes=(build-win/tests/*.exe)
           if [ "${#exes[@]}" -lt 6 ]; then
+            found=()
+            for f in build-win/**/*.exe; do
+              case "$f" in *CMakeFiles*) continue ;; esac   # 排除 CompilerIdCXX/CMakeTmp 探测产物
+              found+=("$f")
+            done
+            if [ "${#found[@]}" -gt 0 ]; then
+              mkdir -p build-win/tests
+              for f in "${found[@]}"; do
+                [ "$(dirname "$f")" = "build-win/tests" ] && continue   # 已在位的不重复拷贝
+                cp -f "$f" "build-win/tests/$(basename "$f")"
+              done
+              echo "::notice::tests 直下仅 ${#exes[@]} 个，全树搜得 ${#found[@]} 个 exe 并归位到 tests 直下：${found[*]}"
+            else
+              rescued=("$rescue"/*.exe)
+              if [ "${#rescued[@]}" -gt 0 ]; then
+                mkdir -p build-win/tests
+                for f in "${rescued[@]}"; do cp -f "$f" build-win/tests/; done
+                echo "::warning::tests 直下与全树均搜不到 exe——从第 5 步恢复垫回填 ${#rescued[@]} 个（构建后被摘除型死因实锤，扫描排除未防住）：${rescued[*]}"
+              fi
+            fi
+            exes=(build-win/tests/*.exe)   # 归位/回填后重验
+          fi
+          if [ "${#exes[@]}" -lt 6 ]; then
             echo "::error::build-win/tests 仅见 ${#exes[@]} 个测试 exe（应 6），构建产物布局异常"
-            { echo "=== 实际布局取证：build-win 顶层 ==="; ls build-win | head -4
-              echo "=== build-win/tests ==="; ls build-win/tests | head -4; } 2>&1 \
-              | while IFS= read -r line; do echo "::error::${line:0:300}"; done
+            link_cnt=$(grep -cE "Linking|\.exe$|ninja" /tmp/win-build.log 2>/dev/null)
+            exe_cnt=$(grep -c "CXX executable" /tmp/win-build.log 2>/dev/null)
+            tree=()
+            for f in build-win/**/*.exe; do case "$f" in *CMakeFiles*) continue ;; esac; tree+=("$f"); done
+            { echo "[顶层完整] build-win: $(ls build-win 2>&1 | tr '\n' ' ')"
+              echo "[tests完整] build-win/tests: $(ls build-win/tests 2>&1 | tr '\n' ' ')"
+              echo "[全树exe] /tmp/win-build.log 中 Linking|\.exe$|ninja 行计 ${link_cnt:-日志缺失}（CXX executable 行计 ${exe_cnt:-0}）｜build-win/**/*.exe（除 CMakeFiles）计 ${#tree[@]}：${tree[*]:-无匹配}"
+              echo "[恢复垫] $rescue: $(ls "$rescue" 2>/dev/null | wc -l) 个"
+              grep -nE "Linking|\.exe$|ninja" /tmp/win-build.log 2>/dev/null | tail -5 | sed 's/^/[ninja日志] /'
+            } 2>&1 | while IFS= read -r line; do echo "::error::${line:0:600}"; done
             exit 1
           fi
           for exe in "${exes[@]}"; do
