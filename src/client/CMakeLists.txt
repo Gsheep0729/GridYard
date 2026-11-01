@@ -161,6 +161,8 @@ set(GRIDYARD_CLIENT_ICON_RESOURCES
     icons/icon-ellipsis.svg
     icons/icon-chevron-down.svg
     icons/icon-chevron-right.svg
+    icons/icon-history.svg
+    icons/icon-clear.svg
     icons/gridyard.png
     icons/gridyard-128.png
     icons/gridyard.svg

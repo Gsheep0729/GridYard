@@ -151,40 +151,85 @@ Frame {
                            elide: Text.ElideRight
                            Layout.fillWidth: true
                        }
+
+                       // 在线状态词并入副行（U2-13 会话头部重新分工，明确推翻
+                       // 7-V V-10 的组间距分组）：状态只在副行出现一次，不再与
+                       // 右侧动作按钮同排混居；离线字色与设备卡状态词同走 U2-25
+                       // 信息性词档
+                       Label {
+                           text: deviceSessionView.isOnline ? qsTr("在线") : qsTr("离线")
+                           color: deviceSessionView.isOnline
+                                  ? Style.Color.success : Style.Color.textWeakStrong
+                           font.pixelSize: Style.Type.caption
+                           font.bold: true
+                       }
                    }
                }
 
-               Label {
-                   text: deviceSessionView.isOnline ? qsTr("在线") : qsTr("离线")
-                   color: deviceSessionView.isOnline ? Style.Color.success : Style.Color.textWeak
-                   font.pixelSize: Style.Type.caption
-                   font.bold: true
+               // 历史记录入口：查看跨重启保留的聊天与传输历史。U2-13 头部重新
+               // 分工后动作区图标化：白底浮起 chip + 边框的圆形图标按钮（边框
+               // token 压 surface 不可见，压白底才成立），语义由 ToolTip 与
+               // 读屏名承载（qsTr 既有键移到 Accessible.name，不废键）
+               ToolButton {
+                   id: historyButton
+                   Accessible.name: qsTr("历史")
+                   Layout.preferredHeight: 32
+                   leftPadding: 8
+                   rightPadding: 8
+                   ToolTip.text: qsTr("查看与该设备的历史记录")
+                   ToolTip.delay: 500
+                   ToolTip.visible: hovered
+                   onClicked: deviceHistoryDialog.open()
+                   contentItem: GlyphIcon {
+                       glyph: "../icons/icon-history.svg"
+                       // 悬停前景走 primaryStrong：primarySoft 底的标准配对前景
+                       // （primary 实色压浅底不足 4.5，深浅两表同规）
+                       iconColor: historyButton.hovered ? Style.Color.primaryStrong
+                                                        : Style.Color.textSecondary
+                       implicitWidth: 16
+                       implicitHeight: 16
+                   }
+                   background: Rectangle {
+                       radius: historyButton.height / 2
+                       color: historyButton.hovered ? Style.Color.primarySoft
+                                                    : Style.Color.window
+                       border.color: Style.Color.border
+                       border.width: 1
+                   }
                }
 
-              // 状态与动作的组间距：把"在线"状态标签同"历史/清理"按钮组拉开，
-              // 避免状态词与可点按钮等距混排让新用户把状态误当按钮（7-V V-10）
-              Item { Layout.preferredWidth: Style.Space.lg }
-
-              // 历史记录入口：查看跨重启保留的聊天与传输历史
-              ToolButton {
-                  text: qsTr("历史")
-                  Layout.preferredHeight: 32
-                  ToolTip.text: qsTr("查看与该设备的历史记录")
-                  ToolTip.delay: 500
-                  ToolTip.visible: hovered
-                  onClicked: deviceHistoryDialog.open()
-              }
-
-              ToolButton {
-                  text: qsTr("清理")
-                  enabled: deviceSessionView.finishedCount > 0
-                  Layout.preferredHeight: 32
-                  ToolTip.text: deviceSessionView.finishedCount > 0
-                                ? qsTr("清理已结束的传输记录")
-                                : qsTr("当前没有已结束的传输记录")
-                  ToolTip.delay: 500
-                  ToolTip.visible: hovered
-                  onClicked: clearMenu.open()
+               // 清理入口：弹出两档清空确认（仅记录 / 含已接收文件）。enabled
+               // 时序不变：无已结束记录时禁用，悬停解释禁用原因
+               ToolButton {
+                   id: clearButton
+                   enabled: deviceSessionView.finishedCount > 0
+                   Accessible.name: qsTr("清理")
+                   Layout.preferredHeight: 32
+                   leftPadding: 8
+                   rightPadding: 8
+                   ToolTip.text: deviceSessionView.finishedCount > 0
+                                 ? qsTr("清理已结束的传输记录")
+                                 : qsTr("当前没有已结束的传输记录")
+                   ToolTip.delay: 500
+                   ToolTip.visible: hovered
+                   onClicked: clearMenu.open()
+                   contentItem: GlyphIcon {
+                       glyph: "../icons/icon-clear.svg"
+                       // 悬停前景走 primaryStrong（primarySoft 底标准配对，
+                       // 见历史按钮注）；禁用回落装饰档 textWeak
+                       iconColor: !clearButton.enabled ? Style.Color.textWeak
+                                  : (clearButton.hovered ? Style.Color.primaryStrong
+                                                         : Style.Color.textSecondary)
+                       implicitWidth: 16
+                       implicitHeight: 16
+                   }
+                   background: Rectangle {
+                       radius: clearButton.height / 2
+                       color: clearButton.hovered && clearButton.enabled
+                              ? Style.Color.primarySoft : Style.Color.window
+                       border.color: Style.Color.border
+                       border.width: 1
+                   }
 
                    Menu {
                        id: clearMenu
