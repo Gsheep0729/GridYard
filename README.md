@@ -1,13 +1,62 @@
+<div align="center">
+
+<img src="src/client/icons/gridyard.png" width="128" alt="GridYard 鸽邮应用图标"/>
+
 # GridYard — 鸽邮
 
-> 局域网 P2P 文件传输与即时通讯桌面应用，全程零公网流量。
+**局域网 P2P 文件传输与即时通讯桌面应用，全程零公网流量。**
 
-当前版本：v8.3.0
+[![CI](https://github.com/Gsheep0729/GridYard/actions/workflows/ci.yml/badge.svg)](https://github.com/Gsheep0729/GridYard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Gsheep0729/GridYard)](https://github.com/Gsheep0729/GridYard/releases)
+[![License: Custom](https://img.shields.io/badge/License-Custom-blue)](./LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%E2%9C%93%20%7C%20Windows%20%E8%AE%A1%E5%88%92%E4%B8%AD-blue)](#下载安装)
+[![技术栈](https://img.shields.io/badge/C%2B%2B23-Qt%206.11%20%7C%20Boost.Asio%20vendored%20%7C%20CMake-blue)](#技术栈)
+[![Stars](https://img.shields.io/github/stars/Gsheep0729/GridYard?style=social)](https://github.com/Gsheep0729/GridYard/stargazers)
+[![Forks](https://img.shields.io/github/forks/Gsheep0729/GridYard?style=social)](https://github.com/Gsheep0729/GridYard/network/members)
+
+</div>
 
 | 项目版本 | v8.3.0 |
 | :--- | :--- |
 
 GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。两台接入同一网段的电脑即可互相发现、直传文件与文件夹、收发文本消息，无需任何中心服务器、账号登录或公网连接。基于自研 TLV 二进制协议、Qt6 全 QML 界面与 Boost.Asio 事件引擎加自研 POSIX 套接字封装构建，支持多文件目录传输、SHA-256 完整性校验、断线自动重连与本地历史持久化。
+
+---
+
+## 目录
+
+- [应用截图](#应用截图)
+- [核心特性](#核心特性)
+- [技术栈](#技术栈)
+- [下载安装](#下载安装)
+- [从源码构建](#从源码构建)
+- [Roadmap](#roadmap)
+- [系统架构](#系统架构)
+- [协议设计](#协议设计)
+- [设备发现与传输流程](#设备发现与传输流程)
+- [校园网协调服务器](#校园网协调服务器)
+- [仓库目录结构](#仓库目录结构)
+- [关键设计决策](#关键设计决策)
+- [性能与限制](#性能与限制)
+- [文档索引](#文档索引)
+- [团队](#团队)
+- [许可证](#许可证)
+
+---
+
+## 应用截图
+
+**主窗口全景：左侧栏与在线设备列表（GY-DEV1 在线）、右侧会话占位页，窗口居中完整无遮挡**
+
+![主窗口全景：左侧栏与在线设备列表（GY-DEV1 在线）、右侧会话占位页](doc/screenshots/main-window.png)
+
+**本机双实例互传进行中：向开发者实例 GY-DEV1 发送 1.5GB 文件，"传输中"徽标 + 进度条（512.0 MB / 1.5 GB · 33%）与取消入口**
+
+![本机双实例互传进行中，传输徽标与进度条](doc/screenshots/transfer-active.png)
+
+**偏好设置页：设备身份命名、存储与接收目录、自动接受文件开关**
+
+![偏好设置页](doc/screenshots/settings-page.png)
 
 ---
 
@@ -46,37 +95,98 @@ GridYard 是一款面向局域网场景的桌面文件传输与聊天工具。�
 
 ---
 
-## 快速开始
+## 下载安装
+
+发布产物发布在 GitHub Releases：**https://github.com/Gsheep0729/GridYard/releases**
+
+v8.3.0 的发布产物为两种 Linux 包（各带 `.sha256` 校验文件）：`.deb` 与 `.tar.gz`。
+
+> 截至本 README 更新（2026-11-01），GitHub Releases 线上最新发布仍为 **v6.8.1**（资产为 AppImage 与 tar.gz，无 deb）；上述 v8.3.0 产物已按下方打包脚本构建就绪，随版本发布上线后，下列安装命令即可使用。
+
+### Debian / Ubuntu（.deb）
+
+```bash
+sha256sum -c GridYard-v<版本>-amd64.deb.sha256
+sudo apt install ./GridYard-v<版本>-amd64.deb
+```
+
+deb 为自包含打包：精准剪裁后内置 Qt 运行时，部署至 `/opt/gridyard/`，并在 `/usr/bin/` 建立 `gridyard` 全局软链接、集成 FreeDesktop 桌面菜单。
+
+### 任意 Linux 发行版（.tar.gz 绿色解压）
+
+```bash
+sha256sum -c GridYard-v<版本>-linux-x86_64.tar.gz.sha256
+tar -xzf GridYard-v<版本>-linux-x86_64.tar.gz
+./GridYard-v<版本>-linux-x86_64/GridYard.sh
+```
+
+### AppImage（用脚本自建）
+
+v8.3.0 的 Release 产物**不包含** AppImage。需要 AppImage 可用仓库内脚本自建：
+
+```bash
+./src/scripts/build_appimage.sh
+```
+
+脚本自动从 `src/CMakeLists.txt` 提取版本号，打包前强制执行 GLIBC 基线守卫（`check_appimage_glibc.py`）；找到 `appimagetool` 时产出 `release/v<版本>/GridYard-v<版本>-x86_64.AppImage`，未找到时仅产出并校验 AppDir（导出 `APPIMAGETOOL` 指向后可重跑补打包）。
+
+### Arch Linux（PKGBUILD）
+
+仓库提供 `src/scripts/PKGBUILD`（依赖 qt6-base、qt6-declarative、qt6-svg、qt6-imageformats 等），Arch 用户手动构建：
+
+```bash
+cd src/scripts
+makepkg -si
+```
+
+### Windows
+
+暂无 Windows 产物，支持计划中（见 [Roadmap](#roadmap)）。
+
+---
+
+## 从源码构建
 
 ### 环境要求
 
 - GCC 15+（或 Clang 18+）
-- CMake 4.2.3+
-- Qt 6.10+（含 Quick、QuickControls2、QuickDialogs2、Widgets 模块）
+- CMake 4.2.3（须固定该版本：工程启用 C++23 `import std`，其 CMake 实验特性 UUID 按 CMake 版本硬编码，版本漂移会让 `import std` 检测失效）
+- Qt 6.10+（含 Quick、QuickControls2、QuickDialogs2、Widgets 模块；CI 固定使用 6.11.1）
+- Boost 无需安装：网络层所用 Boost.Asio 1.38.2 闭包子集已 vendored 于 `third_party/asio/`
 - Ninja（推荐）
 - Linux 桌面门户（KDE 使用 `xdg-desktop-portal-kde`）
 
 ### 构建与运行
 
 ```bash
-git clone <仓库地址>
+git clone https://github.com/Gsheep0729/GridYard.git
 cd GridYard
 
-# 配置（在 src 目录下）
-cmake -S src -B src/build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Debug
+# 配置（CMake 源码目录为 src/，构建目录自定，下文统一用 build-ninja）
+cmake -S src -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
 # 编译
-cmake --build src/build-ninja -j
+cmake --build build-ninja -j
 
 # 运行
-./src/build-ninja/client/appGridYard
+./build-ninja/client/appGridYard
 ```
 
 ### 运行测试
 
 ```bash
-ctest --test-dir src/build-ninja --output-on-failure
+ctest --test-dir build-ninja --output-on-failure
 ```
+
+> 测试须串行执行（勿加 `-j`）：UDP 45678 发现端口在并行下会串扰，CI 亦强制串行。当前共 33 个测试目标。
+
+### 打包脚本
+
+| 脚本 | 用途 |
+|:-----|:-----|
+| `src/scripts/build_tarball.sh` | Linux 绿色解压版 `.tar.gz` 打包：自动提取版本号，收集 Qt 动态库/插件/QML 模块，生成 `GridYard.sh` 启动脚本并输出 SHA256 校验码 |
+| `src/scripts/build_deb.sh` | Debian/Ubuntu 自包含 `.deb` 打包：白名单精准剪裁 Qt 组件并全局 strip，部署至 `/opt/gridyard/`，建立全局软链接与桌面菜单 |
+| `src/scripts/build_appimage.sh` | AppImage 打包：自动提取版本号并复用已配置构建目录，先执行 GLIBC 基线守卫，找到 `appimagetool` 时产出 AppImage，未找到时仅产出并校验 AppDir |
 
 ### 本机多实例测试（开发者模式）
 
@@ -136,6 +246,16 @@ AppImage 和压缩包运行时也使用上述系统目录，不在发布包同�
 | 设备别名持久化 | 通过，重启后 `name=GY-PC` 保持不变 |
 
 结论：AppImage 使用系统标准目录策略，配置、数据库和日志都在用户目录下正确持久化。修改设备别名后重启不会丢失。
+
+---
+
+## Roadmap
+
+| 事项 | 状态 |
+|:-----|:-----|
+| Windows 支持 | v8.4.0 计划中 |
+
+已发布版本的变更记录见 [CHANGELOG.md](./CHANGELOG.md) 与 [Releases](https://github.com/Gsheep0729/GridYard/releases)。
 
 ---
 
@@ -566,12 +686,14 @@ GridYard/
     │   │   ├── dir_serializer.{h,cpp}   # 目录遍历与哈希（走 gy_core）
     │   │   ├── history_controller.{h,cpp}  # 本地历史分页、筛选和清理
     │   │   ├── history_wiring.{h,cpp}   # 历史持久化装配
+    │   │   ├── local_ip_monitor.{h,cpp} # 本机 IP 变化监听（netlink 路由套接字）
     │   │   ├── logger.{h,cpp}           # 日志拦截器
     │   │   ├── peer_discovery_view_model.{h,cpp}  # 设备列表视图模型（分段与搜索）
     │   │   ├── post_to_ui_thread.h      # 后台线程回投 UI 线程
     │   │   ├── reachability_controller.{h,cpp}    # 邀请码、端点探测与协调查询入口
     │   │   ├── rendezvous_coordinator.{h,cpp}     # 协调客户端启停编排
     │   │   ├── shutdown_controller.{h,cpp}        # 退出排空与缓存清理
+    │   │   ├── single_instance_guard.{h,cpp}      # 单实例守卫（再次启动唤回已运行窗口）
     │   │   ├── transfer_controller.{h,cpp}        # 传输门面
     │   │   ├── transfer_session_manager.{h,cpp}   # 会话编排
     │   │   ├── transfer_session_mapper.{h,cpp}    # 会话记录映射与删除策略
@@ -625,16 +747,16 @@ GridYard/
     │   │   ├── RefreshIcon.qml
     │   │   ├── RelayConfirmDialog.qml
     │   │   ├── Sidebar.qml
+    │   │   ├── SecondaryButton.qml      # 次要按钮（高频弹窗统一视觉口径）
     │   │   ├── Toast.qml
     │   │   ├── TransferHistoryView.qml
     │   │   ├── TransferTaskCard.qml
     │   │   └── TrayIcon.qml
     │   ├── icons/                       # 文件类型与应用图标资源
-    │   │   ├── gridyard.png
+    │   │   ├── gridyard.png / gridyard-128.png / gridyard.svg
     │   │   ├── folder.svg
     │   │   └── file-*.svg
-    │   ├── images/                      # 预留图片资源
-    │   │   └── gridyard.png
+    │   ├── images/                      # 预留图片资源（当前为空）
     │   └── utils/                       # QML 工具模块
     │       ├── Style.js                 # 样式常量
     │       └── FormatUtils.js           # 格式化工具
@@ -656,11 +778,14 @@ GridYard/
     │   ├── check_core_isolation.py      # 核心纯净区零 Qt 隔离守卫
     │   ├── build_deb.sh                 # deb 打包
     │   ├── build_tarball.sh             # tarball 打包
+    │   ├── build_appimage.sh            # AppImage 打包（含 GLIBC 基线守卫）
+    │   ├── check_appimage_glibc.py      # AppImage 工件 GLIBC 基线检查
     │   └── PKGBUILD                     # Arch 打包
     ├── server/                          # V2 服务端（规划中）
     └── tests/                           # 单元测试与集成测试
         ├── CMakeLists.txt
         ├── test_utils/                  # port、wait、json_line、db_seed 测试工具
+        ├── test_app_controller.cpp
         ├── test_frame_codec.cpp
         ├── test_chat_message.cpp
         ├── test_chat_manager.cpp
@@ -688,6 +813,10 @@ GridYard/
         ├── test_relay_chain.cpp
         ├── test_backup.cpp
         ├── test_conversation_timeline_model.cpp
+        ├── test_keyboard_access.cpp
+        ├── test_screen_reader_semantics.cpp
+        ├── test_single_instance_guard.cpp
+        ├── test_tray_notification.cpp
         └── test_golden_baseline.cpp
 ```
 
@@ -749,4 +878,10 @@ GridYard/
 
 ## 许可证
 
-本项目为课程作业，版权归开发团队所有，保留所有权利。详情见 [LICENSE](./LICENSE)。
+本项目的 [LICENSE](./LICENSE) 由两部分拼接而成，本节如实呈现、不做统一口径：
+
+1. **保留所有权利声明**：版权所有 © 2026 GridYard Team（高扬 · 冯春霖 · 杜若贤）。本项目为课程作业成果，源代码、文档、设计图及相关资料的版权归开发团队所有；未经版权所有者书面许可，禁止以任何形式（包括但不限于复制、分发、修改、商用、发布衍生作品）使用本项目的任何部分，仅供课程评审、教学演示与团队内部学习使用。
+
+2. **GridYard "WE TRUST YOU" PUBLIC LICENSE（玩梗许可，Version 1, June 2026）**：以 WTFPL 风格给出宽松授权——第 0 条 "You just DO WHAT THE FUCK YOU WANT TO"，随后附交作业请喝奶茶（大杯、加珍珠、三杯）、抄作业"你的良心会痛"、软件不提供任何担保等玩笑条款。
+
+两部分授权口径并不一致（前半保留所有权利、后半宽松放行），以 LICENSE 原文为准，本 README 不代为合并诠释。
