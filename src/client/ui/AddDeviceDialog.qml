@@ -1,7 +1,7 @@
 /**
  * @file    AddDeviceDialog.qml
- * @version 8.2.1
- * @date 2026-11-01
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GY
  * @brief   添加设备对话框
  *
@@ -217,7 +217,12 @@ Dialog {
                     Accessible.name: text
                 }
 
-                SecondaryButton {
+                // 主操作恢复主按钮强调（批 1 验收遗留第 2 条）：品牌蓝实底白字，
+                // 白字压 U2-44 主色 5.17:1；高度随族 32px
+                Button {
+                    highlighted: true
+                    implicitHeight: 32
+                    font.pixelSize: Style.Type.body
                     Layout.alignment: Qt.AlignRight
                     text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("导入并连接")
                     Accessible.name: text
@@ -309,7 +314,11 @@ Dialog {
                     Accessible.name: text
                 }
 
-                SecondaryButton {
+                // 主操作同款主按钮强调（见上），与导入并连接两页口径一致
+                Button {
+                    highlighted: true
+                    implicitHeight: 32
+                    font.pixelSize: Style.Type.body
                     Layout.alignment: Qt.AlignRight
                     text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("测试并添加")
                     Accessible.name: text

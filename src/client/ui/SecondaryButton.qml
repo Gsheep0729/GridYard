@@ -1,7 +1,7 @@
 /**
  * @file    SecondaryButton.qml
- * @version 8.2.1
- * @date 2026-10-30
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   次要操作按钮
  *
@@ -17,7 +17,7 @@ import "../utils/Style.js" as Style
 Button {
     id: secondaryButton
 
-    font.pixelSize: 13  // 全族统一字号，调用处不再各自覆写
+    font.pixelSize: Style.Type.body  // 全族统一字号（U2-27：13 并入 14 档），调用处不再各自覆写
 
     contentItem: Label {
         text: secondaryButton.text

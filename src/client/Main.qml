@@ -1,7 +1,7 @@
 /**
  * @file    Main.qml
- * @version 8.2.1
- * @date 2026-11-01
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   GridYard 客户端根窗口
  *
@@ -51,8 +51,11 @@ ApplicationWindow {
                      .arg(AppController.applicationVersion)
     color: Style.Color.pageBg
 
-    // 统一 Material 主题色为品牌蓝（在根窗口设置后向全部子控件传播）
-    Material.theme: Material.Light
+    // 统一 Material 主题色为品牌蓝（在根窗口设置后向全部子控件传播）；
+    // 深浅跟随系统 colorScheme（C-10）：Material 控件层与 Style.Color 双表
+    // 访问器同步换挡，系统不支持时回落浅色
+    Material.theme: Qt.styleHints.colorScheme === Qt.Dark ? Material.Dark
+                                                          : Material.Light
     Material.primary: Style.Color.primary
     Material.accent: Style.Color.primary
 

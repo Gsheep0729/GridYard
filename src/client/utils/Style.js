@@ -1,15 +1,20 @@
 /**
  * @file    Style.js
- * @version 8.2.1
- * @date 2026-10-30
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GY
  * @brief   QML 界面样式常量
  *
  * 颜色按语义分组：底色、边框、品牌主色、状态色、文字色。
  * 状态色成对提供实色与浅底色（Soft），供标签、横幅、卡片背景使用。
+ * 深浅双表（C-10）：Light/Dark 两套同键色值，Color 访问器按
+ * Qt.styleHints.colorScheme 派发；getter 在绑定求值时读取 colorScheme
+ * 建立依赖，系统深浅切换后所有取色绑定自动重算，QML 侧无需逐处接线。
+ * 深色 statusWarn/Ok/Err 成对色按 WCAG 2.x 相对亮度公式复算 ≥4.5（见表内注）。
  */
 
-const Color = {
+// —— 浅色表（既有 43 色；primary 按 U2-44 拍板压深 #3B82F6→#2563EB，白字 5.17:1）——
+const Light = {
     // 底色
     pageBg: "#F5F7FA",
     surface: "#EDEDED",
@@ -25,8 +30,8 @@ const Color = {
     // 设备卡悬停底色：对实测列表底 #F7F7F7 各通道差 (24,17,7)，深一档且带冷味，
     // 灰度帧差 max≈18（旧值 surfaceLeft 仅 10 不可辨），与选中 primarySoft 同族更淡
     hoverSoft: "#DFE6F0",
-    // 品牌主色
-    primary: "#3B82F6",
+    // 品牌主色（U2-44：#2563EB 上白字 5.17:1 达 AA，旧值 #3B82F6 仅 3.68:1）
+    primary: "#2563EB",
     primarySoft: "#EFF6FF",
     primarySoftHover: "#DBEAFE",
     // 状态色（实色用于文字、圆点与标签底，Soft 用于大面积浅底）
@@ -66,11 +71,99 @@ const Color = {
     transparent: "#00000000"
 }
 
+// —— 深色表（与浅色表同键；深色下浮起面比平铺面亮一档，与浅色反向同层）——
+// statusWarn/Ok/Err 成对色按 WCAG 2.x 公式复算（0.2126R+0.7152G+0.0722B，sRGB
+// 反伽马）：警示 9.34、成功 9.64、失败 7.46，均 ≥4.5
+const Dark = {
+    // 底色：pageBg 为框架底，surface/surfaceLeft 为平铺面板（侧栏/会话页），
+    // 设备列表、文件夹卡、window 逐档上浮；浮层 menuBackground 比 window 深一档
+    pageBg: "#0F172A",
+    surface: "#1E293B",
+    surfaceLeft: "#1E293B",
+    surfaceMid: "#24314A",
+    surfaceSoft: "#26334A",
+    window: "#2D3A54",
+    menuBackground: "#25324A",
+    menuShadow: "#99000000",    // 深色下改纯黑 60%：冷灰影压不住近黑底（实机复核项）
+    // 边框
+    border: "#3C4C69",
+    borderSoft: "#33425C",
+    // 设备卡悬停底色：比列表底 surfaceMid 亮一档带冷味，比选中 primarySoft 更淡
+    hoverSoft: "#2A3A56",
+    // 品牌主色：深浅同值（白字 5.17:1 两表同过），Material.accent/选中条/气泡底随表生效
+    primary: "#2563EB",
+    primarySoft: "#1D3054",
+    primarySoftHover: "#2A4270",
+    // 状态色：语义实色深色下上浮一档，保圆点/文字在深底可读（error/success 作
+    // Toast 与危险按钮实底压白字时低于 AA，与浅色同源的既有问题，随 U2-05 复测）
+    success: "#34D399",
+    successSoft: "#0E2B20",
+    successHover: "#163D2E",
+    warning: "#FBBF24",
+    warningSoft: "#2E2309",
+    error: "#F87171",
+    errorHover: "#EF4444",
+    errorPressed: "#DC2626",
+    errorSoft: "#331A1D",
+    // 状态徽标成对色（深色实测：警示 9.34、成功 9.64、失败 7.46）；statusErrBg
+    // 与 errorSoft 拉开一档，失败卡上徽标不再与卡底同色（批 1 验收遗留第 1 条）
+    statusWarnBg: "#3A2D0B",
+    statusWarnFg: "#FCD34D",
+    statusOkBg: "#0C2E22",
+    statusOkFg: "#6EE7B7",
+    statusErrBg: "#3F2328",
+    statusErrFg: "#FCA5A5",
+    // 深底上的上浮前景：与浅色 primaryStrong 同语义（方向标签/链接字色）
+    primaryStrong: "#93C5FD",
+    receiveAccentStrong: "#C4B5FD",
+    // 文字（textWeak 与浅色同为装饰档，不参与信息可读性）
+    textMain: "#F1F5F9",
+    textSecondary: "#CBD5E1",
+    textMuted: "#A9B6C6",
+    textWeak: "#6B7F99",
+    textOnAccent: "#FFFFFF",  // 彩色底（主按钮、状态标签）上的文字
+    // 方向与侧栏
+    receiveAccent: "#A78BFA",  // 接收方向标识，与发送侧主色区分
+    receiveAccentSoft: "#251E42",  // 接收方向浅底（文件夹胶囊）
+    receiveAccentSoftHover: "#312958",
+    menubar: "#97A5B8",
+    menubarSelect: "#33425C",
+    menubarClicked: "#3A4A66",
+    transparent: "#00000000"
+}
+
+// 双表访问器：Color 的每个键派发到当前 colorScheme 对应表。getter 在绑定求值
+// 时读取 Qt.styleHints.colorScheme（Qt 6.5+，工程基线 6.10 满足）即建立响应
+// 依赖，深浅切换后取色绑定整体重算。键集与两表恒等，新增颜色键只改两表，
+// 访问器无需改动
+const Color = {}
+Object.keys(Light).forEach(function (key) {
+    Object.defineProperty(Color, key, {
+        enumerable: true,
+        get: function () {
+            return Qt.styleHints.colorScheme === Qt.Dark ? Dark[key] : Light[key]
+        }
+    })
+})
+
+// 字号梯度（U2-27 六档）：现存 11 档像素值向此收敛，13 并入 14、11 并入 10；
+// 全量 219 处替换登记为长期项，仅随触及文件顺带收敛
+const Type = {
+    badge: 10,      // 状态徽标与最小注记
+    caption: 12,    // 辅助行：时间戳、副行、计数
+    body: 14,       // 正文与控件文字
+    heading: 16,    // 区块小标题
+    title: 20,      // 弹窗标题
+    display: 48     // 品牌/空态大字
+}
+
 const Radius = {
     xs: 4,
+    badge: 6,   // 状态徽标专用档（U2-30）：比 xs 柔和、比 sm 收敛
     sm: 8,
     md: 10,
-    lg: 12
+    lg: 12,
+    xl: 16      // 大弹窗/浮层圆角（U2-26 允许新增的一档）
 }
 
 const Space = {

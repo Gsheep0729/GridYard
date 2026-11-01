@@ -1,7 +1,7 @@
 /**
  * @file    TransferTaskCard.qml
- * @version 8.2.1
- * @date 2026-11-01
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   传输任务卡片
  *
@@ -72,7 +72,7 @@ Frame {
         case "failed":
         case "rejected":
         case "cancelled":       return kFailedColor
-        default:                return "#9CA3AF"
+        default:                return Style.Color.textWeak
         }
     }
 
@@ -194,13 +194,17 @@ Frame {
                 font.bold: true
             }
 
-            // 状态标签：浅底深字，颜色随状态变化
+            // 状态标签：浅底深字，颜色随状态变化；描边取成对深字色——失败族卡底
+            // errorSoft 与徽标底 statusErrBg 同值（批 1 验收遗留第 1 条），同族
+            // 细边把徽标从卡底上圈出来，其余状态同款收口保持一族
             Rectangle {
                 objectName: "statusBadge"
                 Layout.preferredWidth: statusLabel.implicitWidth + 12
                 Layout.preferredHeight: statusLabel.implicitHeight + 4
-                radius: Style.Radius.xs
+                radius: Style.Radius.badge
                 color: taskCard.statusBg()
+                border.width: 1
+                border.color: taskCard.statusFg()
 
                 // 读屏语义：自绘徽标以 Indicator 角色播报，名字随状态词表更新；
                 // 内部同文文本置 ignored，读屏只播徽标名一次
@@ -218,7 +222,7 @@ Frame {
                     id: statusLabel
                     anchors.centerIn: parent
                     text: taskCard.statusText()
-                    font.pixelSize: 11
+                    font.pixelSize: Style.Type.badge
                     color: taskCard.statusFg()
                     font.bold: true
                     Accessible.ignored: true

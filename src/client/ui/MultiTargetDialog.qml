@@ -1,7 +1,7 @@
 /**
  * @file    MultiTargetDialog.qml
- * @version 8.2.1
- * @date 2026-10-30
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   多选群发目标选择弹窗
  *
@@ -326,7 +326,12 @@ Dialog {
                 onClicked: multiDialog.close()
             }
 
-            SecondaryButton {
+            // 主操作恢复主按钮强调（批 1 验收遗留第 2 条）：品牌蓝实底白字与
+            // 次操作的白底细边分层，白字压 U2-44 主色 5.17:1；高度随族 32px
+            Button {
+                highlighted: true
+                implicitHeight: 32
+                font.pixelSize: Style.Type.body
                 enabled: multiDialog._filePath.length > 0 && multiDialog._checkedCount > 0
                 // 被搜索隐藏的已勾设备仍参与发送：计数文案在此披露，用户可据此清理过滤词核对名单
                 text: multiDialog._hiddenCheckedCount > 0

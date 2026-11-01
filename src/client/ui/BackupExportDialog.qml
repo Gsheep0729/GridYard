@@ -1,7 +1,7 @@
 /**
 * @file    BackupExportDialog.qml
-* @version 8.2.1
-* @date 2026-10-30
+* @version 8.3.0
+* @date 2026-11-02
  * @author  GridYard Team
  * @brief   用户数据导出对话框（备份与迁移）
  *
@@ -153,7 +153,12 @@ Dialog {
                 onClicked: exportDialog.close()
             }
 
-            SecondaryButton {
+            // 主操作恢复主按钮强调（批 1 验收遗留第 2 条）：品牌蓝实底白字与
+            // 次操作的白底细边分层，白字压 U2-44 主色 5.17:1；高度随族 32px
+            Button {
+                highlighted: true
+                implicitHeight: 32
+                font.pixelSize: Style.Type.body
                 enabled: exportDialog._summary !== null
                          && !AppController.backupController.busy
                          && exportDialog._savePath.trim().length > 0
