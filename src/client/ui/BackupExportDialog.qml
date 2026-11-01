@@ -24,7 +24,25 @@ Dialog {
     modal: true
     anchors.centerIn: Overlay.overlay
     width: Math.min(520, parent ? parent.width - 48 : 520)
-    padding: Style.Space.lg
+    // 弹窗族统一（U2-07）：自绘背景 + DialogHeader 页眉，内容区左右 20、上 12、
+    // 下 16 与页眉边距衔接；页眉 ✕ 等价关闭——丢弃勾选与路径直接关窗，不新增二次确认
+    padding: 0
+    topPadding: Style.Space.md
+    leftPadding: Style.Space.xl
+    rightPadding: Style.Space.xl
+    bottomPadding: Style.Space.lg
+
+    background: Rectangle {
+        color: Style.Color.window
+        radius: Style.Radius.md
+        border.color: Style.Color.border
+    }
+
+    header: DialogHeader {
+        title: exportDialog.title
+        subtitle: qsTr("导出为明文 JSON 备份包，可在重装或换机后导入恢复。勾选要包含的数据层：")
+        onCloseClicked: exportDialog.close()
+    }
 
     // 勾选状态：身份与设备关系默认勾选，历史层默认不勾（体积可能大）
     property bool _includeIdentity: true
@@ -62,14 +80,6 @@ Dialog {
     ColumnLayout {
         width: parent.width
         spacing: Style.Space.md
-
-        Label {
-            Layout.fillWidth: true
-            text: qsTr("导出为明文 JSON 备份包，可在重装或换机后导入恢复。勾选要包含的数据层：")
-            color: Style.Color.textSecondary
-            font.pixelSize: 13
-            wrapMode: Text.Wrap
-        }
 
         CheckBox {
             checked: true

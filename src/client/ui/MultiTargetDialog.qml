@@ -25,7 +25,25 @@ Dialog {
     modal: true
     anchors.centerIn: Overlay.overlay
     width: Math.min(540, parent ? parent.width - 48 : 540)
-    padding: Style.Space.lg
+    // 弹窗族统一（U2-07）：自绘背景 + DialogHeader 页眉，内容区左右 20、上 12、
+    // 下 16 与页眉边距衔接；页眉 ✕ 等价取消——丢弃勾选与输入直接关窗，不新增二次确认
+    padding: 0
+    topPadding: Style.Space.md
+    leftPadding: Style.Space.xl
+    rightPadding: Style.Space.xl
+    bottomPadding: Style.Space.lg
+
+    background: Rectangle {
+        color: Style.Color.window
+        radius: Style.Radius.md
+        border.color: Style.Color.border
+    }
+
+    header: DialogHeader {
+        title: multiDialog.title
+        subtitle: qsTr("先选择要群发的文件或文件夹，再勾选要发送的在线设备。")
+        onCloseClicked: multiDialog.close()
+    }
 
     // 待发送的路径：经文件/文件夹选择器注入，或在弹窗内直接输入
     property string _filePath: ""

@@ -1,7 +1,7 @@
 /**
  * @file    CloseConfirmDialog.qml
- * @version 8.2.1
- * @date 2026-11-01
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   关闭确认弹窗
  *
@@ -25,7 +25,23 @@ Dialog {
     modal: true
     anchors.centerIn: Overlay.overlay
     width: Math.min(420, parent ? parent.width - 48 : 420)
-    padding: 20
+    // 弹窗族统一（U2-07）：自绘背景 + DialogHeader 页眉，内容区左右 20、上 12，
+    // 与页眉边距衔接；页眉 ✕ 与取消等价——丢弃未做选择直接关窗，不新增二次确认
+    padding: 0
+    topPadding: Style.Space.md
+    leftPadding: Style.Space.xl
+    rightPadding: Style.Space.xl
+
+    background: Rectangle {
+        color: Style.Color.window
+        radius: Style.Radius.md
+        border.color: Style.Color.border
+    }
+
+    header: DialogHeader {
+        title: closeConfirmDialog.title
+        onCloseClicked: closeConfirmDialog.close()
+    }
 
     // 托盘是否可用（由主窗口注入）
     property bool trayAvailable: false
@@ -122,11 +138,15 @@ Dialog {
             anchors.margins: Style.Space.lg
             spacing: 10
 
+            // 主操作维持 highlighted 强调（误关窗口的主路径），高度与字号钉进
+            // 按钮族：32px + Type.body，与四个高频弹窗恢复后的主按钮同口径
             Button {
                 visible: closeConfirmDialog.trayAvailable
                 text: qsTr("隐藏到后台")
                 Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
                 highlighted: true  // 误关窗口的主路径，突出显示
+                implicitHeight: 32
+                font.pixelSize: Style.Type.body
                 onClicked: {
                     closeConfirmDialog.close()
                     closeConfirmDialog.hideToTrayRequested(rememberCheckBox.checked)
@@ -135,17 +155,19 @@ Dialog {
             Item {
                 Layout.fillWidth: true
             }
-            Button {
+
+            SecondaryButton {
                 text: qsTr("退出程序")
-                Accessible.name: text
+                Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
                 onClicked: {
                     closeConfirmDialog.close()
                     closeConfirmDialog.quitRequested(rememberCheckBox.checked)
                 }
             }
-            Button {
+
+            SecondaryButton {
                 text: qsTr("取消")
-                Accessible.name: text
+                Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
                 onClicked: closeConfirmDialog.close()
             }
         }

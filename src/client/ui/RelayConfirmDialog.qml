@@ -1,7 +1,7 @@
 /**
  * @file    RelayConfirmDialog.qml
- * @version 8.2.1
- * @date 2026-10-30
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   中继确认弹窗
  *
@@ -22,7 +22,23 @@ Dialog {
     modal: true
     anchors.centerIn: Overlay.overlay
     width: Math.min(420, parent ? parent.width - 48 : 420)
-    padding: 20
+    // 弹窗族统一（U2-07）：自绘背景 + DialogHeader 页眉，内容区左右 20、上 12，
+    // 与页眉边距衔接；页眉 ✕ 不代做选择——关窗后任务按既有文案约 2 分钟自动失败
+    padding: 0
+    topPadding: Style.Space.md
+    leftPadding: Style.Space.xl
+    rightPadding: Style.Space.xl
+
+    background: Rectangle {
+        color: Style.Color.window
+        radius: Style.Radius.md
+        border.color: Style.Color.border
+    }
+
+    header: DialogHeader {
+        title: relayConfirmDialog.title
+        onCloseClicked: relayConfirmDialog.close()
+    }
 
     property string sessionId: ""
 
@@ -68,15 +84,24 @@ Dialog {
             Item {
                 Layout.fillWidth: true
             }
+
+            // 继续传输的主路径用主按钮强调（与关闭确认弹窗同口径），高度与字号
+            // 钉进按钮族：32px + Type.body
             Button {
                 text: qsTr("使用中继")
+                Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
+                highlighted: true
+                implicitHeight: 32
+                font.pixelSize: Style.Type.body
                 onClicked: {
                     relayConfirmDialog.relayChosen(relayConfirmDialog.sessionId)
                     relayConfirmDialog.close()
                 }
             }
-            Button {
+
+            SecondaryButton {
                 text: qsTr("取消传输")
+                Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
                 onClicked: {
                     relayConfirmDialog.cancelChosen(relayConfirmDialog.sessionId)
                     relayConfirmDialog.close()

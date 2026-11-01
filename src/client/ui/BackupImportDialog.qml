@@ -24,7 +24,25 @@ Dialog {
     modal: true
     anchors.centerIn: Overlay.overlay
     width: Math.min(520, parent ? parent.width - 48 : 520)
-    padding: Style.Space.lg
+    // 弹窗族统一（U2-07）：自绘背景 + DialogHeader 页眉，内容区左右 20、上 12、
+    // 下 16 与页眉边距衔接；页眉 ✕ 等价关闭——丢弃路径与预览直接关窗，不新增二次确认
+    padding: 0
+    topPadding: Style.Space.md
+    leftPadding: Style.Space.xl
+    rightPadding: Style.Space.xl
+    bottomPadding: Style.Space.lg
+
+    background: Rectangle {
+        color: Style.Color.window
+        radius: Style.Radius.md
+        border.color: Style.Color.border
+    }
+
+    header: DialogHeader {
+        title: importDialog.title
+        subtitle: qsTr("选择此前导出的备份文件，确认预览后导入。导入不会删除本机已有数据，重复导入自动去重。")
+        onCloseClicked: importDialog.close()
+    }
 
     property string _filePath: ""
     property var _summary: null
@@ -66,14 +84,6 @@ Dialog {
     ColumnLayout {
         width: parent.width
         spacing: Style.Space.md
-
-        Label {
-            Layout.fillWidth: true
-            text: qsTr("选择此前导出的备份文件，确认预览后导入。导入不会删除本机已有数据，重复导入自动去重。")
-            color: Style.Color.textSecondary
-            font.pixelSize: 13
-            wrapMode: Text.Wrap
-        }
 
         RowLayout {
             Layout.fillWidth: true

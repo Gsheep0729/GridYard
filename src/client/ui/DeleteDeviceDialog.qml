@@ -1,7 +1,7 @@
 /**
  * @file    DeleteDeviceDialog.qml
- * @version 8.2.1
- * @date 2026-11-01
+ * @version 8.3.0
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   删除该设备确认弹窗
  *
@@ -23,7 +23,23 @@ Dialog {
     modal: true
     anchors.centerIn: Overlay.overlay
     width: Math.min(420, parent ? parent.width - 48 : 420)
-    padding: 20
+    // 弹窗族统一（U2-07）：自绘背景 + DialogHeader 页眉，内容区左右 20、上 12，
+    // 与页眉边距衔接；页眉 ✕ 与取消等价——不做删除直接关窗，不新增二次确认
+    padding: 0
+    topPadding: Style.Space.md
+    leftPadding: Style.Space.xl
+    rightPadding: Style.Space.xl
+
+    background: Rectangle {
+        color: Style.Color.window
+        radius: Style.Radius.md
+        border.color: Style.Color.border
+    }
+
+    header: DialogHeader {
+        title: deleteDeviceDialog.title
+        onCloseClicked: deleteDeviceDialog.close()
+    }
 
     // 待删除设备信息（openFor 注入）
     property string deviceId: ""
@@ -74,27 +90,35 @@ Dialog {
         }
     }
 
-    footer: RowLayout {
-        spacing: 10
-        anchors.margins: 16
+    // footer 由弹窗布局定位、不是锚定项：承载项 + 有效锚定边距提供 16px 内边距
+    // （原先的 anchors.margins: 16 写在 RowLayout 上是无效属性，Qt 忽略并告警，G-01）
+    footer: Item {
+        implicitHeight: footerRow.implicitHeight + Style.Space.lg * 2
 
-        Item {
-            Layout.fillWidth: true
-        }
+        RowLayout {
+            id: footerRow
+            anchors.fill: parent
+            anchors.margins: Style.Space.lg
+            spacing: 10
 
-        Button {
-            text: qsTr("取消")
-            Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
-            onClicked: deleteDeviceDialog.close()
-        }
+            Item {
+                Layout.fillWidth: true
+            }
 
-        // 危险操作用语义化红色按钮，与清除缓存等不可逆操作一致
-        DangerButton {
-            text: qsTr("删除")
-            Accessible.name: text
-            onClicked: {
-                deleteDeviceDialog.close()
-                deleteDeviceDialog.deleteConfirmed(deleteDeviceDialog.deviceId)
+            SecondaryButton {
+                text: qsTr("取消")
+                Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
+                onClicked: deleteDeviceDialog.close()
+            }
+
+            // 危险操作用语义化红色按钮，与清除缓存等不可逆操作一致
+            DangerButton {
+                text: qsTr("删除")
+                Accessible.name: text
+                onClicked: {
+                    deleteDeviceDialog.close()
+                    deleteDeviceDialog.deleteConfirmed(deleteDeviceDialog.deviceId)
+                }
             }
         }
     }
