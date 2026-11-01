@@ -1,7 +1,7 @@
 /**
  * @file    AcceptDialog.qml
  * @version 8.2.1
- * @date 2026-11-01
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   接收确认弹窗
  *
@@ -11,6 +11,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "../utils/FormatUtils.js" as FormatUtils
@@ -22,7 +23,8 @@ Dialog {
     title: acceptDialog.isDirectory ? qsTr("接收文件夹") : qsTr("接收文件")
     modal: true
     anchors.centerIn: parent
-    width: 460  // 固定宽度保证文件信息卡片不会过窄
+    // 弹窗宽度三档（U2-31）：确认/提示类归窄档 420，元信息行 elide 兜长名
+    width: 420
 
     // 会话信息（由 TransferSessionManager 的 receiveRequestReceived 信号填充）
     property string sessionId: ""
@@ -75,7 +77,8 @@ Dialog {
             color: Style.Color.textMain
         }
 
-        // 文件信息卡片：文件夹场景显示总文件数和总大小，单文件场景只显示文件大小
+        // 文件信息卡片：元信息一行带类型图标（U2-34），文件夹场景补条目数
+        // 与总大小，单文件场景只显示文件大小
         Rectangle {
             objectName: "acceptFileInfoCard"
             Layout.fillWidth: true
@@ -103,65 +106,36 @@ Dialog {
                 anchors.margins: Style.Space.md
                 spacing: Style.Space.sm
 
+                // 元信息一行（U2-34）：图标 + 文件名 + 大小/条目，替代原四组
+                // "键：值"行——单文件场景自此也出文件类型图标，与文件夹预览
+                // 列表每条目带图标一致；长文件名由 ElideMiddle 截断
                 RowLayout {
-                    Label {
-                        text: acceptDialog.isDirectory ? qsTr("文件夹名：") : qsTr("文件名：")
-                        font.bold: true
-                        color: Style.Color.textSecondary
-                        font.pixelSize: 13
+                    Layout.fillWidth: true
+                    spacing: Style.Space.sm
+
+                    FileTypeIcon {
+                        fileName: acceptDialog.fileName
+                        isDirectory: acceptDialog.isDirectory
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
                     }
+
                     Label {
                         text: acceptDialog.fileName
-                        color: Style.Color.textMain
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                         font.bold: true
+                        color: Style.Color.textMain
                         elide: Text.ElideMiddle
                         Layout.fillWidth: true
                     }
-                }
 
-                RowLayout {
-                    visible: !acceptDialog.isDirectory
                     Label {
-                        text: qsTr("大小：")
-                        font.bold: true
-                        color: Style.Color.textSecondary
-                        font.pixelSize: 13
-                    }
-                    Label {
-                        text: FormatUtils.formatBytes(acceptDialog.fileSize)
-                        color: Style.Color.textMain
-                        font.pixelSize: 13
-                    }
-                }
-
-                RowLayout {
-                    visible: acceptDialog.isDirectory
-                    Label {
-                        text: qsTr("总文件数：")
-                        font.bold: true
-                        color: Style.Color.textSecondary
-                        font.pixelSize: 13
-                    }
-                    Label {
-                        text: acceptDialog.totalFiles
-                        color: Style.Color.textMain
-                        font.pixelSize: 13
-                    }
-                }
-
-                RowLayout {
-                    visible: acceptDialog.isDirectory
-                    Label {
-                        text: qsTr("总大小：")
-                        font.bold: true
-                        color: Style.Color.textSecondary
-                        font.pixelSize: 13
-                    }
-                    Label {
-                        text: FormatUtils.formatBytes(acceptDialog.totalBytes)
-                        color: Style.Color.textMain
-                        font.pixelSize: 13
+                        text: acceptDialog.isDirectory
+                              ? qsTr("%1 项").arg(acceptDialog.totalFiles) + " · "
+                                + FormatUtils.formatBytes(acceptDialog.totalBytes)
+                              : FormatUtils.formatBytes(acceptDialog.fileSize)
+                        font.pixelSize: 12
+                        color: Style.Color.textMuted
                     }
                 }
 
@@ -246,6 +220,7 @@ Dialog {
 
         Button {
             id: acceptButton
+            Material.elevation: 0
             text: qsTr("接受")
             Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
             DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole

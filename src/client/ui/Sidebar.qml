@@ -233,11 +233,12 @@ Rectangle {
                 shadowColor: Style.Color.menuShadow
             }
 
-            // 底色用 menuBackground 与白色弹窗/卡片形成深浅层次
+            // 底色随浮层族统一（U2-28）：白底 + 1px borderSoft + 菜单同款阴影，
+            // 右键菜单、底部设置菜单、本机信息弹窗三种浮层同一套材质
             Rectangle {
                 id: deviceMenuPanel
                 anchors.fill: parent
-                color: Style.Color.menuBackground
+                color: Style.Color.window
                 radius: Style.Radius.md
                 border.color: Style.Color.borderSoft
                 border.width: 1
@@ -403,12 +404,29 @@ Rectangle {
         x: 70; y: 10
         width: 282; height: 110
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        //弹出的个人主机信息框（FCL）
-        background: Rectangle {
-            color: Style.Color.window
-            border.color: Style.Color.borderSoft
-            border.width: 1
-            radius: Style.Radius.lg
+        //浮出的个人主机信息框（FCL）：浮层族统一（U2-28）白底 + borderSoft
+        //细边 + 菜单同款阴影（MultiEffect autoPadding 自动外扩容纳阴影）
+        background: Item {
+            id: infoShell
+
+            MultiEffect {
+                anchors.fill: parent
+                source: infoPanel
+                autoPaddingEnabled: true
+                shadowEnabled: true
+                shadowBlur: 0.85
+                shadowVerticalOffset: 4
+                shadowColor: Style.Color.menuShadow
+            }
+
+            Rectangle {
+                id: infoPanel
+                anchors.fill: parent
+                color: Style.Color.window
+                border.color: Style.Color.borderSoft
+                border.width: 1
+                radius: Style.Radius.lg
+            }
         }
         //个人信息框，头像 + 信息列表
         contentItem: ColumnLayout {
@@ -493,11 +511,29 @@ Rectangle {
         width: 160
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-        background: Rectangle {
-            color: Style.Color.surface
-            radius: Style.Radius.md
-            border.color: Style.Color.borderSoft
-            border.width: 1
+        // 浮层族统一（U2-28）：白底 + borderSoft 细边 + 菜单同款阴影，
+        // 与右键菜单、本机信息弹窗同一套浮层材质
+        background: Item {
+            id: menuShell
+
+            MultiEffect {
+                anchors.fill: parent
+                source: menuPanel
+                autoPaddingEnabled: true
+                shadowEnabled: true
+                shadowBlur: 0.85
+                shadowVerticalOffset: 4
+                shadowColor: Style.Color.menuShadow
+            }
+
+            Rectangle {
+                id: menuPanel
+                anchors.fill: parent
+                color: Style.Color.window
+                radius: Style.Radius.md
+                border.color: Style.Color.borderSoft
+                border.width: 1
+            }
         }
 
         contentItem: ColumnLayout {

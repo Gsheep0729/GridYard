@@ -89,41 +89,6 @@ ItemDelegate {
         }
     }
 
-    // 好友星标：自绘五角星（禁用主题 icon.name，缺 glyph 会渲染黑块），
-    // 叠在卡片右上角，不与左侧选中指示条和右侧状态列争夺空间
-    Canvas {
-        anchors.right: parent.right
-        anchors.rightMargin: Style.Space.sm
-        anchors.top: parent.top
-        anchors.topMargin: Style.Space.xs
-        width: 13
-        height: 13
-        visible: deviceCard.favorite
-        onPaint: {
-            const ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            ctx.fillStyle = Style.Color.warning
-            ctx.beginPath()
-            const cx = width / 2
-            const cy = height / 2 + 1
-            const outer = width / 2
-            const inner = outer * 0.45
-            for (let i = 0; i < 10; i++) {
-                const angle = -Math.PI / 2 + i * Math.PI / 5
-                const radius = i % 2 === 0 ? outer : inner
-                const x = cx + radius * Math.cos(angle)
-                const y = cy + radius * Math.sin(angle)
-                if (i === 0) {
-                    ctx.moveTo(x, y)
-                } else {
-                    ctx.lineTo(x, y)
-                }
-            }
-            ctx.closePath()
-            ctx.fill()
-        }
-    }
-
     // 点击卡片时向父级传递完整设备信息，由 PeerListView 再向上冒泡到 Main.qml
     onClicked: deviceCard.activate()
 
@@ -206,13 +171,53 @@ ItemDelegate {
             Layout.fillWidth: true
             spacing: 2
 
-            Label {
-                text: deviceCard.displayName
-                font.pixelSize: Style.Type.body
-                font.bold: true
-                color: deviceCard.kNameColor
-                elide: Text.ElideRight
+            // 设备名行：好友星标缩至 11px 移到行尾与名字同排（U2-39）——
+            // 原先压在卡片右上角，与右侧"点+在线"列同一垂直带，选中底色
+            // 加深后像贴纸；入行后名字过长时 elide 收敛、星标恒在行尾
+            RowLayout {
                 Layout.fillWidth: true
+                spacing: Style.Space.xs
+
+                Label {
+                    text: deviceCard.displayName
+                    font.pixelSize: Style.Type.body
+                    font.bold: true
+                    color: deviceCard.kNameColor
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
+                // 好友星标：自绘五角星（禁用主题 icon.name，缺 glyph 会渲染黑块）；
+                // 非好友不占位，行宽全数让给设备名
+                Canvas {
+                    Layout.preferredWidth: deviceCard.favorite ? 11 : 0
+                    Layout.preferredHeight: 11
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: deviceCard.favorite
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.fillStyle = Style.Color.warning
+                        ctx.beginPath()
+                        const cx = width / 2
+                        const cy = height / 2 + 1
+                        const outer = width / 2
+                        const inner = outer * 0.45
+                        for (let i = 0; i < 10; i++) {
+                            const angle = -Math.PI / 2 + i * Math.PI / 5
+                            const radius = i % 2 === 0 ? outer : inner
+                            const x = cx + radius * Math.cos(angle)
+                            const y = cy + radius * Math.sin(angle)
+                            if (i === 0) {
+                                ctx.moveTo(x, y)
+                            } else {
+                                ctx.lineTo(x, y)
+                            }
+                        }
+                        ctx.closePath()
+                        ctx.fill()
+                    }
+                }
             }
             // 副行：备注生效时"原名 · IP"并存（核对同名设备、察觉远程改名），
             // 无备注维持纯 IP

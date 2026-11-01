@@ -11,6 +11,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
@@ -118,16 +119,20 @@ Dialog {
             onToggled: exportDialog._includeTransfers = checked
         }
 
-        // 保存路径：默认文档目录，可手动编辑或经文件对话框选择
+        // 保存路径：默认文档目录，可手动编辑或经文件对话框选择。
+        // 左边界共线（G-04）：Material CheckBox 自带 8px 内边距，勾选框体
+        // 左沿在 x=8；标签与路径行同给 8px 左缩进，三者在同一垂直网格线上
         Label {
             text: qsTr("保存位置")
             font.pixelSize: 13
             font.bold: true
             color: Style.Color.textSecondary
+            Layout.leftMargin: Style.Space.sm
         }
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.leftMargin: Style.Space.sm
             spacing: Style.Space.sm
 
             TextField {
@@ -166,6 +171,7 @@ Dialog {
             // 主操作恢复主按钮强调（批 1 验收遗留第 2 条）：品牌蓝实底白字与
             // 次操作的白底细边分层，白字压 U2-44 主色 5.17:1；高度随族 32px
             Button {
+                Material.elevation: 0
                 highlighted: true
                 implicitHeight: 32
                 font.pixelSize: Style.Type.body

@@ -13,6 +13,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "../utils/Style.js" as Style
@@ -312,7 +313,8 @@ Frame {
                    // 附件展开状态：展开后在原位显示文件/文件夹胶囊，再点收起
                    property bool attachExpanded: false
 
-                   // 展开/收起按钮：收起时是 +，展开时是 ×；高度与发送按钮统一 44
+                   // 展开/收起按钮：收起时是关闭符号，展开时是加号；高度与发送按钮统一 44。
+                   // 符号改用内置 SVG 图标（U2-29），不依赖系统图标主题
                    ToolButton {
                        id: attachButton
                        anchors.left: parent.left
@@ -321,9 +323,16 @@ Frame {
                        width: 44
                        height: 44
                        enabled: deviceSessionView.isOnline
-                       text: inputBox.attachExpanded ? "×" : "+"
-                       font.pixelSize: Style.Type.title
-                       font.bold: true
+                       // 读屏名：可见内容是加号/收起符号图标（U2-29）
+                       Accessible.name: inputBox.attachExpanded ? qsTr("收起")
+                                                                : qsTr("发送文件或文件夹")
+                       contentItem: GlyphIcon {
+                           glyph: inputBox.attachExpanded ? "../icons/icon-close.svg"
+                                                          : "../icons/icon-plus.svg"
+                           iconColor: Style.Color.textMain
+                           implicitWidth: 20
+                           implicitHeight: 20
+                       }
                        // 离线说明与发送按钮同词：相邻两个入口对同一阻塞态的
                        // 悬停解释保持一致（禁用按钮的悬停提示实测可达）
                        ToolTip.text: !deviceSessionView.isOnline
@@ -560,6 +569,7 @@ Frame {
                // 发送按钮：文字按钮，主色样式；高度与 + 统一 44，同基线
                Button {
                    id: chatSendButton
+                   Material.elevation: 0
                    text: qsTr("发送")
                    highlighted: true
                    enabled: deviceSessionView.canSendChat

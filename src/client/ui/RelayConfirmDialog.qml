@@ -12,6 +12,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import "../utils/Style.js" as Style
 
@@ -88,6 +89,7 @@ Dialog {
             // 继续传输的主路径用主按钮强调（与关闭确认弹窗同口径），高度与字号
             // 钉进按钮族：32px + Type.body
             Button {
+                Material.elevation: 0
                 text: qsTr("使用中继")
                 Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
                 highlighted: true

@@ -169,10 +169,12 @@ Rectangle {
                     selectByMouse: true
                     background: Item {
                         // 自绘占位（v7.15.12 同款模式）：空输入时垂直居中显示，
-                        // 超宽自动省略，输入即隐
+                        // 超宽自动省略，输入即隐；左边距对齐文本输入起点
+                        // searchInput.leftPadding（U2-37：占位与光标同一 x 起点）
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.left: parent.left
+                            anchors.leftMargin: searchInput.leftPadding
                             anchors.right: parent.right
                             text: qsTr("搜索设备名、备注或 IP")
                             color: Style.Color.textWeak
@@ -191,15 +193,21 @@ Rectangle {
                     }
                 }
 
-                // 清空按钮：输入内容时出现
+                // 清空按钮：输入内容时出现。符号改用内置 SVG 图标（U2-29）
                 ToolButton {
                     anchors.right: parent.right
                     anchors.rightMargin: Style.Space.xs
                     anchors.verticalCenter: parent.verticalCenter
                     width: 20; height: 20
                     visible: searchInput.text.length > 0
-                    text: "×"
-                    font.pixelSize: 13
+                    // 读屏名：可见内容是关闭符号图标（U2-29）
+                    Accessible.name: qsTr("清空搜索")
+                    contentItem: GlyphIcon {
+                        glyph: "../icons/icon-close.svg"
+                        iconColor: Style.Color.textMain
+                        implicitWidth: 12
+                        implicitHeight: 12
+                    }
                     onClicked: {
                         searchInput.clear()
                         searchInput.forceActiveFocus()
@@ -239,11 +247,13 @@ Rectangle {
         color: Style.Color.textSecondary
     }
 
-    // 标题行计数：常规态一眼可见在线台数（绿色呼应在线圆点），搜索态维持命中数
+    // 标题行计数：常规态一眼可见在线台数（绿色呼应在线圆点），搜索态维持命中数。
+    // 与标题同基线对齐（U2-38）：字号字重不同导致行高不同，按垂直中心对齐时
+    // 搜索态计数比"设备"标题低 3~4px，基线锚定后同排文字底边对齐
     Label {
         anchors.right: parent.right
         anchors.rightMargin: Style.Space.lg
-        anchors.verticalCenter: deviceTitle.verticalCenter
+        anchors.baseline: deviceTitle.baseline
         text: peerListView._searchActive
               ? qsTr("%1 台").arg(peerListView._filteredCount)
               : qsTr("在线 %1 台").arg(peerListView._onlineCount)
@@ -457,12 +467,13 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: Style.Space.xs
 
-                Label {
-                    text: "+"
-                    font.pixelSize: 15
-                    font.bold: true
-                    color: addDeviceItem.hovered
-                           ? Style.Color.primary : Style.Color.textSecondary
+                // 加号改用内置 SVG 图标（U2-29），悬停变色随文字行联动
+                GlyphIcon {
+                    glyph: "../icons/icon-plus.svg"
+                    iconColor: addDeviceItem.hovered
+                               ? Style.Color.primary : Style.Color.textSecondary
+                    implicitWidth: 15
+                    implicitHeight: 15
                 }
 
                 Label {

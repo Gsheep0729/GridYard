@@ -103,13 +103,15 @@ Frame {
         return taskType === "send" ? Style.Color.primary : Style.Color.receiveAccent
     }
 
-    // 状态徽标底色：浅底配深字，避免白字压实色低于 AA 对比度
+    // 状态徽标底色：浅底配深字，避免白字压实色低于 AA 对比度。失败族取
+    // statusErrBgCard（U2-30/批 1 验收遗留第 1 条）：失败卡底 errorSoft 与
+    // statusErrBg 在浅色同值，徽标会陷进卡底，专用键下探一档拉开
     function statusBg(): color {
         switch (status) {
         case "completed":       return Style.Color.statusOkBg
         case "failed":
         case "rejected":
-        case "cancelled":       return Style.Color.statusErrBg
+        case "cancelled":       return Style.Color.statusErrBgCard
         case "transferring":    return Style.Color.primarySoft
         default:                return Style.Color.statusWarnBg
         }
@@ -181,7 +183,7 @@ Frame {
             }
 
             // 展开/收起按钮：仅传输中的文件夹任务显示，已完成的文件夹用底部行展开
-            // 箭头用文字符号，与底部折叠行保持一致，不依赖系统图标主题
+            // 展开指示用内置 SVG 图标（U2-29），不依赖系统图标主题
             Button {
                 flat: true
                 visible: taskCard.canShowFolderPreview && !taskCard.isFinished
@@ -189,14 +191,20 @@ Frame {
                 Layout.preferredWidth: 24
                 Layout.preferredHeight: 24
                 padding: 0
-                text: taskCard.expanded ? "⌄" : "›"
-                font.pixelSize: 15
-                font.bold: true
+                // 读屏名：可见内容是展开/收起符号图标（U2-29）
+                Accessible.name: taskCard.expanded ? qsTr("收起") : qsTr("展开")
+                contentItem: GlyphIcon {
+                    glyph: taskCard.expanded ? "../icons/icon-chevron-down.svg"
+                                             : "../icons/icon-chevron-right.svg"
+                    iconColor: Style.Color.textMain
+                    implicitWidth: 16
+                    implicitHeight: 16
+                }
             }
 
-            // 状态标签：浅底深字，颜色随状态变化；描边取成对深字色——失败族卡底
-            // errorSoft 与徽标底 statusErrBg 同值（批 1 验收遗留第 1 条），同族
-            // 细边把徽标从卡底上圈出来，其余状态同款收口保持一族
+            // 状态标签：浅底深字，颜色随状态变化；失败族徽标底走 statusErrBgCard
+            // 与卡底 errorSoft 拉开一档（U2-30，批 1 验收遗留第 1 条已清偿），
+            // 成对深字描边把徽标从卡底上圈出来，其余状态同款收口保持一族
             Rectangle {
                 objectName: "statusBadge"
                 Layout.preferredWidth: statusLabel.implicitWidth + 12
@@ -373,10 +381,15 @@ Frame {
                 }
 
                 ToolButton {
-                    text: "⋯"
-                    font.pixelSize: 16
-                    font.bold: true
                     padding: 4
+                    // 读屏名：可见内容是"更多"符号图标（U2-29）
+                    Accessible.name: qsTr("更多移除选项")
+                    contentItem: GlyphIcon {
+                        glyph: "../icons/icon-ellipsis.svg"
+                        iconColor: Style.Color.textMain
+                        implicitWidth: 16
+                        implicitHeight: 16
+                    }
                     ToolTip.delay: 500
                     ToolTip.visible: hovered
                     ToolTip.text: enabled ? qsTr("更多移除选项") : qsTr("发送记录或未完成接收记录不能删除本地文件")
@@ -424,13 +437,15 @@ Frame {
                 anchors.rightMargin: Style.Space.sm
                 spacing: Style.Space.xs
 
-                // 展开/收起指示箭头
-                Label {
-                    text: taskCard.expanded ? "⌄" : "›"
-                    font.pixelSize: 14
-                    color: Style.Color.textSecondary
-                    Layout.preferredWidth: 12
-                    horizontalAlignment: Text.AlignHCenter
+                // 展开/收起指示：内置 SVG 图标（U2-29）
+                GlyphIcon {
+                    glyph: taskCard.expanded ? "../icons/icon-chevron-down.svg"
+                                             : "../icons/icon-chevron-right.svg"
+                    iconColor: Style.Color.textSecondary
+                    implicitWidth: 14
+                    implicitHeight: 14
+                    Layout.preferredWidth: 14
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 Label {
@@ -488,13 +503,14 @@ Frame {
         }
     }
 
-    // 删除本地文件确认弹窗：警告用户操作不可撤销
+    // 删除本地文件确认弹窗：警告用户操作不可撤销。
+    // 弹窗宽度三档（U2-31）：确认/提示类归窄档 420，窗口过窄时仍随父收
     Dialog {
         id: deleteConfirmDialog
         title: qsTr("删除确认")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(360, parent.width - 24)
+        width: Math.min(420, parent.width - 24)
         padding: 12
 
         background: Rectangle {

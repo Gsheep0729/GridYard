@@ -11,6 +11,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
@@ -317,6 +318,7 @@ Dialog {
                     }
 
                     Button {
+                        Material.elevation: 0
                         text: qsTr("更改目录")
                         onClicked: folderDialog.open()
                     }
@@ -814,6 +816,7 @@ Dialog {
                         }
 
                         Button {
+                            Material.elevation: 0
                             text: qsTr("恢复显示")
                             onClicked: AppController.peerDiscoveryViewModel.setDeviceHidden(
                                            hiddenRow.modelData.deviceId, false)
@@ -880,6 +883,7 @@ Dialog {
                 }
 
                 Button {
+                    Material.elevation: 0
                     visible: ConfigManager.developerLaunchEntryEnabled
                     text: qsTr("启动新实例")
                     onClicked: developerCard._launchHint = AppController.launchDeveloperInstance()
@@ -925,6 +929,7 @@ Dialog {
                         spacing: Style.Space.xs
 
                         Button {
+                            Material.elevation: 0
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("导出数据")
                             enabled: AppController.localHistoryAvailable
@@ -932,6 +937,7 @@ Dialog {
                         }
 
                         Button {
+                            Material.elevation: 0
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("导入数据")
                             enabled: AppController.localHistoryAvailable
@@ -1046,6 +1052,7 @@ Dialog {
 
             // 保存按钮：仅在脏标记且校验通过时可用
             Button {
+                Material.elevation: 0
                 text: qsTr("保存更改")
                 enabled: settingsDialog._isDirty && settingsDialog._isValid
                 highlighted: true
@@ -1112,10 +1119,12 @@ Dialog {
 
         footer: DialogButtonBox {
             Button {
+                Material.elevation: 0
                 text: qsTr("取消")
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             }
             Button {
+                Material.elevation: 0
                 text: qsTr("清除并退出")
                 highlighted: true
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole

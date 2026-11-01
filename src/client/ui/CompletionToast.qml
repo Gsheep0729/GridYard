@@ -1,7 +1,7 @@
 /**
  * @file    CompletionToast.qml
  * @version 8.1.0
- * @date 2026-10-26
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   接收完成通知卡
  *
@@ -11,6 +11,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "../utils/Style.js" as Style
@@ -75,10 +76,17 @@ Popup {
                 Layout.fillWidth: true
             }
 
+            // 关闭按钮：符号改用内置 SVG 图标（U2-29），不依赖系统图标主题
             ToolButton {
-                text: "✕"
-                font.pixelSize: 12
+                // 读屏名：可见内容是关闭符号图标，读屏按"关闭"播报
+                Accessible.name: qsTr("关闭")
                 onClicked: completionToast.close()
+                contentItem: GlyphIcon {
+                    glyph: "../icons/icon-close.svg"
+                    iconColor: Style.Color.textMain
+                    implicitWidth: 14
+                    implicitHeight: 14
+                }
             }
         }
 
@@ -97,6 +105,7 @@ Popup {
         }
 
         Button {
+            Material.elevation: 0
             text: qsTr("打开所在位置")
             highlighted: true
             Layout.alignment: Qt.AlignRight

@@ -19,6 +19,12 @@ import "../utils/Style.js" as Style
 Frame {
     id: root
 
+    // 内容驱动高度（U2-33）：为外层弹窗"高度随内容"提供自然高度——筛选行
+    // + 列表内容高（含页眉页脚与条目间距）+ 布局间距 + Frame 自身边距。
+    // 列表 preferredHeight 取 contentHeight 并保留 160px 空态兜底，弹窗
+    // 封顶后列表仍经 fillHeight 收缩出滚动区，两边都不回环
+    implicitHeight: historyBody.implicitHeight + topPadding + bottomPadding
+
     property string peerDeviceId: ""  // 可选：按设备 ID 筛选，空字符串表示全部设备
     property string selectedStatus: ""  // 可选：按状态筛选（completed/failed/cancelled/rejected）
 
@@ -51,6 +57,7 @@ Frame {
     ]
 
     ColumnLayout {
+        id: historyBody
         anchors.fill: parent
         spacing: Style.Space.md
 
@@ -100,11 +107,13 @@ Frame {
             }
         }
 
-        // 历史记录列表：绑定 HistoryController.transfers
+        // 历史记录列表：绑定 HistoryController.transfers。preferredHeight
+        // 兜底 160px：空列表时 U2-33 的高度随内容不至于把空态提示压没
         ListView {
             id: historyList
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.preferredHeight: Math.max(contentHeight, 160)
             clip: true
             spacing: Style.Space.sm
             model: AppController.historyController.transfers
@@ -283,12 +292,13 @@ Frame {
         }
     }
 
-    // 清空确认弹窗：仅删除本地历史记录，不影响已接收文件或发送源文件
+    // 清空确认弹窗：仅删除本地历史记录，不影响已接收文件或发送源文件。
+    // 弹窗宽度三档（U2-31）：确认/提示类归窄档 420
     Dialog {
         id: clearDialog
         modal: true
         title: qsTr("清空传输历史")
-        width: 380
+        width: 420
         standardButtons: Dialog.Cancel | Dialog.Ok
         anchors.centerIn: Overlay.overlay
         contentItem: Label {

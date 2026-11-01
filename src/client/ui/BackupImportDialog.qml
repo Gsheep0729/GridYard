@@ -11,6 +11,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import cqnu.gridyard.client 1.0
@@ -221,6 +222,7 @@ Dialog {
             // 主操作恢复主按钮强调（批 1 验收遗留第 2 条）：品牌蓝实底白字与
             // 次操作的白底细边分层，白字压 U2-44 主色 5.17:1；高度随族 32px
             Button {
+                Material.elevation: 0
                 highlighted: true
                 implicitHeight: 32
                 font.pixelSize: Style.Type.body

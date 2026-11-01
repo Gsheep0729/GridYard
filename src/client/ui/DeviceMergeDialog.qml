@@ -11,6 +11,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import cqnu.gridyard.client 1.0
 import "../utils/Style.js" as Style
@@ -22,7 +23,8 @@ Dialog {
     title: qsTr("关联到已有设备")
     modal: true
     anchors.centerIn: Overlay.overlay
-    width: Math.min(540, parent ? parent.width - 48 : 540)
+    // 弹窗宽度三档（U2-31）：列表/表单类归中档 520
+    width: Math.min(520, parent ? parent.width - 48 : 520)
     padding: Style.Space.lg
 
     // 发起关联的新设备（右键菜单打开时注入）
@@ -232,6 +234,7 @@ Dialog {
                 }
 
                 Button {
+                    Material.elevation: 0
                     highlighted: true
                     enabled: mergeDialog._oldDeviceId.length > 0
                     text: qsTr("下一步")
@@ -331,6 +334,7 @@ Dialog {
                 }
 
                 Button {
+                    Material.elevation: 0
                     highlighted: true
                     enabled: mergeDialog._resultText.length === 0
                     text: qsTr("确认关联")

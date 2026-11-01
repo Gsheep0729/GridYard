@@ -15,6 +15,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import "../utils/Style.js" as Style
 
@@ -141,6 +142,7 @@ Dialog {
             // 主操作维持 highlighted 强调（误关窗口的主路径），高度与字号钉进
             // 按钮族：32px + Type.body，与四个高频弹窗恢复后的主按钮同口径
             Button {
+                Material.elevation: 0
                 visible: closeConfirmDialog.trayAvailable
                 text: qsTr("隐藏到后台")
                 Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name

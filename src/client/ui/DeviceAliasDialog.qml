@@ -1,7 +1,7 @@
 /**
  * @file    DeviceAliasDialog.qml
  * @version 7.19.1
- * @date 2026-10-05
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   设置备注对话框
  *
@@ -12,6 +12,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import "../utils/Style.js" as Style
 
@@ -21,7 +22,8 @@ Dialog {
     title: qsTr("设置备注")
     modal: true
     anchors.centerIn: Overlay.overlay
-    width: Math.min(440, parent ? parent.width - 48 : 440)
+    // 弹窗宽度三档（U2-31）：确认/提示与单字段小表单归窄档 420
+    width: Math.min(420, parent ? parent.width - 48 : 420)
     padding: 0
 
     // 待编辑设备信息（openFor 注入）
@@ -114,23 +116,33 @@ Dialog {
         }
     }
 
-    footer: RowLayout {
-        spacing: 10
-        anchors.margins: 16
+    // footer 由弹窗布局定位、不是锚定项（同 CloseConfirmDialog G-01 清理口径）：
+    // 承载行 + 有效锚定边距提供 16px 内边距
+    footer: Item {
+        implicitHeight: aliasFooterRow.implicitHeight + Style.Space.lg * 2
 
-        Item {
-            Layout.fillWidth: true
-        }
+        RowLayout {
+            id: aliasFooterRow
+            anchors.fill: parent
+            anchors.margins: Style.Space.lg
+            spacing: 10
 
-        Button {
-            text: qsTr("取消")
-            onClicked: aliasDialog.close()
-        }
+            Item {
+                Layout.fillWidth: true
+            }
 
-        Button {
-            text: qsTr("保存")
-            highlighted: true
-            onClicked: aliasDialog.submit()
+            Button {
+                Material.elevation: 0
+                text: qsTr("取消")
+                onClicked: aliasDialog.close()
+            }
+
+            Button {
+                Material.elevation: 0
+                text: qsTr("保存")
+                highlighted: true
+                onClicked: aliasDialog.submit()
+            }
         }
     }
 }

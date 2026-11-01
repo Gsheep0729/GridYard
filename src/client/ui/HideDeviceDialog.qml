@@ -1,7 +1,7 @@
 /**
  * @file    HideDeviceDialog.qml
  * @version 7.19.0
- * @date 2026-10-05
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   不显示该聊天确认弹窗
  *
@@ -12,6 +12,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material  // 按钮投影全局取消（U2-28）：按钮 Material.elevation 置 0
 import QtQuick.Layouts
 import "../utils/Style.js" as Style
 
@@ -59,11 +60,13 @@ Dialog {
         }
 
         Button {
+            Material.elevation: 0
             text: qsTr("取消")
             onClicked: hideDeviceDialog.close()
         }
 
         Button {
+            Material.elevation: 0
             text: qsTr("不显示")
             highlighted: true
             onClicked: {

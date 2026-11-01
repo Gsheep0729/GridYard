@@ -22,8 +22,8 @@ const Light = {
     surfaceMid: "#F7F7F7",
     surfaceSoft: "#F9FAFB",
     window: "#FFFFFF",
-    menuBackground: "#F2F3F5",  // 菜单底色：比白色弹窗/卡片深一档形成浮层层次
-    menuShadow: "#471F2937",    // 菜单阴影（ARGB，约 28% 冷灰），全应用唯一阴影
+    menuBackground: "#F2F3F5",  // （已退役 U2-28）浮层统一为白底+borderSoft+menuShadow 后无消费点；保留键位不删
+    menuShadow: "#471F2937",    // 浮层阴影（ARGB，约 28% 冷灰）：U2-28 起为右键菜单/设置菜单/本机信息弹窗三个浮层共用
     // 边框
     border: "#E5E7EB",
     borderSoft: "#EEF2F7",
@@ -59,6 +59,12 @@ const Light = {
     statusOkFg: "#047857",
     statusErrBg: "#FEF2F2",
     statusErrFg: "#B91C1C",
+    // 失败卡上的失败徽标底（U2-30/批 1 验收遗留第 1 条）：失败族卡底 errorSoft
+    // 与 statusErrBg 在浅色同值（#FEF2F2），徽标陷进卡底只能靠细边圈出；本键
+    // 下探一档 #FEE2E2（对卡底各通道差 16，与 hoverSoft 的可辨帧差同量级），
+    // 徽标字仍压 statusErrFg（#B91C1C 实测 5.3:1 过 AA）。深色下 statusErrBg
+    // 已比卡底亮一档，本键与 statusErrBg 同值即可
+    statusErrBgCard: "#FEE2E2",
     // Toast 图标字（U2-17）：压在 textOnAccent 16% 圆底上的徽标字，取状态
     // 徽标同款深字（与 statusOkFg/statusErrFg 同值），原状态实色过浅不可辨
     toastGlyphOk: "#047857",
@@ -91,14 +97,14 @@ const Light = {
 // 反伽马）：警示 9.34、成功 9.64、失败 7.46，均 ≥4.5
 const Dark = {
     // 底色：pageBg 为框架底，surface/surfaceLeft 为平铺面板（侧栏/会话页），
-    // 设备列表、文件夹卡、window 逐档上浮；浮层 menuBackground 比 window 深一档
+    // 设备列表、文件夹卡、window 逐档上浮；浮层底色 U2-28 起统一取 window
     pageBg: "#0F172A",
     surface: "#1E293B",
     surfaceLeft: "#1E293B",
     surfaceMid: "#24314A",
     surfaceSoft: "#26334A",
     window: "#2D3A54",
-    menuBackground: "#25324A",
+    menuBackground: "#25324A",  // （已退役 U2-28，浅色同注）保留键位与浅色表恒等
     menuShadow: "#99000000",    // 深色下改纯黑 60%：冷灰影压不住近黑底（实机复核项）
     // 边框
     border: "#3C4C69",
@@ -135,6 +141,9 @@ const Dark = {
     statusOkFg: "#6EE7B7",
     statusErrBg: "#3F2328",
     statusErrFg: "#FCA5A5",
+    // 失败卡上的失败徽标底（U2-30）：深色 statusErrBg 已比失败卡底 errorSoft
+    // （#331A1D）亮一档无需另调，本键与 statusErrBg 同值保双表键集恒等
+    statusErrBgCard: "#3F2328",
     // Toast 图标字（U2-17）：深色状态实色上浮，白圆底合成后偏浅，状态前景
     // （深底浅字方向）压上反而糊，白字对合成圆底仍最清晰，随 textOnAccent 同值
     toastGlyphOk: "#FFFFFF",

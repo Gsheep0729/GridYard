@@ -1,7 +1,7 @@
 /**
  * @file    DialogHeader.qml
  * @version 8.2.1
- * @date 2026-11-01
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   弹窗页眉
  *
@@ -51,21 +51,29 @@ ColumnLayout {
             }
         }
 
-        // 文字关闭按钮：不依赖系统图标主题，避免缺图标时渲染异常
+        // 关闭按钮：符号改用内置 SVG 图标（U2-29），不依赖系统图标主题
         ToolButton {
-            text: "✕"
-            font.pixelSize: 14
-            // 读屏名：可见文字是符号"✕"，读屏按"关闭"播报
+            // 读屏名：可见内容是关闭符号图标，读屏按"关闭"播报
             Accessible.name: qsTr("关闭")
             ToolTip.text: qsTr("关闭")
             ToolTip.delay: 500
             ToolTip.visible: hovered
             onClicked: dialogHeader.closeClicked()
+            contentItem: GlyphIcon {
+                glyph: "../icons/icon-close.svg"
+                iconColor: Style.Color.textMain
+                implicitWidth: 16
+                implicitHeight: 16
+            }
         }
     }
 
+    // 分隔线左右内缩（U2-32）：与页眉内容同边距收线，不再从圆角左缘
+    // 满幅画到右缘，消除线与圆角弧相交的硬拐点
     Rectangle {
         Layout.fillWidth: true
+        Layout.leftMargin: Style.Space.lg
+        Layout.rightMargin: Style.Space.lg
         height: 1
         color: Style.Color.border
     }

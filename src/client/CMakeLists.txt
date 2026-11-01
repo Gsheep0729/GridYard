@@ -137,6 +137,7 @@ set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/DeviceSessionView.qml
     ui/ConversationTimelineView.qml  # 统一会话时间线：消息与传输卡片混排
     ui/FileTypeIcon.qml
+    ui/GlyphIcon.qml
 )
 
 set(GRIDYARD_CLIENT_UTIL_FILES
@@ -154,6 +155,12 @@ set(GRIDYARD_CLIENT_ICON_RESOURCES
     icons/file-code.svg
     icons/file-document.svg
     icons/file-executable.svg
+    icons/icon-close.svg
+    icons/icon-plus.svg
+    icons/icon-minus.svg
+    icons/icon-ellipsis.svg
+    icons/icon-chevron-down.svg
+    icons/icon-chevron-right.svg
     icons/gridyard.png
     icons/gridyard-128.png
     icons/gridyard.svg

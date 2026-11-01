@@ -1,7 +1,7 @@
 /**
  * @file    DeviceHistoryDialog.qml
  * @version 7.19.0
- * @date 2026-10-05
+ * @date 2026-11-02
  * @author  GY
  * @brief   设备历史记录对话框
  *
@@ -24,8 +24,12 @@ Dialog {
     title: qsTr("与 %1 的历史记录").arg(deviceName)
     modal: true
     anchors.centerIn: parent
-    width: Math.min(600, parent ? parent.width - 48 : 600)
-    height: Math.min(560, parent ? parent.height - 48 : 560)
+    // 弹窗宽度三档（U2-31）：设置/历史类归宽档 680
+    width: Math.min(680, parent ? parent.width - 48 : 680)
+    // 高度随内容（U2-33）：空列表时不再撑出 560px 大段空白，内容多时封顶
+    // 560 走列表内部滚动；Dialog 的 implicitHeight 含页眉与内容自然高且不
+    // 依赖 height，绑定无回环；窗口高度不足时仍按 parent.height - 48 收
+    height: Math.min(parent ? parent.height - 48 : 560, 560, implicitHeight)
     padding: 0
 
     background: Rectangle {
@@ -76,8 +80,12 @@ Dialog {
             }
         }
 
+        // 分隔线左右内缩（U2-32）：与上下两段内容的 16px 边距对齐收线，
+        // 不再满幅切进弹窗圆角
         Rectangle {
             Layout.fillWidth: true
+            Layout.leftMargin: Style.Space.lg
+            Layout.rightMargin: Style.Space.lg
             height: 1
             color: Style.Color.border
         }
@@ -96,7 +104,8 @@ Dialog {
         id: clearChatConfirmDialog
         modal: true
         anchors.centerIn: parent
-        width: 380
+        // 弹窗宽度三档（U2-31）：确认/提示类归窄档 420
+        width: 420
         title: qsTr("清空聊天记录")
 
         Label {

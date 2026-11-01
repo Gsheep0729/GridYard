@@ -250,8 +250,11 @@ Item {
                             Label {
                                 visible: timelineDelegate.isOutgoingMessage
                                          && timelineDelegate.safeMessageStatus !== 1
-                                text: timelineDelegate.safeMessageStatus === 2 ? qsTr("发送失败") : qsTr("发送中")
-                                // 发送中分支同步升可读档；失败分支维持 error 语义
+                                // 词表统一（U2-40）：气泡侧"未发送"与状态徽标词表
+                                // 对齐——status=2 语义是这条消息没有发出去，与
+                                // chat_controller 既有"未发送"文案同词
+                                text: timelineDelegate.safeMessageStatus === 2 ? qsTr("未发送") : qsTr("发送中")
+                                // 发送中分支同步升可读档；未发送分支维持 error 语义
                                 color: timelineDelegate.safeMessageStatus === 2 ? Style.Color.error : Style.Color.textWeakStrong
                                 font.pixelSize: Style.Type.caption
                             }
