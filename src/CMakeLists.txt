@@ -12,6 +12,19 @@ project(GridYard VERSION 8.3.0 LANGUAGES CXX)
 # 安装规则（client 与 rendezvous 的 install()）使用的 bin/lib 目标目录变量由这里提供
 include(GNUInstallDirs)
 
+# Windows 布局 opt-out（第 7 轮 CI 取证定案，完整叙事见 .github/workflows/ci.yml windows job
+# 第 6 步注释）：qt6_standard_project_setup 是 macro，其 WIN32 分支（Qt 6.11.1
+# Qt6CoreMacros.cmake:3643-3648）在 CMAKE_RUNTIME_OUTPUT_DIRECTORY 未设时把它 opinionated 地
+# 定为调用方的 CMAKE_CURRENT_BINARY_DIR（=build-win 顶层），全部 RUNTIME 产物被搬离各自子目录。
+# 此处必须在 qt_standard_project_setup 之前预置，macro 的 if(NOT ...) 守卫见值即跳过；
+# 取 ${CMAKE_INSTALL_BINDIR} 镜像上方安装 bin 布局、兼顾 Qt「Windows 无 RPATH，exe 与 DLL
+# 同目录」的本意。仅 WIN32 生效：Linux 布局逐字节不变，exe 仍在各自子目录
+# （check_core_isolation 防线5 的 build-ninja/rendezvous/gridyard_rendezvous 路径不受影响），
+# tests/CTestTestfile.cmake 的 add_test COMMAND 展开随 target 真实落盘路径自动一致。
+if(WIN32)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR})
+endif()
+
 # QuickDialogs2 提供原生 FileDialog / FolderDialog，替代已废弃的 Qt.labs.platform 方案
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Widgets)
 qt_standard_project_setup(REQUIRES 6.10)

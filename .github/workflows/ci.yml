@@ -229,11 +229,22 @@ jobs:
           tree=()
           for f in build-win/**/*.exe; do case "$f" in *CMakeFiles*) continue ;; esac; tree+=("$f"); done
           # 恢复垫：立即抄送一份到 workspace 外的 runner 临时盘（RUNNER_TEMP 已加入扫描排除），
-          # windeployqt 步在 tests 直下与全树均搜不到 exe 时从这里回填
+          # windeployqt 步在期望路径与全树均搜不到 exe 时从这里回填。抄送对象=全树 exe：
+          # 第 6 轮定案 Windows 落盘面在 build-win 顶层而非 tests 直下（见 windeployqt 步注释），
+          # 只抄 tests 直下等于垫了空气——#29 实证该垫 0 个抄到、0 个动用
           rescue="$(cygpath -u "${RUNNER_TEMP:-.}" 2>/dev/null || echo "${RUNNER_TEMP:-.}")/gy-exe-rescue"
           mkdir -p "$rescue"
-          for exe in "${built[@]}"; do cp -f "$exe" "$rescue/"; done
+          for exe in "${tree[@]}"; do cp -f "$exe" "$rescue/"; done
           echo "::notice::构建 exit 0 后 exe 落盘：tests 直下计 ${#built[@]}（${built[*]:-无}）｜全树计 ${#tree[@]}｜恢复垫抄送 $(ls "$rescue" | wc -l) 个至 $rescue"
+          # 第 6 轮取证：ninja 链接行的 $out 原文是生成期落盘路径的直接证据——顶层形如
+          # "Linking CXX executable test_x.exe"、tests 直下形如 "…tests/test_x.exe"。绿路径
+          # 也钉死，落盘面自此每轮实测、不再靠布局假设推断
+          lnk="$(grep -E 'Linking CXX executable' /tmp/win-build.log 2>/dev/null | tail -9 | sed 's/^[^A-Za-z]*//' | awk 'NR>1{printf "｜"}{printf "%s",$0}')"
+          if [ -n "$lnk" ]; then
+            echo "::notice::[链接行实况] ninja 链接行原文（相对 build-win 的落盘路径）：${lnk:0:1800}"
+          else
+            echo "::notice::[链接行实况] /tmp/win-build.log 无 Linking CXX executable 行——构建系统层未链接型死因"
+          fi
           # TODO(尖兵)：POSIX 抽象层落地后放开全量（报告 B3-B7）：
           # cmake --build build-win
 
@@ -255,59 +266,116 @@ jobs:
           #  ② 恢复垫回填：全树亦 0 时从第 5 步抄送的 RUNNER_TEMP/gy-exe-rescue 回填（摘除型实锤）；
           #  ③ 归位后仍不足 6 才失败，取证升级：顶层/tests 完整枚举（不再 head 截断）+ 全树 exe +
           #     /tmp/win-build.log 的 grep -E "Linking|\.exe$|ninja" 行注入（ninja 到底链没链 exe）。
+          # 第 6 轮定案（run 41349344689 绿路径注解 × 本机静态取证，R2~R4 三分谜题终结）：
+          #  Windows 落盘面由 Qt 定死，不在 tests 直下——src/CMakeLists.txt:17 的
+          #  qt_standard_project_setup 在 Windows 走 Qt6CoreMacros.cmake:3643-3648：
+          #  if(WIN32) 且 CMAKE_RUNTIME_OUTPUT_DIRECTORY 未设 → set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
+          #  ${CMAKE_CURRENT_BINARY_DIR})。qt6_standard_project_setup 是 macro（:3575）无函数
+          #  作用域，set 落在调用方 src/ 的目录作用域（CMAKE_CURRENT_BINARY_DIR=build-win 顶层）
+          #  且先于一切 target 创建，tests 子目录继承 → 全部 RUNTIME 产物（含 6 个测试 exe）落
+          #  build-win 顶层，tests/CTestTestfile.cmake 的 add_test COMMAND 生成期同步展开为顶层
+          #  绝对路径——ctest 本就从顶层拉起（Qt bin 在 PATH 上 + QT_PLUGIN_PATH 兜底，DLL 不依赖
+          #  exe 旁部署）。全谱系由此自洽：R2「exe 在 tests 直下」系 Linux 布局假设的错误推定
+          #  （git show b5bc0d1:src/CMakeLists.txt 实核 :17 当时即有该行，Debug 实况同在顶层）；
+          #  R4「exe 全灭」实为顶层 ls head -4 截断折叠小写条目；#29 归位=把顶层 exe 复制到
+          #  tests 直下（ctest 根本不读那里，冗余拷贝但不致命，job 才得以全绿）。上一轮①里
+          #  「CTestTestfile 生成期路径 → 即 build-win/tests 直下」的推断只在 Linux 成立。
+          #  Linux 侧走 elseif(NOT APPLE) 的 RPATH 分支（:3649），不设该变量，布局零影响
+          #  （本机 build-ninja 实证：缓存无该变量、exe 在 tests 直下、CTestTestfile.cmake:7
+          #  COMMAND=tests 直下绝对路径）。根治属产品构建面（于 src/CMakeLists.txt:17 之前
+          #  预置 CMAKE_RUNTIME_OUTPUT_DIRECTORY 即 Qt 注释自述的官方 opt-out），无失败取证
+          #  指认前不动产品码；本步改为按生成期文件推导 ctest 真实期望路径，布局再漂也自适应。
+          #  第 7 轮补记：产品面 opt-out 已按上句落实——src/CMakeLists.txt 在 qt_standard_project_setup
+          #  之前 if(WIN32) 预置 ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}（=build-win/bin/），
+          #  Windows 全部 RUNTIME 产物自此落 bin/、CTestTestfile COMMAND 随之；本步推导/归位/部署
+          #  逻辑保留为布局自适应防线（tests 直下、顶层、bin/ 三种布局均正确工作，沙盘已验）。
           shopt -s nullglob globstar
           rescue="$(cygpath -u "${RUNNER_TEMP:-.}" 2>/dev/null || echo "${RUNNER_TEMP:-.}")/gy-exe-rescue"
-          exes=(build-win/tests/*.exe)
-          if [ "${#exes[@]}" -lt 6 ]; then
+          # ctest 实际执行的 exe 路径不作布局假设：从 tests/CTestTestfile.cmake 的 add_test
+          # COMMAND 生成期展开逐例推导（六例名单与上方 --target、下方 ctest -R 严格同源）；
+          # 文件缺失或解析失败回退旧假设 tests 直下，行为与第 5 轮一致
+          names=(test_storage_database test_storage_device test_storage_message
+                 test_storage_transfer_history test_frame_codec test_database_worker)
+          ctest_tf=build-win/tests/CTestTestfile.cmake
+          expected=()
+          for name in "${names[@]}"; do
+            tok="$(grep -F "[=[${name}]=] " "$ctest_tf" 2>/dev/null | grep add_test | head -1 \
+                   | grep -oE '"[^"]+\.exe"' | head -1 | tr -d '"')"
+            if [ -n "$tok" ] && [[ "$tok" == */build-win/* ]]; then
+              expected+=("build-win/${tok#*/build-win/}")
+            else
+              expected+=("build-win/tests/${name}.exe")
+            fi
+          done
+          present=0; missing=()
+          for p in "${expected[@]}"; do
+            if [ -f "$p" ]; then present=$((present+1)); else missing+=("$p"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
             found=()
             for f in build-win/**/*.exe; do
               case "$f" in *CMakeFiles*) continue ;; esac   # 排除 CompilerIdCXX/CMakeTmp 探测产物
               found+=("$f")
             done
             if [ "${#found[@]}" -gt 0 ]; then
-              mkdir -p build-win/tests
-              for f in "${found[@]}"; do
-                [ "$(dirname "$f")" = "build-win/tests" ] && continue   # 已在位的不重复拷贝
-                cp -f "$f" "build-win/tests/$(basename "$f")"
+              healed=0
+              for p in "${missing[@]}"; do
+                b="$(basename "$p")"
+                for f in "${found[@]}"; do
+                  if [ "$(basename "$f")" = "$b" ] && [ "$f" != "$p" ]; then
+                    mkdir -p "$(dirname "$p")"; cp -f "$f" "$p"; healed=$((healed+1)); break
+                  fi
+                done
               done
-              echo "::notice::tests 直下仅 ${#exes[@]} 个，全树搜得 ${#found[@]} 个 exe 并归位到 tests 直下：${found[*]}"
+              echo "::notice::[ctest 期望路径] $ctest_tf add_test COMMAND 生成期展开（ctest 实际执行路径）：${expected[*]}"
+              echo "::notice::期望路径在位仅 ${present} 个，全树搜得 ${#found[@]} 个 exe，按 ctest 期望路径归位 ${healed} 个（原先错拷到 tests 直下的冗余行为终止）：${expected[*]}"
             else
               rescued=("$rescue"/*.exe)
               if [ "${#rescued[@]}" -gt 0 ]; then
-                mkdir -p build-win/tests
-                for f in "${rescued[@]}"; do cp -f "$f" build-win/tests/; done
-                echo "::warning::tests 直下与全树均搜不到 exe——从第 5 步恢复垫回填 ${#rescued[@]} 个（构建后被摘除型死因实锤，扫描排除未防住）：${rescued[*]}"
+                for p in "${missing[@]}"; do
+                  b="$(basename "$p")"
+                  for r in "${rescued[@]}"; do
+                    if [ "$(basename "$r")" = "$b" ]; then
+                      mkdir -p "$(dirname "$p")"; cp -f "$r" "$p"; break
+                    fi
+                  done
+                done
+                echo "::warning::期望路径与全树均搜不到 exe——从第 5 步恢复垫回填（构建后被摘除型死因实锤，扫描排除未防住）：${expected[*]}"
               fi
             fi
-            exes=(build-win/tests/*.exe)   # 归位/回填后重验
+            present=0   # 归位/回填后重验
+            for p in "${expected[@]}"; do [ -f "$p" ] && present=$((present+1)); done
           fi
-          if [ "${#exes[@]}" -lt 6 ]; then
-            echo "::error::build-win/tests 仅见 ${#exes[@]} 个测试 exe（应 6），构建产物布局异常"
+          if [ "$present" -lt 6 ]; then
+            echo "::error::ctest 期望路径仅见 ${present}/6 个测试 exe（期望：${expected[*]}），构建产物布局异常"
             link_cnt=$(grep -cE "Linking|\.exe$|ninja" /tmp/win-build.log 2>/dev/null)
             exe_cnt=$(grep -c "CXX executable" /tmp/win-build.log 2>/dev/null)
+            pat="$(printf '%s|' "${names[@]}" | sed 's/|$//')"
             tree=()
             for f in build-win/**/*.exe; do case "$f" in *CMakeFiles*) continue ;; esac; tree+=("$f"); done
-            { echo "[顶层完整] build-win: $(ls build-win 2>&1 | tr '\n' ' ')"
-              echo "[tests完整] build-win/tests: $(ls build-win/tests 2>&1 | tr '\n' ' ')"
+            { echo "[顶层完整] build-win: $(ls build-win 2>&1 | tr '\n' ' ')｜[tests完整] build-win/tests: $(ls build-win/tests 2>&1 | tr '\n' ' ')"
+              echo "[ctest期望] $(grep add_test "$ctest_tf" 2>/dev/null | grep -E "$pat" | head -6 | sed -E 's/.*"([^"]+\.exe)".*/\1/' | awk 'NR>1{printf "｜"}{printf "%s",$0}')"
               echo "[全树exe] /tmp/win-build.log 中 Linking|\.exe$|ninja 行计 ${link_cnt:-日志缺失}（CXX executable 行计 ${exe_cnt:-0}）｜build-win/**/*.exe（除 CMakeFiles）计 ${#tree[@]}：${tree[*]:-无匹配}"
               echo "[恢复垫] $rescue: $(ls "$rescue" 2>/dev/null | wc -l) 个"
               grep -nE "Linking|\.exe$|ninja" /tmp/win-build.log 2>/dev/null | tail -5 | sed 's/^/[ninja日志] /'
             } 2>&1 | while IFS= read -r line; do echo "::error::${line:0:600}"; done
             exit 1
           fi
-          for exe in "${exes[@]}"; do
+          # 部署对象=expected[]（ctest 实际执行的路径）：#29 时 DLL 摆在 tests 直下而 ctest
+          # 从顶层跑 exe，靠 Qt bin 在 PATH 上侥幸全绿——部署面自此对准真实执行路径
+          for exe in "${expected[@]}"; do
             "$HOME/Qt/6.11.1/msvc2022_64/bin/windeployqt.exe" --release --no-translations "$exe" \
               || echo "::warning::windeployqt 失败（QT_PLUGIN_PATH 兜底仍在）：$exe"
           done
           # offscreen 平台插件不在 windeployqt 默认部署面（§5.1.6 未实测项），显式补齐到各 exe 目录
-          for exe in "${exes[@]}"; do
+          for exe in "${expected[@]}"; do
             mkdir -p "$(dirname "$exe")/platforms"
             cp -f "$HOME/Qt/6.11.1/msvc2022_64/plugins/platforms/qoffscreen.dll" "$(dirname "$exe")/platforms/" \
               || echo "::warning::qoffscreen.dll 拷贝失败：$exe（QT_PLUGIN_PATH 兜底仍在）"
           done
           # 部署自检：任一测试 exe 目录缺 Qt6Core.dll 即失败——第 2 轮的静默空转不允许再发生。
           # 旧版 find|while 的 exit 1 只退出管道子 shell，改为 for 主 shell 真退出
-          for exe in "${exes[@]}"; do
+          for exe in "${expected[@]}"; do
             [ -f "$(dirname "$exe")/Qt6Core.dll" ] || { echo "::error::$(dirname "$exe") 缺 Qt6Core.dll，DLL 部署未生效"; exit 1; }
           done
 
