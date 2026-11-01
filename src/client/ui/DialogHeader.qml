@@ -1,7 +1,7 @@
 /**
  * @file    DialogHeader.qml
- * @version 7.19.0
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   弹窗页眉
  *
@@ -55,6 +55,8 @@ ColumnLayout {
         ToolButton {
             text: "✕"
             font.pixelSize: 14
+            // 读屏名：可见文字是符号"✕"，读屏按"关闭"播报
+            Accessible.name: qsTr("关闭")
             ToolTip.text: qsTr("关闭")
             ToolTip.delay: 500
             ToolTip.visible: hovered

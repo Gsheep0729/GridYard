@@ -1,7 +1,7 @@
 /**
  * @file    DeleteDeviceDialog.qml
- * @version 7.20.1
- * @date 2026-10-05
+ * @version 8.2.1
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   删除该设备确认弹窗
  *
@@ -40,22 +40,37 @@ Dialog {
     }
 
     ColumnLayout {
+        objectName: "deleteDeviceDialogContent"
         spacing: 14
         anchors.fill: parent
 
+        // 读屏语义：弹窗本体不是 Item，Accessible 附挂不上，由内容根承载
+        // Dialog 角色，名字对齐标题
+        Accessible.role: Accessible.Dialog
+        Accessible.name: deleteDeviceDialog.title
+
         Label {
+            objectName: "deleteDeviceScopeText"
             text: qsTr("将删除与「%1」的聊天记录和传输历史，不影响已接收的文件。")
                   .arg(deleteDeviceDialog.deviceName)
             wrapMode: Text.Wrap
             Layout.fillWidth: true
+
+            // 读屏语义：删除范围说明以静态文本可达
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
         }
 
         // 扫描语义说明：网络里的设备删不掉，删除只清除本地记录
         Label {
+            objectName: "deleteDeviceRescanText"
             text: qsTr("对方再次上线时，会以全新设备身份重新出现。")
             wrapMode: Text.Wrap
             Layout.fillWidth: true
             color: Style.Color.textSecondary
+
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
         }
     }
 
@@ -69,12 +84,14 @@ Dialog {
 
         Button {
             text: qsTr("取消")
+            Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
             onClicked: deleteDeviceDialog.close()
         }
 
         // 危险操作用语义化红色按钮，与清除缓存等不可逆操作一致
         DangerButton {
             text: qsTr("删除")
+            Accessible.name: text
             onClicked: {
                 deleteDeviceDialog.close()
                 deleteDeviceDialog.deleteConfirmed(deleteDeviceDialog.deviceId)

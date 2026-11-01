@@ -1,7 +1,7 @@
 /**
  * @file    AcceptDialog.qml
  * @version 8.2.1
- * @date 2026-10-31
+ * @date 2026-11-01
  * @author  GridYard Team
  * @brief   接收确认弹窗
  *
@@ -57,6 +57,14 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Style.Space.lg
 
+        // 读屏语义：弹窗本体不是 Item，Accessible 附挂不上（Qt 6.11.1 实测
+        // 附挂只会告警且接口为空），由内容根承载 Dialog 角色；名字对齐标题，
+        // 描述带发送方，读屏开场即可听到"来自谁"
+        Accessible.role: Accessible.Dialog
+        Accessible.name: acceptDialog.title
+        Accessible.description: qsTr("来自 ") + acceptDialog.senderName
+                                + qsTr(" 的传输请求")
+
         // 发送方提示
         Label {
             text: qsTr("来自 ") + acceptDialog.senderName + qsTr(" 的传输请求")
@@ -69,12 +77,25 @@ Dialog {
 
         // 文件信息卡片：文件夹场景显示总文件数和总大小，单文件场景只显示文件大小
         Rectangle {
+            objectName: "acceptFileInfoCard"
             Layout.fillWidth: true
             implicitHeight: fileInfoLayout.implicitHeight + 24
             color: Style.Color.surfaceSoft
             radius: Style.Radius.sm
             border.color: Style.Color.border
             border.width: 1
+
+            // 读屏语义：卡内行文本读屏不可达（本 Qt 构建裸 Text 无可访问接口），
+            // 整卡成组并把决策所需关键字段并进读屏名
+            Accessible.role: Accessible.Grouping
+            Accessible.name: acceptDialog.isDirectory
+                  ? qsTr("文件夹名：%1，共 %2 项，总大小 %3")
+                        .arg(acceptDialog.fileName)
+                        .arg(acceptDialog.totalFiles)
+                        .arg(FormatUtils.formatBytes(acceptDialog.totalBytes))
+                  : qsTr("文件名：%1，大小 %2")
+                        .arg(acceptDialog.fileName)
+                        .arg(FormatUtils.formatBytes(acceptDialog.fileSize))
 
             ColumnLayout {
                 id: fileInfoLayout
@@ -190,12 +211,17 @@ Dialog {
 
         // 提示信息
         Label {
+            objectName: "acceptQuestionText"
             text: acceptDialog.isDirectory
                   ? qsTr("是否接受此文件夹？")
                   : qsTr("是否接受此文件？")
             font.pixelSize: 14
             color: Style.Color.textSecondary
             Layout.alignment: Qt.AlignHCenter
+
+            // 读屏语义：决策问句以静态文本可达
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
         }
     }
 
@@ -210,6 +236,7 @@ Dialog {
         // 直接关闭路径，两者语义必须分开（直接关闭按"稍后再说"处理）
         Button {
             text: qsTr("拒绝")
+            Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
             flat: true
             onClicked: {
                 AppController.transferController.rejectReceiveSession(acceptDialog.sessionId)
@@ -220,6 +247,7 @@ Dialog {
         Button {
             id: acceptButton
             text: qsTr("接受")
+            Accessible.name: text  // 读屏名：QQC2 内建只给 role 不给 name
             DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
             highlighted: true
         }

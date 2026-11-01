@@ -1,7 +1,7 @@
 /**
  * @file    AddDeviceDialog.qml
  * @version 8.2.1
- * @date 2026-10-30
+ * @date 2026-11-01
  * @author  GY
  * @brief   添加设备对话框
  *
@@ -66,6 +66,11 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Style.Space.md
 
+        // 读屏语义：弹窗本体不是 Item，Accessible 附挂不上，由内容根承载
+        // Dialog 角色，名字对齐标题
+        Accessible.role: Accessible.Dialog
+        Accessible.name: addDeviceDialog.title
+
         // 方式切换页签（内容左右留白 20、底部留白 16，与 DialogHeader 视觉衔接）
         TabBar {
             id: modeBar
@@ -75,9 +80,9 @@ Dialog {
             currentIndex: addDeviceDialog._mode
             onCurrentIndexChanged: addDeviceDialog._mode = currentIndex
 
-            TabButton { text: qsTr("我的邀请码") }
-            TabButton { text: qsTr("导入邀请码") }
-            TabButton { text: qsTr("手动添加") }
+            TabButton { text: qsTr("我的邀请码"); Accessible.name: text }  // 读屏名
+            TabButton { text: qsTr("导入邀请码"); Accessible.name: text }
+            TabButton { text: qsTr("手动添加"); Accessible.name: text }
         }
 
         StackLayout {
@@ -92,17 +97,23 @@ Dialog {
                 spacing: Style.Space.sm
 
                 Label {
+                    objectName: "addInviteHintText"
                     text: qsTr("把下面的邀请码发给别人（聊天软件均可），对方在 GridYard 里导入后即可互相添加。")
                     font.pixelSize: 13
                     color: Style.Color.textSecondary
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
+
+                    // 读屏语义：说明文本以静态文本可达
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
                 }
 
                 // 直接用 TextArea 自带的滚动与换行；包一层 ScrollView 会让宽度失去约束。
                 // 内容不超框时垂直居中，超框时回退顶端对齐，长文本不锚死中间
                 TextArea {
                     id: inviteArea
+                    objectName: "inviteArea"
                     Layout.fillWidth: true
                     Layout.preferredHeight: 96
                     readOnly: true
@@ -112,6 +123,10 @@ Dialog {
                     font.pixelSize: 11
                     color: Style.Color.textSecondary
                     selectByMouse: true
+
+                    // 读屏名：QQC2 内建只给 role 不给 name，内容经文本接口仍可逐段读出
+                    Accessible.name: qsTr("我的邀请码")
+
                     background: Rectangle {
                         color: Style.Color.surfaceSoft
                         radius: Style.Radius.sm
@@ -123,6 +138,7 @@ Dialog {
                     id: copyInviteButton
                     Layout.alignment: Qt.AlignRight
                     text: qsTr("复制邀请码")
+                    Accessible.name: text
                     onClicked: {
                         addDeviceDialog.copyInvite()
                         copyFeedbackTimer.restart()
@@ -144,15 +160,21 @@ Dialog {
                 spacing: Style.Space.sm
 
                 Label {
+                    objectName: "addImportHintText"
                     text: qsTr("粘贴对方发来的邀请码，GridYard 会自动探测并添加该设备。")
                     font.pixelSize: 13
                     color: Style.Color.textSecondary
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
+
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
                 }
 
                 TextArea {
                     id: importArea
+                    objectName: "importArea"
+                    Accessible.name: qsTr("对方的邀请码")
                     Layout.fillWidth: true
                     Layout.preferredHeight: 96
                     // 占位提示用自绘 Label：样式自带的 placeholder 不跟随垂直居中
@@ -182,17 +204,23 @@ Dialog {
                 }
 
                 Label {
+                    objectName: "addImportErrorText"
                     Layout.fillWidth: true
                     visible: addDeviceDialog._importError.length > 0
                     text: addDeviceDialog._importError
                     color: Style.Color.error
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
+
+                    // 读屏语义：行内失败原因以静态文本可达
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
                 }
 
                 SecondaryButton {
                     Layout.alignment: Qt.AlignRight
                     text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("导入并连接")
+                    Accessible.name: text
                     enabled: importArea.text.trim().length > 0 && !addDeviceDialog._busy
                     onClicked: {
                         addDeviceDialog._importError = ""
@@ -206,11 +234,15 @@ Dialog {
                 spacing: Style.Space.sm
 
                 Label {
+                    objectName: "addManualHintText"
                     text: qsTr("已知对方电脑的 IP 和端口时可直接填写，GridYard 会先测试连通再添加。")
                     font.pixelSize: 13
                     color: Style.Color.textSecondary
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
+
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
                 }
 
                 RowLayout {
@@ -228,9 +260,13 @@ Dialog {
 
                         TextField {
                             id: manualHostField
+                            objectName: "manualHostField"
                             Layout.fillWidth: true
                             placeholderText: qsTr("例如：10.10.10.100")
                             selectByMouse: true
+
+                            // 读屏名：QQC2 内建只给 role 不给 name（对齐上方可见标签）
+                            Accessible.name: qsTr("IP 地址")
                         }
                     }
 
@@ -246,28 +282,37 @@ Dialog {
 
                         SpinBox {
                             id: manualPortSpin
+                            objectName: "manualPortSpin"
                             Layout.fillWidth: true
                             from: 1024
                             to: 65535
                             value: ConfigManager.tcpPort
                             editable: true
                             locale: Qt.locale("C")  // C 区域无千分位，端口不显示逗号分组
+
+                            // 读屏名：数值经 SpinBox 值接口播报，内部输入框免名
+                            Accessible.name: qsTr("端口")
                         }
                     }
                 }
 
                 Label {
+                    objectName: "addManualErrorText"
                     Layout.fillWidth: true
                     visible: addDeviceDialog._manualError.length > 0
                     text: addDeviceDialog._manualError
                     color: Style.Color.error
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
+
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: text
                 }
 
                 SecondaryButton {
                     Layout.alignment: Qt.AlignRight
                     text: addDeviceDialog._busy ? qsTr("正在连接...") : qsTr("测试并添加")
+                    Accessible.name: text
                     enabled: manualHostField.text.trim().length > 0 && !addDeviceDialog._busy
                     onClicked: {
                         addDeviceDialog._manualError = ""

@@ -707,6 +707,24 @@ target_compile_features(test_keyboard_access PRIVATE cxx_std_23)
 add_test(NAME test_keyboard_access COMMAND test_keyboard_access)
 set_tests_properties(test_keyboard_access PROPERTIES TIMEOUT 60)
 
+# --- 读屏语义回归测试（O-24：以桩上下文属性与桩 QML 模块加载四个高频弹窗
+#     与 TransferTaskCard.qml，经 QAccessible 公开 API 校验 Dialog/Indicator
+#     角色承载、内建 role 控件的读屏名与状态徽标名字随状态更新） ---
+qt_add_executable(test_screen_reader_semantics test_screen_reader_semantics.cpp)
+target_link_libraries(test_screen_reader_semantics PRIVATE
+    Qt6::Test
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+)
+target_compile_definitions(test_screen_reader_semantics PRIVATE
+    GRIDYARD_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_compile_features(test_screen_reader_semantics PRIVATE cxx_std_23)
+add_test(NAME test_screen_reader_semantics COMMAND test_screen_reader_semantics)
+set_tests_properties(test_screen_reader_semantics PROPERTIES TIMEOUT 60)
+
 # --- Golden 基线对拍套件：以当前 Qt 实现为参考实现固化行为，供纯 C++ 替代实现对拍 ---
 qt_add_executable(test_golden_baseline test_golden_baseline.cpp
     ${CLIENT_CORE_DIR}/dir_serializer.cpp

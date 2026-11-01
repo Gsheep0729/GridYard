@@ -196,10 +196,16 @@ Frame {
 
             // 状态标签：浅底深字，颜色随状态变化
             Rectangle {
+                objectName: "statusBadge"
                 Layout.preferredWidth: statusLabel.implicitWidth + 12
                 Layout.preferredHeight: statusLabel.implicitHeight + 4
                 radius: Style.Radius.xs
                 color: taskCard.statusBg()
+
+                // 读屏语义：自绘徽标以 Indicator 角色播报，名字随状态词表更新；
+                // 内部同文文本置 ignored，读屏只播徽标名一次
+                Accessible.role: Accessible.Indicator
+                Accessible.name: qsTr("状态：") + taskCard.statusText()
 
                 Behavior on color {
                     ColorAnimation {
@@ -215,6 +221,7 @@ Frame {
                     font.pixelSize: 11
                     color: taskCard.statusFg()
                     font.bold: true
+                    Accessible.ignored: true
                 }
             }
         }
