@@ -111,6 +111,13 @@ jobs:
   #     但四目标依赖闭包已实核零 POSIX 面（gy_shared 仅 protocol.h 不链 gy_net_core），
   #     22s 也排除配置成功后进入编译（sqlite3 融合文件单编译即 ≥10s）→ 本版按§5.2 执行
   #     预案切第二跳：Ninja 生成器 + msvc-dev-cmd（§3.2 四前提），CMake 4.2.3 钉版不变。
+  #     第 2 轮取证（run 41320557061 / b5bc0d1）：Ninja+msvc-dev-cmd 生效——配置+构建 64s 通过，
+  #     点 B 落地成功（CMake 4.2.3+Ninja+MSVC 工具集接受 import std，§3.1/§5.2 的张力落定）；
+  #     但 step7 ctest 1801s exit 8，6 例全部命中各自 300s 超时（Linux 基线同过滤 6 例全过
+  #     共 ~1.1s，本机实测），windeployqt 步骤 0s 空转（started==completed 同秒）——进程未完成
+  #     任何一次运行，属部署/启动环境层而非产品断言失败。本版修 DLL/插件部署面（--release+
+  #     落盘自检+qoffscreen 显式补齐+QT_PLUGIN_PATH 兜底）、构建切 Release 对齐 release-only
+  #     Qt，ctest 逐例状态注入注解供下轮匿名取证。
   #  C) check_core_isolation --compile-check 字面调用 g++（src/scripts/check_core_isolation.py:233，
   #     报告 B14）→ windows 侧降级为仅扫描防线；防线5 ldd/nm（:302,310）因 build-ninja
   #     不存在自动 SKIP（报告 B15），不会误报。
@@ -169,11 +176,15 @@ jobs:
           # Ninja 预装于 windows runner（报告§3.2 前提3）；万一镜像漂移则 pip 兜底（脚本目录已在 PATH）
           command -v ninja || python -m pip install --user ninja
           # §5.2 第二跳落地：-G Ninja（import std 在 MSVC 上仅 Ninja 支持，首跑 VS 生成器已在
-          # run 41313929185 取证失败）；单配置生成器下 CMAKE_BUILD_TYPE=Debug 真实生效。
+          # run 41313929185 取证失败）；第 2 轮该配置 64s 通过（run 41320557061）——点 B 取证成功。
+          # CMAKE_BUILD_TYPE=Release：aqt 在线 base 包按官方口径 release-only（无 Qt6Cored.dll；
+          # Updates.xml 本机网络不可达未能直接验证，第 2 轮 --debug 部署 0 产出为旁证），
+          # Debug(/MDd) exe 混 release Qt DLL 属 MSVC 不推荐组合，且 debug CRT 断言在 CI 会弹
+          # 模态框挂满 300s 超时（第 2 轮 6/6 恰 300s 的候选形态之一），统一 Release 消除该类。
           # 注解取证移植自 linux job（本文件 :61-64）：日志原文网页需登录、API 需凭据，
           # ::error:: 注解是匿名可读的唯一通道
           cmake -S src -B build-win -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$HOME/Qt/6.11.1/msvc2022_64" 2>&1 | tee /tmp/win-cfg.log | tail -3 \
             || { grep -B3 -A8 "CMake Error" /tmp/win-cfg.log | head -8 > /tmp/win-ann.txt
                  [ -s /tmp/win-ann.txt ] || tail -8 /tmp/win-cfg.log > /tmp/win-ann.txt
@@ -204,14 +215,29 @@ jobs:
           # TODO(尖兵)：POSIX 抽象层落地后放开全量（报告 B3-B7）：
           # cmake --build build-win
 
-      - name: windeployqt 摆 DLL
+      - name: windeployqt 摆 DLL 与平台插件
         shell: bash
         run: |
-          # 33 个测试均为 qt_add_executable，Windows 无 rpath：Qt6*.dll 与平台插件需就位
-          # （报告 B19）；offscreen 插件 windows 侧可用性未实测（§5.1.6），失败可回退
-          # plugins 显式 QT_PLUGIN_PATH
+          # 33 个测试均为 qt_add_executable，Windows 无 rpath：Qt6*.dll 与平台插件需就位（报告 B19）。
+          # 第 2 轮实证（run 41320557061）：本步骤 0s 空转（started==completed 同秒）、--debug 未产出
+          # 任何 DLL，ctest 6 例全部 300s 超时（1801s≈6×300s；Linux 基线同过滤 6 例全过共 ~1.1s）。
+          # aqt 在线 base 包按官方口径 release-only（无 Qt6Cored.dll 供 --debug 部署；Updates.xml
+          # 本机不可达未能直接验证，以落盘自检兜底）→ 改 --release 并加三道自检，杜绝静默空转
+          exe_count=$(find build-win/tests -name "*.exe" | wc -l)
+          [ "$exe_count" -ge 6 ] || { echo "::error::build-win/tests 仅见 $exe_count 个测试 exe（应 6），构建产物布局异常"; exit 1; }
           find build-win/tests -name "*.exe" | while read -r exe; do
-            "$HOME/Qt/6.11.1/msvc2022_64/bin/windeployqt.exe" --debug --no-translations "$exe"
+            "$HOME/Qt/6.11.1/msvc2022_64/bin/windeployqt.exe" --release --no-translations "$exe" \
+              || echo "::warning::windeployqt 失败（QT_PLUGIN_PATH 兜底仍在）：$exe"
+          done
+          # offscreen 平台插件不在 windeployqt 默认部署面（§5.1.6 未实测项），显式补齐到各 exe 目录
+          find build-win/tests -name "*.exe" | while read -r exe; do
+            mkdir -p "$(dirname "$exe")/platforms"
+            cp -f "$HOME/Qt/6.11.1/msvc2022_64/plugins/platforms/qoffscreen.dll" "$(dirname "$exe")/platforms/" \
+              || echo "::warning::qoffscreen.dll 拷贝失败：$exe（QT_PLUGIN_PATH 兜底仍在）"
+          done
+          # 部署自检：任一测试 exe 目录缺 Qt6Core.dll 即失败——第 2 轮的静默空转不允许再发生
+          find build-win/tests -name "*.exe" | while read -r exe; do
+            [ -f "$(dirname "$exe")/Qt6Core.dll" ] || { echo "::error::$(dirname "$exe") 缺 Qt6Core.dll，DLL 部署未生效"; exit 1; }
           done
 
       - name: 串行 ctest（严禁 -j：UDP 45678 串扰，同顶部 linux job 注释）
@@ -220,14 +246,22 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          # §5.1.6 预案的插件兜底：即使 windeployqt 漏部署，也从 aqt 安装树直取平台插件
+          export QT_PLUGIN_PATH="$HOME/Qt/6.11.1/msvc2022_64/plugins"
           # 首轮仅跑纯存储/编解码面（报告 B20：网络类待 A 解除后纳入）；
           # -R 过滤实核命中 6 例：test_storage_database/device/message/transfer_history、
           # test_frame_codec、test_database_worker（src/tests/CMakeLists.txt:36,52,66,80,87,548），
           # 与上方 --target 构建面严格对齐（6 个测试 exe 全部先建，无 Not Run 污染）；
           # 串行依据 protocol.h:44 kDefaultDiscoveryPort=45678 + 8 个绑定 UDP 的用例
-          # （报告 B18、§5.1.7），沿用 ctest 默认串行，绝不加 -j
+          # （报告 B18、§5.1.7），沿用 ctest 默认串行，绝不加 -j；
+          # 失败时逐例状态（Passed/Failed/Timeout/Not Run）注入 ::error:: 注解——第 2 轮
+          # exit 8 无任何用例名可读，本注解让下轮死因匿名可读（本机实测 ctest 失败退出码=8）
           ctest --test-dir build-win --output-on-failure \
-            -R "test_storage_|test_database_worker|test_frame_codec"
+            -R "test_storage_|test_database_worker|test_frame_codec" 2>&1 | tee /tmp/win-ctest.log | tail -8 \
+            || { grep -E "Passed|Failed|Timeout|Not Run|tests passed|tests failed" /tmp/win-ctest.log \
+                   | head -10 > /tmp/win-ann3.txt
+                 while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann3.txt
+                 exit 1; }
           # TODO(尖兵)：全量串行 ctest 回归；转绿后按实测放宽超时（报告 B21）
 
       - name: 守卫（windows 可跑部分）
