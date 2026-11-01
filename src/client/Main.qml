@@ -749,8 +749,10 @@ ApplicationWindow {
         }
     }
 
-    // 底部轻提示 Toast：错误与成功共用
+    // 底部轻提示 Toast：错误与成功共用；会话页可见时让出输入区实际高度，
+    // 提示条不再压住输入区的 + 入口与占位文字（U2-17），主页占位态回落贴底原位
     Toast {
         id: toastPopup
+        bottomClearance: sessionView.visible ? sessionView.composerHeight : 0
     }
 }

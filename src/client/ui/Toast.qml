@@ -1,7 +1,7 @@
 /**
  * @file    Toast.qml
  * @version 7.19.0
- * @date 2026-10-05
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   底部轻提示
  *
@@ -20,6 +20,10 @@ Popup {
     // 弹窗淡入动画时长（与拆出前一致）
     readonly property int kEnterDuration: 180
     property bool isError: true
+    // 底部让位（U2-17）：会话页输入区实际高度由调用方注入，提示条不再压住
+    // 输入区的 + 入口与占位文字；无会话页（主页占位态）时为 0，回落贴底原位。
+    // 不叫 bottomInset：QQuickPopup 已有同名 final 成员，遮蔽会被 qmllint 拒绝
+    property real bottomClearance: 0
 
     function show(message, isError) {
         toast.isError = isError
@@ -29,7 +33,7 @@ Popup {
     }
 
     x: parent ? (parent.width - width) / 2 : 0
-    y: parent ? parent.height - height - 32 : 0
+    y: parent ? parent.height - height - 32 - bottomClearance : 0
     width: Math.min(480, parent ? parent.width - 48 : 480)
     padding: 12
     modal: false
@@ -62,12 +66,16 @@ Popup {
             Layout.preferredHeight: 18
             radius: 9
             color: Style.Color.textOnAccent
-            opacity: 0.25
+            // 0.25→0.16（U2-17）：原白圆底几乎看不见，降透明度后圆底可辨
+            opacity: 0.16
 
             Label {
                 anchors.centerIn: parent
                 text: toast.isError ? "!" : "✓"
-                color: toast.isError ? Style.Color.error : Style.Color.success
+                // 深色徽标字（U2-17）：浅色即提案色 #B91C1C / #047857，深浅由
+                // Style 双表派发（深色下状态前景压白圆底会糊，维持白字）
+                color: toast.isError ? Style.Color.toastGlyphErr
+                                     : Style.Color.toastGlyphOk
                 font.pixelSize: 11
                 font.bold: true
             }

@@ -59,6 +59,10 @@ const Light = {
     statusOkFg: "#047857",
     statusErrBg: "#FEF2F2",
     statusErrFg: "#B91C1C",
+    // Toast 图标字（U2-17）：压在 textOnAccent 16% 圆底上的徽标字，取状态
+    // 徽标同款深字（与 statusOkFg/statusErrFg 同值），原状态实色过浅不可辨
+    toastGlyphOk: "#047857",
+    toastGlyphErr: "#B91C1C",
     // 浅底上的加深前景：主色/接收紫的实色压浅底不足 4.5，深一档可达 6 以上
     primaryStrong: "#1D4ED8",
     receiveAccentStrong: "#6D28D9",
@@ -127,6 +131,10 @@ const Dark = {
     statusOkFg: "#6EE7B7",
     statusErrBg: "#3F2328",
     statusErrFg: "#FCA5A5",
+    // Toast 图标字（U2-17）：深色状态实色上浮，白圆底合成后偏浅，状态前景
+    // （深底浅字方向）压上反而糊，白字对合成圆底仍最清晰，随 textOnAccent 同值
+    toastGlyphOk: "#FFFFFF",
+    toastGlyphErr: "#FFFFFF",
     // 深底上的上浮前景：与浅色 primaryStrong 同语义（方向标签/链接字色）
     primaryStrong: "#93C5FD",
     receiveAccentStrong: "#C4B5FD",

@@ -1,7 +1,7 @@
 /**
  * @file    DeviceSessionView.qml
  * @version 8.2.1
- * @date 2026-10-31
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   当前设备的统一会话页
  *
@@ -37,6 +37,9 @@ Frame {
    readonly property bool showCharCounter: messageInput.text.length > 3600
    // 输入区逻辑最大宽度：大窗下输入盒不再无限拉长，整行居中收敛
    readonly property int kComposerMaxWidth: 860
+   // 输入区实际高度（随输入行长高、错误行可见时再让一行）：
+   // Toast 底部让位绑定用（U2-17）
+   readonly property real composerHeight: composerBar.height
 
    // 切换设备即重置输入语境：设备 A 的发送错误条与未发送草稿不得残留到
    // 设备 B——错误语境错位，草稿更可能被误发给另一台设备。草稿不做
@@ -277,6 +280,7 @@ Frame {
 
        // ===== 文本输入区 =====
        Rectangle {
+           id: composerBar
            Layout.fillWidth: true
            // 高度随输入内容自适应；错误提示可见时额外让出一行，避免压住 44px 单行盒
            Layout.preferredHeight: composerRow.height + Style.Space.sm * 2

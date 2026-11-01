@@ -1,7 +1,7 @@
 /**
  * @file    HomePlaceholder.qml
  * @version 8.1.0
- * @date 2026-10-26
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   未选中设备的空状态占位
  *
@@ -16,35 +16,20 @@ import "../utils/Style.js" as Style
 Item {
     id: homePlaceholder
 
-    Column {
+    // 排版统一走 EmptyState（U2-15）：品牌字标走 icon 槽，title/desc 收敛到
+    // 统一的 14 bold / 12 textMuted 档式
+    EmptyState {
         anchors.centerIn: parent
-        spacing: Style.Space.lg
         width: Math.min(parent.width - 80, 420)
-
-        Label {
+        spacing: Style.Space.lg
+        icon: Label {
             text: "GridYard"
             color: Style.Color.primary
-            font.pixelSize: 48
+            font.pixelSize: Style.Type.display
             font.bold: true
             opacity: 0.28
-            anchors.horizontalCenter: parent.horizontalCenter
         }
-
-        Label {
-            text: qsTr("选择一台设备开始会话")
-            font.pixelSize: 20
-            font.bold: true
-            color: Style.Color.textMain
-            anchors.horizontalCenter: parent.horizontalCenter
-        }
-
-        Label {
-            text: qsTr("发送文件，之后也会在这里查看聊天消息")
-            color: Style.Color.textMuted
-            font.pixelSize: 14
-            wrapMode: Text.Wrap
-            horizontalAlignment: Text.AlignHCenter
-            width: parent.width
-        }
+        title: qsTr("选择一台设备开始会话")
+        desc: qsTr("发送文件，之后也会在这里查看聊天消息")
     }
 }

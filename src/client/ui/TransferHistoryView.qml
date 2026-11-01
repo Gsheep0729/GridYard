@@ -1,7 +1,7 @@
 /**
  * @file    TransferHistoryView.qml
  * @version 8.2.1
- * @date 2026-10-30
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   传输历史视图
  *
@@ -270,27 +270,14 @@ Frame {
                 }
             }
 
-            // 空列表提示：查询无结果且加载完成时显示
-            ColumnLayout {
+            // 空列表提示：查询无结果且加载完成时显示（排版统一走 EmptyState，U2-15）
+            EmptyState {
                 anchors.centerIn: parent
                 visible: historyList.count === 0 && !AppController.historyController.loading
-                spacing: Style.Space.xs
-
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: root.selectedStatus.length > 0
-                          ? qsTr("没有符合筛选条件的历史") : qsTr("还没有传输历史")
-                    color: Style.Color.textWeak
-                    font.pixelSize: 14
-                    font.bold: true
-                }
-
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("传输完成后会自动记录在这里")
-                    color: Style.Color.textMuted
-                    font.pixelSize: 12
-                }
+                width: Math.min(parent.width - Style.Space.lg * 2, 320)
+                title: root.selectedStatus.length > 0
+                       ? qsTr("没有符合筛选条件的历史") : qsTr("还没有传输历史")
+                desc: qsTr("传输完成后会自动记录在这里")
             }
         }
     }

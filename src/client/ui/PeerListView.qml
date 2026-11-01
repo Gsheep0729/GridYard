@@ -1,13 +1,15 @@
 /**
  * @file    PeerListView.qml
  * @version 8.2.1
- * @date 2026-11-01
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   设备列表组件
  *
  * 绑定 AppController.peerDiscoveryViewModel.peers 显示在线和历史设备。
  * 提供搜索过滤、手动刷新和添加设备入口。
  */
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
@@ -107,6 +109,19 @@ Rectangle {
         id: searchDebounce
         interval: 300
         onTriggered: AppController.peerDiscoveryViewModel.searchPeers(searchInput.text)
+    }
+
+    // U2-15：空设备列表 30s 后把"正在搜索"文案切换为"暂未发现"，转圈保留——
+    // 发现服务仍在后台进行，"还在找还是没找到"由文案显式回答。离开空态
+    // （发现设备或开始搜索）即复位，下次进入重新计时
+    property bool _searchHintTimedOut: false
+
+    Timer {
+        interval: 30000
+        running: peerListView._filteredCount === 0
+                 && peerListView._searchKeyword.length === 0
+        onRunningChanged: if (!running) peerListView._searchHintTimedOut = false
+        onTriggered: peerListView._searchHintTimedOut = true
     }
 
     // 搜索区：搜索输入框 + 刷新按钮
@@ -362,7 +377,7 @@ Rectangle {
         }
 
         // 空状态：搜索无结果与尚未发现设备分别引导；数据库检索进行中不显示，
-        // 避免结果回投前的空态闪现
+        // 避免结果回投前的空态闪现。排版统一走 EmptyState（U2-15）
         ColumnLayout {
             anchors.centerIn: parent
             width: Math.min(parent.width - Style.Space.xl * 2, 230)
@@ -372,79 +387,46 @@ Rectangle {
                           && AppController.peerDiscoveryViewModel.searchBusy)
 
             // 搜索无结果
-            ColumnLayout {
+            EmptyState {
                 visible: peerListView._searchKeyword.length > 0
-                spacing: Style.Space.xs
-                Layout.alignment: Qt.AlignHCenter
-
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("没有匹配的设备")
-                    color: Style.Color.textWeak
-                    font.pixelSize: 14
-                    font.bold: true
-                }
-
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("换个关键词试试")
-                    color: Style.Color.textMuted
-                    font.pixelSize: 12
-                }
+                Layout.fillWidth: true
+                title: qsTr("没有匹配的设备")
+                desc: qsTr("换个关键词试试")
             }
 
             // 尚未发现任何设备：给新用户明确的下一步
-            ColumnLayout {
+            EmptyState {
                 visible: peerListView._searchKeyword.length === 0
-                spacing: Style.Space.sm
-                Layout.alignment: Qt.AlignHCenter
-
-                BusyIndicator {
-                    Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
+                icon: BusyIndicator {
                     implicitWidth: 28
                     implicitHeight: 28
                     running: peerListView._filteredCount === 0
                              && peerListView._searchKeyword.length === 0
                 }
-
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("正在搜索附近设备...")
-                    color: Style.Color.textWeak
-                    font.pixelSize: 14
-                    font.bold: true
-                }
-
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("请确认对方已打开 GridYard 并连接同一网络；\n跨网段可通过邀请码添加")
-                    color: Style.Color.textMuted
-                    font.pixelSize: 12
-                    wrapMode: Text.Wrap
-                    horizontalAlignment: Text.AlignHCenter
-                    Layout.fillWidth: true
-                }
+                title: peerListView._searchHintTimedOut
+                       ? qsTr("暂未发现设备，可点刷新或添加设备")
+                       : qsTr("正在搜索附近设备...")
+                desc: qsTr("请确认对方已打开 GridYard 并连接同一网络；\n跨网段可通过邀请码添加")
 
                 // 防火墙拦截无套接字级征兆（UDP 绑定成功、入向被丢），只能在空态引导自查
                 Label {
-                    Layout.alignment: Qt.AlignHCenter
+                    width: parent.width
                     text: qsTr("若长期无结果，检查系统防火墙是否放行 GridYard（UDP 45678 / TCP 35100）")
                     color: Style.Color.textMuted
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
-                    Layout.fillWidth: true
                 }
 
                 // 中央不再放第二个添加入口：底栏入口常驻，这里只做指路引导
                 Label {
-                    Layout.alignment: Qt.AlignHCenter
+                    width: parent.width
                     text: qsTr("底部「添加设备」入口常驻可用：生成或粘贴邀请码、填写 IP 地址均可添加。")
                     color: Style.Color.textMuted
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
-                    Layout.fillWidth: true
                 }
             }
         }

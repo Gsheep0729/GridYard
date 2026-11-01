@@ -1,7 +1,7 @@
 /**
  * @file    ConversationTimelineView.qml
  * @version 8.2.1
- * @date 2026-11-01
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
  *
@@ -66,11 +66,23 @@ Item {
     ListView {
         id: timelineList
 
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
         anchors.margins: Style.Space.lg
         clip: true
         spacing: Style.Space.md
         model: timelineModel  // 统一时间线数据源，包含消息和传输两种 kind
+
+        // 底部锚定（U2-11）：内容不足一屏时视图收缩并贴住底部，最后一条消息
+        // 停在输入区上方，会话像"在底部实时生长"而不是从顶部排开留半页空白。
+        // 高度只收缩、不经 header 撑高——header Item 上绑高度会被视图布局
+        // 回写卷入绑定环（见顶部加载行注释），收缩方案完全绕开 header 高度
+        // 绑定（delegates 只随宽度定尺寸，height←contentHeight 无回边不成环）。
+        // 内容超过一屏即占满整屏滚动，行为不变；空列表时保持整屏高度让空态居中
+        height: count === 0 ? parent.height - Style.Space.lg
+                            : Math.min(parent.height - Style.Space.lg,
+                                       contentHeight + Style.Space.lg)
 
         // 监听滚动位置：判断是否在底部附近，以及是否触发向上翻页
         onContentYChanged: {
@@ -301,25 +313,12 @@ Item {
             }
         }
 
-        ColumnLayout {
+        EmptyState {
             anchors.centerIn: parent
             visible: timelineList.count === 0
-            spacing: Style.Space.sm
-
-            Label {
-                text: qsTr("还没有会话记录")
-                color: Style.Color.textWeak
-                font.pixelSize: 16
-                font.bold: true
-                Layout.alignment: Qt.AlignHCenter
-            }
-
-            Label {
-                text: qsTr("发送消息或文件后将在这里显示")
-                color: Style.Color.textMuted
-                font.pixelSize: 13
-                Layout.alignment: Qt.AlignHCenter
-            }
+            width: Math.min(parent.width - Style.Space.lg * 2, 320)
+            title: qsTr("还没有会话记录")
+            desc: qsTr("发送消息或文件后将在这里显示")
         }
     }
 }

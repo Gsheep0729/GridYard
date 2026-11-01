@@ -1,7 +1,7 @@
 /**
  * @file    DeviceMergeDialog.qml
  * @version 8.1.0
- * @date 2026-10-28
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   设备关联向导（治理设备 ID 变化）
  *
@@ -215,13 +215,10 @@ Dialog {
                 }
             }
 
-            Label {
+            EmptyState {
                 Layout.fillWidth: true
                 visible: mergeDialog._candidates.length === 0
-                text: qsTr("没有可选择的设备条目。")
-                color: Style.Color.textWeak
-                font.pixelSize: 12
-                horizontalAlignment: Text.AlignHCenter
+                desc: qsTr("没有可选择的设备。")
             }
 
             RowLayout {
