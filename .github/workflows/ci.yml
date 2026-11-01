@@ -219,24 +219,37 @@ jobs:
         shell: bash
         run: |
           # 33 个测试均为 qt_add_executable，Windows 无 rpath：Qt6*.dll 与平台插件需就位（报告 B19）。
-          # 第 2 轮实证（run 41320557061）：本步骤 0s 空转（started==completed 同秒）、--debug 未产出
-          # 任何 DLL，ctest 6 例全部 300s 超时（1801s≈6×300s；Linux 基线同过滤 6 例全过共 ~1.1s）。
-          # aqt 在线 base 包按官方口径 release-only（无 Qt6Cored.dll 供 --debug 部署；Updates.xml
-          # 本机不可达未能直接验证，以落盘自检兜底）→ 改 --release 并加三道自检，杜绝静默空转
-          exe_count=$(find build-win/tests -name "*.exe" | wc -l)
-          [ "$exe_count" -ge 6 ] || { echo "::error::build-win/tests 仅见 $exe_count 个测试 exe（应 6），构建产物布局异常"; exit 1; }
-          find build-win/tests -name "*.exe" | while read -r exe; do
+          # 第 3 轮取证（run 41326068384 / 6d519bf）：第 5 步 9 目标构建 exit 0，本步骤自检
+          # `find build-win/tests -name "*.exe"` 计 0 失败。判为 shell 层而非构建层：exe 一直在
+          # build-win/tests/ 直下——全仓 grep 零 OUTPUT_DIRECTORY 搬运、本地 build-ninja/tests/
+          # CTestTestfile.cmake:7 生成期 COMMAND 即 build-ninja/tests/ 直下默认布局、第 2 轮 ctest
+          # 把 6 个 exe 全部拉起跑满 300s（1801s≈6×300s）；而同型 find 循环在第 2 轮 windeployqt
+          # 步骤 0s 空转（静默空跑）。最自洽机制：runner machine PATH 首段 %SystemRoot%\system32
+          # 的 find.exe 与 GNU find 同名遮蔽——本步其余 GNU 工具（grep/tee/tail/cygpath）System32
+          # 均无同名，唯 find 撞名（日志原文 403 凭据墙无法直证，见 ::error:: 布局取证兜底）。
+          # 故弃 find 改 bash glob（nullglob 数组），计 0 时把实际落盘布局注入注解供下轮取证。
+          shopt -s nullglob
+          exes=(build-win/tests/*.exe)
+          if [ "${#exes[@]}" -lt 6 ]; then
+            echo "::error::build-win/tests 仅见 ${#exes[@]} 个测试 exe（应 6），构建产物布局异常"
+            { echo "=== 实际布局取证：build-win 顶层 ==="; ls build-win | head -4
+              echo "=== build-win/tests ==="; ls build-win/tests | head -4; } 2>&1 \
+              | while IFS= read -r line; do echo "::error::${line:0:300}"; done
+            exit 1
+          fi
+          for exe in "${exes[@]}"; do
             "$HOME/Qt/6.11.1/msvc2022_64/bin/windeployqt.exe" --release --no-translations "$exe" \
               || echo "::warning::windeployqt 失败（QT_PLUGIN_PATH 兜底仍在）：$exe"
           done
           # offscreen 平台插件不在 windeployqt 默认部署面（§5.1.6 未实测项），显式补齐到各 exe 目录
-          find build-win/tests -name "*.exe" | while read -r exe; do
+          for exe in "${exes[@]}"; do
             mkdir -p "$(dirname "$exe")/platforms"
             cp -f "$HOME/Qt/6.11.1/msvc2022_64/plugins/platforms/qoffscreen.dll" "$(dirname "$exe")/platforms/" \
               || echo "::warning::qoffscreen.dll 拷贝失败：$exe（QT_PLUGIN_PATH 兜底仍在）"
           done
-          # 部署自检：任一测试 exe 目录缺 Qt6Core.dll 即失败——第 2 轮的静默空转不允许再发生
-          find build-win/tests -name "*.exe" | while read -r exe; do
+          # 部署自检：任一测试 exe 目录缺 Qt6Core.dll 即失败——第 2 轮的静默空转不允许再发生。
+          # 旧版 find|while 的 exit 1 只退出管道子 shell，改为 for 主 shell 真退出
+          for exe in "${exes[@]}"; do
             [ -f "$(dirname "$exe")/Qt6Core.dll" ] || { echo "::error::$(dirname "$exe") 缺 Qt6Core.dll，DLL 部署未生效"; exit 1; }
           done
 
