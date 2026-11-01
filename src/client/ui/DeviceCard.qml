@@ -83,7 +83,7 @@ ItemDelegate {
             anchors.bottom: parent.bottom
             anchors.margins: Style.Space.sm
             width: 3
-            radius: 1.5
+            radius: Style.Radius.xs
             color: Style.Color.primary
             visible: deviceCard.isSelected
         }
@@ -188,7 +188,7 @@ ItemDelegate {
             Layout.alignment: Qt.AlignVCenter
             Layout.preferredWidth: 36
             Layout.preferredHeight: 36
-            radius: 18
+            radius: width / 2  // 整圆几何式（U2-26）：xl 档不足以恒保持整圆
             color: deviceCard.kAvatarColor
             Label {
                 anchors.centerIn: parent
@@ -196,7 +196,7 @@ ItemDelegate {
                       ? deviceCard.displayName.charAt(0).toUpperCase()
                       : "?"
                 color: Style.Color.textOnAccent
-                font.pixelSize: 14
+                font.pixelSize: Style.Type.body
                 font.bold: true
             }
         }
@@ -208,7 +208,7 @@ ItemDelegate {
 
             Label {
                 text: deviceCard.displayName
-                font.pixelSize: 14
+                font.pixelSize: Style.Type.body
                 font.bold: true
                 color: deviceCard.kNameColor
                 elide: Text.ElideRight
@@ -220,8 +220,10 @@ ItemDelegate {
                 text: deviceCard.hasAlias
                       ? deviceCard.deviceName + " · " + deviceCard.ipAddress
                       : deviceCard.ipAddress
-                color: Style.Color.textMuted
-                font.pixelSize: 12
+                // 副行含 IP 属信息行：textMuted 压选中卡底仅 3.78:1（U2-06 登记
+                // 遗留），升 textWeakStrong 后选中态 4.60:1
+                color: Style.Color.textWeakStrong
+                font.pixelSize: Style.Type.caption
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -236,7 +238,7 @@ ItemDelegate {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 8
                 Layout.preferredHeight: 8
-                radius: 4
+                radius: width / 2
                 color: deviceCard.isOnline ? deviceCard.kOnlineColor : deviceCard.kOfflineColor
                 opacity: deviceCard.isOnline ? 1 : 0.7  // 淡化叠加上圆点透明度
 
@@ -254,8 +256,11 @@ ItemDelegate {
                 text: deviceCard.isOnline
                       ? qsTr("在线")
                       : (FormatUtils.relativeSeen(deviceCard.lastSeenAt) || qsTr("离线"))
-                color: deviceCard.isOnline ? deviceCard.kOnlineColor : deviceCard.kOfflineColor
-                font.pixelSize: 11
+                // 离线分支字色升 textWeakStrong（U2-25 信息性状态词）；圆点仍用
+                // kOfflineColor(textWeak) 弱化
+                color: deviceCard.isOnline ? deviceCard.kOnlineColor
+                                           : Style.Color.textWeakStrong
+                font.pixelSize: Style.Type.caption
             }
         }
     }

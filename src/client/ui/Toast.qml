@@ -64,7 +64,7 @@ Popup {
         Rectangle {
             Layout.preferredWidth: 18
             Layout.preferredHeight: 18
-            radius: 9
+            radius: width / 2  // 整圆几何式（U2-26）：xl 档不足以恒保持整圆
             color: Style.Color.textOnAccent
             // 0.25→0.16（U2-17）：原白圆底几乎看不见，降透明度后圆底可辨
             opacity: 0.16
@@ -76,7 +76,7 @@ Popup {
                 // Style 双表派发（深色下状态前景压白圆底会糊，维持白字）
                 color: toast.isError ? Style.Color.toastGlyphErr
                                      : Style.Color.toastGlyphOk
-                font.pixelSize: 11
+                font.pixelSize: Style.Type.badge
                 font.bold: true
             }
         }
@@ -85,7 +85,7 @@ Popup {
             id: toastLabel
             Layout.fillWidth: true
             color: Style.Color.textOnAccent
-            font.pixelSize: 13
+            font.pixelSize: Style.Type.body
             wrapMode: Text.Wrap
             verticalAlignment: Text.AlignVCenter
         }

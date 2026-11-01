@@ -32,7 +32,7 @@ Switch {
         Rectangle {
             width: 16
             height: 16
-            radius: 8
+            radius: width / 2  // 整圆几何式（U2-26），与轨道同口径
             anchors.verticalCenter: parent.verticalCenter
             x: control.checked ? parent.width - width - 2 : 2
             color: Style.Color.textOnAccent

@@ -71,6 +71,10 @@ const Light = {
     textSecondary: "#4B5563",
     textMuted: "#6B7280",
     textWeak: "#9CA3AF",
+    // 弱文字可读档（U2-25）：信息性弱文字（时间戳/状态/条数）改用本键，
+    // #6B7280 同族加深一档，全消费面 ≥4.5（最紧：选中卡底 #D6E4FF 上 4.60）；
+    // 纯装饰辅助（占位/禁用态）仍用 textWeak
+    textWeakStrong: "#5A6577",
     textOnAccent: "#FFFFFF",  // 彩色底（主按钮、状态标签）上的文字
     // 方向与侧栏
     receiveAccent: "#8B5CF6",  // 接收方向标识，与发送侧主色区分
@@ -143,6 +147,9 @@ const Dark = {
     textSecondary: "#CBD5E1",
     textMuted: "#A9B6C6",
     textWeak: "#6B7F99",
+    // 弱文字可读档（U2-25）：与浅色同语义；取 textMuted 同值即全消费面 ≥4.5
+    // （最紧：选中卡底 #2B4574 上 4.62），不另调值
+    textWeakStrong: "#A9B6C6",
     textOnAccent: "#FFFFFF",  // 彩色底（主按钮、状态标签）上的文字
     // 方向与侧栏
     receiveAccent: "#A78BFA",  // 接收方向标识，与发送侧主色区分
@@ -179,6 +186,9 @@ const Type = {
     display: 48     // 品牌/空态大字
 }
 
+// 圆角谱系（U2-26）：本表只承载方角半径。整圆不设档，用几何式 radius: width / 2
+// （xl=16 对 36px 以上圆经离屏实测不再被钳成整圆，头像会变圆角方）；细条端部圆
+// 用 xs——Qt 把超过半短边的半径钳回半短边，恒呈整胶囊（离屏抓图像素级对比验证）
 const Radius = {
     xs: 4,
     badge: 6,   // 状态徽标专用档（U2-30）：比 xs 柔和、比 sm 收敛

@@ -122,7 +122,7 @@ Dialog {
                 text: qsTr("对方重装或换机后会以新设备身份出现。选择这台设备（%1）之前的旧条目，把它的备注、好友等信息并过来。")
                       .arg(mergeDialog._newDeviceName)
                 color: Style.Color.textSecondary
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 wrapMode: Text.Wrap
             }
 
@@ -130,7 +130,7 @@ Dialog {
                 id: searchInput
                 Layout.fillWidth: true
                 placeholderText: qsTr("搜索设备名、备注或 IP")
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 selectByMouse: true
                 onTextChanged: mergeDialog._searchText = text
             }
@@ -163,7 +163,7 @@ Dialog {
                         Label {
                             text: FormatUtils.displayName(modelData.alias, modelData.deviceName)
                                   .charAt(0)
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.body
                             font.bold: true
                             color: Style.Color.textOnAccent
                             horizontalAlignment: Text.AlignHCenter
@@ -173,7 +173,7 @@ Dialog {
                             background: Rectangle {
                                 color: modelData.isOnline ? Style.Color.primary
                                                           : Style.Color.textWeak
-                                radius: 18
+                                radius: width / 2  // 整圆几何式（U2-26）
                             }
                         }
 
@@ -184,7 +184,7 @@ Dialog {
                             Label {
                                 Layout.fillWidth: true
                                 text: FormatUtils.displayName(modelData.alias, modelData.deviceName)
-                                font.pixelSize: 14
+                                font.pixelSize: Style.Type.body
                                 font.bold: true
                                 color: Style.Color.textMain
                                 elide: Text.ElideRight
@@ -193,7 +193,7 @@ Dialog {
                             Label {
                                 Layout.fillWidth: true
                                 text: modelData.ipAddress
-                                font.pixelSize: 12
+                                font.pixelSize: Style.Type.caption
                                 color: Style.Color.textSecondary
                                 elide: Text.ElideRight
                             }
@@ -202,7 +202,7 @@ Dialog {
                         Label {
                             visible: modelData.favorite
                             text: "★"
-                            font.pixelSize: 14
+                            font.pixelSize: Style.Type.body
                             color: Style.Color.warning
                         }
                     }
@@ -258,7 +258,7 @@ Dialog {
                 text: qsTr("把「%1」的信息并入「%2」：").arg(mergeDialog._oldDeviceName)
                       .arg(mergeDialog._newDeviceName)
                 color: Style.Color.textMain
-                font.pixelSize: 14
+                font.pixelSize: Style.Type.body
                 font.bold: true
                 wrapMode: Text.Wrap
             }
@@ -278,7 +278,7 @@ Dialog {
                     return lines.join("\n")
                 }
                 color: Style.Color.textSecondary
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
             }
 
             CheckBox {
@@ -298,7 +298,7 @@ Dialog {
                     return qsTr("同时迁移聊天与传输历史（旧：%1；新：%2；重复消息自动跳过）")
                            .arg(oldText).arg(newText)
                 }
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 onToggled: mergeDialog._includeHistory = checked
             }
 
@@ -306,7 +306,7 @@ Dialog {
                 Layout.fillWidth: true
                 text: qsTr("旧条目将在合并后移除；此操作不影响已接收的本地文件。")
                 color: Style.Color.textWeak
-                font.pixelSize: 12
+                font.pixelSize: Style.Type.caption
                 wrapMode: Text.Wrap
             }
 
@@ -315,7 +315,7 @@ Dialog {
                 visible: mergeDialog._resultText.length > 0
                 text: mergeDialog._resultText
                 color: mergeDialog._resultError ? Style.Color.error : Style.Color.success
-                font.pixelSize: 12
+                font.pixelSize: Style.Type.caption
                 wrapMode: Text.Wrap
             }
 

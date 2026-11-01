@@ -1,7 +1,7 @@
 /**
  * @file    Sidebar.qml
  * @version 8.2.1
- * @date 2026-11-01
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   左侧设备栏
  *
@@ -55,7 +55,7 @@ Rectangle {
             anchors.topMargin: 16
             anchors.horizontalCenter: parent.horizontalCenter
             width: 36; height: 36
-            radius: 18
+            radius: width / 2  // 整圆几何式（U2-26）：xl 档不足以恒保持整圆
             color: Style.Color.primary
             // 键盘可达：自绘 Rectangle 默认不在焦点链，显式开 Tab 聚焦，
             // Return/Enter/Space 与点击同路打开本机信息弹窗（O-23）
@@ -74,7 +74,7 @@ Rectangle {
                 anchors.centerIn: parent
                 text: "我"
                 color: Style.Color.textOnAccent
-                font.pixelSize: 12
+                font.pixelSize: Style.Type.caption
                 font.bold: true
             }
 
@@ -94,7 +94,7 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width - 10
             text: ConfigManager.deviceName
-            font.pixelSize: 10
+            font.pixelSize: Style.Type.badge
             color: Style.Color.textSecondary
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
@@ -108,7 +108,7 @@ Rectangle {
             anchors.bottomMargin: 16
             anchors.horizontalCenter: parent.horizontalCenter
             width: 41; height: 41
-            radius: 3
+            radius: Style.Radius.xs
             // 键盘可达：与本机头像同款 Tab 聚焦 + Return/Enter/Space 打开菜单弹窗
             activeFocusOnTab: true
             Keys.onReturnPressed: function(event) { event.accepted = true; menuPopup.open() }
@@ -137,7 +137,7 @@ Rectangle {
                     anchors.top: parent.top
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 16; height: 2
-                    radius: 1
+                    radius: Style.Radius.xs
                     color: Style.Color.menubar
                 }
 
@@ -145,7 +145,7 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 16; height: 2
-                    radius: 1
+                    radius: Style.Radius.xs
                     color: Style.Color.menubar
                 }
 
@@ -153,7 +153,7 @@ Rectangle {
                     anchors.bottom: parent.bottom
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 16; height: 2
-                    radius: 1
+                    radius: Style.Radius.xs
                     color: Style.Color.menubar
                 }
             }
@@ -249,7 +249,7 @@ Rectangle {
             text: deviceContextMenu.isPinned ? qsTr("取消置顶") : qsTr("置顶该聊天")
             contentItem: Label {
                 text: pinItem.text
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 color: pinItem.hovered ? Style.Color.primary : Style.Color.textMain
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: Style.Space.sm
@@ -270,7 +270,7 @@ Rectangle {
             text: qsTr("不显示该聊天")
             contentItem: Label {
                 text: hideItem.text
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 color: hideItem.hovered ? Style.Color.primary : Style.Color.textMain
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: Style.Space.sm
@@ -288,7 +288,7 @@ Rectangle {
             text: qsTr("设置备注")
             contentItem: Label {
                 text: renameItem.text
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 color: renameItem.hovered ? Style.Color.primary : Style.Color.textMain
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: Style.Space.sm
@@ -316,7 +316,7 @@ Rectangle {
             text: deviceContextMenu.isFavorite ? qsTr("移除好友") : qsTr("添加为好友")
             contentItem: Label {
                 text: favoriteItem.text
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 color: favoriteItem.pseudoPending ? Style.Color.textWeak
                      : (favoriteItem.hovered ? Style.Color.primary : Style.Color.textMain)
                 verticalAlignment: Text.AlignVCenter
@@ -346,7 +346,7 @@ Rectangle {
             text: qsTr("关联到已有设备")
             contentItem: Label {
                 text: mergeItem.text
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 color: mergeItem.hovered ? Style.Color.primary : Style.Color.textMain
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: Style.Space.sm
@@ -371,7 +371,7 @@ Rectangle {
             text: qsTr("删除该设备")
             contentItem: Label {
                 text: deleteItem.text
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
                 // 危险操作沿用 Style 语义色 error，与确认弹窗的危险按钮呼应；不可用时弱化为灰
                 color: deleteItem.deleteBlocked ? Style.Color.textWeak
                      : (deleteItem.hovered ? Style.Color.errorHover : Style.Color.error)
@@ -408,7 +408,7 @@ Rectangle {
             color: Style.Color.window
             border.color: Style.Color.borderSoft
             border.width: 1
-            radius: 12
+            radius: Style.Radius.lg
         }
         //个人信息框，头像 + 信息列表
         contentItem: ColumnLayout {
@@ -423,13 +423,13 @@ Rectangle {
                         Layout.alignment: Qt.AlignVCenter
                         Layout.preferredHeight: 56
                         Layout.preferredWidth: 56
-                        radius: 28
+                        radius: width / 2  // 整圆几何式（U2-26）
                         color: Style.Color.primary
                         Label{
                             anchors.centerIn: parent
                             text: "我"
                             color: Style.Color.textOnAccent
-                            font.pixelSize: 14
+                            font.pixelSize: Style.Type.body
                             font.bold: true
                         }
                     }
@@ -442,7 +442,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: ConfigManager.deviceName
                             color: Style.Color.textMain
-                            font.pixelSize: 14
+                            font.pixelSize: Style.Type.body
                             font.bold: true
                             elide: Text.ElideRight  // 文字太长时显示省略号
                         }
@@ -452,14 +452,15 @@ Rectangle {
                             text: ConfigManager.localIp.length > 0
                                   ? ConfigManager.localIp : qsTr("未获取到 IP")
                             color: Style.Color.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: Style.Type.caption
                         }
 
                         Label {
                             text: "%1 v%2".arg(AppController.applicationName)
                                            .arg(AppController.applicationVersion)
-                            color: Style.Color.textWeak
-                            font.pixelSize: 11
+                            // 版本行属信息性弱文字，升可读档（U2-25）
+                            color: Style.Color.textWeakStrong
+                            font.pixelSize: Style.Type.caption
                         }
                     }
                     Button {
@@ -510,7 +511,7 @@ Rectangle {
                 text: qsTr("设置")
                 contentItem: Label {
                     text: settingsItem.text
-                    font.pixelSize: 13
+                    font.pixelSize: Style.Type.body
                     color: settingsItem.hovered ? Style.Color.primary : Style.Color.textMain
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: Style.Space.sm

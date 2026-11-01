@@ -59,7 +59,7 @@ Frame {
 
             Label {
                 text: qsTr("传输历史")
-                font.pixelSize: 14
+                font.pixelSize: Style.Type.body
                 font.bold: true
                 color: Style.Color.textMain
             }
@@ -127,7 +127,7 @@ Frame {
 
                     Label {
                         text: qsTr("正在加载...")
-                        font.pixelSize: 12
+                        font.pixelSize: Style.Type.caption
                         color: Style.Color.textWeak
                     }
                 }
@@ -145,7 +145,7 @@ Frame {
                     visible: AppController.historyController.hasMoreTransfers
                     text: qsTr("加载更多")
                     flat: true
-                    font.pixelSize: 13
+                    font.pixelSize: Style.Type.body
                     onClicked: root.loadMore()
                 }
 
@@ -153,7 +153,7 @@ Frame {
                     anchors.centerIn: parent
                     visible: !AppController.historyController.hasMoreTransfers
                     text: qsTr("已到底")
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     color: Style.Color.textWeak
                 }
             }
@@ -199,7 +199,7 @@ Frame {
                                 id: directionTag
                                 anchors.centerIn: parent
                                 text: historyCard.direction === 1 ? qsTr("发送") : qsTr("接收")
-                                font.pixelSize: 10
+                                font.pixelSize: Style.Type.badge
                                 font.bold: true
                                 color: historyCard.direction === 1
                                        ? Style.Color.primaryStrong : Style.Color.receiveAccentStrong
@@ -216,8 +216,9 @@ Frame {
 
                         Label {
                             text: FormatUtils.formatTime(historyCard.startedAt)
-                            font.pixelSize: 11
-                            color: Style.Color.textWeak
+                            // 时间戳属信息性弱文字，升可读档（U2-25）
+                            font.pixelSize: Style.Type.caption
+                            color: Style.Color.textWeakStrong
                         }
 
                         ToolButton {
@@ -233,7 +234,7 @@ Frame {
                         Layout.fillWidth: true
                         text: historyCard.displayName
                         color: Style.Color.textSecondary
-                        font.pixelSize: 13
+                        font.pixelSize: Style.Type.body
                         elide: Text.ElideRight
                     }
 
@@ -245,14 +246,14 @@ Frame {
                             text: qsTr("%1 个文件 · %2").arg(historyCard.fileCount)
                                   .arg(FormatUtils.formatBytes(historyCard.totalBytes))
                             color: Style.Color.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: Style.Type.caption
                         }
 
                         Label {
                             text: FormatUtils.transferStatusText(historyCard.status)
                             color: historyCard.status === "completed"
                                    ? Style.Color.success : Style.Color.error
-                            font.pixelSize: 12
+                            font.pixelSize: Style.Type.caption
                             font.bold: true
                         }
 
@@ -265,7 +266,7 @@ Frame {
                         text: historyCard.errorMessage
                         color: Style.Color.error
                         wrapMode: Text.WrapAnywhere
-                        font.pixelSize: 12
+                        font.pixelSize: Style.Type.caption
                     }
                 }
             }

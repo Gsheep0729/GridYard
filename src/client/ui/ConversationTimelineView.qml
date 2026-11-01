@@ -121,7 +121,7 @@ Item {
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("正在加载更早的消息...")
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     color: Style.Color.textWeak
                 }
             }
@@ -181,7 +181,7 @@ Item {
                         Layout.preferredWidth: 32
                         Layout.preferredHeight: 32
                         Layout.alignment: Qt.AlignTop
-                        radius: 16
+                        radius: width / 2  // 整圆几何式（U2-26）
                         color: Style.Color.primarySoft
                         opacity: !timelineDelegate.isOutgoingMessage
                                  && timelineDelegate.shouldShowAvatar ? 1 : 0
@@ -192,7 +192,7 @@ Item {
                                   ? timelineDelegate.safeSenderName.charAt(0).toUpperCase()
                                   : "?"
                             color: Style.Color.primary
-                            font.pixelSize: 12
+                            font.pixelSize: Style.Type.caption
                             font.bold: true
                         }
                     }
@@ -209,7 +209,7 @@ Item {
                                      && timelineDelegate.shouldShowAvatar
                             text: timelineDelegate.safeSenderName
                             color: Style.Color.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: Style.Type.caption
                             elide: Text.ElideRight
                         }
 
@@ -230,7 +230,7 @@ Item {
                                 anchors.margins: Style.Space.md
                                 text: timelineDelegate.safeContent
                                 color: timelineDelegate.isOutgoingMessage ? Style.Color.textOnAccent : Style.Color.textMain
-                                font.pixelSize: 14
+                                font.pixelSize: Style.Type.body
                                 wrapMode: Text.WrapAnywhere
                                 textFormat: Text.PlainText
                             }
@@ -242,16 +242,18 @@ Item {
 
                             Label {
                                 text: FormatUtils.formatTime(timelineDelegate.safeSentAt)
-                                color: Style.Color.textWeak
-                                font.pixelSize: 11
+                                // 时间戳属信息性弱文字，升可读档（U2-25）
+                                color: Style.Color.textWeakStrong
+                                font.pixelSize: Style.Type.caption
                             }
 
                             Label {
                                 visible: timelineDelegate.isOutgoingMessage
                                          && timelineDelegate.safeMessageStatus !== 1
                                 text: timelineDelegate.safeMessageStatus === 2 ? qsTr("发送失败") : qsTr("发送中")
-                                color: timelineDelegate.safeMessageStatus === 2 ? Style.Color.error : Style.Color.textWeak
-                                font.pixelSize: 11
+                                // 发送中分支同步升可读档；失败分支维持 error 语义
+                                color: timelineDelegate.safeMessageStatus === 2 ? Style.Color.error : Style.Color.textWeakStrong
+                                font.pixelSize: Style.Type.caption
                             }
                         }
                     }
@@ -260,7 +262,7 @@ Item {
                         Layout.preferredWidth: 32
                         Layout.preferredHeight: 32
                         Layout.alignment: Qt.AlignTop
-                        radius: 16
+                        radius: width / 2  // 整圆几何式（U2-26）
                         color: Style.Color.primary
                         opacity: timelineDelegate.isOutgoingMessage
                                  && timelineDelegate.shouldShowAvatar ? 1 : 0
@@ -269,7 +271,7 @@ Item {
                             anchors.centerIn: parent
                             text: qsTr("我")
                             color: Style.Color.textOnAccent
-                            font.pixelSize: 12
+                            font.pixelSize: Style.Type.caption
                             font.bold: true
                         }
                     }

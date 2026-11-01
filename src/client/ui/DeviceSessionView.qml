@@ -118,7 +118,7 @@ Frame {
 
                    Label {
                        text: deviceSessionView.deviceName
-                       font.pixelSize: 16
+                       font.pixelSize: Style.Type.heading
                        font.bold: true
                        color: Style.Color.textMain
                        Layout.fillWidth: true
@@ -132,7 +132,7 @@ Frame {
                        Rectangle {
                            Layout.preferredWidth: 7
                            Layout.preferredHeight: 7
-                           radius: 3.5
+                           radius: width / 2
                            color: deviceSessionView.isOnline
                                   ? Style.Color.success : Style.Color.textWeak
                        }
@@ -146,7 +146,7 @@ Frame {
                                    + deviceSessionView.ipAddress
                                  : deviceSessionView.ipAddress
                            color: Style.Color.textMuted
-                           font.pixelSize: 12
+                           font.pixelSize: Style.Type.caption
                            elide: Text.ElideRight
                            Layout.fillWidth: true
                        }
@@ -156,7 +156,7 @@ Frame {
                Label {
                    text: deviceSessionView.isOnline ? qsTr("在线") : qsTr("离线")
                    color: deviceSessionView.isOnline ? Style.Color.success : Style.Color.textWeak
-                   font.pixelSize: 12
+                   font.pixelSize: Style.Type.caption
                    font.bold: true
                }
 
@@ -230,14 +230,14 @@ Frame {
                Rectangle {
                    Layout.preferredWidth: 6
                    Layout.preferredHeight: 6
-                   radius: 3
+                   radius: width / 2
                    color: Style.Color.warning
                }
 
                Label {
                    Layout.fillWidth: true
                    text: qsTr("设备当前离线，消息和文件暂时无法发送；对方上线后会自动恢复")
-                   font.pixelSize: 12
+                   font.pixelSize: Style.Type.caption
                    color: Style.Color.textSecondary
                    elide: Text.ElideRight
                }
@@ -322,7 +322,7 @@ Frame {
                        height: 44
                        enabled: deviceSessionView.isOnline
                        text: inputBox.attachExpanded ? "×" : "+"
-                       font.pixelSize: 20
+                       font.pixelSize: Style.Type.title
                        font.bold: true
                        // 离线说明与发送按钮同词：相邻两个入口对同一阻塞态的
                        // 悬停解释保持一致（禁用按钮的悬停提示实测可达）
@@ -364,7 +364,7 @@ Frame {
                            }
                            Label {
                                text: qsTr("文件")
-                               font.pixelSize: 13
+                               font.pixelSize: Style.Type.body
                                font.bold: true
                                color: filePill.enabled ? Style.Color.primary : Style.Color.textWeak
                            }
@@ -411,7 +411,7 @@ Frame {
                            }
                            Label {
                                text: qsTr("文件夹")
-                               font.pixelSize: 13
+                               font.pixelSize: Style.Type.body
                                font.bold: true
                                color: folderPill.enabled ? Style.Color.receiveAccent : Style.Color.textWeak
                            }
@@ -458,7 +458,7 @@ Frame {
                            }
                            Label {
                                text: qsTr("群发")
-                               font.pixelSize: 13
+                               font.pixelSize: Style.Type.body
                                font.bold: true
                                color: multiPill.enabled ? Style.Color.success : Style.Color.textWeak
                            }
@@ -490,7 +490,7 @@ Frame {
                        }
                        enabled: deviceSessionView.isOnline
                        placeholderText: ""  // 占位提示由下方 Label 实现，避免 TextArea 默认样式冲突
-                       font.pixelSize: 14
+                       font.pixelSize: Style.Type.body
                        color: Style.Color.textMain
                        wrapMode: TextEdit.Wrap
                        selectByMouse: true
@@ -538,7 +538,7 @@ Frame {
                        text: deviceSessionView.isOnline
                              ? qsTr("输入消息，回车发送") : qsTr("设备离线，无法发送")
                        color: deviceSessionView.isOnline ? Style.Color.textWeak : Style.Color.error
-                       font.pixelSize: 14
+                       font.pixelSize: Style.Type.body
                        elide: Text.ElideRight
                    }
 
@@ -552,7 +552,7 @@ Frame {
                               .arg(AppController.chatController.maxChatContentLength)
                        color: messageInput.text.length >= AppController.chatController.maxChatContentLength
                               ? Style.Color.error : Style.Color.textWeak
-                       font.pixelSize: 10
+                       font.pixelSize: Style.Type.badge
                        visible: deviceSessionView.showCharCounter
                    }
                }
@@ -581,7 +581,7 @@ Frame {
                anchors.bottomMargin: 2
                text: deviceSessionView.chatError
                color: Style.Color.error
-               font.pixelSize: 11
+               font.pixelSize: Style.Type.caption
                visible: text.length > 0
            }
        }

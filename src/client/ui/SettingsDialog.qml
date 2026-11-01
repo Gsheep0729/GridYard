@@ -119,7 +119,7 @@ Dialog {
             Rectangle {
                 Layout.preferredWidth: 56
                 Layout.preferredHeight: 56
-                radius: 28
+                radius: width / 2  // 整圆几何式（U2-26）：xl 档不足以恒保持整圆
                 color: Style.Color.primary
 
                 Label {
@@ -139,7 +139,7 @@ Dialog {
 
                 Label {
                     text: qsTr("偏好设置")
-                    font.pixelSize: 20
+                    font.pixelSize: Style.Type.title
                     font.bold: true
                     color: Style.Color.textMain
                 }
@@ -147,7 +147,7 @@ Dialog {
                 Label {
                     text: qsTr("%1 · %2").arg(ConfigManager.localIp).arg(ConfigManager.deviceId)
                     color: Style.Color.textMuted
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
                 }
@@ -197,7 +197,7 @@ Dialog {
             SettingsCard {
                 Label {
                     text: qsTr("设备身份")
-                    font.pixelSize: 15
+                    font.pixelSize: Style.Type.heading
                     font.bold: true
                     color: Style.Color.textMain
                 }
@@ -205,7 +205,7 @@ Dialog {
                 Label {
                     text: qsTr("设置一个易于识别的名称，以便在局域网中发现。")
                     color: Style.Color.textMuted
-                    font.pixelSize: 13
+                    font.pixelSize: Style.Type.body
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                 }
@@ -234,7 +234,7 @@ Dialog {
                             anchors.leftMargin: 16
                             text: qsTr("输入设备名称")
                             color: Style.Color.textWeak
-                            font.pixelSize: 14
+                            font.pixelSize: Style.Type.body
                         }
 
                         Behavior on border.color {
@@ -247,7 +247,7 @@ Dialog {
                     visible: settingsDialog._tempDeviceName.trim().length === 0
                     text: qsTr("设备名称不能为空")
                     color: Style.Color.error
-                    font.pixelSize: 11
+                    font.pixelSize: Style.Type.caption
                     font.bold: true
                 }
             }
@@ -256,7 +256,7 @@ Dialog {
             SettingsCard {
                 Label {
                     text: qsTr("存储与接收")
-                    font.pixelSize: 15
+                    font.pixelSize: Style.Type.heading
                     font.bold: true
                     color: Style.Color.textMain
                 }
@@ -264,7 +264,7 @@ Dialog {
                 Label {
                     text: qsTr("配置文件保存路径及自动化接收行为。")
                     color: Style.Color.textMuted
-                    font.pixelSize: 13
+                    font.pixelSize: Style.Type.body
                 }
 
                 RowLayout {
@@ -279,7 +279,7 @@ Dialog {
                         // 会浮成标签沉到边框上（DeviceAliasDialog 同款模式）
                         placeholderText: ""
                         selectByMouse: true
-                        font.pixelSize: 13
+                        font.pixelSize: Style.Type.body
                         // 支持直接粘贴或手输路径；编辑实时同步临时值，与更改目录按钮等价
                         onTextEdited: {
                             settingsDialog._tempReceivePath = text
@@ -307,7 +307,7 @@ Dialog {
                                 anchors.leftMargin: 16
                                 text: qsTr("输入或粘贴接收路径")
                                 color: Style.Color.textWeak
-                                font.pixelSize: 13
+                                font.pixelSize: Style.Type.body
                             }
 
                             Behavior on border.color {
@@ -328,7 +328,7 @@ Dialog {
                     visible: settingsDialog._receivePathError.length > 0
                     text: settingsDialog._receivePathError
                     color: Style.Color.error
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     wrapMode: Text.Wrap
                 }
 
@@ -349,7 +349,7 @@ Dialog {
                         Label {
                             text: qsTr("自动接受文件")
                             font.bold: true
-                            font.pixelSize: 14
+                            font.pixelSize: Style.Type.body
                             color: Style.Color.textSecondary
                         }
 
@@ -357,7 +357,7 @@ Dialog {
                             Layout.fillWidth: true
                             text: qsTr("跳过确认弹窗，直接保存文件。")
                             color: Style.Color.textWeak
-                            font.pixelSize: 12
+                            font.pixelSize: Style.Type.caption
                             wrapMode: Text.Wrap
                         }
                     }
@@ -379,14 +379,14 @@ Dialog {
                         Layout.fillWidth: true
                         Label {
                             text: qsTr("历史保留期限")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
                         Label {
                             text: qsTr("到期后自动删除本机聊天和传输历史，不影响文件。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -421,7 +421,7 @@ Dialog {
 
                         Label {
                             text: qsTr("关闭窗口")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
@@ -429,7 +429,7 @@ Dialog {
                         Label {
                             text: qsTr("设置点击窗口关闭按钮时的默认动作；保存后立即生效，无需重启。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -474,7 +474,7 @@ Dialog {
 
                         Label {
                             text: qsTr("开机自启")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
@@ -482,7 +482,7 @@ Dialog {
                         Label {
                             text: qsTr("登录桌面后自动启动鸽邮并驻留系统托盘，接收端常开场景免手动开启。开关即时生效，按当前程序路径写入 ~/.config/autostart/。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -508,7 +508,7 @@ Dialog {
                     visible: autostartCard._hint.length > 0
                     text: autostartCard._hint
                     color: Style.Color.warning
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     wrapMode: Text.Wrap
                 }
             }
@@ -525,7 +525,7 @@ Dialog {
 
                         Label {
                             text: qsTr("传输服务")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
@@ -533,7 +533,7 @@ Dialog {
                         Label {
                             text: qsTr("TCP 端口用于局域网设备间的数据通信；修改端口后需重启应用生效。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -571,7 +571,7 @@ Dialog {
 
                         Label {
                             text: qsTr("协调服务器")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
@@ -579,7 +579,7 @@ Dialog {
                         Label {
                             text: qsTr("校园网或 VPN 环境下，通过协调服务器发现跨 AP 的设备；修改后保存即生效，无需重启。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -606,7 +606,7 @@ Dialog {
 
                     Label {
                         text: qsTr("服务器地址")
-                        font.pixelSize: 13
+                        font.pixelSize: Style.Type.body
                         color: Style.Color.textSecondary
                     }
 
@@ -635,7 +635,7 @@ Dialog {
                                 anchors.leftMargin: 16
                                 text: qsTr("例如：10.10.10.100")
                                 color: Style.Color.textWeak
-                                font.pixelSize: 13
+                                font.pixelSize: Style.Type.body
                             }
 
                             Behavior on border.color {
@@ -646,7 +646,7 @@ Dialog {
 
                     Label {
                         text: qsTr("服务器端口")
-                        font.pixelSize: 13
+                        font.pixelSize: Style.Type.body
                         color: Style.Color.textSecondary
                     }
 
@@ -671,7 +671,7 @@ Dialog {
 
                     Label {
                         text: qsTr("访问令牌")
-                        font.pixelSize: 13
+                        font.pixelSize: Style.Type.body
                         color: Style.Color.textSecondary
                     }
 
@@ -700,7 +700,7 @@ Dialog {
                                 anchors.leftMargin: 16
                                 text: qsTr("与服务器 --token 一致，留空表示未启用")
                                 color: Style.Color.textWeak
-                                font.pixelSize: 13
+                                font.pixelSize: Style.Type.body
                             }
 
                             Behavior on border.color {
@@ -711,7 +711,7 @@ Dialog {
 
                     Label {
                         text: qsTr("Relay 策略")
-                        font.pixelSize: 13
+                        font.pixelSize: Style.Type.body
                         color: Style.Color.textSecondary
                     }
 
@@ -739,7 +739,7 @@ Dialog {
 
                 Label {
                     text: qsTr("提示：自动中继会直接通过服务器转发流量，速度可能受限。")
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     color: Style.Color.warning
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
@@ -750,7 +750,7 @@ Dialog {
                 // 首配用户令牌填错时全部候选发现静默失效，这里内联明示原因
                 Label {
                     text: qsTr("协调服务器返回错误：") + AppController.rendezvousError
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     color: Style.Color.error
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
@@ -765,7 +765,7 @@ Dialog {
 
                 Label {
                     text: qsTr("已隐藏设备")
-                    font.pixelSize: 15
+                    font.pixelSize: Style.Type.heading
                     font.bold: true
                     color: Style.Color.textMain
                 }
@@ -773,7 +773,7 @@ Dialog {
                 Label {
                     text: qsTr("这些设备不会出现在设备列表中；对方发来新消息时会自动恢复显示。")
                     color: Style.Color.textMuted
-                    font.pixelSize: 13
+                    font.pixelSize: Style.Type.body
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                 }
@@ -794,7 +794,7 @@ Dialog {
 
                             Label {
                                 text: hiddenRow.modelData.deviceName
-                                font.pixelSize: 13
+                                font.pixelSize: Style.Type.body
                                 font.bold: true
                                 color: Style.Color.textMain
                                 elide: Text.ElideRight
@@ -807,7 +807,7 @@ Dialog {
                                         .arg(FormatUtils.formatDateTime(hiddenRow.modelData.lastSeenAt))
                                       : hiddenRow.modelData.ipAddress
                                 color: Style.Color.textMuted
-                                font.pixelSize: 12
+                                font.pixelSize: Style.Type.caption
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
                             }
@@ -840,7 +840,7 @@ Dialog {
 
                         Label {
                             text: qsTr("开发者模式")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
@@ -851,7 +851,7 @@ Dialog {
                             // 语义停顿处，窄卡宽由 wrapMode 兜底，不产生孤字行
                             text: qsTr("开启后可直接拉起一个隔离实例，数据与端口互不影响。\n开关只控制本入口，不改变当前实例。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
 
@@ -890,7 +890,7 @@ Dialog {
                     visible: developerCard._launchHint.length > 0
                     text: developerCard._launchHint
                     color: Style.Color.warning
-                    font.pixelSize: 12
+                    font.pixelSize: Style.Type.caption
                     wrapMode: Text.Wrap
                 }
             }
@@ -907,7 +907,7 @@ Dialog {
 
                         Label {
                             text: qsTr("备份与迁移")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
@@ -916,7 +916,7 @@ Dialog {
                             Layout.fillWidth: true
                             text: qsTr("把设备身份、好友关系与聊天/传输历史导出为备份文件，重装或换机后导入即可恢复，无需任何账号登录。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                         }
                     }
@@ -953,7 +953,7 @@ Dialog {
 
                         Label {
                             text: qsTr("清除缓存")
-                            font.pixelSize: 15
+                            font.pixelSize: Style.Type.heading
                             font.bold: true
                             color: Style.Color.textMain
                         }
@@ -962,7 +962,7 @@ Dialog {
                             Layout.fillWidth: true
                             text: qsTr("删除配置文件、本地历史数据库和运行日志。应用会退出，下次启动重新生成设备身份。")
                             color: Style.Color.textMuted
-                            font.pixelSize: 13
+                            font.pixelSize: Style.Type.body
                             wrapMode: Text.Wrap
                         }
                     }
@@ -984,7 +984,7 @@ Dialog {
                 text: qsTr("本地历史不可用，聊天和传输仍可正常使用。")
                 color: Style.Color.warning
                 wrapMode: Text.Wrap
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
             }
 
             Label {
@@ -994,7 +994,7 @@ Dialog {
                       .arg(AppController.rebuiltBackupPath)
                 color: Style.Color.warning
                 wrapMode: Text.Wrap
-                font.pixelSize: 13
+                font.pixelSize: Style.Type.body
             }
             }  // contentColumn
         }  // contentWrapper
@@ -1024,8 +1024,10 @@ Dialog {
                 text: settingsDialog._isDirty
                       ? qsTr("修改尚未应用")
                       : qsTr("设置已是最新")
-                color: settingsDialog._isDirty ? Style.Color.warning : Style.Color.textWeak
-                font.pixelSize: 13
+                // 非脏分支"设置已是最新"属信息性提示，升可读档（U2-25，DeepSeek
+                // U2-25 点名的页脚位点）；脏分支维持 warning 语义
+                color: settingsDialog._isDirty ? Style.Color.warning : Style.Color.textWeakStrong
+                font.pixelSize: Style.Type.body
                 font.bold: settingsDialog._isDirty
 
                 Behavior on color {
@@ -1105,7 +1107,7 @@ Dialog {
             text: qsTr("将删除配置文件、聊天和传输历史数据库、运行日志。此操作不可撤销，应用会立即退出。")
             color: Style.Color.textMain
             wrapMode: Text.Wrap
-            font.pixelSize: 14
+            font.pixelSize: Style.Type.body
         }
 
         footer: DialogButtonBox {
