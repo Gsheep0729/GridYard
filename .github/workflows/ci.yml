@@ -105,7 +105,12 @@ jobs:
   #     全量构建待 POSIX 抽象层落地后放开。
   #  B) import std（src/CMakeLists.txt:5 的 CMake 4.2 UUID + :8 CMAKE_CXX_MODULE_STD）
   #     实验键与编译器无关，但 MSVC 工具集被 CMake 4.2.3 的 import std 检测接受与否未实测
-  #     （报告§3.2"未执行项"）；失败即在此步暴露取证（报告§5.1.2），continue-on-error 兜底。
+  #     （报告§3.2"未执行项"）。首跑取证（run 41313929185 / b7ac7eb）：step 4「配置与构建」
+  #     22s 失败 exit 1，与§5.2 预测的"VS 生成器不支持 import std"首跑形态一致——日志原文
+  #     被凭据墙挡死（API 日志端点 403 admin-only、网页匿名态显示 Sign in to view logs），
+  #     但四目标依赖闭包已实核零 POSIX 面（gy_shared 仅 protocol.h 不链 gy_net_core），
+  #     22s 也排除配置成功后进入编译（sqlite3 融合文件单编译即 ≥10s）→ 本版按§5.2 执行
+  #     预案切第二跳：Ninja 生成器 + msvc-dev-cmd（§3.2 四前提），CMake 4.2.3 钉版不变。
   #  C) check_core_isolation --compile-check 字面调用 g++（src/scripts/check_core_isolation.py:233，
   #     报告 B14）→ windows 侧降级为仅扫描防线；防线5 ldd/nm（:302,310）因 build-ninja
   #     不存在自动 SKIP（报告 B15），不会误报。
@@ -150,26 +155,54 @@ jobs:
           [ -d "$qt_bin" ] || { echo "::error::Qt 落盘目录与预期不符，实际内容："; ls "$HOME/Qt/6.11.1"; exit 1; }
           echo "$qt_bin" >> "$GITHUB_PATH"
 
+      - name: 激活 MSVC 环境
+        # §5.2 第二跳：Ninja + cl 需先注入 MSVC 环境（报告§3.2 前提4）；arch x64 对齐 win64_msvc2022_64；
+        # 钉 v1.13.0（上游 latest release，2024-01-01），与 checkout 钉版哲学一致
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+        with:
+          arch: x64
+
       - name: 配置与构建（纯 C++ 目标先行）
         shell: bash
         run: |
           set -o pipefail
-          # import std 开关沿用 src/CMakeLists.txt:5,8（CMake 4.2 UUID，编译器无关）；
-          # MSVC 接受度属未决点 B（报告§5.1.2）。生成器按 diff 首版取 VS 生成器（免 vcvars）；
-          # 与 import std 的张力见报告§5.2：首跑按 diff 原样取证，大概率以"VS 生成器不支持
-          # import std"的形式失败，切 Ninja + msvc-dev-cmd 是失败后的第二跳（§3.2 四前提），本轮不做。
-          # 注：VS 多配置生成器忽略 CMAKE_BUILD_TYPE（实际配置由下方 --config Debug 决定），保留 diff 原行
-          cmake -S src -B build-win -G "Visual Studio 17 2022" -A x64 \
+          # Ninja 预装于 windows runner（报告§3.2 前提3）；万一镜像漂移则 pip 兜底（脚本目录已在 PATH）
+          command -v ninja || python -m pip install --user ninja
+          # §5.2 第二跳落地：-G Ninja（import std 在 MSVC 上仅 Ninja 支持，首跑 VS 生成器已在
+          # run 41313929185 取证失败）；单配置生成器下 CMAKE_BUILD_TYPE=Debug 真实生效。
+          # 注解取证移植自 linux job（本文件 :61-64）：日志原文网页需登录、API 需凭据，
+          # ::error:: 注解是匿名可读的唯一通道
+          cmake -S src -B build-win -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_PREFIX_PATH="$HOME/Qt/6.11.1/msvc2022_64"
-          # TODO(尖兵)：目标面按 A 的解除进度逐步扩大；以下为当前源码状态下可期的目标
-          # （目标名实核：gy_core → src/core/CMakeLists.txt:5、gy_storage_core →
-          #  src/core/storage/CMakeLists.txt:6、sqlite3_vendor → third_party/sqlite/CMakeLists.txt:9、
-          #  test_frame_codec → src/tests/CMakeLists.txt:83）
-          cmake --build build-win --config Debug \
-            --target gy_core gy_storage_core sqlite3_vendor test_frame_codec
+            -DCMAKE_PREFIX_PATH="$HOME/Qt/6.11.1/msvc2022_64" 2>&1 | tee /tmp/win-cfg.log | tail -3 \
+            || { grep -B3 -A8 "CMake Error" /tmp/win-cfg.log | head -8 > /tmp/win-ann.txt
+                 [ -s /tmp/win-ann.txt ] || tail -8 /tmp/win-cfg.log > /tmp/win-ann.txt
+                 while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann.txt
+                 exit 1; }
+          # TODO(尖兵)：目标面按 A 的解除进度逐步扩大；目标名实核：gy_core →
+          # src/core/CMakeLists.txt:5、gy_storage_core → src/core/storage/CMakeLists.txt:6、
+          # sqlite3_vendor → third_party/sqlite/CMakeLists.txt:9、test_frame_codec →
+          # src/tests/CMakeLists.txt:83、test_storage_database → :25、test_storage_device → :33、
+          # test_storage_message → :50、test_storage_transfer_history → :68、test_database_worker → :537
+          # （单配置生成器无需 --config）。测试面与下方 ctest -R 的 6 例命中严格对齐——
+          # 核对员问题 1：若只建 test_frame_codec，其余 5 例在 ctest 必 Not Run 污染取证
+          # （本机实证 build-ninja/tests/CTestTestfile.cmake:7 add_test 的 COMMAND 生成期已展开
+          #  为完整 exe 路径，未构建即找不到 exe）。5 个存储/worker 测试的编译源集（各 test cpp +
+          #  application_paths/local_data_broker/database_worker.cpp + core/storage）本机 grep
+          #  零 POSIX 头、零 port.h/wait.h/posix_ 助手引用，属 A 降级边界内的纯存储面；
+          #  注：报告 B7 称链 gy_test_utils 的用例 MSVC 必失败，但三者实际仅引 db_seed.h
+          #  （→ client/domain/history_records.h + core/storage，均纯净），port.h 当前全仓
+          #  零 include，B7 对这三个用例不成立；若真机仍曝 test_utils 编译错则属产品面另案
+          cmake --build build-win \
+            --target gy_core gy_storage_core sqlite3_vendor \
+            test_frame_codec test_storage_database test_storage_device \
+            test_storage_message test_storage_transfer_history test_database_worker \
+            2>&1 | tee /tmp/win-build.log | tail -3 \
+            || { grep -E "error C[0-9]+|fatal error|error:|FAILED:" /tmp/win-build.log | head -8 > /tmp/win-ann2.txt
+                 while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann2.txt
+                 exit 1; }
           # TODO(尖兵)：POSIX 抽象层落地后放开全量（报告 B3-B7）：
-          # cmake --build build-win --config Debug
+          # cmake --build build-win
 
       - name: windeployqt 摆 DLL
         shell: bash
@@ -189,10 +222,11 @@ jobs:
           set -o pipefail
           # 首轮仅跑纯存储/编解码面（报告 B20：网络类待 A 解除后纳入）；
           # -R 过滤实核命中 6 例：test_storage_database/device/message/transfer_history、
-          # test_frame_codec、test_database_worker（src/tests/CMakeLists.txt:36,52,66,80,87,548）；
+          # test_frame_codec、test_database_worker（src/tests/CMakeLists.txt:36,52,66,80,87,548），
+          # 与上方 --target 构建面严格对齐（6 个测试 exe 全部先建，无 Not Run 污染）；
           # 串行依据 protocol.h:44 kDefaultDiscoveryPort=45678 + 8 个绑定 UDP 的用例
           # （报告 B18、§5.1.7），沿用 ctest 默认串行，绝不加 -j
-          ctest --test-dir build-win -C Debug --output-on-failure \
+          ctest --test-dir build-win --output-on-failure \
             -R "test_storage_|test_database_worker|test_frame_codec"
           # TODO(尖兵)：全量串行 ctest 回归；转绿后按实测放宽超时（报告 B21）
 
