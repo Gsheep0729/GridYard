@@ -1,7 +1,7 @@
 /**
  * @file    DeviceCard.qml
  * @version 8.2.1
- * @date 2026-11-01
+ * @date 2026-11-02
  * @author  GridYard Team
  * @brief   在线设备列表项 delegate
  *
@@ -66,7 +66,9 @@ ItemDelegate {
     background: Rectangle {
         radius: Style.Radius.sm
         // 选中态与悬停底色都即时切换：切换设备时颜色动画会被会话页重建卡出中间帧，观感是闪烁
-        color: deviceCard.isSelected ? Style.Color.primarySoft
+        // 底色强度序（U2-06）：选中 primarySoftSelected 必须重于悬停 hoverSoft，
+        // 反转会让用户点了设备却以为没点上
+        color: deviceCard.isSelected ? Style.Color.primarySoftSelected
              : (deviceCard.hovered ? Style.Color.hoverSoft : Style.Color.transparent)
         // 键盘焦点环：Tab 落点的可见反馈，沿用搜索框 primary 描边约定
         // （PeerListView 搜索框 activeFocus 同款 1.5px）；仅 visualFocus

@@ -27,13 +27,17 @@ const Light = {
     // 边框
     border: "#E5E7EB",
     borderSoft: "#EEF2F7",
-    // 设备卡悬停底色：对实测列表底 #F7F7F7 各通道差 (24,17,7)，深一档且带冷味，
-    // 灰度帧差 max≈18（旧值 surfaceLeft 仅 10 不可辨），与选中 primarySoft 同族更淡
-    hoverSoft: "#DFE6F0",
+    // 设备卡悬停底色（U2-06 削弱）：对实测列表底 #F7F7F7 各通道差 (16,12,4)，
+    // 对比度 1.12:1（旧 #DFE6F0 达 1.17:1 反超选中，点了像没点上），灰度帧差
+    // ≈12 仍高于不可辨线（surfaceLeft 帧差 10）；冷味保留，弱于选中 primarySoftSelected
+    hoverSoft: "#E7EBF3",
     // 品牌主色（U2-44：#2563EB 上白字 5.17:1 达 AA，旧值 #3B82F6 仅 3.68:1）
     primary: "#2563EB",
     primarySoft: "#EFF6FF",
     primarySoftHover: "#DBEAFE",
+    // 设备卡选中底色（U2-06 强化）：比 primarySoftHover 再深一档，对列表底
+    // #F7F7F7 1.20:1（旧选中 primarySoft 仅 1.02:1），压过削弱后的悬停 1.12:1
+    primarySoftSelected: "#D6E4FF",
     // 状态色（实色用于文字、圆点与标签底，Soft 用于大面积浅底）
     success: "#10B981",
     successSoft: "#ECFDF5",
@@ -88,12 +92,16 @@ const Dark = {
     // 边框
     border: "#3C4C69",
     borderSoft: "#33425C",
-    // 设备卡悬停底色：比列表底 surfaceMid 亮一档带冷味，比选中 primarySoft 更淡
+    // 设备卡悬停底色：比列表底 surfaceMid 亮一档带冷味（1.14:1），低于选中的
+    // 1.37:1（U2-06 倒挂修复后选中换 primarySoftSelected，悬停值无需再动）
     hoverSoft: "#2A3A56",
     // 品牌主色：深浅同值（白字 5.17:1 两表同过），Material.accent/选中条/气泡底随表生效
     primary: "#2563EB",
     primarySoft: "#1D3054",
     primarySoftHover: "#2A4270",
+    // 设备卡选中底色（U2-06）：对 surfaceMid 1.37:1（旧 primarySoft 仅 1.01:1），
+    // 压过悬停 1.14:1；深色 textMuted 在其上 4.62:1 仍过 AA
+    primarySoftSelected: "#2B4574",
     // 状态色：语义实色深色下上浮一档，保圆点/文字在深底可读（error/success 作
     // Toast 与危险按钮实底压白字时低于 AA，与浅色同源的既有问题，随 U2-05 复测）
     success: "#34D399",
