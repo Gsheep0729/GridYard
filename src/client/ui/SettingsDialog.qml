@@ -1,7 +1,7 @@
 /**
 * @file    SettingsDialog.qml
 * @version 8.2.1
-* @date 2026-11-01
+* @date 2026-11-02
 * @author  GridYard Team
 * @brief   设置对话框
 *
@@ -167,10 +167,16 @@ Dialog {
         clip: true
         contentWidth: availableWidth  // 内容宽度跟随可用宽度，避免水平滚动
 
-        // 滚动条按需出现并收窄到 6px，避免 16px 轨道整条压住卡片右缘
+        // 滚动条按需出现并收窄到 6px，避免 16px 轨道整条压住卡片右缘；
+        // handle 收编为 3px 圆角 textWeak 条（U2-08），替换 Material 默认硬边灰条
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
             width: 6
+            contentItem: Rectangle {
+                implicitWidth: 6
+                radius: width / 2
+                color: Style.Color.textWeak
+            }
         }
 
         // ScrollView 内的 Layout.margins 不生效：外层 Item 提供真实左右内边距
@@ -356,7 +362,7 @@ Dialog {
                         }
                     }
 
-                    Switch {
+                    AppSwitch {
                         checked: settingsDialog._tempAutoAcceptFiles
                         onToggled: settingsDialog._tempAutoAcceptFiles = checked
                     }
@@ -391,6 +397,13 @@ Dialog {
                         model: [qsTr("永久保留"), qsTr("7 天"), qsTr("30 天"), qsTr("90 天")]
                         currentIndex: [0, 7, 30, 90].indexOf(settingsDialog._tempRetentionDays)
                         onActivated: settingsDialog._tempRetentionDays = [0, 7, 30, 90][currentIndex]
+                        // U2-08 收编：Material 填充底换自绘边框体系，与同屏 TextField 一致（契约不动）
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: 1
+                            border.color: Style.Color.border
+                        }
                     }
                 }
             }
@@ -432,6 +445,13 @@ Dialog {
                         textRole: "label"
                         currentIndex: settingsDialog._tempCloseWindowAction
                         onActivated: settingsDialog._tempCloseWindowAction = model[currentIndex].value
+                        // U2-08 收编：同 retentionSelector 的自绘边框体系（契约不动）
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: 1
+                            border.color: Style.Color.border
+                        }
                     }
                 }
             }
@@ -468,7 +488,7 @@ Dialog {
                         }
                     }
 
-                    Switch {
+                    AppSwitch {
                         checked: ConfigManager.autostartEnabled
                         onToggled: {
                             // 即时落盘：失败给出行内原因并回弹开关，禁静默假成功
@@ -527,6 +547,14 @@ Dialog {
                         editable: true
                         locale: Qt.locale("C")  // C 区域无千分位，端口不显示逗号分组
                         onValueModified: settingsDialog._tempTcpPort = value
+                        // U2-08 收编：Material 下划线底换自绘边框体系，与同屏 TextField 一致；
+                        // up/down 指示器保持 Material 默认——其宽度参与 padding 计算，收编需一并核
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: 1
+                            border.color: Style.Color.border
+                        }
                     }
                 }
             }
@@ -557,7 +585,7 @@ Dialog {
                         }
                     }
 
-                    Switch {
+                    AppSwitch {
                         checked: settingsDialog._tempRendezvousEnabled
                         onToggled: settingsDialog._tempRendezvousEnabled = checked
                     }
@@ -630,6 +658,13 @@ Dialog {
                         editable: true
                         locale: Qt.locale("C")  // C 区域无千分位，端口不显示逗号分组
                         onValueModified: settingsDialog._tempRendezvousPort = value
+                        // U2-08 收编：同 tcpPortSpinBox 的自绘边框体系
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: 1
+                            border.color: Style.Color.border
+                        }
                     }
 
                     Item { Layout.fillWidth: true }
@@ -692,6 +727,13 @@ Dialog {
                         textRole: "label"
                         currentIndex: settingsDialog._tempRelayMode
                         onActivated: settingsDialog._tempRelayMode = model[currentIndex].value
+                        // U2-08 收编：同 retentionSelector 的自绘边框体系（契约不动）
+                        background: Rectangle {
+                            radius: Style.Radius.sm
+                            color: Style.Color.window
+                            border.width: 1
+                            border.color: Style.Color.border
+                        }
                     }
                 }
 
@@ -812,7 +854,7 @@ Dialog {
                         }
                     }
 
-                    Switch {
+                    AppSwitch {
                         checked: ConfigManager.developerLaunchEntryEnabled
                         onToggled: {
                             developerCard._launchHint = ""

@@ -121,6 +121,7 @@ set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/RelayConfirmDialog.qml
     ui/DangerButton.qml
     ui/SecondaryButton.qml
+    ui/AppSwitch.qml
     ui/DialogHeader.qml
     ui/DeviceCard.qml
     ui/RefreshIcon.qml

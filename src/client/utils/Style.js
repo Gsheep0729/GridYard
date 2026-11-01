@@ -27,6 +27,9 @@ const Light = {
     // 边框
     border: "#E5E7EB",
     borderSoft: "#EEF2F7",
+    // Switch 关闭态圆点描边（U2-09 收编淡紫轨道）：白圆点在 border 轨道上收一圈
+    // 保持可辨；关闭态轨道复用 border，开启态轨道走 primary，不另设键
+    switchKnobBorder: "#D1D5DB",
     // 设备卡悬停底色（U2-06 削弱）：对实测列表底 #F7F7F7 各通道差 (16,12,4)，
     // 对比度 1.12:1（旧 #DFE6F0 达 1.17:1 反超选中，点了像没点上），灰度帧差
     // ≈12 仍高于不可辨线（surfaceLeft 帧差 10）；冷味保留，弱于选中 primarySoftSelected
@@ -92,6 +95,9 @@ const Dark = {
     // 边框
     border: "#3C4C69",
     borderSoft: "#33425C",
+    // Switch 关闭态圆点描边（U2-09）：白圆点收一圈淡边；关闭态轨道复用 border，
+    // 开启态轨道走 primary，与浅色表同键
+    switchKnobBorder: "#94A3B8",
     // 设备卡悬停底色：比列表底 surfaceMid 亮一档带冷味（1.14:1），低于选中的
     // 1.37:1（U2-06 倒挂修复后选中换 primarySoftSelected，悬停值无需再动）
     hoverSoft: "#2A3A56",
