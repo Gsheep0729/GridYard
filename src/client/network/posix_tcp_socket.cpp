@@ -1,7 +1,7 @@
 /**
 * @file    posix_tcp_socket.cpp
 * @version 8.1.0
-* @date    2026-10-27
+* @date    2026-11-02
 * @author  GridYard Team
 * @brief   原生 TCP 套接字实现
 *
@@ -23,7 +23,11 @@
 #include <QThread>
 
 #include <boost/asio/io_context.hpp>
+#ifdef _WIN32
+#include <boost/asio/ip/tcp.hpp>
+#else
 #include <boost/asio/posix/stream_descriptor.hpp>
+#endif
 #include <boost/asio/steady_timer.hpp>
 
 #include <algorithm>
@@ -32,6 +36,14 @@
 #include <climits>
 #include <cstring>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#ifndef MSG_NOSIGNAL
+// Windows 分支：无 MSG_NOSIGNAL（SIGPIPE 概念不存在），发送按默认标志透传
+#define MSG_NOSIGNAL 0
+#endif
+#else
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -39,6 +51,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 namespace gy::net {
 
@@ -46,8 +59,78 @@ namespace {
 
 constexpr qint64 kReceiveChunkBytes = 64 * 1024;          // 单次读取块大小
 constexpr qint64 kReadBufferCompactThreshold = 1024 * 1024;  // 读缓冲消费过半后的压缩门槛
+#ifdef _WIN32
+
+// Windows 分支：WSA 错误码折回 errno 空间——Winsock 失败不写 errno（尖兵
+// 报告 N6），错误捕获点先经此折算再走 posix_net_error 既有映射表；无 errno
+// 对应条目的 WSA 专有码原值透传，落 UnknownSocketError 兜底文案
+int winsockErrorToErrno(int wsaError)
+{
+    switch (wsaError) {
+    case WSAEINTR:           return EINTR;
+    case WSAEACCES:          return EACCES;
+    case WSAEFAULT:          return EFAULT;
+    case WSAEINVAL:          return EINVAL;
+    case WSAEMFILE:          return EMFILE;
+    case WSAEWOULDBLOCK:     return EAGAIN;
+    case WSAEINPROGRESS:     return EINPROGRESS;
+    case WSAEALREADY:        return EALREADY;
+    case WSAENOTSOCK:        return ENOTSOCK;
+    case WSAEDESTADDRREQ:    return EDESTADDRREQ;
+    case WSAEMSGSIZE:        return EMSGSIZE;
+    case WSAEPROTOTYPE:      return EPROTOTYPE;
+    case WSAENOPROTOOPT:     return ENOPROTOOPT;
+    case WSAEPROTONOSUPPORT: return EPROTONOSUPPORT;
+    case WSAEOPNOTSUPP:      return EOPNOTSUPP;
+    case WSAEAFNOSUPPORT:    return EAFNOSUPPORT;
+    case WSAEADDRINUSE:      return EADDRINUSE;
+    case WSAEADDRNOTAVAIL:   return EADDRNOTAVAIL;
+    case WSAENETDOWN:        return ENETDOWN;
+    case WSAENETUNREACH:     return ENETUNREACH;
+    case WSAENETRESET:       return ENETRESET;
+    case WSAECONNABORTED:    return ECONNABORTED;
+    case WSAECONNRESET:      return ECONNRESET;
+    case WSAENOBUFS:         return ENOBUFS;
+    case WSAEISCONN:         return EISCONN;
+    case WSAENOTCONN:        return ENOTCONN;
+    case WSAETIMEDOUT:       return ETIMEDOUT;
+    case WSAECONNREFUSED:    return ECONNREFUSED;
+    case WSAEHOSTUNREACH:    return EHOSTUNREACH;
+    default:                 return wsaError;
+    }
+}
+
+// Windows 分支：套接字调用后的"errno"等价物（WSAGetLastError 折回 errno 空间）
+int netErrno()
+{
+    return winsockErrorToErrno(::WSAGetLastError());
+}
+
+// Windows 分支：socket() 无 SOCK_NONBLOCK/SOCK_CLOEXEC 创建位——创建后以
+// FIONBIO 补非阻塞，执行时关闭无对应概念可省（尖兵报告 N5/N11）
+int createStreamSocket(int family)
+{
+    const SOCKET raw = ::socket(family, SOCK_STREAM, 0);
+    if (raw == INVALID_SOCKET) {
+        return -1;
+    }
+    const u_long nonBlocking = 1;
+    ::ioctlsocket(raw, FIONBIO, &nonBlocking);
+    return static_cast<int>(raw);
+}
+
+#endif  // _WIN32
 
 // 给描述符设置非阻塞与关闭执行标志
+#ifdef _WIN32
+bool configureDescriptor(int fd)
+{
+    // Windows 分支：无 fcntl，非阻塞以 FIONBIO 补齐（尖兵报告 N5/N11）；
+    // 执行时关闭无对应概念可省
+    const u_long nonBlocking = 1;
+    return ::ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &nonBlocking) == 0;
+}
+#else
 bool configureDescriptor(int fd)
 {
     const int flags = ::fcntl(fd, F_GETFL, 0);
@@ -61,17 +144,69 @@ bool configureDescriptor(int fd)
     }
     return true;
 }
+#endif
 
 // 开启 TCP_NODELAY，失败不中断连接
 void applyTcpNoDelay(int fd)
 {
     const int enabled = 1;
+#ifdef _WIN32
+    // Windows 分支：选项指针为 const char*、长度为 int（尖兵报告 N13）
+    ::setsockopt(static_cast<SOCKET>(fd), IPPROTO_TCP, TCP_NODELAY,
+                 reinterpret_cast<const char *>(&enabled), static_cast<int>(sizeof(enabled)));
+#else
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
+#endif
 }
 
 // 一次性就绪等待：在局部引擎上挂异步 wait，就绪或到期即返回。
 // 事件泵对本 fd 的监听在各自独立的实例上，互不抢占事件，阻塞窗口内
 // 两边的挂起操作都拿得到各自的通知。msecs 非 0 时到期返回 false。
+#ifdef _WIN32
+bool waitDescriptorReady(int fd, bool wantWrite, int msecs)
+{
+    // Windows 分支：posix::stream_descriptor 无 Windows 形态，改以 asio TCP
+    // 套接字挂 async_wait（引擎、定时器与剥离所有权结构与 POSIX 分支一致）；
+    // 原生套接字归调用方
+    if (fd < 0) {
+        return false;
+    }
+    boost::asio::io_context engine;
+    boost::asio::ip::tcp::socket descriptor(engine);
+    boost::system::error_code ec;
+    descriptor.assign(boost::asio::ip::tcp::v4(), static_cast<SOCKET>(fd), ec);
+    if (ec) {
+        // IPv4 协议标注不被接受时按 IPv6 再试（双栈监听接入的描述符）
+        ec.clear();
+        descriptor.assign(boost::asio::ip::tcp::v6(), static_cast<SOCKET>(fd), ec);
+    }
+    if (ec) {
+        return false;
+    }
+    boost::asio::steady_timer deadline(engine);
+    bool ready = false;
+    descriptor.async_wait(wantWrite ? boost::asio::ip::tcp::socket::wait_write
+                                    : boost::asio::ip::tcp::socket::wait_read,
+                          [&ready, &deadline](const boost::system::error_code &waitEc) {
+                              if (waitEc == boost::asio::error::operation_aborted) {
+                                  return;  // 到期取消路径
+                              }
+                              ready = true;
+                              deadline.cancel();
+                          });
+    if (msecs >= 0) {
+        deadline.expires_after(std::chrono::milliseconds(msecs));
+        deadline.async_wait([&descriptor](const boost::system::error_code &timerEc) {
+            if (!timerEc) {
+                descriptor.cancel();  // 到期取消就绪等待，引擎随后排空退出
+            }
+        });
+    }
+    engine.run();
+    descriptor.release();  // 剥离引擎所有权，原生套接字归调用方
+    return ready;
+}
+#else
 bool waitDescriptorReady(int fd, bool wantWrite, int msecs)
 {
     if (fd < 0) {
@@ -107,6 +242,7 @@ bool waitDescriptorReady(int fd, bool wantWrite, int msecs)
     descriptor.release();  // 剥离引擎所有权，原生描述符归调用方
     return ready;
 }
+#endif
 
 }  // namespace
 
@@ -136,8 +272,14 @@ bool PosixTcpSocket::adoptDescriptor(int descriptor)
     closeDescriptor();
 
     if (!configureDescriptor(descriptor)) {
+#ifdef _WIN32
+        const int savedErrno = netErrno();
+        // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+        ::closesocket(static_cast<SOCKET>(descriptor));
+#else
         const int savedErrno = errno;
         ::close(descriptor);
+#endif
         setError(socketErrorFromErrno(savedErrno), errorMessageFromErrno(savedErrno));
         return false;
     }
@@ -247,9 +389,17 @@ void PosixTcpSocket::connectToHost(const IpAddress &address, quint16 port)
     }
 
     const int family = address.family();
+#ifdef _WIN32
+    _fd = createStreamSocket(family);
+#else
     _fd = ::socket(family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#endif
     if (_fd < 0) {
+#ifdef _WIN32
+        const int savedErrno = netErrno();
+#else
         const int savedErrno = errno;
+#endif
         _state = SocketState::UnconnectedState;
         setError(socketErrorFromErrno(savedErrno), errorMessageFromErrno(savedErrno));
         return;
@@ -279,6 +429,17 @@ void PosixTcpSocket::connectToHost(const IpAddress &address, quint16 port)
         return;
     }
 
+#ifdef _WIN32
+    // Windows 分支：未决连接以 WSAEWOULDBLOCK 呈现，折回 errno 空间后与
+    // EINPROGRESS 同判（尖兵报告 N6）
+    const int pendingErrno = netErrno();
+    if (pendingErrno != EINPROGRESS && pendingErrno != EAGAIN) {
+        closeDescriptor();
+        _state = SocketState::UnconnectedState;
+        setError(socketErrorFromErrno(pendingErrno), errorMessageFromErrno(pendingErrno));
+        return;
+    }
+#else
     if (errno != EINPROGRESS) {
         const int savedErrno = errno;
         closeDescriptor();
@@ -286,6 +447,7 @@ void PosixTcpSocket::connectToHost(const IpAddress &address, quint16 port)
         setError(socketErrorFromErrno(savedErrno), errorMessageFromErrno(savedErrno));
         return;
     }
+#endif
 
     ensureNotifiers();
     syncReadNotifier();
@@ -315,10 +477,18 @@ qint64 PosixTcpSocket::bytesAvailable() const
 {
     qint64 total = bufferedBytes();
     if (_fd >= 0) {
+#ifdef _WIN32
+        // Windows 分支：FIONREAD 经 ioctlsocket，出参为 u_long*（尖兵报告 N10）
+        u_long pending = 0;
+        if (::ioctlsocket(static_cast<SOCKET>(_fd), FIONREAD, &pending) == 0 && pending > 0) {
+            total += pending;
+        }
+#else
         int pending = 0;
         if (::ioctl(_fd, FIONREAD, &pending) == 0 && pending > 0) {
             total += pending;
         }
+#endif
     }
     return total;
 }
@@ -482,10 +652,22 @@ bool PosixTcpSocket::waitForConnected(int msecs)
         }
 
         int socketError = 0;
+#ifdef _WIN32
+        // Windows 分支：选项出参为 char*、长度为 int；SO_ERROR 返回 WSA 错误
+        // 码，折回 errno 空间后再走既有错误映射（尖兵报告 N6）
+        int errorLength = sizeof(socketError);
+        if (::getsockopt(static_cast<SOCKET>(_fd), SOL_SOCKET, SO_ERROR,
+                         reinterpret_cast<char *>(&socketError), &errorLength) != 0) {
+            socketError = netErrno();
+        } else {
+            socketError = winsockErrorToErrno(socketError);
+        }
+#else
         socklen_t errorLength = sizeof(socketError);
         if (::getsockopt(_fd, SOL_SOCKET, SO_ERROR, &socketError, &errorLength) != 0) {
             socketError = errno;
         }
+#endif
 
         if (socketError == 0) {
             finishConnect();
@@ -617,7 +799,12 @@ void PosixTcpSocket::disconnectFromHost(bool waitForPeer, int waitMs)
 
     _state = SocketState::ClosingState;
     _gracefulWaitPending = false;
+#ifdef _WIN32
+    // Windows 分支：半关发送侧以 SD_SEND 表达（SHUT_WR 无对应物）
+    ::shutdown(static_cast<SOCKET>(_fd), SD_SEND);
+#else
     ::shutdown(_fd, SHUT_WR);
+#endif
 
     // 取消帧等场景需要等对端读到并先关闭，持续排空到达数据可避免带未读数据关闭触发 RST
     if (waitForPeer) {
@@ -669,12 +856,31 @@ bool PosixTcpSocket::setSocketOption(SocketOption option, const QVariant &value)
     const int intValue = value.toInt();
     switch (option) {
     case SendBufferSizeOption:
+#ifdef _WIN32
+        // Windows 分支：选项指针为 const char*、长度为 int（尖兵报告 N13）
+        return ::setsockopt(static_cast<SOCKET>(_fd), SOL_SOCKET, SO_SNDBUF,
+                            reinterpret_cast<const char *>(&intValue),
+                            static_cast<int>(sizeof(intValue))) == 0;
+#else
         return ::setsockopt(_fd, SOL_SOCKET, SO_SNDBUF, &intValue, sizeof(intValue)) == 0;
+#endif
     case ReceiveBufferSizeOption:
+#ifdef _WIN32
+        return ::setsockopt(static_cast<SOCKET>(_fd), SOL_SOCKET, SO_RCVBUF,
+                            reinterpret_cast<const char *>(&intValue),
+                            static_cast<int>(sizeof(intValue))) == 0;
+#else
         return ::setsockopt(_fd, SOL_SOCKET, SO_RCVBUF, &intValue, sizeof(intValue)) == 0;
+#endif
     case LowDelayOption: {
         const int enabled = intValue != 0 ? 1 : 0;
+#ifdef _WIN32
+        return ::setsockopt(static_cast<SOCKET>(_fd), IPPROTO_TCP, TCP_NODELAY,
+                            reinterpret_cast<const char *>(&enabled),
+                            static_cast<int>(sizeof(enabled))) == 0;
+#else
         return ::setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled)) == 0;
+#endif
     }
     }
     return false;
@@ -765,10 +971,22 @@ void PosixTcpSocket::onWriteActivated()
 
     if (_state == SocketState::ConnectingState) {
         int socketError = 0;
+#ifdef _WIN32
+        // Windows 分支：选项出参为 char*、长度为 int；SO_ERROR 返回 WSA 错误
+        // 码，折回 errno 空间后再走既有错误映射（尖兵报告 N6）
+        int errorLength = sizeof(socketError);
+        if (::getsockopt(static_cast<SOCKET>(_fd), SOL_SOCKET, SO_ERROR,
+                         reinterpret_cast<char *>(&socketError), &errorLength) != 0) {
+            socketError = netErrno();
+        } else {
+            socketError = winsockErrorToErrno(socketError);
+        }
+#else
         socklen_t errorLength = sizeof(socketError);
         if (::getsockopt(_fd, SOL_SOCKET, SO_ERROR, &socketError, &errorLength) != 0) {
             socketError = errno;
         }
+#endif
 
         if (socketError == 0) {
             finishConnect();
@@ -877,7 +1095,12 @@ void PosixTcpSocket::setError(SocketError error, const QString &message)
 void PosixTcpSocket::closeDescriptor()
 {
     if (_fd >= 0) {
+#ifdef _WIN32
+        // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+        ::closesocket(static_cast<SOCKET>(_fd));
+#else
         ::close(_fd);
+#endif
         _fd = -1;
     }
 }
@@ -899,7 +1122,14 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
                 break;
             }
             char chunk[kReceiveChunkBytes];
+#ifdef _WIN32
+            // Windows 分支：recv 缓冲长度参数为 int；错误经 netErrno 折回
+            // errno 空间（尖兵报告 N6）
+            const int amount = ::recv(static_cast<SOCKET>(_fd), chunk,
+                                      static_cast<int>(sizeof(chunk)), 0);
+#else
             const ssize_t amount = ::recv(_fd, chunk, sizeof(chunk), 0);
+#endif
             if (amount > 0) {
                 _rxBuf.append(chunk, static_cast<int>(amount));
                 continue;
@@ -908,12 +1138,22 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
                 _peerEofSeen = true;
                 break;
             }
+#ifdef _WIN32
+            const int err = netErrno();
+            if (err == EINTR) {
+                continue;
+            }
+            if (err == EAGAIN) {
+                break;
+            }
+#else
             if (errno == EINTR) {
                 continue;
             }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             }
+#endif
             _peerEofSeen = true;
             break;
         }
@@ -928,7 +1168,14 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
         }
 
         char chunk[kReceiveChunkBytes];
+#ifdef _WIN32
+        // Windows 分支：recv 缓冲长度参数为 int；错误经 netErrno 折回 errno
+        // 空间（尖兵报告 N6）
+        const int amount = ::recv(static_cast<SOCKET>(_fd), chunk,
+                                  static_cast<int>(sizeof(chunk)), 0);
+#else
         const ssize_t amount = ::recv(_fd, chunk, sizeof(chunk), 0);
+#endif
         if (amount > 0) {
             _rxBuf.append(chunk, static_cast<int>(amount));
             received = true;
@@ -953,6 +1200,16 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
             return;
         }
 
+#ifdef _WIN32
+        const int err = netErrno();
+        if (err == EINTR) {
+            continue;
+        }
+        if (err == EAGAIN) {
+            break;
+        }
+        const int savedErrno = err;
+#else
         if (errno == EINTR) {
             continue;
         }
@@ -961,6 +1218,7 @@ void PosixTcpSocket::pumpReadBuffer(bool notify)
         }
 
         const int savedErrno = errno;
+#endif
         if (notify && received) {
             emit readyRead();
         }
@@ -1016,7 +1274,14 @@ void PosixTcpSocket::pumpWriteBuffer()
     while (_txOffset < _txBuf.size()) {
         const char *data = _txBuf.constData() + _txOffset;
         const qint64 remaining = _txBuf.size() - _txOffset;
+#ifdef _WIN32
+        // Windows 分支：send 缓冲长度参数为 int；MSG_NOSIGNAL 无对应物按 0
+        // 透传；错误经 netErrno 折回 errno 空间（尖兵报告 N6）
+        const int amount = ::send(static_cast<SOCKET>(_fd), data,
+                                  static_cast<int>(remaining), MSG_NOSIGNAL);
+#else
         const ssize_t amount = ::send(_fd, data, static_cast<size_t>(remaining), MSG_NOSIGNAL);
+#endif
         if (amount > 0) {
             _txOffset += amount;
             written += amount;
@@ -1025,6 +1290,16 @@ void PosixTcpSocket::pumpWriteBuffer()
         if (amount == 0) {
             break;
         }
+#ifdef _WIN32
+        const int err = netErrno();
+        if (err == EINTR) {
+            continue;
+        }
+        if (err == EAGAIN) {
+            break;
+        }
+        const int savedErrno = err;
+#else
         if (errno == EINTR) {
             continue;
         }
@@ -1033,6 +1308,7 @@ void PosixTcpSocket::pumpWriteBuffer()
         }
 
         const int savedErrno = errno;
+#endif
         _pumpingWrite = false;
         setError(socketErrorFromErrno(savedErrno), errorMessageFromErrno(savedErrno));
         teardownNotifiers();
@@ -1063,7 +1339,12 @@ void PosixTcpSocket::pumpWriteBuffer()
         _gracefulWaitMs = 0;
 
         if (waitForPeer && _fd >= 0) {
+#ifdef _WIN32
+            // Windows 分支：半关发送侧以 SD_SEND 表达（SHUT_WR 无对应物）
+            ::shutdown(static_cast<SOCKET>(_fd), SD_SEND);
+#else
             ::shutdown(_fd, SHUT_WR);
+#endif
             waitForDisconnected(waitMs);
         }
         if (_fd >= 0) {
@@ -1135,7 +1416,12 @@ void PosixTcpSocket::finishGracefulClose()
         pumpReadBuffer(false);
     }
     if (_fd >= 0) {
+#ifdef _WIN32
+        // Windows 分支：半关发送侧以 SD_SEND 表达（SHUT_WR 无对应物）
+        ::shutdown(static_cast<SOCKET>(_fd), SD_SEND);
+#else
         ::shutdown(_fd, SHUT_WR);
+#endif
     }
     teardownNotifiers();
     closeDescriptor();

@@ -23,8 +23,10 @@ target_link_libraries(gy_net_core PUBLIC Threads::Threads gy_asio)
 # 同文件 #ifdef _WIN32 分支落位（net_reactor / tcp_socket_core / tcp_server_core
 # 三文件，不新建 win_* 实现文件，原 target_sources 占位方案随之取消）；ws2_32
 # 供三文件的 Winsock 调用（WSAStartup/WSAEventSelect/closesocket 等）链接，
-# iphlpapi 为客户端网络适配层移植（GetAdaptersAddresses，报告 N8）的预留，当前
-# 尚无消费点。见 doc/plan/平台扩展/Windows可行性报告.local.md §6.2 批次 1
+# iphlpapi 供客户端网络适配层移植（GetAdaptersAddresses，报告 N8）——消费点已
+# 随 M2b 在 src/client/network/net_interfaces.cpp 落位，经客户端目标自身的
+# if(WIN32) 链接（src/client/CMakeLists.txt），本目标侧保留同链以备共享层
+# 后续直接消费。见 doc/plan/平台扩展/Windows可行性报告.local.md §6.2 批次 1
 if(WIN32)
     target_link_libraries(gy_net_core PRIVATE ws2_32 iphlpapi)
 endif()

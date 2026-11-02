@@ -1,7 +1,7 @@
 /**
 * @file    posix_tcp_server.cpp
 * @version 7.26.1
-* @date 2026-10-24
+* @date 2026-11-02
 * @author  GridYard Team
 * @brief   原生 TCP 监听器实现
 *
@@ -21,10 +21,15 @@
 #include <cerrno>
 #include <cstring>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <fcntl.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 namespace gy::net {
 
@@ -32,6 +37,67 @@ namespace {
 
 constexpr int kDefaultListenBacklog = 50;  // 与既有服务端的监听队列深度一致
 constexpr int kMaxAcceptBatch = 64;        // 单轮事件最多接入数，避免连接风暴独占事件循环
+#ifdef _WIN32
+
+// Windows 分支：WSA 错误码折回 errno 空间——Winsock 失败不写 errno（尖兵
+// 报告 N6），错误捕获点先经此折算再走 posix_net_error 既有映射表；无 errno
+// 对应条目的 WSA 专有码原值透传，落 UnknownSocketError 兜底文案
+int winsockErrorToErrno(int wsaError)
+{
+    switch (wsaError) {
+    case WSAEINTR:           return EINTR;
+    case WSAEACCES:          return EACCES;
+    case WSAEFAULT:          return EFAULT;
+    case WSAEINVAL:          return EINVAL;
+    case WSAEMFILE:          return EMFILE;
+    case WSAEWOULDBLOCK:     return EAGAIN;
+    case WSAEINPROGRESS:     return EINPROGRESS;
+    case WSAEALREADY:        return EALREADY;
+    case WSAENOTSOCK:        return ENOTSOCK;
+    case WSAEDESTADDRREQ:    return EDESTADDRREQ;
+    case WSAEMSGSIZE:        return EMSGSIZE;
+    case WSAEPROTOTYPE:      return EPROTOTYPE;
+    case WSAENOPROTOOPT:     return ENOPROTOOPT;
+    case WSAEPROTONOSUPPORT: return EPROTONOSUPPORT;
+    case WSAEOPNOTSUPP:      return EOPNOTSUPP;
+    case WSAEAFNOSUPPORT:    return EAFNOSUPPORT;
+    case WSAEADDRINUSE:      return EADDRINUSE;
+    case WSAEADDRNOTAVAIL:   return EADDRNOTAVAIL;
+    case WSAENETDOWN:        return ENETDOWN;
+    case WSAENETUNREACH:     return ENETUNREACH;
+    case WSAENETRESET:       return ENETRESET;
+    case WSAECONNABORTED:    return ECONNABORTED;
+    case WSAECONNRESET:      return ECONNRESET;
+    case WSAENOBUFS:         return ENOBUFS;
+    case WSAEISCONN:         return EISCONN;
+    case WSAENOTCONN:        return ENOTCONN;
+    case WSAETIMEDOUT:       return ETIMEDOUT;
+    case WSAECONNREFUSED:    return ECONNREFUSED;
+    case WSAEHOSTUNREACH:    return EHOSTUNREACH;
+    default:                 return wsaError;
+    }
+}
+
+// Windows 分支：套接字调用后的"errno"等价物（WSAGetLastError 折回 errno 空间）
+int netErrno()
+{
+    return winsockErrorToErrno(::WSAGetLastError());
+}
+
+// Windows 分支：socket() 无 SOCK_NONBLOCK/SOCK_CLOEXEC 创建位——创建后以
+// FIONBIO 补非阻塞，执行时关闭无对应概念可省（尖兵报告 N5/N11）
+int createStreamSocket(int family)
+{
+    const SOCKET raw = ::socket(family, SOCK_STREAM, 0);
+    if (raw == INVALID_SOCKET) {
+        return -1;
+    }
+    const u_long nonBlocking = 1;
+    ::ioctlsocket(raw, FIONBIO, &nonBlocking);
+    return static_cast<int>(raw);
+}
+
+#endif  // _WIN32
 
 }  // namespace
 
@@ -102,7 +168,12 @@ void PosixTcpServer::close()
 
     for (const PendingConnection &pending : _pending) {
         if (pending.descriptor >= 0) {
+#ifdef _WIN32
+            // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+            ::closesocket(static_cast<SOCKET>(pending.descriptor));
+#else
             ::close(pending.descriptor);
+#endif
         }
     }
     _pending.clear();
@@ -161,6 +232,25 @@ void PosixTcpServer::onAcceptActivated()
     bool acceptedAny = false;
     int acceptedCount = 0;
     while (acceptedCount < kMaxAcceptBatch) {
+#ifdef _WIN32
+        // Windows 分支：无 accept4——accept 后补 FIONBIO 非阻塞（尖兵报告
+        // N5/N11），执行时关闭无对应概念可省
+        const SOCKET rawDescriptor = ::accept(static_cast<SOCKET>(_fd), nullptr, nullptr);
+        if (rawDescriptor == INVALID_SOCKET) {
+            const int err = netErrno();
+            if (err == EINTR) {
+                continue;
+            }
+            if (err == EAGAIN) {
+                break;
+            }
+            _errorText = errorMessageFromErrno(err);
+            break;
+        }
+        const u_long nonBlocking = 1;
+        ::ioctlsocket(rawDescriptor, FIONBIO, &nonBlocking);
+        const int descriptor = static_cast<int>(rawDescriptor);
+#else
         const int descriptor = ::accept4(_fd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
         if (descriptor < 0) {
             if (errno == EINTR) {
@@ -172,9 +262,16 @@ void PosixTcpServer::onAcceptActivated()
             _errorText = errorMessageFromErrno(errno);
             break;
         }
+#endif
 
         const int enabled = 1;
+#ifdef _WIN32
+        // Windows 分支：选项指针为 const char*、长度为 int（尖兵报告 N13）
+        ::setsockopt(static_cast<SOCKET>(descriptor), IPPROTO_TCP, TCP_NODELAY,
+                     reinterpret_cast<const char *>(&enabled), static_cast<int>(sizeof(enabled)));
+#else
         ::setsockopt(descriptor, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
+#endif
         _pending.append(PendingConnection{descriptor});
         acceptedAny = true;
         ++acceptedCount;
@@ -189,7 +286,12 @@ void PosixTcpServer::onAcceptActivated()
 void PosixTcpServer::closeDescriptor()
 {
     if (_fd >= 0) {
+#ifdef _WIN32
+        // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+        ::closesocket(static_cast<SOCKET>(_fd));
+#else
         ::close(_fd);
+#endif
         _fd = -1;
     }
 }
@@ -210,31 +312,75 @@ bool PosixTcpServer::createListener(const IpAddress &address, quint16 port, List
     }
 
     int family = wantsDualStack ? AF_INET6 : AF_INET;
+#ifdef _WIN32
+    _fd = createStreamSocket(family);
+#else
     _fd = ::socket(family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#endif
     if (_fd < 0 && wantsDualStack) {
         // 内核未启用 IPv6 时退回 IPv4，保持监听能力可用
         family = AF_INET;
+#ifdef _WIN32
+        _fd = createStreamSocket(family);
+#else
         _fd = ::socket(family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#endif
     }
     if (_fd < 0) {
+#ifdef _WIN32
+        _errorText = errorMessageFromErrno(netErrno());
+#else
         _errorText = errorMessageFromErrno(errno);
+#endif
         return false;
     }
 
     const int reuse = 1;
+#ifdef _WIN32
+    // Windows 分支：选项指针为 const char*、长度为 int；SO_REUSEADDR 在
+    // Windows 语义更宽（后绑者可抢占共享端口），监听端口场景下可接受
+    //（尖兵报告 N13）
+    ::setsockopt(static_cast<SOCKET>(_fd), SOL_SOCKET, SO_REUSEADDR,
+                 reinterpret_cast<const char *>(&reuse), static_cast<int>(sizeof(reuse)));
+#else
     ::setsockopt(_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
 
     if (family == AF_INET6) {
         const int onlyIpv6 = 0;
+#ifdef _WIN32
+        // Windows 分支：V6ONLY 默认值为 1，显式置 0 后与 Linux 行为一致；
+        // 选项指针为 const char*、长度为 int（尖兵报告 N13/N16）
+        const int v6onlyResult = ::setsockopt(static_cast<SOCKET>(_fd), IPPROTO_IPV6,
+                                              IPV6_V6ONLY,
+                                              reinterpret_cast<const char *>(&onlyIpv6),
+                                              static_cast<int>(sizeof(onlyIpv6)));
+        if (v6onlyResult != 0) {
+#else
         if (::setsockopt(_fd, IPPROTO_IPV6, IPV6_V6ONLY, &onlyIpv6, sizeof(onlyIpv6)) != 0) {
+#endif
             closeDescriptor();
             family = AF_INET;
+#ifdef _WIN32
+            _fd = createStreamSocket(family);
+#else
             _fd = ::socket(family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#endif
             if (_fd < 0) {
+#ifdef _WIN32
+                _errorText = errorMessageFromErrno(netErrno());
+#else
                 _errorText = errorMessageFromErrno(errno);
+#endif
                 return false;
             }
+#ifdef _WIN32
+            ::setsockopt(static_cast<SOCKET>(_fd), SOL_SOCKET, SO_REUSEADDR,
+                         reinterpret_cast<const char *>(&reuse),
+                         static_cast<int>(sizeof(reuse)));
+#else
             ::setsockopt(_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
         }
     }
 
@@ -264,13 +410,21 @@ bool PosixTcpServer::createListener(const IpAddress &address, quint16 port, List
     }
 
     if (::bind(_fd, reinterpret_cast<const sockaddr *>(&local), localLength) != 0) {
+#ifdef _WIN32
+        _errorText = errorMessageFromErrno(netErrno());
+#else
         _errorText = errorMessageFromErrno(errno);
+#endif
         closeDescriptor();
         return false;
     }
 
     if (::listen(_fd, kDefaultListenBacklog) != 0) {
+#ifdef _WIN32
+        _errorText = errorMessageFromErrno(netErrno());
+#else
         _errorText = errorMessageFromErrno(errno);
+#endif
         closeDescriptor();
         return false;
     }

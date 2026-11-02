@@ -1,7 +1,7 @@
 /**
 * @file    p2p_server.cpp
 * @version 8.0.0
-* @date    2026-10-25
+* @date    2026-11-02
 * @author  GridYard Team
 * @brief   P2P 文件传输服务器实现
 *
@@ -34,7 +34,11 @@
 #include "post_to_ui_thread.h"
 #include "core/tcp_server_core.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace {
 
@@ -102,7 +106,12 @@ P2pServer::~P2pServer()
         unconsumed.swap(_pendingConnectionDescriptors);
     }
     for (const int descriptor : unconsumed) {
+#ifdef _WIN32
+        // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+        ::closesocket(static_cast<SOCKET>(descriptor));
+#else
         ::close(descriptor);
+#endif
     }
 
     // 遍历子对象，停止仍在运行的 QThread，避免析构时警告
@@ -244,7 +253,12 @@ void P2pServer::handleNewConnection(int descriptor, const QString &peerAddress)
     if (_activeConnections >= kMaxIncomingConnections) {
         qWarning() << "[P2pServer] 入站连接达到上限" << kMaxIncomingConnections
                    << "，拒绝来自" << peerAddress;
+#ifdef _WIN32
+        // Windows 分支：套接字关闭为 closesocket（尖兵报告 N7）
+        ::closesocket(static_cast<SOCKET>(descriptor));
+#else
         ::close(descriptor);
+#endif
         return;
     }
 

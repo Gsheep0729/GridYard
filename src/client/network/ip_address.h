@@ -1,7 +1,7 @@
 /**
 * @file    ip_address.h
 * @version 7.26.0
-* @date 2026-10-22
+* @date 2026-11-02
 * @author  GridYard Team
 * @brief   网络地址值类型
 *
@@ -14,8 +14,19 @@
 
 #include <QString>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX  // windows.h 经 iphlpapi 链入时不携带 min/max 宏，保住调用点 std::max
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+// Windows 分支：无 socklen_t，Winsock 地址长度参数为 int（尖兵报告 N16）；
+// 同型重复 typedef 在 C++11 起合法，MinGW 自带 socklen_t 时不冲突
+using socklen_t = int;
+#else
 #include <netinet/in.h>
 #include <sys/socket.h>
+#endif
 
 namespace gy::net {
 

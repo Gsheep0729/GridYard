@@ -1,7 +1,7 @@
 /**
 * @file    ip_address.cpp
 * @version 7.26.0
-* @date 2026-10-22
+* @date 2026-11-02
 * @author  GridYard Team
 * @brief   网络地址值类型实现
 *
@@ -13,7 +13,17 @@
 
 #include <QByteArray>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#ifndef INADDR_LOOPBACK
+// Windows 分支：Winsock 头不携带 INADDR_LOOPBACK（inet_pton/inet_ntop 由
+// ws2tcpip 同名提供，返回值语义一致），补齐 POSIX 同值常量
+#define INADDR_LOOPBACK 0x7f000001
+#endif
+#else
 #include <arpa/inet.h>
+#endif
 #include <cstring>
 
 namespace gy::net {
