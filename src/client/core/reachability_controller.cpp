@@ -1,7 +1,7 @@
 /**
 * @file    reachability_controller.cpp
-* @version 8.2.1
-* @date 2026-11-01
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   网络可达性控制器实现
 *
@@ -23,6 +23,11 @@
 #include "net_interfaces.h"
 
 #include <QJSEngine>
+
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
+#endif
 
 // 单例静态成员定义
 QPointer<ReachabilityController> ReachabilityController::s_instance;

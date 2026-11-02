@@ -1,7 +1,7 @@
 /**
 * @file    config_manager.cpp
-* @version 8.2.1
-* @date    2026-11-01
+* @version 8.3.0
+* @date    2026-11-03
 * @author  GridYard Team
 * @brief   应用配置管理器实现
 *
@@ -34,6 +34,11 @@
 #include <QSysInfo>
 #include <QUrl>
 #include <QUuid>
+
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
+#endif
 
 // 静态成员变量定义
 QPointer<ConfigManager> ConfigManager::s_instance;
