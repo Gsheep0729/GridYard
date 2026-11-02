@@ -121,6 +121,14 @@ jobs:
   #  C) check_core_isolation --compile-check 字面调用 g++（src/scripts/check_core_isolation.py:233，
   #     报告 B14）→ windows 侧降级为仅扫描防线；防线5 ldd/nm（:302,310）因 build-ninja
   #     不存在自动 SKIP（报告 B15），不会误报。
+  # --------------------------------------------------------------------
+  # 第 8 轮（2026-11-03，#32 全绿定局后）：M2a-d 网络栈 Windows 分支四批落账（shared/net/core
+  # 三文件、client/network 六文件、入口 WSAStartup/WSACleanup、test_utils/port.h 回环套接字对），
+  # A 降级的前提（全 src/ 零 _WIN32 分支）解除——构建面从 9 目标白名单放开全树（ninja -k 0
+  # 收齐失译清单），ctest 从 6 例过滤放开全量 33 例串行，windeployqt 步测试 exe 名单改从
+  # tests/CTestTestfile.cmake 全量推导（33 例，随用例增删自动跟走）。B 已由第 2 轮定案，
+  # C 维持降级。本阶段定位：Windows 全量构建+ctest 首次真取证；产品码修复仅限失败取证
+  # 指到的文件。run 级结论仍是 continue-on-error 假象，一切以 job 级结论与注解为准。
   # ====================================================================
   windows-build-and-test:
     # 钉 windows-2022：Qt arch win64_msvc2022_64 对应 VS2022 工具集（报告§5.1.8 钉版理由），
@@ -169,7 +177,7 @@ jobs:
         with:
           arch: x64
 
-      - name: 配置与构建（纯 C++ 目标先行）
+      - name: 配置与构建（全量放开，M2a-d 后 A 降级解除）
         shell: bash
         run: |
           set -o pipefail
@@ -197,33 +205,22 @@ jobs:
                  [ -s /tmp/win-ann.txt ] || tail -8 /tmp/win-cfg.log > /tmp/win-ann.txt
                  while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann.txt
                  exit 1; }
-          # TODO(尖兵)：目标面按 A 的解除进度逐步扩大；目标名实核：gy_core →
-          # src/core/CMakeLists.txt:5、gy_storage_core → src/core/storage/CMakeLists.txt:6、
-          # sqlite3_vendor → third_party/sqlite/CMakeLists.txt:9、test_frame_codec →
-          # src/tests/CMakeLists.txt:83、test_storage_database → :25、test_storage_device → :33、
-          # test_storage_message → :50、test_storage_transfer_history → :68、test_database_worker → :537
-          # （单配置生成器无需 --config）。测试面与下方 ctest -R 的 6 例命中严格对齐——
-          # 核对员问题 1：若只建 test_frame_codec，其余 5 例在 ctest 必 Not Run 污染取证
-          # （本机实证 build-ninja/tests/CTestTestfile.cmake:7 add_test 的 COMMAND 生成期已展开
-          #  为完整 exe 路径，未构建即找不到 exe）。5 个存储/worker 测试的编译源集（各 test cpp +
-          #  application_paths/local_data_broker/database_worker.cpp + core/storage）本机 grep
-          #  零 POSIX 头、零 port.h/wait.h/posix_ 助手引用，属 A 降级边界内的纯存储面；
-          #  注：报告 B7 称链 gy_test_utils 的用例 MSVC 必失败，但三者实际仅引 db_seed.h
-          #  （→ client/domain/history_records.h + core/storage，均纯净），port.h 当前全仓
-          #  零 include，B7 对这三个用例不成立；若真机仍曝 test_utils 编译错则属产品面另案
-          cmake --build build-win \
-            --target gy_core gy_storage_core sqlite3_vendor \
-            test_frame_codec test_storage_database test_storage_device \
-            test_storage_message test_storage_transfer_history test_database_worker \
-            2>&1 | tee /tmp/win-build.log | tail -3 \
-            || { grep -E "error C[0-9]+|fatal error|error:|FAILED:" /tmp/win-build.log | head -8 > /tmp/win-ann2.txt
+          # 第 8 轮放开全量：M2a-d 落账后 A 降级前提解除，9 目标白名单（原目标名实核与
+          # B7 辨析注释随退役面归 git 历史，run 41477627137 前后轮次可查）整体退役，
+          # cmake --build 全树构建。ninja -k 0：首轮失译也不停轮、把全部失译 TU 一轮收齐
+          # ——注解是匿名取证的唯一通道（每步上限 10 条，截取 head 10），产品码修复
+          # （仅限失败取证指到的文件）一轮即可对齐清单；rendezvous 零直接 POSIX 头、
+          # 全走 gy_net_core（本机 grep arpa/inet.h|sys/socket.h|unistd.h 等 0 命中，
+          # 2026-11-03 实证），其 win_* 占位注释（src/rendezvous/CMakeLists.txt:52）的
+          # 存废由本轮编译实况裁决；Qt 模块面（Quick/QuickControls2/QuickDialogs2/Widgets，
+          # src/CMakeLists.txt:29）能否由 aqt base 包满足，同样由本轮配置/编译实况回答
+          cmake --build build-win -- -k 0 2>&1 | tee /tmp/win-build.log | tail -3 \
+            || { grep -E "error C[0-9]+|fatal error|error:|FAILED:" /tmp/win-build.log | head -10 > /tmp/win-ann2.txt
                  while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann2.txt
                  exit 1; }
-          # 第 5 轮取证升级：把"构建 exit 0 瞬间"的 exe 落盘状态匿名钉死（::notice:: 与失败
-          # 注解分属不同配额）。下一轮与 windeployqt 步的 Linking 行证据联合即可三分死因：
-          # 全树 0 且无 CXX executable Linking 行 → 构建系统层未链接；
-          # 此处计 0（或此后归 0）且有 Linking 行 → 链接后文件被摘除（Defender 型）；
-          # 计 0 但全树搜得 → 落盘他处（windeployqt 步会自动归位）。
+          # 落盘实况每轮实测（第 5 轮引入）：构建 exit 0 瞬间的 exe 计数匿名钉死
+          # （::notice:: 与失败注解分属不同配额）；三分死因已由第 6 轮定案终结
+          # （全树搜得=落盘他处型），此处计数保留为布局漂移的第一现场
           shopt -s nullglob globstar
           built=(build-win/tests/*.exe)
           tree=()
@@ -245,9 +242,6 @@ jobs:
           else
             echo "::notice::[链接行实况] /tmp/win-build.log 无 Linking CXX executable 行——构建系统层未链接型死因"
           fi
-          # TODO(尖兵)：POSIX 抽象层落地后放开全量（报告 B3-B7）：
-          # cmake --build build-win
-
       - name: windeployqt 摆 DLL 与平台插件
         shell: bash
         run: |
@@ -291,22 +285,20 @@ jobs:
           #  逻辑保留为布局自适应防线（tests 直下、顶层、bin/ 三种布局均正确工作，沙盘已验）。
           shopt -s nullglob globstar
           rescue="$(cygpath -u "${RUNNER_TEMP:-.}" 2>/dev/null || echo "${RUNNER_TEMP:-.}")/gy-exe-rescue"
-          # ctest 实际执行的 exe 路径不作布局假设：从 tests/CTestTestfile.cmake 的 add_test
-          # COMMAND 生成期展开逐例推导（六例名单与上方 --target、下方 ctest -R 严格同源）；
-          # 文件缺失或解析失败回退旧假设 tests 直下，行为与第 5 轮一致
-          names=(test_storage_database test_storage_device test_storage_message
-                 test_storage_transfer_history test_frame_codec test_database_worker)
+          # 第 8 轮：测试 exe 名单从硬编码 6 例切全量推导——CTestTestfile.cmake 每行
+          # add_test([=[名]=] "绝对路径.exe") 的生成期展开即 ctest 真实执行路径（33 例，
+          # 与全量构建面同源、随用例增删自动跟走；本机 build-ninja 生成物实测 33 行
+          # add_test 各恰含 1 个引号 .exe token）；解析失败不再回退旧假设 tests 直下
+          # （全量推导无名单可回退，CTestTestfile 缺失/空属构建面异常，直接报错取证）
           ctest_tf=build-win/tests/CTestTestfile.cmake
           expected=()
-          for name in "${names[@]}"; do
-            tok="$(grep -F "[=[${name}]=] " "$ctest_tf" 2>/dev/null | grep add_test | head -1 \
-                   | grep -oE '"[^"]+\.exe"' | head -1 | tr -d '"')"
-            if [ -n "$tok" ] && [[ "$tok" == */build-win/* ]]; then
-              expected+=("build-win/${tok#*/build-win/}")
-            else
-              expected+=("build-win/tests/${name}.exe")
-            fi
-          done
+          while IFS= read -r tok; do
+            case "$tok" in */build-win/*) expected+=("build-win/${tok#*/build-win/}") ;; esac
+          done < <(grep '^add_test(' "$ctest_tf" 2>/dev/null | grep -oE '"[^"]+\.exe"' | tr -d '"' | awk '!seen[$0]++')
+          if [ "${#expected[@]}" -eq 0 ]; then
+            echo "::error::$ctest_tf 未解析出任何 add_test exe 路径（CTestTestfile 缺失或格式漂移）"
+            exit 1
+          fi
           present=0; missing=()
           for p in "${expected[@]}"; do
             if [ -f "$p" ]; then present=$((present+1)); else missing+=("$p"); fi
@@ -346,15 +338,14 @@ jobs:
             present=0   # 归位/回填后重验
             for p in "${expected[@]}"; do [ -f "$p" ] && present=$((present+1)); done
           fi
-          if [ "$present" -lt 6 ]; then
-            echo "::error::ctest 期望路径仅见 ${present}/6 个测试 exe（期望：${expected[*]}），构建产物布局异常"
+          if [ "$present" -lt "${#expected[@]}" ]; then
+            echo "::error::ctest 期望路径仅见 ${present}/${#expected[@]} 个测试 exe（期望：${expected[*]}），构建产物布局异常"
             link_cnt=$(grep -cE "Linking|\.exe$|ninja" /tmp/win-build.log 2>/dev/null)
             exe_cnt=$(grep -c "CXX executable" /tmp/win-build.log 2>/dev/null)
-            pat="$(printf '%s|' "${names[@]}" | sed 's/|$//')"
             tree=()
             for f in build-win/**/*.exe; do case "$f" in *CMakeFiles*) continue ;; esac; tree+=("$f"); done
             { echo "[顶层完整] build-win: $(ls build-win 2>&1 | tr '\n' ' ')｜[tests完整] build-win/tests: $(ls build-win/tests 2>&1 | tr '\n' ' ')"
-              echo "[ctest期望] $(grep add_test "$ctest_tf" 2>/dev/null | grep -E "$pat" | head -6 | sed -E 's/.*"([^"]+\.exe)".*/\1/' | awk 'NR>1{printf "｜"}{printf "%s",$0}')"
+              echo "[ctest期望共${#expected[@]}例] ${expected[*]}"
               echo "[全树exe] /tmp/win-build.log 中 Linking|\.exe$|ninja 行计 ${link_cnt:-日志缺失}（CXX executable 行计 ${exe_cnt:-0}）｜build-win/**/*.exe（除 CMakeFiles）计 ${#tree[@]}：${tree[*]:-无匹配}"
               echo "[恢复垫] $rescue: $(ls "$rescue" 2>/dev/null | wc -l) 个"
               grep -nE "Linking|\.exe$|ninja" /tmp/win-build.log 2>/dev/null | tail -5 | sed 's/^/[ninja日志] /'
@@ -387,21 +378,21 @@ jobs:
           set -o pipefail
           # §5.1.6 预案的插件兜底：即使 windeployqt 漏部署，也从 aqt 安装树直取平台插件
           export QT_PLUGIN_PATH="$HOME/Qt/6.11.1/msvc2022_64/plugins"
-          # 首轮仅跑纯存储/编解码面（报告 B20：网络类待 A 解除后纳入）；
-          # -R 过滤实核命中 6 例：test_storage_database/device/message/transfer_history、
-          # test_frame_codec、test_database_worker（src/tests/CMakeLists.txt:36,52,66,80,87,548），
-          # 与上方 --target 构建面严格对齐（6 个测试 exe 全部先建，无 Not Run 污染）；
+          # 第 8 轮放开全量 33 例（与全量构建面同源）：-R 六例过滤随 9 目标白名单退役，
+          # 报告 B20 的「网络类待 A 解除后纳入」就此兑现；超时口径由 set_tests_properties
+          # 自带（本机 build-ninja 生成物实测 33 例中 32 例带 TIMEOUT 300/600/60/30，仅
+          # test_backup 无 TIMEOUT 走 ctest 默认 1500s），无需 --timeout 兜底；
           # 串行依据 protocol.h:44 kDefaultDiscoveryPort=45678 + 8 个绑定 UDP 的用例
           # （报告 B18、§5.1.7），沿用 ctest 默认串行，绝不加 -j；
           # 失败时逐例状态（Passed/Failed/Timeout/Not Run）注入 ::error:: 注解——第 2 轮
           # exit 8 无任何用例名可读，本注解让下轮死因匿名可读（本机实测 ctest 失败退出码=8）
-          ctest --test-dir build-win --output-on-failure \
-            -R "test_storage_|test_database_worker|test_frame_codec" 2>&1 | tee /tmp/win-ctest.log | tail -8 \
+          ctest --test-dir build-win --output-on-failure 2>&1 | tee /tmp/win-ctest.log | tail -8 \
             || { grep -E "Passed|Failed|Timeout|Not Run|tests passed|tests failed" /tmp/win-ctest.log \
                    | head -10 > /tmp/win-ann3.txt
                  while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann3.txt
                  exit 1; }
-          # TODO(尖兵)：全量串行 ctest 回归；转绿后按实测放宽超时（报告 B21）
+          # TODO(尖兵)：网络类用例（test_discovery/file_transfer/session_manager/relay_chain 等）
+          # 的 Windows 运行时表现即 M2a-d 分支的首次真取证；转绿后按实测放宽超时（报告 B21）
 
       - name: 守卫（windows 可跑部分）
         env:
