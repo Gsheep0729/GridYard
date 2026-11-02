@@ -213,8 +213,15 @@ target_link_libraries(appGridYard PRIVATE
     gy_core
 )
 
-# Windows：WinSock2 / IP Helper 系统库；client/network 的 win_* 套接字适配层为占位，
-# 待后续里程碑落位后在此分支追加 target_sources（本里程碑不新建 win 实现文件）
+# Windows：WinSock2 / IP Helper 系统库。客户端侧网络栈的 Windows 后端已按同文件
+# #ifdef _WIN32 分支落位（M2b client/network 六文件、M2c 入口 main.cpp 的
+# WSAStartup/WSACleanup），不存在也不需要独立 win_* 实现文件，原 target_sources
+# 占位方案随之取消；ws2_32 供客户端编译单元的 Winsock 调用（入口初始化与
+# 套接字/发现/监听各面）链接，iphlpapi 供网卡枚举（GetAdaptersAddresses，
+# 报告 N8）——消费点 net_interfaces.cpp 已随 M2b 落位，共享层三文件（M2a）经
+# gy_net_core 自身同链（src/shared/net/CMakeLists.txt）。本目标 local_ip_monitor
+# 的 Windows 空桩（M2c，报告 N9/P7）无 Winsock 调用、不产生链接需求。见
+# doc/plan/平台扩展/Windows可行性报告.local.md §6.2 批次 1
 if(WIN32)
     target_link_libraries(appGridYard PRIVATE ws2_32 iphlpapi)
 endif()

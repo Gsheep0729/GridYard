@@ -1,7 +1,7 @@
 /**
 * @file    local_ip_monitor.cpp
 * @version 8.2.1
-* @date    2026-11-01
+* @date    2026-11-02
 * @author  GridYard Team
 * @brief   本机 IP 网络变化监听器实现
 */
@@ -13,11 +13,33 @@
 #include <QDebug>
 #include <QSocketNotifier>
 
+#ifdef _WIN32
+// Windows 分支：无 netlink 头族可包含（尖兵报告 N9/P7），空桩无需平台头
+#else
 #include <cstring>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
+
+#ifdef _WIN32
+
+// Windows 分支：netlink 路由监听空桩（尖兵报告 N9/P7）——Windows 无 netlink
+// 对应物，不建立任何监听，构造即落既有静默降级语义：本机 IP 仅启动期解析
+//（换网/IP 变化后邀请码与协调注册将携带陈旧地址直至重启，报告 P7 平台面影响
+// 如实保留）；NotifyIpInterfaceChange/NotifyAddrChange 回调加主线程回投的
+// 完整实现留作后续批次
+LocalIpMonitor::LocalIpMonitor(ConfigManager *config, QObject *parent)
+    : QObject{parent}
+    , _config{config}
+{
+    qDebug() << "LocalIpMonitor: netlink 不可用（Windows 空桩），本机 IP 仅启动期解析";
+}
+
+LocalIpMonitor::~LocalIpMonitor() = default;
+
+#else
 
 // 订阅链路状态与 IPv4 地址变化两组路由事件，经 QSocketNotifier 并入主线程事件循环
 LocalIpMonitor::LocalIpMonitor(ConfigManager *config, QObject *parent)
@@ -85,3 +107,5 @@ void LocalIpMonitor::drainNetlink()
         _config->refreshLocalIp();
     }
 }
+
+#endif

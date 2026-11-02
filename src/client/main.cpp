@@ -1,7 +1,7 @@
 /**
  * @file    main.cpp
  * @version 8.3.0
- * @date    2026-11-01
+ * @date    2026-11-02
  * @author  GridYard Team
  * @brief   GridYard 客户端程序入口
 *
@@ -26,9 +26,13 @@
 #include <QSocketNotifier>
 #include <QStringList>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
+#endif
 
 #include <cerrno>
 #include <csignal>
@@ -38,6 +42,7 @@
 #include "logger.h"
 #include "single_instance_guard.h"
 
+#ifndef _WIN32
 namespace {
 
 // SIGTERM/SIGINT 自管对写端：信号处理器只做一次字节写入（async-signal-safe），
@@ -54,9 +59,28 @@ extern "C" void handleTerminationSignal(int)
 }
 
 }  // namespace
+#endif  // !_WIN32
 
 // 程序主函数入口，初始化应用并显式创建全局控制器
 int main(int argc, char *argv[]) {
+#ifdef _WIN32
+    // Windows 分支：进程入口一次性 WSAStartup，WSACleanup 由局部对象在所有
+    // 退出路径对偶释放——发现/监听/传输各套接字面的 Winsock 前置条件由此
+    // 不依赖 NetReactor 惰性初始化的先后次序（尖兵报告 B3/P10 面）
+    struct WinsockLifetime {
+        WinsockLifetime()
+        {
+            WSADATA data{};
+            if (::WSAStartup(MAKEWORD(2, 2), &data) != 0) {
+                qCritical("GridYard: WSAStartup 失败（%d），网络功能不可用",
+                          ::WSAGetLastError());
+            }
+        }
+        ~WinsockLifetime() { ::WSACleanup(); }
+    } winsockLifetime;
+#endif
+
+#ifndef _WIN32
     // 对端关闭后继续写入时忽略 SIGPIPE，套接字层另有 MSG_NOSIGNAL 逐次兜底
     std::signal(SIGPIPE, SIG_IGN);
 
@@ -72,6 +96,7 @@ int main(int argc, char *argv[]) {
         ::sigaction(SIGTERM, &action, nullptr);
         ::sigaction(SIGINT, &action, nullptr);
     }
+#endif  // !_WIN32
 
     QGuiApplication::setApplicationName("GridYard");
     QGuiApplication::setApplicationVersion("8.3.0");
@@ -175,6 +200,7 @@ int main(int argc, char *argv[]) {
 
     // 信号读端注册进主线程：读空管道后调用 AppController::quit() 既有排空链，
     // requestQuit 内部防重入、重复信号安全；普通关窗路径不受影响
+#ifndef _WIN32
     if (g_signalPipe[0] >= 0) {
         auto *signalNotifier = new QSocketNotifier(g_signalPipe[0], QSocketNotifier::Read, &app);
         QObject::connect(signalNotifier, &QSocketNotifier::activated, &app, [] {
@@ -184,6 +210,7 @@ int main(int argc, char *argv[]) {
             AppController::singleton()->quit();
         });
     }
+#endif  // !_WIN32
 
     return app.exec();
 }
