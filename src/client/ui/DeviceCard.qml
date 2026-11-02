@@ -48,7 +48,7 @@ ItemDelegate {
     // 备注是否生效：生效时副行补出原名便于核对（远程改名仍可见）
     readonly property bool hasAlias: String(deviceCard.alias ?? "").trim().length > 0
 
-    readonly property int   kCardHeight: 76
+    readonly property int   kCardHeight: 68
     readonly property color kOnlineColor:  Style.Color.success   // 在线状态圆点颜色
     readonly property color kOfflineColor: Style.Color.textWeak  // 离线状态圆点颜色
     readonly property int kStatusDuration: Style.Motion.slow     // 在线状态切换动画时长

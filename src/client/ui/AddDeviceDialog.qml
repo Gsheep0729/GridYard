@@ -21,7 +21,7 @@ Dialog {
 
     title: qsTr("添加设备")
     modal: true
-    // 弹窗居中并定宽：parent 是 210px 的设备列表列，不能引用 parent.width
+    // 弹窗居中并定宽：parent 是 240px 的设备列表列（U2-41：210→240），不能引用 parent.width
     anchors.centerIn: Overlay.overlay
     width: 520
     padding: 0

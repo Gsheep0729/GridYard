@@ -21,7 +21,7 @@ Rectangle {
     id: peerListView
 
     property string selectedDeviceId: ""  // 当前选中的设备 ID，由 Main.qml 设置
-    readonly property int kDeviceCardHeight: 76  // 单个设备卡片的固定高度
+    readonly property int kDeviceCardHeight: 68  // 单个设备卡片的固定高度（U2-41：76→68）
     readonly property string _searchKeyword: searchInput.text.trim().toLowerCase()
     readonly property bool _searchActive: _searchKeyword.length > 0
     // 搜索模式下的合并模型：已加载列表的命中条目在前，列表自身的置顶档与

@@ -35,7 +35,7 @@ Rectangle {
     anchors.left: parent.left
     anchors.top: parent.top
     anchors.bottom: parent.bottom
-    width: 272  // 工具栏 62px + 设备列表 210px
+    width: 302  // 工具栏 62px + 设备列表 240px（U2-41：210→240）
     color: Style.Color.surfaceLeft
 
     // 工具栏（62px）
@@ -180,7 +180,7 @@ Rectangle {
         anchors.left: toolbar.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: 210
+        width: 240
         selectedDeviceId: AppController.peerDiscoveryViewModel.selectedDeviceId
 
         onDeviceSelected: (deviceId, deviceName, ipAddress, isOnline) =>
