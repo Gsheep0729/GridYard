@@ -1,7 +1,7 @@
 /**
 * @file    posix_net_error.cpp
-* @version 7.26.0
-* @date 2026-10-22
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   errno 映射表实现
 *
@@ -11,6 +11,15 @@
 #include "posix_net_error.h"
 
 #include <cerrno>
+
+#ifdef _WIN32
+#include <winsock2.h>
+// Windows 分支：MSVC 的 <cerrno> 不定义 EHOSTDOWN，而 WSA 专有错误码经
+// winsockErrorToErrno 原值透传进来，借 winsock 同名码补齐映射表条目
+#ifndef EHOSTDOWN
+#define EHOSTDOWN WSAEHOSTDOWN
+#endif
+#endif
 
 namespace gy::net {
 

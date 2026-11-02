@@ -1,7 +1,7 @@
 /**
 * @file    posix_udp_socket.cpp
-* @version 7.26.1
-* @date 2026-11-02
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   原生 UDP 套接字实现
 *
@@ -115,7 +115,7 @@ bool PosixUdpSocket::bind(const IpAddress &address, quint16 port, BindFlags flag
         _errorText = errorMessageFromErrno(netErrno());
         return false;
     }
-    const u_long nonBlocking = 1;
+    u_long nonBlocking = 1;
     ::ioctlsocket(rawFd, FIONBIO, &nonBlocking);
     _fd = static_cast<int>(rawFd);
 #else

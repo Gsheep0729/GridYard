@@ -1,7 +1,7 @@
 /**
 * @file    posix_tcp_socket.cpp
-* @version 8.1.0
-* @date    2026-11-02
+* @version 8.3.0
+* @date    2026-11-03
 * @author  GridYard Team
 * @brief   原生 TCP 套接字实现
 *
@@ -114,7 +114,7 @@ int createStreamSocket(int family)
     if (raw == INVALID_SOCKET) {
         return -1;
     }
-    const u_long nonBlocking = 1;
+    u_long nonBlocking = 1;
     ::ioctlsocket(raw, FIONBIO, &nonBlocking);
     return static_cast<int>(raw);
 }
@@ -127,7 +127,7 @@ bool configureDescriptor(int fd)
 {
     // Windows 分支：无 fcntl，非阻塞以 FIONBIO 补齐（尖兵报告 N5/N11）；
     // 执行时关闭无对应概念可省
-    const u_long nonBlocking = 1;
+    u_long nonBlocking = 1;
     return ::ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &nonBlocking) == 0;
 }
 #else

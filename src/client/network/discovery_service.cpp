@@ -1,7 +1,7 @@
 /**
 * @file    discovery_service.cpp
-* @version 8.2.1
-* @date 2026-11-01
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   局域网设备发现服务实现
 */
@@ -18,6 +18,11 @@
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
+#endif
 
 // 心跳间隔：5 秒，兼顾发现速度和局域网广播噪声
 static constexpr int kBroadcastIntervalSec = 5;

@@ -1,7 +1,7 @@
 /**
 * @file    net_interfaces.cpp
-* @version 8.2.1
-* @date 2026-11-02
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   本机网卡与地址枚举实现
 *
@@ -23,6 +23,11 @@
 #else
 #include <ifaddrs.h>
 #include <net/if.h>
+#endif
+
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
 #endif
 
 namespace gy::net {

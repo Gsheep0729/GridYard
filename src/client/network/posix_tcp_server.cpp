@@ -1,7 +1,7 @@
 /**
 * @file    posix_tcp_server.cpp
-* @version 7.26.1
-* @date 2026-11-02
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   原生 TCP 监听器实现
 *
@@ -92,7 +92,7 @@ int createStreamSocket(int family)
     if (raw == INVALID_SOCKET) {
         return -1;
     }
-    const u_long nonBlocking = 1;
+    u_long nonBlocking = 1;
     ::ioctlsocket(raw, FIONBIO, &nonBlocking);
     return static_cast<int>(raw);
 }
@@ -247,7 +247,7 @@ void PosixTcpServer::onAcceptActivated()
             _errorText = errorMessageFromErrno(err);
             break;
         }
-        const u_long nonBlocking = 1;
+        u_long nonBlocking = 1;
         ::ioctlsocket(rawDescriptor, FIONBIO, &nonBlocking);
         const int descriptor = static_cast<int>(rawDescriptor);
 #else
