@@ -43,6 +43,12 @@ Dialog {
     // 接收路径保存前校验失败原因：非空时行内红字展示并阻止保存（禁静默假成功）
     property string _receivePathError: ""
 
+    // 备份弹窗与设置平级（U2-24）：弹窗本体移至 Main.qml 窗口层，本页按钮只发
+    // 请求信号，由根窗口先关闭设置再打开弹窗——消除"应用→设置→备份"三层遮罩；
+    // 未保存的临时编辑随关闭丢弃（与取消一致），备份取值恒为已落盘配置
+    signal backupExportRequested()
+    signal backupImportRequested()
+
     // 表单校验：设备名非空、接收路径非空、端口在合法范围内
     readonly property bool _isValid: _tempDeviceName.trim().length > 0
                                     && _tempReceivePath.length > 0
@@ -933,7 +939,7 @@ Dialog {
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("导出数据")
                             enabled: AppController.localHistoryAvailable
-                            onClicked: backupExportDialog.open()
+                            onClicked: settingsDialog.backupExportRequested()
                         }
 
                         Button {
@@ -941,7 +947,7 @@ Dialog {
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("导入数据")
                             enabled: AppController.localHistoryAvailable
-                            onClicked: backupImportDialog.open()
+                            onClicked: settingsDialog.backupImportRequested()
                         }
                     }
                 }
@@ -1080,14 +1086,6 @@ Dialog {
                 }
             }
         }
-    }
-
-    BackupExportDialog {
-        id: backupExportDialog
-    }
-
-    BackupImportDialog {
-        id: backupImportDialog
     }
 
     // 文件夹选择对话框：用户选择新接收路径后更新临时变量并回填输入框

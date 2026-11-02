@@ -515,7 +515,24 @@ ApplicationWindow {
         }
     }
 
-    SettingsDialog { id: settingsDialog }
+    // 备份弹窗与设置平级（U2-24）：先关闭设置再打开，消除"应用→设置→备份"
+    // 三层遮罩；设置未保存的临时编辑随关闭丢弃（与取消一致），备份取值恒为
+    // 已落盘配置（prepareExport 读历史库/身份库，不读设置临时值）
+    SettingsDialog {
+        id: settingsDialog
+        onBackupExportRequested: {
+            settingsDialog.close()
+            backupExportDialog.open()
+        }
+        onBackupImportRequested: {
+            settingsDialog.close()
+            backupImportDialog.open()
+        }
+    }
+
+    BackupExportDialog { id: backupExportDialog }
+
+    BackupImportDialog { id: backupImportDialog }
 
     // 不显示该聊天确认：确认后落库隐藏，列表随过滤规则即时移除该卡
     HideDeviceDialog {
