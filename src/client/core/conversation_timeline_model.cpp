@@ -1,7 +1,7 @@
 /**
 * @file    conversation_timeline_model.cpp
-* @version 8.2.1
-* @date 2026-11-01
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型实现
 *
@@ -53,6 +53,12 @@ QVariant ConversationTimelineModel::data(const QModelIndex &index, int role) con
     }
     if (role == ShowAvatarRole) {
         return entry.isMessage && entry.showAvatar;
+    }
+    if (role == ShowDayDividerRole) {
+        return entry.showDayDivider;
+    }
+    if (role == DayLabelRole) {
+        return dayLabelFor(entry.day);
     }
 
     if (entry.isMessage) {
@@ -111,6 +117,8 @@ QHash<int, QByteArray> ConversationTimelineModel::roleNames() const
         {CanDeleteLocalFileRole, "canDeleteLocalFile"},
         {ErrorMsgRole, "errorMsg"},
         {StatsPendingRole, "statsPending"},
+        {ShowDayDividerRole, "showDayDivider"},
+        {DayLabelRole, "dayLabel"},
     };
 }
 
@@ -233,6 +241,7 @@ void ConversationTimelineModel::rebuildFromSources()
             entry.isMessage = false;
             entry.sourceRow = row;
             entry.sortTime = timestampOf(session.value(kCreatedAt).toString());
+            entry.day = dateOf(entry.sortTime);
             entry.data = session;
             _entries.append(entry);
         }
@@ -251,6 +260,7 @@ void ConversationTimelineModel::rebuildFromSources()
     });
 
     applyAvatarFlags(0, false);
+    applyDayDividerFlags(0, false);
     endResetModel();
     emit countChanged();
 }
@@ -278,6 +288,7 @@ void ConversationTimelineModel::onMessagesInserted(const QModelIndex &parent, in
         endInsertRows();
         // 插入改变相邻关系，从前一行起重算头像标记
         applyAvatarFlags(qMax(0, position - 1), true);
+        applyDayDividerFlags(qMax(0, position - 1), true);
     }
     emit countChanged();
 }
@@ -302,6 +313,7 @@ void ConversationTimelineModel::onMessagesRemoved(const QModelIndex &parent, int
         _entries.removeAt(mergedRow);
         endRemoveRows();
         applyAvatarFlags(qMax(0, mergedRow - 1), true);
+        applyDayDividerFlags(qMax(0, mergedRow - 1), true);
     }
 
     const int removedCount = last - first + 1;
@@ -337,7 +349,9 @@ void ConversationTimelineModel::onMessagesDataChanged(const QModelIndex &topLeft
         _entries[mergedRow].data = readMessageRow(row);
         _entries[mergedRow].sortTime = timestampOf(
             _entries[mergedRow].data.value(QStringLiteral("sentAt")).toString());
+        _entries[mergedRow].day = dateOf(_entries[mergedRow].sortTime);
         emit dataChanged(index(mergedRow), index(mergedRow));
+        applyDayDividerFlags(mergedRow, true);
     }
 }
 
@@ -358,6 +372,7 @@ void ConversationTimelineModel::onSessionsInserted(const QModelIndex &parent, in
         entry.isMessage = false;
         entry.sourceRow = row;
         entry.sortTime = timestampOf(session.value(kCreatedAt).toString());
+        entry.day = dateOf(entry.sortTime);
         entry.data = session;
 
         const int position = insertionPosition(entry.sortTime, false, entry.sourceRow);
@@ -366,6 +381,7 @@ void ConversationTimelineModel::onSessionsInserted(const QModelIndex &parent, in
         endInsertRows();
         // 会话行不参与头像分组，但会打断相邻消息的连续性
         applyAvatarFlags(qMax(0, position - 1), true);
+        applyDayDividerFlags(qMax(0, position - 1), true);
     }
     emit countChanged();
 }
@@ -397,6 +413,7 @@ void ConversationTimelineModel::onSessionsRemoved(const QModelIndex &parent, int
 
     if (!rowsToRemove.isEmpty()) {
         applyAvatarFlags(0, true);  // 相邻消息的连续性可能被移除的会话行改变
+        applyDayDividerFlags(0, true);
         emit countChanged();
     }
 }
@@ -428,7 +445,9 @@ void ConversationTimelineModel::onSessionsDataChanged(const QModelIndex &topLeft
         _entries[mergedRow].data = readSessionRow(row);
         _entries[mergedRow].sortTime = timestampOf(
             _entries[mergedRow].data.value(kCreatedAt).toString());
+        _entries[mergedRow].day = dateOf(_entries[mergedRow].sortTime);
         emit dataChanged(index(mergedRow), index(mergedRow));
+        applyDayDividerFlags(mergedRow, true);
     }
 }
 
@@ -440,6 +459,7 @@ ConversationTimelineModel::TimelineEntry ConversationTimelineModel::makeMessageE
     entry.sourceRow = row;
     entry.data = readMessageRow(row);
     entry.sortTime = timestampOf(entry.data.value(QStringLiteral("sentAt")).toString());
+    entry.day = dateOf(entry.sortTime);
     return entry;
 }
 
@@ -565,9 +585,51 @@ void ConversationTimelineModel::applyAvatarFlags(int fromRow, bool notify)
     }
 }
 
+// 从 fromRow 起重算跨天分组标记，notify 为真时对变化的行发出通知
+void ConversationTimelineModel::applyDayDividerFlags(int fromRow, bool notify)
+{
+    for (int row = qMax(0, fromRow); row < _entries.size(); ++row) {
+        // 时间线首行固定开分组，其后与前一行的本地日历日不同才算新的一天
+        const bool show = row == 0
+                          || _entries.at(row - 1).day != _entries.at(row).day;
+
+        if (_entries[row].showDayDivider == show) {
+            continue;
+        }
+
+        _entries[row].showDayDivider = show;
+        if (notify) {
+            emit dataChanged(index(row), index(row), {ShowDayDividerRole});
+        }
+    }
+}
+
 // 将 ISO 时间字符串转为毫秒时间戳，解析失败返回 0
 qint64 ConversationTimelineModel::timestampOf(const QString &isoTime)
 {
     const QDateTime parsed = QDateTime::fromString(isoTime, Qt::ISODateWithMs);
     return parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0;
+}
+
+// 将毫秒时间戳换算为本地日历日，未解析的时间戳（0）统一落在纪元日，
+// 与排序口径一致：无有效时间的行相互之间不打分组线
+QDate ConversationTimelineModel::dateOf(qint64 sortTime)
+{
+    return QDateTime::fromMSecsSinceEpoch(sortTime).toLocalTime().date();
+}
+
+// 返回日期分组线文案：今天/昨天之外按是否跨年补年份
+QString ConversationTimelineModel::dayLabelFor(const QDate &day)
+{
+    const QDate today = QDate::currentDate();
+    if (day == today) {
+        return QStringLiteral("今天");
+    }
+    if (day == today.addDays(-1)) {
+        return QStringLiteral("昨天");
+    }
+    if (day.year() == today.year()) {
+        return day.toString(QStringLiteral("M月d日"));
+    }
+    return day.toString(QStringLiteral("yyyy年M月d日"));
 }

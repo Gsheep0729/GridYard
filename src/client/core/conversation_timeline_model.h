@@ -1,7 +1,7 @@
 /**
 * @file    conversation_timeline_model.h
-* @version 8.2.1
-* @date 2026-11-01
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   聊天消息与传输会话的统一时间线模型
 *
@@ -13,6 +13,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QDate>
 #include <QList>
 #include <QString>
 #include <QVariantMap>
@@ -53,6 +54,8 @@ public:
         CanDeleteLocalFileRole,
         ErrorMsgRole,
         StatsPendingRole,
+        ShowDayDividerRole,
+        DayLabelRole,
     };
     Q_ENUM(Role)
 
@@ -96,6 +99,8 @@ private:
         int sourceRow = -1;      // 来源模型中的行号（消息行随来源增删维护）
         qint64 sortTime = 0;     // 排序时间戳（毫秒）
         bool showAvatar = false; // 消息行是否显示头像
+        QDate day;               // 行时间戳的本地日历日，跨天分组的比较依据
+        bool showDayDivider = false;  // 是否为所在日期分组的首行（含时间线首行）
         QVariantMap data;        // 行数据快照，字段名即角色名
     };
 
@@ -133,8 +138,14 @@ private:
     int mergedRowForSession(const QString &sessionId) const;
     // 从 fromRow 起重算消息头像标记，notify 为真时对变化的行发出通知
     void applyAvatarFlags(int fromRow, bool notify);
+    // 从 fromRow 起重算跨天分组标记，notify 为真时对变化的行发出通知
+    void applyDayDividerFlags(int fromRow, bool notify);
     // 将 ISO 时间字符串转为毫秒时间戳，解析失败返回 0
     static qint64 timestampOf(const QString &isoTime);
+    // 将毫秒时间戳换算为本地日历日
+    static QDate dateOf(qint64 sortTime);
+    // 返回日期分组线文案：今天/昨天之外按是否跨年补年份
+    static QString dayLabelFor(const QDate &day);
 
     ChatController *_chatController = nullptr;        // 聊天控制器（解析设备消息模型）
     ChatMessageModel *_messageSource = nullptr;       // 当前设备的聊天消息模型

@@ -1,11 +1,12 @@
 /**
  * @file    ConversationTimelineView.qml
- * @version 8.2.1
- * @date 2026-11-02
+ * @version 8.3.0
+ * @date 2026-11-03
  * @author  GridYard Team
  * @brief   设备会话的统一消息时间线
  *
- * 将聊天消息和文件传输任务按时间混排展示，形成单一会话流。
+ * 将聊天消息和文件传输任务按时间混排展示，形成单一会话流；
+ * 跨天处在行首渲染日期分组线，长会话保留"今天/昨天"的时间感。
  */
 
 pragma ComponentBehavior: Bound
@@ -151,25 +152,68 @@ Item {
             required property var canDeleteLocalFile
             required property var errorMsg
             required property var statsPending  // 目录体量统计在途（后台统计，O-12）
+            required property var showDayDivider  // 跨天分组标记，行首渲染日期线（批3 §4.5）
+            required property var dayLabel
 
             readonly property bool isMessage: kind === "message"  // 区分消息和传输两种卡片
             readonly property bool isOutgoingMessage: isMessage && isOutgoing
             readonly property bool shouldShowAvatar: isMessage && showAvatar
             // 安全字段：防御 undefined/null 导致 QML 绑定崩溃
+            readonly property bool showDivider: showDayDivider === true
+            readonly property string safeDayLabel: String(dayLabel || "")
             readonly property string safeSenderName: isMessage ? String(senderName || "") : ""
             readonly property string safeContent: isMessage ? String(content || "") : ""
             readonly property string safeSentAt: isMessage ? String(sentAt || "") : ""
             readonly property int safeMessageStatus: isMessage ? Number(status || 0) : 0
+            // 分组线行自持一段空隙，内容主体统一下移；隐藏时偏移归零
+            readonly property real contentOffset: showDivider
+                                                  ? dayDivider.height + Style.Space.sm : 0
 
             width: timelineList.width
-            height: isMessage
-                    ? messageColumn.implicitHeight
-                    : transferWrapper.implicitHeight
+            height: contentOffset
+                    + (isMessage ? messageColumn.implicitHeight : transferWrapper.implicitHeight)
+
+            // 跨天分组线：居中日期文案，两侧 Hairline 与全局分隔线同 token
+            Item {
+                id: dayDivider
+
+                visible: timelineDelegate.showDivider
+                width: parent.width
+                height: dayDividerLabel.implicitHeight
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: dayDividerLabel.left
+                    anchors.rightMargin: Style.Space.sm
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 1
+                    color: Style.Color.border
+                }
+
+                Label {
+                    id: dayDividerLabel
+
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: timelineDelegate.safeDayLabel
+                    color: Style.Color.textWeakStrong
+                    font.pixelSize: Style.Type.caption
+                }
+
+                Rectangle {
+                    anchors.left: dayDividerLabel.right
+                    anchors.leftMargin: Style.Space.sm
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 1
+                    color: Style.Color.border
+                }
+            }
 
             Column {
                 id: messageColumn
 
                 visible: timelineDelegate.isMessage
+                y: timelineDelegate.contentOffset
                 width: parent.width
                 spacing: Style.Space.xs
 
@@ -285,6 +329,7 @@ Item {
                 id: transferWrapper
 
                 visible: !timelineDelegate.isMessage
+                y: timelineDelegate.contentOffset
                 width: parent.width
                 implicitHeight: visible ? transferCard.height : 0
 
