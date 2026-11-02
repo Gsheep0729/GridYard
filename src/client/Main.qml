@@ -697,7 +697,18 @@ ApplicationWindow {
         function onErrorOccurred(message: string): void { mainWindow.showErrorToast(message) }
         function onMessageOccurred(message: string): void { mainWindow.showSuccessToast(message) }
         function onRelayConfirmRequested(sessionId: string, deviceId: string): void {
-            // 策略判断已在 C++ 完成：进入此分支即 AskBeforeRelay 档，只负责弹窗
+            // 策略判断已在 C++ 完成：进入此分支即 AskBeforeRelay 档，只负责弹窗；
+            // 文件名/大小从会话列表就地取（U2-21），查不到时按旧契约只弹窗，
+            // 弹窗对空文件名整行隐藏
+            const sessions = AppController.transferController.sessions
+            for (let i = 0; i < sessions.length; i++) {
+                if (sessions[i].sessionId === sessionId) {
+                    relayConfirmDialog.openFor(sessionId, sessions[i].fileName,
+                                               sessions[i].totalBytes,
+                                               sessions[i].isDirectory)
+                    return
+                }
+            }
             relayConfirmDialog.openFor(sessionId)
         }
     }
