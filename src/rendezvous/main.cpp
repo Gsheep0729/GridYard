@@ -1,7 +1,7 @@
 /**
 * @file    main.cpp
 * @version 8.3.0
-* @date    2026-11-01
+* @date    2026-11-03
 * @author  GridYard Team
 * @brief   协调节点和中继服务入口
 *
@@ -52,8 +52,12 @@ void printUsage(const char *program)
 
 int main(int argc, char *argv[])
 {
+#ifndef _WIN32
     // 对端关闭后继续写入时忽略 SIGPIPE，套接字层另有 MSG_NOSIGNAL 逐次兜底
     std::signal(SIGPIPE, SIG_IGN);
+#else
+    // Windows 分支：无 SIGPIPE 信号（Winsock 发送失败以错误码返回），无忽略动作可做
+#endif
 
     std::string mode = "rendezvous";
     std::string token;

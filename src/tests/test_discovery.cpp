@@ -1,7 +1,7 @@
 /**
 * @file    test_discovery.cpp
-* @version 8.2.1
-* @date 2026-11-01
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GY
 * @brief   DiscoveryService 设备发现测试
 *
@@ -364,6 +364,11 @@ void TestDiscovery::testRealArrivalMergesOfflineManualEntry()
     const QList<gy::net::NetInterface> interfaces = gy::net::listInterfaces();
     for (const gy::net::NetInterface &interface : interfaces) {
         if (!interface.isUp || !interface.canBroadcast || interface.isLoopback) {
+            continue;
+        }
+        // 虚拟网桥（docker br-*/veth 等）不参与广播，同 sendHelloPacket 的 C-04
+        // 口径：漏滤会把伪条目挂在容器网段地址上，真实广播的来源 IP 永远合并不了它
+        if (gy::net::isVirtualInterfaceName(interface.name)) {
             continue;
         }
         if (interface.address.isValid()) {

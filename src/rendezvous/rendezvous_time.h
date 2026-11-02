@@ -1,7 +1,7 @@
 /**
 * @file    rendezvous_time.h
-* @version 7.26.1
-* @date    2026-10-24
+* @version 8.3.0
+* @date    2026-11-03
 * @author  GridYard Team
 * @brief   协调节点服务的 UTC 时间工具
 *
@@ -30,9 +30,16 @@ inline std::string formatIsoSecondUtc(int64_t milliseconds)
 {
     const time_t seconds = static_cast<time_t>(milliseconds / 1000);
     tm utc{};
+#ifdef _WIN32
+    // Windows 分支：MSVC 无 gmtime_r，对应物为 gmtime_s（参数序相反，成功返回 0）
+    if (::gmtime_s(&utc, &seconds) != 0) {
+        return {};
+    }
+#else
     if (::gmtime_r(&seconds, &utc) == nullptr) {
         return {};
     }
+#endif
     char text[128] = {0};  // 覆盖格式串各字段的整型宽度上界，杜绝截断告警
     std::snprintf(text, sizeof(text), "%04d-%02d-%02dT%02d:%02d:%02dZ",
                   utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday,

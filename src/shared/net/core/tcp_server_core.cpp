@@ -1,7 +1,7 @@
 /**
 * @file    tcp_server_core.cpp
-* @version 8.1.0
-* @date    2026-10-27
+* @version 8.3.0
+* @date    2026-11-03
 * @author  GridYard Team
 * @brief   纯 POSIX TCP 监听服务器实现（Boost.Asio 引擎）
 *
@@ -126,9 +126,10 @@ bool TcpServerCore::createListener(int family, uint16_t port)
         return false;
     }
     // Windows 分支：socket() 无 SOCK_NONBLOCK/SOCK_CLOEXEC 创建位——非阻塞以
-    // FIONBIO 补齐，执行时关闭无对应概念可省（尖兵报告 N5/N11）
+    // FIONBIO 补齐，执行时关闭无对应概念可省（尖兵报告 N5/N11）；
+    // ioctlsocket 出参按 Winsock 原型须为可写 u_long*，本地量不可 const
     const int fd = static_cast<int>(rawFd);
-    const u_long nonBlocking = 1;
+    u_long nonBlocking = 1;
     ::ioctlsocket(rawFd, FIONBIO, &nonBlocking);
 #else
     const int fd = ::socket(family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);

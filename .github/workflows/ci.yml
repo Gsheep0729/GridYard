@@ -208,14 +208,16 @@ jobs:
           # 第 8 轮放开全量：M2a-d 落账后 A 降级前提解除，9 目标白名单（原目标名实核与
           # B7 辨析注释随退役面归 git 历史，run 41477627137 前后轮次可查）整体退役，
           # cmake --build 全树构建。ninja -k 0：首轮失译也不停轮、把全部失译 TU 一轮收齐
-          # ——注解是匿名取证的唯一通道（每步上限 10 条，截取 head 10），产品码修复
+          # ——注解是匿名取证的唯一通道（每步上限 10 条，截取 head 10；全量清单留盘
+          # /tmp/win-ann-full.txt，由后续两步分页补注解），产品码修复
           # （仅限失败取证指到的文件）一轮即可对齐清单；rendezvous 零直接 POSIX 头、
           # 全走 gy_net_core（本机 grep arpa/inet.h|sys/socket.h|unistd.h 等 0 命中，
           # 2026-11-03 实证），其 win_* 占位注释（src/rendezvous/CMakeLists.txt:52）的
           # 存废由本轮编译实况裁决；Qt 模块面（Quick/QuickControls2/QuickDialogs2/Widgets，
           # src/CMakeLists.txt:29）能否由 aqt base 包满足，同样由本轮配置/编译实况回答
           cmake --build build-win -- -k 0 2>&1 | tee /tmp/win-build.log | tail -3 \
-            || { grep -E "error C[0-9]+|fatal error|error:|FAILED:" /tmp/win-build.log | head -10 > /tmp/win-ann2.txt
+            || { grep -E "error C[0-9]+|fatal error|error:|FAILED:" /tmp/win-build.log > /tmp/win-ann-full.txt || true
+                 head -10 /tmp/win-ann-full.txt > /tmp/win-ann2.txt
                  while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann2.txt
                  exit 1; }
           # 落盘实况每轮实测（第 5 轮引入）：构建 exit 0 瞬间的 exe 计数匿名钉死
@@ -242,6 +244,25 @@ jobs:
           else
             echo "::notice::[链接行实况] /tmp/win-build.log 无 Linking CXX executable 行——构建系统层未链接型死因"
           fi
+      - name: 失译注解第二页（head 10 截断补偿）
+        if: failure()
+        shell: bash
+        run: |
+          # 构建步失败注解每步上限 10 条：run 41495524885 恰 10 条打满（4 个失译 TU 的
+          # FAILED+error 行），残余失译被 head 截断而不可见（digest 自证不能排除更多）。
+          # 本步与构建步分属不同注解配额，读其留盘全量清单的第 11~20 行补注解；
+          # 跨步读 /tmp 先例=windeployqt 步读构建步留盘的 /tmp/win-build.log
+          [ -f /tmp/win-ann-full.txt ] || exit 0
+          tail -n +11 /tmp/win-ann-full.txt | head -10 > /tmp/win-ann-p2.txt
+          while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann-p2.txt
+      - name: 失译注解第三页
+        if: failure()
+        shell: bash
+        run: |
+          # 同上，第 21~30 行补注解，失译清单匿名可见面自 10 行扩至 30 行
+          [ -f /tmp/win-ann-full.txt ] || exit 0
+          tail -n +21 /tmp/win-ann-full.txt | head -10 > /tmp/win-ann-p3.txt
+          while IFS= read -r line; do echo "::error::${line:0:400}"; done < /tmp/win-ann-p3.txt
       - name: windeployqt 摆 DLL 与平台插件
         shell: bash
         run: |
