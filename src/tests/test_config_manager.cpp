@@ -1,7 +1,7 @@
 /**
 * @file    test_config_manager.cpp
 * @version 8.2.1
-* @date 2026-11-01
+* @date 2026-11-02
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
@@ -19,8 +19,11 @@
 #include <QFileInfo>
 #include <QJsonObject>
 
+#ifndef _WIN32
+// POSIX 专有头：仅 geteuid() 的 root 判定消费（Windows 无 root/权限位语义）
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 #include "application_paths.h"
 #include "config_manager.h"
@@ -169,6 +172,11 @@ void TestConfigManager::testReceivePathError()
     QVERIFY(!_config->receivePathError(occupied).isEmpty());
 
     // 不可写目录：必须报错（root 下权限位不生效，跳过该例）
+#ifdef _WIN32
+    // Windows 分支：目录只读属性不约束子项创建（CreateDirectory 不受父目录
+    // 只读位限制），不可写目录子用例判定口径不成立，跳过（与 root 分支同口径）
+    qWarning("Windows 下跳过不可写目录用例（目录只读属性不约束子项创建）");
+#else
     if (geteuid() != 0) {
         const QString roDir = base.path() + "/readonly";
         QVERIFY(QDir().mkpath(roDir));
@@ -180,6 +188,7 @@ void TestConfigManager::testReceivePathError()
     } else {
         qWarning("以 root 运行，跳过不可写目录用例（权限位对 root 不生效）");
     }
+#endif
 }
 
 void TestConfigManager::testTcpPort()
@@ -554,6 +563,13 @@ void TestConfigManager::testNextLaunchInstance()
 // 绝不触碰真实 ~/.config/autostart
 void TestConfigManager::testAutostartEntryLifecycle()
 {
+#ifdef _WIN32
+    // Windows 分支：自启隔离依赖 XDG_CONFIG_HOME 重定向，Windows 无 XDG 语义
+    // （autostartDirectory 落 QStandardPaths GenericConfigLocation，config_manager
+    // 的自启实现仍为 XDG 桌面项，注册表化属可行性报告 P1-P5 未落位），隔离失效
+    // 会触碰真实用户 autostart 目录，整体跳过
+    QSKIP("XDG autostart 用例仅适用 POSIX（Windows 注册表化待 P1-P5）");
+#else
     QTemporaryDir xdgDir;
     QVERIFY(xdgDir.isValid());
     const QByteArray savedXdg = qgetenv("XDG_CONFIG_HOME");
@@ -630,12 +646,17 @@ void TestConfigManager::testAutostartEntryLifecycle()
     }
     // 恢复主配置路径，后续用例的读写都落在 test_config.ini
     qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+#endif
 }
 
 // 启动对账：意图为开但桌面项缺失或 Exec 指向陈旧路径（AppImage/deb 更新、
 // 安装位置漂移）时，构造期以当前 applicationFilePath 重写，登录不再拉起失效路径
 void TestConfigManager::testAutostartReconcileOnStartup()
 {
+#ifdef _WIN32
+    // Windows 分支：与 testAutostartEntryLifecycle 同口径（XDG 隔离失效），整体跳过
+    QSKIP("XDG autostart 用例仅适用 POSIX（Windows 注册表化待 P1-P5）");
+#else
     QTemporaryDir xdgDir;
     QVERIFY(xdgDir.isValid());
     const QByteArray savedXdg = qgetenv("XDG_CONFIG_HOME");
@@ -685,12 +706,17 @@ void TestConfigManager::testAutostartReconcileOnStartup()
         qputenv("XDG_CONFIG_HOME", savedXdg);
     }
     qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+#endif
 }
 
 // 开发者实例的桌面项独立命名（gridyard-devN.desktop），Exec 追加 --instance=N：
 // 登录拉起的是同一开发者实例，且不与正常实例的自启项互踩
 void TestConfigManager::testAutostartDevInstanceEntry()
 {
+#ifdef _WIN32
+    // Windows 分支：与 testAutostartEntryLifecycle 同口径（XDG 隔离失效），整体跳过
+    QSKIP("XDG autostart 用例仅适用 POSIX（Windows 注册表化待 P1-P5）");
+#else
     QTemporaryDir xdgDir;
     QVERIFY(xdgDir.isValid());
     const QByteArray savedXdg = qgetenv("XDG_CONFIG_HOME");
@@ -727,6 +753,7 @@ void TestConfigManager::testAutostartDevInstanceEntry()
         qputenv("XDG_CONFIG_HOME", savedXdg);
     }
     qputenv("GRIDYARD_CONFIG", (_tempDir->path() + "/test_config.ini").toUtf8());
+#endif
 }
 
 void TestConfigManager::testWindowGeometryPersistence()

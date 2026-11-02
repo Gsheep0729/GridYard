@@ -16,7 +16,7 @@ set(NET_ADAPTER_UDP ${NET_ADAPTER_INTERFACES} ${CLIENT_NET_DIR}/posix_udp_socket
 set(NET_ADAPTER_SERVER ${NET_ADAPTER_TCP} ${CLIENT_NET_DIR}/posix_tcp_server.cpp)
 set(NET_ADAPTER_ALL ${NET_ADAPTER_UDP} ${NET_ADAPTER_SERVER})
 
-# --- 测试公共工具（header-only：JSON 行读写、数据库种子、轮询等待、临时端口） ---
+# --- 测试公共工具（header-only：JSON 行读写、数据库种子、轮询等待、临时端口与回环套接字对） ---
 add_library(gy_test_utils INTERFACE)
 target_include_directories(gy_test_utils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/test_utils)
 

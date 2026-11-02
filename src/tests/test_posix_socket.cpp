@@ -1,7 +1,7 @@
 /**
 * @file    test_posix_socket.cpp
 * @version 7.26.0
-* @date 2026-10-22
+* @date 2026-11-02
 * @author  GridYard Team
 * @brief   原生套接字原语层测试
 *
@@ -17,11 +17,24 @@
 
 #include <memory>
 
+#ifdef _WIN32
+// Windows 分支：Winsock2 头（getsockopt/TCP_NODELAY/IPPROTO_TCP，报告 N13/N16）；
+// NOMINMAX 与 net_reactor.cpp 同款防护；另含 <cerrno>——errno 常量与产品侧
+// posix_net_error.cpp 的映射表同源（UCRT errno.h），避免 winsock2 的 WSAE*
+// 重定义漂移
+#include <cerrno>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include "ip_address.h"
 #include "net_interfaces.h"
@@ -346,6 +359,20 @@ void TestPosixSocket::testTcpNoDelayEnabled()
     auto accepted = acceptOne(server);
     QVERIFY(accepted);
 
+#ifdef _WIN32
+    // Windows 分支：getsockopt 选项指针为 const char*、长度为 int（报告 N13/N16）
+    int enabled = 0;
+    int length = static_cast<int>(sizeof(enabled));
+    QCOMPARE(::getsockopt(static_cast<SOCKET>(client.socketDescriptor()), IPPROTO_TCP, TCP_NODELAY,
+                          reinterpret_cast<char *>(&enabled), &length), 0);
+    QCOMPARE(enabled, 1);
+
+    enabled = 0;
+    length = static_cast<int>(sizeof(enabled));
+    QCOMPARE(::getsockopt(static_cast<SOCKET>(accepted->socketDescriptor()), IPPROTO_TCP,
+                          TCP_NODELAY, reinterpret_cast<char *>(&enabled), &length), 0);
+    QCOMPARE(enabled, 1);
+#else
     int enabled = 0;
     socklen_t length = sizeof(enabled);
     QCOMPARE(::getsockopt(client.socketDescriptor(), IPPROTO_TCP, TCP_NODELAY, &enabled, &length), 0);
@@ -355,6 +382,7 @@ void TestPosixSocket::testTcpNoDelayEnabled()
     length = sizeof(enabled);
     QCOMPARE(::getsockopt(accepted->socketDescriptor(), IPPROTO_TCP, TCP_NODELAY, &enabled, &length), 0);
     QCOMPARE(enabled, 1);
+#endif
 }
 
 // 连接已关闭端口时返回失败并给出错误类型
@@ -377,6 +405,12 @@ void TestPosixSocket::testTcpConnectFailure()
 // 连接队列拥塞时阻塞等待按超时返回
 void TestPosixSocket::testTcpConnectTimeout()
 {
+#ifdef _WIN32
+    // Windows 分支：SOCK_NONBLOCK/SOCK_CLOEXEC 与 listen backlog=0 的积压
+    // 拥塞语义均 Linux 专有（可行性报告 B20：网络类原始套接字用例首轮不纳入），
+    // 整体跳过
+    QSKIP("backlog 拥塞用例依赖 Linux 原始套接字语义");
+#else
     const int listener = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     QVERIFY(listener >= 0);
 
@@ -410,6 +444,7 @@ void TestPosixSocket::testTcpConnectTimeout()
         ::close(descriptor);
     }
     ::close(listener);
+#endif
 }
 
 // 对端关闭后写入不触发进程终止

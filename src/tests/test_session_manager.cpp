@@ -1,7 +1,7 @@
 /**
 * @file    test_session_manager.cpp
 * @version 8.2.1
-* @date    2026-11-01
+* @date    2026-11-02
 * @author  GY
 * @brief   TransferSessionManager 会话管理测试
 *
@@ -41,11 +41,15 @@
 
 #include <nlohmann/json.hpp>
 
+#ifndef _WIN32
+// POSIX 专有头：仅 testIncomingConnectionLimit 的原始套接字/poll 段消费
+// （Windows 分支整体跳过该用例，可行性报告 B20 首轮口径）
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <array>
 
@@ -882,6 +886,11 @@ void TestSessionManager::testActiveSessionCountLifecycle()
 // 入站连接数达到上限后新连接被拒绝：前 16 路保持在线，第 17 路被服务器主动关闭
 void TestSessionManager::testIncomingConnectionLimit()
 {
+#ifdef _WIN32
+    // Windows 分支：用例依赖 poll 与 POSIX 原始 fd 语义（MSVC 无 poll、
+    // 套接字为 SOCKET 句柄），整体跳过（可行性报告 B20 首轮口径）
+    QSKIP("raw socket/poll 用例依赖 POSIX 语义");
+#else
     _config->setReceivePath(_tempDir->path() + "/limit-recv");
     _config->setTcpPort(0);
     _p2pServer->stop();
@@ -955,6 +964,7 @@ void TestSessionManager::testIncomingConnectionLimit()
     // 等服务器侧销毁完这批断开的 socket，计数归零后再进下一用例
     QTRY_COMPARE_WITH_TIMEOUT(_p2pServer->activeConnectionCount(), 0, 5000);
     _p2pServer->stop();
+#endif
 }
 
 // 入站请求的处理入口信号在弹窗确认与自动接受两条路径上都发射（隐藏设备自动恢复显示的触发点）

@@ -1,7 +1,7 @@
 /**
 * @file    test_relay_chain.cpp
 * @version 8.2.1
-* @date    2026-10-31
+* @date    2026-11-02
 * @author  GY
 * @brief   Relay 降级链路测试
 *
@@ -22,7 +22,13 @@
 
 #include <nlohmann/json.hpp>
 
+#ifdef _WIN32
+// Windows 分支：无 <sys/socket.h>；socketpair 以 test_utils 的 TCP 回环对
+// 等价造对（报告 N18）
+#include "test_utils/port.h"
+#else
 #include <sys/socket.h>
+#endif
 
 #include <cstring>
 
@@ -571,7 +577,12 @@ void TestRelayChain::testRelayIdReuseStaleCloseIgnored()
     // 另一端经描述符接管留在测试手里（等价于旧 feeder 的 accepted 侧）
     const auto makePair = [&relay](gy::net::TcpSocketCore **relayEnd, gy::net::PosixTcpSocket **peerEnd) {
         int pairFd[2] = {-1, -1};
+#ifdef _WIN32
+        // Windows 分支：socketpair 以 TCP 回环对等价造对（报告 N18）
+        QVERIFY(gy::test::makeLoopbackPair(pairFd));
+#else
         QVERIFY(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pairFd) == 0);
+#endif
         auto *core = new gy::net::TcpSocketCore{*relay.reactor()};
         QVERIFY(core->adopt(pairFd[0]));
         auto *peer = new gy::net::PosixTcpSocket;
@@ -639,7 +650,12 @@ void TestRelayChain::testRelayResidualBytesOrder()
 
     const auto makePair = [&relay](gy::net::TcpSocketCore **coreEnd, gy::net::PosixTcpSocket **peerEnd) {
         int pairFd[2] = {-1, -1};
+#ifdef _WIN32
+        // Windows 分支：socketpair 以 TCP 回环对等价造对（报告 N18）
+        QVERIFY(gy::test::makeLoopbackPair(pairFd));
+#else
         QVERIFY(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pairFd) == 0);
+#endif
         auto *core = new gy::net::TcpSocketCore{*relay.reactor()};
         QVERIFY(core->adopt(pairFd[0]));
         auto *peer = new gy::net::PosixTcpSocket;
@@ -955,7 +971,12 @@ void TestRelayChain::testRelayPeerLeftSendsCancelFrame()
     // 本地馈送服务器造可控 socket 对（与 relay_id 复用用例同一套法）
     const auto makePair = [&relay](gy::net::TcpSocketCore **coreEnd, gy::net::PosixTcpSocket **peerEnd) {
         int pairFd[2] = {-1, -1};
+#ifdef _WIN32
+        // Windows 分支：socketpair 以 TCP 回环对等价造对（报告 N18）
+        QVERIFY(gy::test::makeLoopbackPair(pairFd));
+#else
         QVERIFY(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pairFd) == 0);
+#endif
         auto *core = new gy::net::TcpSocketCore{*relay.reactor()};
         QVERIFY(core->adopt(pairFd[0]));
         auto *peer = new gy::net::PosixTcpSocket;
