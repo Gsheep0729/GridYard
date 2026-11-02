@@ -1,7 +1,7 @@
 /**
 * @file    test_posix_socket.cpp
-* @version 7.26.0
-* @date 2026-11-02
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GridYard Team
 * @brief   原生套接字原语层测试
 *
@@ -42,6 +42,11 @@
 #include "posix_tcp_server.h"
 #include "posix_tcp_socket.h"
 #include "posix_udp_socket.h"
+
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
+#endif
 
 using gy::net::IpAddress;
 using gy::net::PosixTcpServer;

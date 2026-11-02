@@ -1,7 +1,7 @@
 /**
 * @file    test_config_manager.cpp
-* @version 8.2.1
-* @date 2026-11-02
+* @version 8.3.0
+* @date 2026-11-03
 * @author  GY
 * @brief   ConfigManager 配置管理器测试
 *
@@ -29,6 +29,11 @@
 #include "config_manager.h"
 #include "net_interfaces.h"
 #include "protocol.h"
+
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
+#endif
 
 class TestConfigManager : public QObject {
     Q_OBJECT

@@ -20,6 +20,11 @@
 #include "net_interfaces.h"
 #include "protocol.h"
 
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
+#endif
+
 class TestDiscovery : public QObject {
     Q_OBJECT
 
