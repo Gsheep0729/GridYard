@@ -118,7 +118,6 @@ set(GRIDYARD_CLIENT_QML_UI_FILES
     ui/DeviceAliasDialog.qml
     ui/HomePlaceholder.qml
     ui/EmptyState.qml
-    ui/CompletionToast.qml
     ui/RelayConfirmDialog.qml
     ui/DangerButton.qml
     ui/SecondaryButton.qml

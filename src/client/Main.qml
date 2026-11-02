@@ -663,11 +663,6 @@ ApplicationWindow {
         onCancelChosen: (sessionId) => AppController.transferController.cancelSession(sessionId)
     }
 
-    // 接收完成通知卡：非阻塞展示，提供打开所在位置的快捷操作
-    CompletionToast {
-        id: completeToast
-    }
-
     Connections {
         target: AppController.transferController
         function onReceiveRequestReceived(sessionId, senderDeviceId, senderName, fileName,
@@ -695,7 +690,8 @@ ApplicationWindow {
                                 .arg(totalFiles))
         }
         function onTransferCompleted(sessionId: string, fileName: string, filePath: string): void {
-            completeToast.openWith(fileName, filePath)
+            // 应用内完成提示单播报（U2-18）：文件名文案由 C++ messageOccurred
+            // 走底部 Toast，通知卡已砍除，此处仅保留托盘通知；勿再补第二条
             trayIcon.notifyTransferCompleted(qsTr("传输完成"), qsTr("已完成一项文件传输"))
         }
         function onErrorOccurred(message: string): void { mainWindow.showErrorToast(message) }
