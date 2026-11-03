@@ -1,7 +1,7 @@
 /**
 * @file    test_rendezvous_coordinator.cpp
-* @version 8.2.1
-* @date    2026-11-01
+* @version 8.3.0
+* @date    2026-11-03
 * @author  GY
 * @brief   RendezvousCoordinator 协调编排测试
 *
@@ -30,6 +30,11 @@
 
 #include "test_utils/json_line.h"
 #include "test_utils/wait.h"
+
+#ifdef _WIN32
+// Windows 头链把 interface 定义成宏，展开会击穿下方以 interface 命名的循环变量
+#undef interface
+#endif
 
 // JSON 行读写复用测试公共工具
 using gy::test::readJsonLine;
